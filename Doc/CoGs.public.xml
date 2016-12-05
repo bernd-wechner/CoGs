@@ -1,0 +1,735 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<database name="CoGs" schema="public" type="PostgreSQL - 9.5.4">
+   <tables>
+      <table name="auth_group" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_group_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="group_id" foreignKey="auth_group_permissions_group_id_b120cbf9_fk_auth_group_id" implied="false" onDeleteCascade="false" table="auth_group_permissions"/>
+            <child column="group_id" foreignKey="auth_user_groups_group_id_97559544_fk_auth_group_id" implied="false" onDeleteCascade="false" table="auth_user_groups"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="false" remarks="" size="80" type="varchar"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_group_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_group_name_a6ea08ec_like" unique="false">
+            <column ascending="true" name="name"/>
+         </index>
+         <index name="auth_group_name_key" unique="true">
+            <column ascending="true" name="name"/>
+         </index>
+      </table>
+      <table name="auth_group_permissions" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_group_permissions_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="group_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_group_permissions_group_id_b120cbf9_fk_auth_group_id" implied="false" onDeleteCascade="false" table="auth_group"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="permission_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_group_permiss_permission_id_84c5c92e_fk_auth_permission_id" implied="false" onDeleteCascade="false" table="auth_permission"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_group_permissions_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_group_permissions_0e939a4f" unique="false">
+            <column ascending="true" name="group_id"/>
+         </index>
+         <index name="auth_group_permissions_8373b171" unique="false">
+            <column ascending="true" name="permission_id"/>
+         </index>
+         <index name="auth_group_permissions_group_id_0cd325b0_uniq" unique="true">
+            <column ascending="true" name="group_id"/>
+            <column ascending="true" name="permission_id"/>
+         </index>
+      </table>
+      <table name="auth_permission" numRows="48" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_permission_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="permission_id" foreignKey="auth_group_permiss_permission_id_84c5c92e_fk_auth_permission_id" implied="false" onDeleteCascade="false" table="auth_group_permissions"/>
+            <child column="permission_id" foreignKey="auth_user_user_per_permission_id_1fbb5f2c_fk_auth_permission_id" implied="false" onDeleteCascade="false" table="auth_user_user_permissions"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="false" remarks="" size="255" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="2" name="content_type_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_permiss_content_type_id_2f476e4b_fk_django_content_type_id" implied="false" onDeleteCascade="false" table="django_content_type"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="3" name="codename" nullable="false" remarks="" size="100" type="varchar"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_permission_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_permission_417f1b1c" unique="false">
+            <column ascending="true" name="content_type_id"/>
+         </index>
+         <index name="auth_permission_content_type_id_01ab375a_uniq" unique="true">
+            <column ascending="true" name="content_type_id"/>
+            <column ascending="true" name="codename"/>
+         </index>
+      </table>
+      <table name="auth_user" numRows="1" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_user_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="user_id" foreignKey="auth_user_groups_user_id_6a12ed8b_fk_auth_user_id" implied="false" onDeleteCascade="false" table="auth_user_groups"/>
+            <child column="user_id" foreignKey="auth_user_user_permissions_user_id_a95ead1b_fk_auth_user_id" implied="false" onDeleteCascade="false" table="auth_user_user_permissions"/>
+            <child column="user_id" foreignKey="django_admin_log_user_id_c564eba6_fk_auth_user_id" implied="false" onDeleteCascade="false" table="django_admin_log"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="password" nullable="false" remarks="" size="128" type="varchar"/>
+         <column autoUpdated="false" digits="6" id="2" name="last_login" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="3" name="is_superuser" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="0" id="4" name="username" nullable="false" remarks="" size="150" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="5" name="first_name" nullable="false" remarks="" size="30" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="6" name="last_name" nullable="false" remarks="" size="30" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="7" name="email" nullable="false" remarks="" size="254" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="8" name="is_staff" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="0" id="9" name="is_active" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="6" id="10" name="date_joined" nullable="false" remarks="" size="35" type="timestamptz"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_user_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_user_username_6821ab7c_like" unique="false">
+            <column ascending="true" name="username"/>
+         </index>
+         <index name="auth_user_username_key" unique="true">
+            <column ascending="true" name="username"/>
+         </index>
+      </table>
+      <table name="auth_user_groups" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_user_groups_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="user_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_user_groups_user_id_6a12ed8b_fk_auth_user_id" implied="false" onDeleteCascade="false" table="auth_user"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="group_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_user_groups_group_id_97559544_fk_auth_group_id" implied="false" onDeleteCascade="false" table="auth_group"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_user_groups_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_user_groups_0e939a4f" unique="false">
+            <column ascending="true" name="group_id"/>
+         </index>
+         <index name="auth_user_groups_e8701ad4" unique="false">
+            <column ascending="true" name="user_id"/>
+         </index>
+         <index name="auth_user_groups_user_id_94350c0c_uniq" unique="true">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="group_id"/>
+         </index>
+      </table>
+      <table name="auth_user_user_permissions" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('auth_user_user_permissions_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="user_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_user_user_permissions_user_id_a95ead1b_fk_auth_user_id" implied="false" onDeleteCascade="false" table="auth_user"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="permission_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="auth_user_user_per_permission_id_1fbb5f2c_fk_auth_permission_id" implied="false" onDeleteCascade="false" table="auth_permission"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="auth_user_user_permissions_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="auth_user_user_permissions_8373b171" unique="false">
+            <column ascending="true" name="permission_id"/>
+         </index>
+         <index name="auth_user_user_permissions_e8701ad4" unique="false">
+            <column ascending="true" name="user_id"/>
+         </index>
+         <index name="auth_user_user_permissions_user_id_14a6b632_uniq" unique="true">
+            <column ascending="true" name="user_id"/>
+            <column ascending="true" name="permission_id"/>
+         </index>
+      </table>
+      <table name="django_admin_log" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('django_admin_log_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="6" id="1" name="action_time" nullable="false" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="2" name="object_id" nullable="true" remarks="" size="2147483647" type="text"/>
+         <column autoUpdated="false" digits="0" id="3" name="object_repr" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="4" name="action_flag" nullable="false" remarks="" size="5" type="int2"/>
+         <column autoUpdated="false" digits="0" id="5" name="change_message" nullable="false" remarks="" size="2147483647" type="text"/>
+         <column autoUpdated="false" digits="0" id="6" name="content_type_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="django_admin_content_type_id_c4bce8eb_fk_django_content_type_id" implied="false" onDeleteCascade="false" table="django_content_type"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="7" name="user_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="django_admin_log_user_id_c564eba6_fk_auth_user_id" implied="false" onDeleteCascade="false" table="auth_user"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="django_admin_log_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="django_admin_log_417f1b1c" unique="false">
+            <column ascending="true" name="content_type_id"/>
+         </index>
+         <index name="django_admin_log_e8701ad4" unique="false">
+            <column ascending="true" name="user_id"/>
+         </index>
+      </table>
+      <table name="django_content_type" numRows="16" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('django_content_type_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="content_type_id" foreignKey="auth_permiss_content_type_id_2f476e4b_fk_django_content_type_id" implied="false" onDeleteCascade="false" table="auth_permission"/>
+            <child column="content_type_id" foreignKey="django_admin_content_type_id_c4bce8eb_fk_django_content_type_id" implied="false" onDeleteCascade="false" table="django_admin_log"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="app_label" nullable="false" remarks="" size="100" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="2" name="model" nullable="false" remarks="" size="100" type="varchar"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="django_content_type_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="django_content_type_app_label_76bd3d3b_uniq" unique="true">
+            <column ascending="true" name="app_label"/>
+            <column ascending="true" name="model"/>
+         </index>
+      </table>
+      <table name="django_migrations" numRows="15" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('django_migrations_id_seq'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="app" nullable="false" remarks="" size="255" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="2" name="name" nullable="false" remarks="" size="255" type="varchar"/>
+         <column autoUpdated="false" digits="6" id="3" name="applied" nullable="false" remarks="" size="35" type="timestamptz"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="django_migrations_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+      </table>
+      <table name="django_session" numRows="1" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="false" digits="0" id="0" name="session_key" nullable="false" remarks="" size="40" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="1" name="session_data" nullable="false" remarks="" size="2147483647" type="text"/>
+         <column autoUpdated="false" digits="6" id="2" name="expire_date" nullable="false" remarks="" size="35" type="timestamptz"/>
+         <primaryKey column="session_key" sequenceNumberInPK="1"/>
+         <index name="django_session_pkey" unique="true">
+            <column ascending="true" name="session_key"/>
+         </index>
+         <index name="django_session_de54fa62" unique="false">
+            <column ascending="true" name="expire_date"/>
+         </index>
+         <index name="django_session_session_key_c0390e0f_like" unique="false">
+            <column ascending="true" name="session_key"/>
+         </index>
+      </table>
+      <table name="Leaderboards_game" numRows="22" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_game_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="game_id" foreignKey="Leaderboards_game_leag_game_id_05e02ced_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_game_leagues"/>
+            <child column="game_id" foreignKey="Leaderboards_league_ga_game_id_182f8315_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_games"/>
+            <child column="game_id" foreignKey="Leaderboards_rating_game_id_bc6f6956_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_rating"/>
+            <child column="game_id" foreignKey="Leaderboards_session_game_id_ec37b039_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="2" name="BGGid" nullable="false" remarks="" size="10" type="int4"/>
+         <column autoUpdated="false" digits="17" id="3" name="trueskill_tau" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="4" name="trueskill_p" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="6" id="5" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="6" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="7" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_g_created_by_id_d38af8a7_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="8" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_875b9949_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_game_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_game_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_game_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_game_leagues" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_game_leagues_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="game_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_game_leag_game_id_05e02ced_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_game__league_id_daea6c47_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_game_leagues_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_game_leagues_6072f8b3" unique="false">
+            <column ascending="true" name="game_id"/>
+         </index>
+         <index name="Leaderboards_game_leagues_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_game_leagues_game_id_e763d53e_uniq" unique="true">
+            <column ascending="true" name="game_id"/>
+            <column ascending="true" name="league_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_league" numRows="1" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_league_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="league_id" foreignKey="Leaderboards_game__league_id_daea6c47_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_game_leagues"/>
+            <child column="league_id" foreignKey="Leaderboards_leagu_league_id_051f2080_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_games"/>
+            <child column="league_id" foreignKey="Leaderboards_leagu_league_id_eb2cbd47_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_locations"/>
+            <child column="league_id" foreignKey="Leaderboards_leagu_league_id_e9bfc902_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_players"/>
+            <child column="league_id" foreignKey="Leaderboards_locat_league_id_6294be77_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_location_leagues"/>
+            <child column="league_id" foreignKey="Leaderboards_playe_league_id_7e24a4e5_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_player_leagues"/>
+            <child column="league_id" foreignKey="Leaderboards_sessi_league_id_491dc3b5_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="6" id="2" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="3" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="4" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_l_created_by_id_ff11764e_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="5" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_cee4b527_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="6" name="manager_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_leag_manager_id_70950cb4_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_league_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_league_8784215c" unique="false">
+            <column ascending="true" name="manager_id"/>
+         </index>
+         <index name="Leaderboards_league_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_league_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_league_games" numRows="22" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_league_games_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_leagu_league_id_051f2080_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="game_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_league_ga_game_id_182f8315_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_league_games_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_league_games_6072f8b3" unique="false">
+            <column ascending="true" name="game_id"/>
+         </index>
+         <index name="Leaderboards_league_games_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_league_games_league_id_d8099717_uniq" unique="true">
+            <column ascending="true" name="league_id"/>
+            <column ascending="true" name="game_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_league_locations" numRows="3" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_league_locations_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_leagu_league_id_eb2cbd47_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="location_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_l_location_id_bf0c3109_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_location"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_league_locations_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_league_locations_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_league_locations_e274a5da" unique="false">
+            <column ascending="true" name="location_id"/>
+         </index>
+         <index name="Leaderboards_league_locations_league_id_dc900015_uniq" unique="true">
+            <column ascending="true" name="league_id"/>
+            <column ascending="true" name="location_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_league_players" numRows="17" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_league_players_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_leagu_league_id_e9bfc902_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_leagu_player_id_76c4249b_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_league_players_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_league_players_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_league_players_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_league_players_league_id_da7f51ac_uniq" unique="true">
+            <column ascending="true" name="league_id"/>
+            <column ascending="true" name="player_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_location" numRows="3" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_location_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="location_id" foreignKey="Leaderboards_l_location_id_bf0c3109_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_locations"/>
+            <child column="location_id" foreignKey="Leaderboards_l_location_id_0e859e0a_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_location_leagues"/>
+            <child column="location_id" foreignKey="Leaderboards_s_location_id_418cf13b_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="6" id="2" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="3" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="4" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_l_created_by_id_a16ed8b6_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="5" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_d2faa752_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_location_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_location_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_location_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_location_leagues" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_location_leagues_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="location_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_l_location_id_0e859e0a_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_location"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_locat_league_id_6294be77_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_location_leagues_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_location_leagues_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_location_leagues_e274a5da" unique="false">
+            <column ascending="true" name="location_id"/>
+         </index>
+         <index name="Leaderboards_location_leagues_location_id_32ae2b83_uniq" unique="true">
+            <column ascending="true" name="location_id"/>
+            <column ascending="true" name="league_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_performance" numRows="21" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_performance_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="17" id="1" name="partial_play_weighting" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="2" name="trueskill_mu_before" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="3" name="trueskill_sigma_before" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="4" name="trueskill_eta_before" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="5" name="trueskill_mu_after" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="6" name="trueskill_sigma_after" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="7" name="trueskill_eta_after" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="6" id="8" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="9" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="10" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_p_created_by_id_801e1c77_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="11" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_eea126f3_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="12" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_perfo_player_id_f52d10c2_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="13" name="session_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_per_session_id_f5823a25_fk_Leaderboards_session_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_performance_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_performance_7fc8ef54" unique="false">
+            <column ascending="true" name="session_id"/>
+         </index>
+         <index name="Leaderboards_performance_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_performance_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_performance_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_player" numRows="17" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_player_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="created_by_id" foreignKey="Leaderboards_g_created_by_id_d38af8a7_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_875b9949_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+            <child column="created_by_id" foreignKey="Leaderboards_l_created_by_id_ff11764e_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_cee4b527_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+            <child column="manager_id" foreignKey="Leaderboards_leag_manager_id_70950cb4_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+            <child column="player_id" foreignKey="Leaderboards_leagu_player_id_76c4249b_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_league_players"/>
+            <child column="created_by_id" foreignKey="Leaderboards_l_created_by_id_a16ed8b6_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_location"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_d2faa752_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_location"/>
+            <child column="created_by_id" foreignKey="Leaderboards_p_created_by_id_801e1c77_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_performance"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_eea126f3_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_performance"/>
+            <child column="player_id" foreignKey="Leaderboards_perfo_player_id_f52d10c2_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_performance"/>
+            <child column="created_by_id" foreignKey="Leaderboards_p_created_by_id_8e6b00ed_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_92497f33_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+            <child column="player_id" foreignKey="Leaderboards_playe_player_id_000b6763_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player_leagues"/>
+            <child column="player_id" foreignKey="Leaderboards_playe_player_id_225b1775_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player_teams"/>
+            <child column="created_by_id" foreignKey="Leaderboards_r_created_by_id_ecb98048_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rank"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_9eb8a429_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rank"/>
+            <child column="player_id" foreignKey="Leaderboards_rank_player_id_8a1dbeb4_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rank"/>
+            <child column="created_by_id" foreignKey="Leaderboards_r_created_by_id_7e8aa913_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rating"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_b0e6ec38_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rating"/>
+            <child column="player_id" foreignKey="Leaderboards_ratin_player_id_35196670_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_rating"/>
+            <child column="created_by_id" foreignKey="Leaderboards_s_created_by_id_197abd7e_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_5ab52e38_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+            <child column="created_by_id" foreignKey="Leaderboards_t_created_by_id_1a44bcbe_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_team"/>
+            <child column="last_edited_by_id" foreignKey="Leaderboar_last_edited_by_id_03c306e7_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_team"/>
+            <child column="player_id" foreignKey="Leaderboards_team__player_id_03685d64_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_team_players"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name_nickname" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="2" name="name_personal" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="3" name="name_family" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="4" name="email_address" nullable="false" remarks="" size="254" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="5" name="BGGname" nullable="false" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="0" id="6" name="is_registrar" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="0" id="7" name="is_staff" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="6" id="8" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="9" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="10" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_p_created_by_id_8e6b00ed_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="11" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_92497f33_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_player_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_player_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_player_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_player_leagues" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_player_leagues_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_playe_player_id_000b6763_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_playe_league_id_7e24a4e5_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_player_leagues_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_player_leagues_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_player_leagues_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_player_leagues_player_id_3ee27ac8_uniq" unique="true">
+            <column ascending="true" name="player_id"/>
+            <column ascending="true" name="league_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_player_teams" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_player_teams_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_playe_player_id_225b1775_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="team_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_player_te_team_id_1b6288de_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_team"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_player_teams_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_player_teams_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_player_teams_f6a7ca40" unique="false">
+            <column ascending="true" name="team_id"/>
+         </index>
+         <index name="Leaderboards_player_teams_player_id_9c0536f3_uniq" unique="true">
+            <column ascending="true" name="player_id"/>
+            <column ascending="true" name="team_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_rank" numRows="16" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_rank_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="rank" nullable="false" remarks="" size="10" type="int4"/>
+         <column autoUpdated="false" digits="6" id="2" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="3" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="4" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_r_created_by_id_ecb98048_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="5" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_9eb8a429_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="6" name="player_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_rank_player_id_8a1dbeb4_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="7" name="session_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_ran_session_id_ca291e9e_fk_Leaderboards_session_id" implied="false" onDeleteCascade="false" table="Leaderboards_session"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="8" name="team_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_rank_team_id_cc7d550d_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_team"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_rank_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_rank_7fc8ef54" unique="false">
+            <column ascending="true" name="session_id"/>
+         </index>
+         <index name="Leaderboards_rank_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_rank_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_rank_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+         <index name="Leaderboards_rank_f6a7ca40" unique="false">
+            <column ascending="true" name="team_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_rating" numRows="16" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_rating_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="17" id="1" name="trueskill_mu" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="2" name="trueskill_sigma" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="3" name="trueskill_eta" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="6" id="4" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="5" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="6" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_r_created_by_id_7e8aa913_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="7" name="game_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_rating_game_id_bc6f6956_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="8" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_b0e6ec38_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="9" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_ratin_player_id_35196670_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="17" id="10" name="trueskill_mu0" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="11" name="trueskill_sigma0" nullable="false" remarks="" size="17" type="float8"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_rating_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_rating_6072f8b3" unique="false">
+            <column ascending="true" name="game_id"/>
+         </index>
+         <index name="Leaderboards_rating_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_rating_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_rating_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_session" numRows="7" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_session_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="session_id" foreignKey="Leaderboards_per_session_id_f5823a25_fk_Leaderboards_session_id" implied="false" onDeleteCascade="false" table="Leaderboards_performance"/>
+            <child column="session_id" foreignKey="Leaderboards_ran_session_id_ca291e9e_fk_Leaderboards_session_id" implied="false" onDeleteCascade="false" table="Leaderboards_rank"/>
+         </column>
+         <column autoUpdated="false" digits="6" id="1" name="date_time" nullable="false" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="2" name="team_play" nullable="false" remarks="" size="1" type="bool"/>
+         <column autoUpdated="false" digits="6" id="3" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="4" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="5" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_s_created_by_id_197abd7e_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="6" name="game_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_session_game_id_ec37b039_fk_Leaderboards_game_id" implied="false" onDeleteCascade="false" table="Leaderboards_game"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="7" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_5ab52e38_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="8" name="league_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_sessi_league_id_491dc3b5_fk_Leaderboards_league_id" implied="false" onDeleteCascade="false" table="Leaderboards_league"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="9" name="location_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_s_location_id_418cf13b_fk_Leaderboards_location_id" implied="false" onDeleteCascade="false" table="Leaderboards_location"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_session_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_session_6072f8b3" unique="false">
+            <column ascending="true" name="game_id"/>
+         </index>
+         <index name="Leaderboards_session_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_session_a07ab3f8" unique="false">
+            <column ascending="true" name="league_id"/>
+         </index>
+         <index name="Leaderboards_session_e274a5da" unique="false">
+            <column ascending="true" name="location_id"/>
+         </index>
+         <index name="Leaderboards_session_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_team" numRows="8" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_team_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial">
+            <child column="team_id" foreignKey="Leaderboards_player_te_team_id_1b6288de_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_player_teams"/>
+            <child column="team_id" foreignKey="Leaderboards_rank_team_id_cc7d550d_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_rank"/>
+            <child column="team_id" foreignKey="Leaderboards_team_play_team_id_cd528935_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_team_players"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="1" name="name" nullable="true" remarks="" size="200" type="varchar"/>
+         <column autoUpdated="false" digits="6" id="2" name="created_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="6" id="3" name="last_edited_on" nullable="true" remarks="" size="35" type="timestamptz"/>
+         <column autoUpdated="false" digits="0" id="4" name="created_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_t_created_by_id_1a44bcbe_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="5" name="last_edited_by_id" nullable="true" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboar_last_edited_by_id_03c306e7_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_team_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_team_87f04f9b" unique="false">
+            <column ascending="true" name="last_edited_by_id"/>
+         </index>
+         <index name="Leaderboards_team_e93cb7eb" unique="false">
+            <column ascending="true" name="created_by_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_team_players" numRows="16" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_team_players_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="0" id="1" name="team_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_team_play_team_id_cd528935_fk_Leaderboards_team_id" implied="false" onDeleteCascade="false" table="Leaderboards_team"/>
+         </column>
+         <column autoUpdated="false" digits="0" id="2" name="player_id" nullable="false" remarks="" size="10" type="int4">
+            <parent column="id" foreignKey="Leaderboards_team__player_id_03685d64_fk_Leaderboards_player_id" implied="false" onDeleteCascade="false" table="Leaderboards_player"/>
+         </column>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_team_players_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+         <index name="Leaderboards_team_players_afe72417" unique="false">
+            <column ascending="true" name="player_id"/>
+         </index>
+         <index name="Leaderboards_team_players_f6a7ca40" unique="false">
+            <column ascending="true" name="team_id"/>
+         </index>
+         <index name="Leaderboards_team_players_team_id_79e69c48_uniq" unique="true">
+            <column ascending="true" name="team_id"/>
+            <column ascending="true" name="player_id"/>
+         </index>
+      </table>
+      <table name="Leaderboards_trueskillsettings" numRows="0" remarks="" schema="public" type="TABLE">
+         <column autoUpdated="true" defaultValue="nextval('&quot;Leaderboards_trueskillsettings_id_seq&quot;'::regclass)" digits="0" id="0" name="id" nullable="false" remarks="" size="10" type="serial"/>
+         <column autoUpdated="false" digits="17" id="1" name="mu0" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="2" name="sigma0" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="3" name="beta" nullable="false" remarks="" size="17" type="float8"/>
+         <column autoUpdated="false" digits="17" id="4" name="delta" nullable="false" remarks="" size="17" type="float8"/>
+         <primaryKey column="id" sequenceNumberInPK="1"/>
+         <index name="Leaderboards_trueskillsettings_pkey" unique="true">
+            <column ascending="true" name="id"/>
+         </index>
+      </table>
+   </tables>
+</database>

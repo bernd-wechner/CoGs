@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<django-objects version="1.0">
+    <object pk="1" model="Leaderboards.league">
+        <field name="name" type="CharField">Hobart</field>
+        <field to="Leaderboards.player" rel="ManyToOneRel" name="manager">1</field>
+        <field to="Leaderboards.player" rel="ManyToManyRel" name="players"><object pk="1"></object></field>
+    </object>
+</django-objects>

@@ -1,0 +1,156 @@
+<?xml version="1.0" encoding="utf-8"?>
+<django-objects version="1.0">
+    <object pk="1" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Bernd</field>
+        <field name="name_personal" type="CharField">Bernd</field>
+        <field name="name_family" type="CharField">Wechner</field>
+        <field name="email_address" type="CharField">bernd.wechner@gmail.com</field>
+        <field name="BGGname" type="CharField">bwechner</field>
+        <field name="is_registrar" type="BooleanField">True</field>
+        <field name="is_staff" type="BooleanField">True</field>
+    </object>
+    <object pk="2" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Blake</field>
+        <field name="name_personal" type="CharField">Blake</field>
+        <field name="name_family" type="CharField">Siviour</field>
+        <field name="email_address" type="CharField">thesiviours@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="3" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Carl</field>
+        <field name="name_personal" type="CharField">Carl</field>
+        <field name="name_family" type="CharField">Roddam</field>
+        <field name="email_address" type="CharField">carlroddam@hotmail.com</field>
+        <field name="BGGname" type="CharField">CarlRoddam</field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="4" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Scott</field>
+        <field name="name_personal" type="CharField">Scott</field>
+        <field name="name_family" type="CharField">Bragg</field>
+        <field name="email_address" type="CharField">jsbragg@scriptforge.org</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="5" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Sarah</field>
+        <field name="name_personal" type="CharField">Sarah</field>
+        <field name="name_family" type="CharField">James</field>
+        <field name="email_address" type="CharField">s.j.james@live.com.au</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="6" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Julianne</field>
+        <field name="name_personal" type="CharField">Julianne</field>
+        <field name="name_family" type="CharField">Piets</field>
+        <field name="email_address" type="CharField">weemissgiggles@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="7" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Jeremy</field>
+        <field name="name_personal" type="CharField">Jeremy</field>
+        <field name="name_family" type="CharField">Piets</field>
+        <field name="email_address" type="CharField">fahran@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="8" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Steve J</field>
+        <field name="name_personal" type="CharField">Steve</field>
+        <field name="name_family" type="CharField">Joyce</field>
+        <field name="email_address" type="CharField">stephenultimatejoyce@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="9" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Steve W</field>
+        <field name="name_personal" type="CharField">Steve</field>
+        <field name="name_family" type="CharField">Walters</field>
+        <field name="email_address" type="CharField">sjw1@utas.edu.au</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="10" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Nathanael</field>
+        <field name="name_personal" type="CharField">Nathanael</field>
+        <field name="name_family" type="CharField">Sweeney</field>
+        <field name="email_address" type="CharField">nathanael.sweeney@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="11" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Stephen</field>
+        <field name="name_personal" type="CharField">Stephen</field>
+        <field name="name_family" type="CharField">Pyne</field>
+        <field name="email_address" type="CharField">mtemail@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="12" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Leah</field>
+        <field name="name_personal" type="CharField">Leah</field>
+        <field name="name_family" type="CharField">Triffet</field>
+        <field name="email_address" type="CharField">ltriffett@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="13" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Ian</field>
+        <field name="name_personal" type="CharField">Ian</field>
+        <field name="name_family" type="CharField">Tait</field>
+        <field name="email_address" type="CharField">ian.tait48@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="14" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Sam</field>
+        <field name="name_personal" type="CharField">Sam</field>
+        <field name="name_family" type="CharField">Halse Rogers</field>
+        <field name="email_address" type="CharField">halse.rogers@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="15" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Chris</field>
+        <field name="name_personal" type="CharField">Chris</field>
+        <field name="name_family" type="CharField">Halse Rogers</field>
+        <field name="email_address" type="CharField">halse.rogers@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="16" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Dan</field>
+        <field name="name_personal" type="CharField">Daniel</field>
+        <field name="name_family" type="CharField">Robson</field>
+        <field name="email_address" type="CharField">danrobson1@gmail.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+    <object pk="17" model="Leaderboards.player">
+        <field name="name_nickname" type="CharField">Brendan</field>
+        <field name="name_personal" type="CharField">Brendan</field>
+        <field name="name_family" type="CharField">Cruise</field>
+        <field name="email_address" type="CharField">cruiser3004i@bigpond.com</field>
+        <field name="BGGname" type="CharField"></field>
+        <field name="is_registrar" type="BooleanField">False</field>
+        <field name="is_staff" type="BooleanField">False</field>
+    </object>
+</django-objects>

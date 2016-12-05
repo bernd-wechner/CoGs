@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="utf-8"?>
+<django-objects version="1.0">
+    <object pk="1" model="Leaderboards.game">
+        <field name="name" type="CharField">El Grande</field>
+        <field name="BGGid" type="PositiveIntegerField">93</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="2" model="Leaderboards.game">
+        <field name="name" type="CharField">Among the Stars</field>
+        <field name="BGGid" type="PositiveIntegerField">110277</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="3" model="Leaderboards.game">
+        <field name="name" type="CharField">Power Grid</field>
+        <field name="BGGid" type="PositiveIntegerField">2651</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="4" model="Leaderboards.game">
+        <field name="name" type="CharField">San Marco</field>
+        <field name="BGGid" type="PositiveIntegerField">1041</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="5" model="Leaderboards.game">
+        <field name="name" type="CharField">Mississippi Queen</field>
+        <field name="BGGid" type="PositiveIntegerField">256</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="6" model="Leaderboards.game">
+        <field name="name" type="CharField">Dos Rios</field>
+        <field name="BGGid" type="PositiveIntegerField">9408</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="7" model="Leaderboards.game">
+        <field name="name" type="CharField">Saint Petersburg</field>
+        <field name="BGGid" type="PositiveIntegerField">9217</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="8" model="Leaderboards.game">
+        <field name="name" type="CharField">Memoir '44</field>
+        <field name="BGGid" type="PositiveIntegerField">10630</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="9" model="Leaderboards.game">
+        <field name="name" type="CharField">Stone Age</field>
+        <field name="BGGid" type="PositiveIntegerField">34635</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="10" model="Leaderboards.game">
+        <field name="name" type="CharField">Princes of Florence</field>
+        <field name="BGGid" type="PositiveIntegerField">555</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="11" model="Leaderboards.game">
+        <field name="name" type="CharField">Vinci</field>
+        <field name="BGGid" type="PositiveIntegerField">60</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="12" model="Leaderboards.game">
+        <field name="name" type="CharField">Pillars of the Earth</field>
+        <field name="BGGid" type="PositiveIntegerField">24480</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="13" model="Leaderboards.game">
+        <field name="name" type="CharField">Power Grid: First Sparks</field>
+        <field name="BGGid" type="PositiveIntegerField">106662</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="14" model="Leaderboards.game">
+        <field name="name" type="CharField">Condottiere</field>
+        <field name="BGGid" type="PositiveIntegerField">112</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="15" model="Leaderboards.game">
+        <field name="name" type="CharField">Löwenherz</field>
+        <field name="BGGid" type="PositiveIntegerField">66</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="16" model="Leaderboards.game">
+        <field name="name" type="CharField">Merchants of the Middle Ages</field>
+        <field name="BGGid" type="PositiveIntegerField">348</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="17" model="Leaderboards.game">
+        <field name="name" type="CharField">The Settlers of Catan</field>
+        <field name="BGGid" type="PositiveIntegerField">13</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="18" model="Leaderboards.game">
+        <field name="name" type="CharField">The Settlers of Catan: The Cardgame</field>
+        <field name="BGGid" type="PositiveIntegerField">278</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="19" model="Leaderboards.game">
+        <field name="name" type="CharField">Lord of the Rings: The Confrontation</field>
+        <field name="BGGid" type="PositiveIntegerField">3201</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="20" model="Leaderboards.game">
+        <field name="name" type="CharField">Inkognito</field>
+        <field name="BGGid" type="PositiveIntegerField">466</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="21" model="Leaderboards.game">
+        <field name="name" type="CharField">Russian Railroads</field>
+        <field name="BGGid" type="PositiveIntegerField">144733</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+    <object pk="22" model="Leaderboards.game">
+        <field name="name" type="CharField">Oltre Mare</field>
+        <field name="BGGid" type="PositiveIntegerField">13551</field>
+        <field name="trueskill_tau" type="FloatField">0.0833333333333333</field>
+        <field name="trueskill_p" type="FloatField">0.1</field>
+    </object>
+</django-objects>

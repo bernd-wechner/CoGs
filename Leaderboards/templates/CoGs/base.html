@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+<head>
+	{% load staticfiles %}
+	<title>{% block title %}{% endblock %}</title>
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/default.css' %}" />
+	<link rel="icon" href="{% static 'favicon.ico' %}">
+	<meta name="robots" content="NONE,NOARCHIVE" />
+	<meta charset="UTF-8" />
+</head>
+
+<body class="body">
+
+<!-- Container -->
+<div id="container">
+
+    <!-- Header -->
+    <div id="header">
+        {% block branding %}
+        <div id="branding">
+        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
+			<h1 id="site-name"><a href="/">CoGs Scoreboard Server</a></h1>
+        </div>
+        {% endblock %}
+
+        {% block menu %}
+        <div id="menu">
+        	[<a href="/admin">Admin</a>]
+        	
+        	[<a href="/leaderboards">Leaderboards</a>]
+        	
+        	[<a href="/list/League">Leagues</a> |
+        	<a href="/list/Game">Games</a> |
+        	<a href="/list/Player">Players</a> |
+        	<a href="/list/Location">Locations</a> |
+        	<a href="/list/Session">Sessions</a>]
+
+        	[<a href="/list/Team">Teams</a> |
+        	 <a href="/list/Rank">Ranks</a> |
+        	 <a href="/list/Performance">Performances</a> |
+        	 <a href="/list/Rating">Ratings</a>]
+        </div>
+        {% endblock %}
+
+        {% block usertools %}
+        {% if has_permission %}
+        <div id="user-tools">
+            {% block welcome-msg %}
+                Welcome,
+                <strong>{% firstof user.get_short_name user.get_username %}</strong>.
+            {% endblock %}
+            {% block userlinks %}
+                {% if site_url %}
+                    <a href="{{ site_url }}">View site</a> /
+                {% endif %}
+                {% if user.is_active and user.is_staff %}
+                    {% url 'django-admindocs-docroot' as docsroot %}
+                    {% if docsroot %}
+                        <a href="{{ docsroot }}">Documentation</a> /
+                    {% endif %}
+                {% endif %}
+                {% if user.has_usable_password %}
+                	<a href="{% url 'admin:password_change' %}">Change password</a> /
+                {% endif %}
+                <a href="{% url 'admin:logout' %}">Log out</a>
+            {% endblock %}
+        </div>
+        {% endif %}
+        {% endblock %}
+    </div>
+    <!-- END Header -->
+
+    {% block messages %}
+        {% if messages %}
+        <ul class="messagelist">
+        	{% for message in messages %}
+          		<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
+        	{% endfor %}
+        </ul>
+        {% endif %}
+    {% endblock messages %}
+
+    <!-- Content -->
+    <div id="content" class="content">
+        {% block content_title %}{% if title %}<h1>{{ title }}</h1>{% endif %}{% endblock %}
+        {% block content %}{% endblock %}
+        {% block sidebar %}{% endblock %}
+        <br class="clear" />
+    </div>
+    <!-- END Content -->
+
+    {% block footer %}<div id="footer"></div>{% endblock %}
+</div>
+<!-- END Container -->
+
+</body>
+</html>

@@ -1,0 +1,81 @@
+{% extends "CoGs/base.html" %}
+{% load staticfiles %}
+{% load filters %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+
+<p>
+<a href="{% url 'list' model_name %}">[List]</a>
+</p>
+
+<form id="formData" action="" method="post">
+
+	<table>
+		{% csrf_token %}
+	    {{ form.as_table }}
+	</table>
+
+	{% comment %}
+		Sessions are very particular and perhaps the most complicated object we use and hence teh cmost complicated form we have to drive it
+
+		We include the standard form above but the Session object is pointed to by:
+			Rank objects - one for each player or team (depending on play mode) points to this session object
+				Rank objects either record a player or a team
+				If a team, then:
+					Team objects - one for each team (records the players in this team and an optional name)
+			Performance objects - one for each player, points to this session object (captures the partial play weighting for that player in this session, and ultimately stores the trueskill impacts of this session for that player)
+
+		We need form elements to enter all this and to properly initialise and respond to the various object IDs in this complex interrelationship.
+	{% endcomment %}
+	{% if model_name == 'Session' %}
+		<table id='tableRankings'>
+			<script>
+				{# Inititial values for  form fields. On needed if the operation is edit (not add) and used in form_rankings.js #}
+				var operation		= "{{operation}}"
+
+				var rIDs            = {{ related_forms.Rank.field_values.id|NoneToNull }};         						{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+				var pIDs            = {{ related_forms.Performance.field_values.id|NoneToNull }}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+
+				var Ranking 		= {{ related_forms.Rank.field_values.rank|NoneToNull }};       						{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
+
+				var Players 		= {{ related_forms.Performance.field_values.player|NoneToNull }};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
+				var Weights 		= {{ related_forms.Performance.field_values.partial_play_weighting|NoneToNull }}; 	{# Partial play weighting factors corresponding to the players in Players #}
+
+				var Teams 			= {{ related_forms.Rank.field_values.Team_name|QuoteValues|safe }}; 		{# Names of the teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+				var TeamPlayers 	= {{ related_forms.Rank.field_values.Team_players|NoneToNull }};    		{# Primary Keys of the players in the team in Team. #}
+				
+				
+				{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
+				var game_individual_play 	= {{game_individual_play}};
+				var game_team_play 			= {{game_team_play}};
+				var game_min_players 		= {{game_min_players}};
+				var game_max_players 		= {{game_max_players}};
+				var game_min_players_per_team = {{game_min_players_per_team}};
+				var game_max_players_per_team = {{game_max_players_per_team}};
+				
+				{# The game props fetcher URL needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
+				var game_props_url 			= "{% url 'get_game_props' 1 %}" 
+
+				var datetime_format = "{{default_datetime_input_format}}";
+				
+				{# Teams have optional names. If not named they arrive as 'None'. Replace None with the default name of 'Team n' #}
+				for (var i = 0; i < Teams.length; i++) {
+					if (Teams[i] == null) Teams[i] = 'Team ' + (i + 1);
+				}
+			</script>
+
+			{# Now include the javascript that manages the Session form and then the form template iteself #}
+			<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+			<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+			<script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>
+			
+			{# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}
+			<script src="{% static 'CoGs/js/form_rankings.js'%}"></script>
+		    {% include "CoGs/form_rankings.html" %}
+		</table>
+	{% endif %}
+
+	<input type="submit" value="Submit" style="margin-top:20px;"/>
+</form>
+
+{% endblock %}

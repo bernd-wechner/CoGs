@@ -1,0 +1,124 @@
+{% load filters %}
+<tr><td colspan=2>
+
+	<!-- Individual Play Block -->
+
+	<div id="divIndividualPlay">
+		{% comment %}
+			The management forms simply contain for hidden input fields, named:
+				formidentifier + 'INITIAL_FORMS';
+				formidentifier + 'TOTAL_FORMS';
+				formidentifier + 'MIN_NUM_FORMS';
+				formidentifier + 'MAX_NUM_FORMS';
+			which must be submitted with a formset for Django to properly processs the forms.
+			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
+		{% endcomment %}
+		{{ related_forms.Rank.management_form }}
+		{{ related_forms.Performance.management_form }}
+		<table id="tblIndividualPlay">
+			<tr>
+				<td class="label" style="text-wrap:none">Number of players:</td>
+				<td><input type="number" min=2 class="Number" id="NumPlayers" onchange="OnRowcountChange(event)"/></td>
+		    </tr>
+		</table>
+
+		{% comment %}
+			Individual play affects two models (and involves two types of object) which need IDs in hidden fields for edit forms to work, which can be absent or take any value for add forms.
+				Rank: Each player has a rank with an ID in the Rank model (for this session)
+				Performance: Each player has an ID in the Performance model (for this session)
+
+				We define here simple templates, that are used byt the accompanying Javascript (form_rankings.js) to create a table of players based
+				on templatePlayersTable with one row per player based on templatePlayersBody.
+		{% endcomment %}
+		<table class="players" id="templatePlayersTable" style="display:none">
+			<tr id="templatePlayersHeader">
+				<th>Place</th>
+				<th>Name</th>
+				<th>Partial Play Weighting</th>
+			</tr>
+			<tr class="players" id="templatePlayersBody">       {# Rank and Player stored in Rank model and Player and Weighting in the Performance model. #}
+				<td>{{related_forms.Rank.id}}           		{# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
+					{{related_forms.Performance.id}}    		{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
+					{{related_forms.Rank.rank}}</td>			{# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
+				<td>{{related_forms.Performance.player|add_attributes:"onchange:OnPlayerChange(event)"}}	{# The ID of a player for the performance object, with an event that keeps the copy updated #}
+				    {{related_forms.Rank.player.as_hidden}}</td>               								{# The ID of a player for the rank object - Javascript will have to keep this as a copy of related_forms.Performance.player #}
+				<td>{{related_forms.Performance.partial_play_weighting}}</td>  								{# The value (0-1) of a partial play weighting for this play #}
+			</tr>
+		</table>
+	</div>
+
+	<!-- Team Play Block -->
+
+	<div id="divTeamPlay">
+		{% comment %}
+			The management forms simply contain for hidden input fields, named:
+				formidentifier + 'INITIAL_FORMS';
+				formidentifier + 'TOTAL_FORMS';
+				formidentifier + 'MIN_NUM_FORMS';
+				formidentifier + 'MAX_NUM_FORMS';
+			which must be submitted with a formset for Django to properly processs the forms.
+			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
+		{% endcomment %}
+		{{ related_forms.Team.management_form }} {# This probably not needed as Teams are not managed by Team IDs but inferred by Players defined in Performance objects. We will need to assemble those players into Team though #}
+		{{ related_forms.Rank.management_form }}
+		{{ related_forms.Performance.management_form }}
+		<table id="tblTeamPlay">
+		    <tr>
+		        <td class="label">Number of teams:</td>
+		        <td><input type="number" min=2 class="Number" id="NumTeams" name="num_teams" onchange="OnRowcountChange(event)"/></td>
+		    </tr>
+		</table>
+
+		{% comment %}
+			Team play affects three models (and involves three types of object) which may need IDs in hidden fields for edit forms to work, which can be absent for add forms.
+				Team: Each team has an ID in the Team model, but we won't use it here as Teams are defined in the frist instance by the players on them which we'll infer from the players submitted.
+				Rank: Each team has a rank with an ID in the Rank model (for this session)
+				Performance: Each player has an ID in the Performance model (for this session)
+		{% endcomment %}
+		<table class="team" id="templateTeamsTable" style="display:none">
+			<tr id="templateTeamsHeader">
+			    <th>Place</th>
+			    <th>Team</th>
+			    <th>Number of Players</th>
+			    <th>Show Players</th>
+			    <th class="greedy"></th>
+			</tr>
+			<tr class="team" id="templateTeamsBody"> 			{# Rank and Team stored in Rank model and Player and Weighting in the Performance model. #}
+			    <td>{{related_forms.Rank.id}}                   {# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
+			    	{{related_forms.Rank.rank}}</td>   			{# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
+
+				{% comment %}
+				OLD CODE (which initialised the team name as Team # which has # replaced by an index number in the supporting JS code) for reference:
+				<input type="text" class="String" name="rank_set-__prefix__-team_name" value="Team #"/>
+
+				TODO:
+				We need on "add" to populate this with the defaults of Team #
+				Although on Submission teams of format Team # should be ignored - this is not a formal name of a team and equates to None.
+				{% endcomment %}
+
+			    <td>{{related_forms.Rank.related_forms.Team.name}}</td>
+
+			    <td><input type="number" min=2 class="Number" name="Team-__prefix__-num_players" onchange="OnRowcountChange(event)"/></td>
+			    <td><input type="checkbox" name="ShowTeamPlayers" onchange="showhideTeamPlayers(event)" class="NoSubmit"/></td>
+			    <td class="greedy"></td>
+			</tr>
+			<tr id="templateTeamsDetail">
+			    <td colspan="5" id="templateTeamsDetailCell"></td>
+			</tr>
+		</table>
+
+		{# A template table for the players in a team #}
+		<table class="teamplayers" id="templateTeamPlayersTable" style="display:none">
+			<tr id="templateTeamPlayersHeader">
+			    <th>Name</th>
+			    <th>Partial Play Weighting</th>
+			</tr>
+			<tr class="teamplayers" id="templateTeamPlayersBody">
+			    <td>{{related_forms.Performance.id}}					{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
+			        {{related_forms.Performance.player}}</td>
+			    <td>{{related_forms.Performance.partial_play_weighting}}</td>
+			</tr>
+		</table>
+	</div>
+
+</td></tr>

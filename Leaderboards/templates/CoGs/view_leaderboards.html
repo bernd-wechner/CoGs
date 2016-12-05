@@ -1,0 +1,116 @@
+{% extends "CoGs/base.html" %}
+{% block title %}Leaderboards{% endblock %}
+{% block content %}
+
+<label>Columns: </label>
+<select id="cols" onchange="OnColsChange(event)" autofocus>
+  <option>1</option>
+  <option>2</option>
+  <option>3</option>
+  <option selected="selected">4</option>
+  <option>5</option>
+  <option>6</option>
+</select>
+
+<table id='tblLB'>
+</table>
+
+<script>
+	function LBtable(LB) {
+	    var table = document.createElement('TABLE');
+	    table.className = 'leaderboard'
+	    table.style.width = '100%';
+
+		var tableHead = document.createElement('THEAD');
+	    table.appendChild(tableHead);
+	    
+        var tr = document.createElement('TR');
+        tableHead.appendChild(tr);
+
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode(LB[0]));
+        th.colSpan = 5;
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+
+        var tr = document.createElement('TR');
+        tableHead.appendChild(tr);
+
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode("Rank"));
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode("Player"));
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode("Teeth"));
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode("Plays"));
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+	
+        var th = document.createElement('TH');
+        th.appendChild(document.createTextNode("Victories"));
+	    th.className = 'leaderboard'
+        tr.appendChild(th);
+
+		var tableBody = document.createElement('TBODY');
+	    table.appendChild(tableBody);
+
+	    for (var i = 0; i < LB[1].length; i++) {
+	        var tr = document.createElement('TR');
+	        tableBody.appendChild(tr);
+	
+            var td = document.createElement('TD');
+            td.style.textAlign = 'center';
+		    td.className = 'leaderboard'
+            td.appendChild(document.createTextNode(i+1));
+            tr.appendChild(td);
+	        for (var j = 0; j < 4; j++) {
+	            var td = document.createElement('TD');
+			    td.className = 'leaderboard'
+			    
+	            var val = LB[1][i][j]
+	            if (j==1) { val = val.toFixed(1) }
+	            if (j!=0) { td.style.textAlign = 'center'; }
+	            
+	            td.appendChild(document.createTextNode(val));
+	            tr.appendChild(td);
+	        }
+	     }
+	     return table;
+    }
+    
+	function OnColsChange(event) { DrawTables(); }
+
+	function DrawTables() {	
+		var colSelect = document.getElementById("cols");
+		var cols = parseInt(colSelect.options[colSelect.selectedIndex].text);	
+	
+		table = document.getElementById("tblLB");
+		table.innerHTML = "";
+		table.cellSpacing = 10;
+		
+		for (var i = 0; i < leaderboards.length; i++) {
+			var row = table.insertRow(i);
+			for (var j = 0; j < cols; j++) {
+				var cell = row.insertCell(j);
+				cell.style.verticalAlign = 'top';
+				cell.appendChild(LBtable(leaderboards[i*cols+j]));
+			}
+		}
+	}
+
+	var leaderboards = {{leaderboards|safe}};
+	
+	DrawTables()
+</script>
+
+{% endblock %}

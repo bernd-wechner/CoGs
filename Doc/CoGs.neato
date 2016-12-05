@@ -1,0 +1,118 @@
+digraph g {
+node [ fontsize = "10", shape = record ];
+edge [];
+
+"Leaderboards_game" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(200)\lBGGid:  integer\ltrueskill_tau:  double precision\ltrueskill_p:  double precision\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\l}" ];
+
+"Leaderboards_game_leagues" [shape = record, label = "{<col0> \N| id:  serial\lgame_id:  integer\lleague_id:  integer\l}" ];
+
+"Leaderboards_league" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(200)\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\lmanager_id:  integer\l}" ];
+
+"Leaderboards_league_games" [shape = record, label = "{<col0> \N| id:  serial\lleague_id:  integer\lgame_id:  integer\l}" ];
+
+"Leaderboards_league_locations" [shape = record, label = "{<col0> \N| id:  serial\lleague_id:  integer\llocation_id:  integer\l}" ];
+
+"Leaderboards_league_players" [shape = record, label = "{<col0> \N| id:  serial\lleague_id:  integer\lplayer_id:  integer\l}" ];
+
+"Leaderboards_location" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(200)\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\l}" ];
+
+"Leaderboards_location_leagues" [shape = record, label = "{<col0> \N| id:  serial\llocation_id:  integer\lleague_id:  integer\l}" ];
+
+"Leaderboards_performance" [shape = record, label = "{<col0> \N| id:  serial\lpartial_play_weighting:  double precision\ltrueskill_mu_before:  double precision\ltrueskill_sigma_before:  double precision\ltrueskill_eta_before:  double precision\ltrueskill_mu_after:  double precision\ltrueskill_sigma_after:  double precision\ltrueskill_eta_after:  double precision\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\lplayer_id:  integer\lsession_id:  integer\l}" ];
+
+"Leaderboards_player" [shape = record, label = "{<col0> \N| id:  serial\lname_nickname:  character varying(200)\lname_personal:  character varying(200)\lname_family:  character varying(200)\lemail_address:  character varying(254)\lBGGname:  character varying(200)\lis_registrar:  boolean\lis_staff:  boolean\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\l}" ];
+
+"Leaderboards_player_leagues" [shape = record, label = "{<col0> \N| id:  serial\lplayer_id:  integer\lleague_id:  integer\l}" ];
+
+"Leaderboards_player_teams" [shape = record, label = "{<col0> \N| id:  serial\lplayer_id:  integer\lteam_id:  integer\l}" ];
+
+"Leaderboards_rank" [shape = record, label = "{<col0> \N| id:  serial\lrank:  integer\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\lplayer_id:  integer\lsession_id:  integer\lteam_id:  integer\l}" ];
+
+"Leaderboards_rating" [shape = record, label = "{<col0> \N| id:  serial\ltrueskill_mu:  double precision\ltrueskill_sigma:  double precision\ltrueskill_eta:  double precision\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\lgame_id:  integer\llast_edited_by_id:  integer\lplayer_id:  integer\ltrueskill_mu0:  double precision\ltrueskill_sigma0:  double precision\l}" ];
+
+"Leaderboards_session" [shape = record, label = "{<col0> \N| id:  serial\ldate_time:  timestamp with time zone\lteam_play:  boolean\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\lgame_id:  integer\llast_edited_by_id:  integer\lleague_id:  integer\llocation_id:  integer\l}" ];
+
+"Leaderboards_team" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(200)\lcreated_on:  timestamp with time zone\llast_edited_on:  timestamp with time zone\lcreated_by_id:  integer\llast_edited_by_id:  integer\l}" ];
+
+"Leaderboards_team_players" [shape = record, label = "{<col0> \N| id:  serial\lteam_id:  integer\lplayer_id:  integer\l}" ];
+
+"Leaderboards_trueskillsettings" [shape = record, label = "{<col0> \N| id:  serial\lmu0:  double precision\lsigma0:  double precision\lbeta:  double precision\ldelta:  double precision\l}" ];
+
+"auth_group" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(80)\l}" ];
+
+"auth_group_permissions" [shape = record, label = "{<col0> \N| id:  serial\lgroup_id:  integer\lpermission_id:  integer\l}" ];
+
+"auth_permission" [shape = record, label = "{<col0> \N| id:  serial\lname:  character varying(255)\lcontent_type_id:  integer\lcodename:  character varying(100)\l}" ];
+
+"auth_user" [shape = record, label = "{<col0> \N| id:  serial\lpassword:  character varying(128)\llast_login:  timestamp with time zone\lis_superuser:  boolean\lusername:  character varying(150)\lfirst_name:  character varying(30)\llast_name:  character varying(30)\lemail:  character varying(254)\lis_staff:  boolean\lis_active:  boolean\ldate_joined:  timestamp with time zone\l}" ];
+
+"auth_user_groups" [shape = record, label = "{<col0> \N| id:  serial\luser_id:  integer\lgroup_id:  integer\l}" ];
+
+"auth_user_user_permissions" [shape = record, label = "{<col0> \N| id:  serial\luser_id:  integer\lpermission_id:  integer\l}" ];
+
+"django_admin_log" [shape = record, label = "{<col0> \N| id:  serial\laction_time:  timestamp with time zone\lobject_id:  text\lobject_repr:  character varying(200)\laction_flag:  smallint\lchange_message:  text\lcontent_type_id:  integer\luser_id:  integer\l}" ];
+
+"django_content_type" [shape = record, label = "{<col0> \N| id:  serial\lapp_label:  character varying(100)\lmodel:  character varying(100)\l}" ];
+
+"django_migrations" [shape = record, label = "{<col0> \N| id:  serial\lapp:  character varying(255)\lname:  character varying(255)\lapplied:  timestamp with time zone\l}" ];
+
+"django_session" [shape = record, label = "{<col0> \N| session_key:  character varying(40)\lsession_data:  text\lexpire_date:  timestamp with time zone\l}" ];
+
+
+"Leaderboards_game" -> "Leaderboards_player" [label="Leaderboards_g_created_by_id_d38af8a7_fk_Leaderboards_player_id"];
+"Leaderboards_game" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_875b9949_fk_Leaderboards_player_id"];
+"Leaderboards_game_leagues" -> "Leaderboards_game" [label="Leaderboards_game_leag_game_id_05e02ced_fk_Leaderboards_game_id"];
+"Leaderboards_game_leagues" -> "Leaderboards_league" [label="Leaderboards_game__league_id_daea6c47_fk_Leaderboards_league_id"];
+"Leaderboards_league" -> "Leaderboards_player" [label="Leaderboards_l_created_by_id_ff11764e_fk_Leaderboards_player_id"];
+"Leaderboards_league" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_cee4b527_fk_Leaderboards_player_id"];
+"Leaderboards_league" -> "Leaderboards_player" [label="Leaderboards_leag_manager_id_70950cb4_fk_Leaderboards_player_id"];
+"Leaderboards_league_games" -> "Leaderboards_league" [label="Leaderboards_leagu_league_id_051f2080_fk_Leaderboards_league_id"];
+"Leaderboards_league_games" -> "Leaderboards_game" [label="Leaderboards_league_ga_game_id_182f8315_fk_Leaderboards_game_id"];
+"Leaderboards_league_locations" -> "Leaderboards_league" [label="Leaderboards_leagu_league_id_eb2cbd47_fk_Leaderboards_league_id"];
+"Leaderboards_league_locations" -> "Leaderboards_location" [label="Leaderboards_l_location_id_bf0c3109_fk_Leaderboards_location_id"];
+"Leaderboards_league_players" -> "Leaderboards_league" [label="Leaderboards_leagu_league_id_e9bfc902_fk_Leaderboards_league_id"];
+"Leaderboards_league_players" -> "Leaderboards_player" [label="Leaderboards_leagu_player_id_76c4249b_fk_Leaderboards_player_id"];
+"Leaderboards_location" -> "Leaderboards_player" [label="Leaderboards_l_created_by_id_a16ed8b6_fk_Leaderboards_player_id"];
+"Leaderboards_location" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_d2faa752_fk_Leaderboards_player_id"];
+"Leaderboards_location_leagues" -> "Leaderboards_location" [label="Leaderboards_l_location_id_0e859e0a_fk_Leaderboards_location_id"];
+"Leaderboards_location_leagues" -> "Leaderboards_league" [label="Leaderboards_locat_league_id_6294be77_fk_Leaderboards_league_id"];
+"Leaderboards_performance" -> "Leaderboards_player" [label="Leaderboards_p_created_by_id_801e1c77_fk_Leaderboards_player_id"];
+"Leaderboards_performance" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_eea126f3_fk_Leaderboards_player_id"];
+"Leaderboards_performance" -> "Leaderboards_player" [label="Leaderboards_perfo_player_id_f52d10c2_fk_Leaderboards_player_id"];
+"Leaderboards_performance" -> "Leaderboards_session" [label="Leaderboards_per_session_id_f5823a25_fk_Leaderboards_session_id"];
+"Leaderboards_player" -> "Leaderboards_player" [label="Leaderboards_p_created_by_id_8e6b00ed_fk_Leaderboards_player_id"];
+"Leaderboards_player" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_92497f33_fk_Leaderboards_player_id"];
+"Leaderboards_player_leagues" -> "Leaderboards_player" [label="Leaderboards_playe_player_id_000b6763_fk_Leaderboards_player_id"];
+"Leaderboards_player_leagues" -> "Leaderboards_league" [label="Leaderboards_playe_league_id_7e24a4e5_fk_Leaderboards_league_id"];
+"Leaderboards_player_teams" -> "Leaderboards_player" [label="Leaderboards_playe_player_id_225b1775_fk_Leaderboards_player_id"];
+"Leaderboards_player_teams" -> "Leaderboards_team" [label="Leaderboards_player_te_team_id_1b6288de_fk_Leaderboards_team_id"];
+"Leaderboards_rank" -> "Leaderboards_player" [label="Leaderboards_r_created_by_id_ecb98048_fk_Leaderboards_player_id"];
+"Leaderboards_rank" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_9eb8a429_fk_Leaderboards_player_id"];
+"Leaderboards_rank" -> "Leaderboards_player" [label="Leaderboards_rank_player_id_8a1dbeb4_fk_Leaderboards_player_id"];
+"Leaderboards_rank" -> "Leaderboards_session" [label="Leaderboards_ran_session_id_ca291e9e_fk_Leaderboards_session_id"];
+"Leaderboards_rank" -> "Leaderboards_team" [label="Leaderboards_rank_team_id_cc7d550d_fk_Leaderboards_team_id"];
+"Leaderboards_rating" -> "Leaderboards_player" [label="Leaderboards_r_created_by_id_7e8aa913_fk_Leaderboards_player_id"];
+"Leaderboards_rating" -> "Leaderboards_game" [label="Leaderboards_rating_game_id_bc6f6956_fk_Leaderboards_game_id"];
+"Leaderboards_rating" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_b0e6ec38_fk_Leaderboards_player_id"];
+"Leaderboards_rating" -> "Leaderboards_player" [label="Leaderboards_ratin_player_id_35196670_fk_Leaderboards_player_id"];
+"Leaderboards_session" -> "Leaderboards_player" [label="Leaderboards_s_created_by_id_197abd7e_fk_Leaderboards_player_id"];
+"Leaderboards_session" -> "Leaderboards_game" [label="Leaderboards_session_game_id_ec37b039_fk_Leaderboards_game_id"];
+"Leaderboards_session" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_5ab52e38_fk_Leaderboards_player_id"];
+"Leaderboards_session" -> "Leaderboards_league" [label="Leaderboards_sessi_league_id_491dc3b5_fk_Leaderboards_league_id"];
+"Leaderboards_session" -> "Leaderboards_location" [label="Leaderboards_s_location_id_418cf13b_fk_Leaderboards_location_id"];
+"Leaderboards_team" -> "Leaderboards_player" [label="Leaderboards_t_created_by_id_1a44bcbe_fk_Leaderboards_player_id"];
+"Leaderboards_team" -> "Leaderboards_player" [label="Leaderboar_last_edited_by_id_03c306e7_fk_Leaderboards_player_id"];
+"Leaderboards_team_players" -> "Leaderboards_team" [label="Leaderboards_team_play_team_id_cd528935_fk_Leaderboards_team_id"];
+"Leaderboards_team_players" -> "Leaderboards_player" [label="Leaderboards_team__player_id_03685d64_fk_Leaderboards_player_id"];
+"auth_group_permissions" -> "auth_group" [label="auth_group_permissions_group_id_b120cbf9_fk_auth_group_id"];
+"auth_group_permissions" -> "auth_permission" [label="auth_group_permiss_permission_id_84c5c92e_fk_auth_permission_id"];
+"auth_permission" -> "django_content_type" [label="auth_permiss_content_type_id_2f476e4b_fk_django_content_type_id"];
+"auth_user_groups" -> "auth_user" [label="auth_user_groups_user_id_6a12ed8b_fk_auth_user_id"];
+"auth_user_groups" -> "auth_group" [label="auth_user_groups_group_id_97559544_fk_auth_group_id"];
+"auth_user_user_permissions" -> "auth_user" [label="auth_user_user_permissions_user_id_a95ead1b_fk_auth_user_id"];
+"auth_user_user_permissions" -> "auth_permission" [label="auth_user_user_per_permission_id_1fbb5f2c_fk_auth_permission_id"];
+"django_admin_log" -> "django_content_type" [label="django_admin_content_type_id_c4bce8eb_fk_django_content_type_id"];
+"django_admin_log" -> "auth_user" [label="django_admin_log_user_id_c564eba6_fk_auth_user_id"];
+}
+
+

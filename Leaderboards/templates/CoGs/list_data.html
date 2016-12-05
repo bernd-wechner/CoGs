@@ -1,0 +1,21 @@
+{% extends "CoGs/base.html" %}
+{% block title %}{{title}}{% endblock %}
+{% block content %}
+
+<p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
+
+{% if object_list %}
+	<ul>
+	  {% for o in object_list %}
+	    <li class="contact">
+	    	[<a href="{% url 'view' model_name o.pk %}">view</a>]
+	    	[<a href="{% url 'edit' model_name o.pk %}">edit</a>]
+	    	[<a href="{% url 'delete' model_name o.pk %}">delete</a>]
+	    	{{ o }}
+    	</li>
+	  {% endfor %}
+	</ul>
+{% else %}
+    <p>No {{model_name_plural}}.</p>
+{% endif %}
+{% endblock %}
