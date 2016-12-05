@@ -1,3 +1,4 @@
+![alt text][logo]
 # CoGs Leaderboard Server
 
 Aims to be a website that can manage TrueSkill based leaderboards for game players of any kind.
@@ -161,3 +162,5 @@ ran schemaSpy in my Doc folder:
 Produces a rich documentation site under index.html including a better schema diagram, but you cna't move things around, it's well layed out but fixed in place.
 
 You can click on any table and get a cool relative view though. And if you install xdot can view the .dot files.
+
+[logo]: https://github.com/bernd-wechner/CoGs/blob/master/Leaderboards/static/CoGS%20Logo%20WebEmail.png "CoGs Logo"
