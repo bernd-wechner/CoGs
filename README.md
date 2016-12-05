@@ -30,84 +30,86 @@ could improve below, and improve it!
 
 1. Install needed dependencies:
 
-	sudo apt-get install postgresql pgadmin3
-	sudo apt-get install python3 python3-django python3-psycopg2 python3-yaml 
-	sudo pip3 install trueskill
-	sudo pip3 install django-debug-toolbar
-	sudo pip3 install titlecase
+    ```
+    sudo apt-get install postgresql pgadmin3
+    sudo apt-get install python3 python3-django python3-psycopg2 python3-yaml 
+    sudo apt-get install git
+    sudo -H pip3 install trueskill django-debug-toolbar titlecase
+    ```
 		
 2. Install Eclipse and Pydev
 
-Recommend avoiding the ubuntu package and just going straight to 
+   Recommend avoiding the ubuntu package and just going straight to 
 	https://www.eclipse.org 
-and get the latest Eclipse from there. 
+   and get the latest Eclipse from there. 
 
-Then install PyDev from within Eclipse by adding these repositories:
+   Then install PyDev from within Eclipse by adding these repositories:   	
 	pydev - http://pydev.org/updates
 	Django Template Editor - http://eclipse.kacprzak.org/updates
 
-I had enormous troubles getting PyDev to work from the ubuntu repositories 
-and the PyDev support guys suggested the above which worked a breeze.
+   I had enormous troubles getting PyDev to work from the ubuntu repositories 
+   and the PyDev support guys suggested the above which worked a breeze.
 
-Now load the project in Eclipse:
-  1. Work out where you want it to live. On a Linux system recommend ~/workspace
-  2. Fetch it from github with: 
-  3. Open the Eclipse project file in Eclipse **(Work out how to do that and update this!)**
+   Now load the project in Eclipse:<br>
+     i. Work out where you want it to live. On a Linux system recommend ~/workspace<br>
+     ii. Fetch it from github with: git clone https://github.com/bernd-wechner/CoGs.git<br>
+     iii. Open the Eclipse project file in Eclipse **(Work out how to do that and update this!)**<br>
 
-If you want to start from scratch and get the cleanest of clean projects, I did this once after a major overaul:
-  1. Create a new Pydev Django Project in Eclipse (CoGs)
-  2. Create a new Django App in Eclipse (Leaderboards)
-  3. Find the CoGs code and copy individual files as needed into these projects which includes but is not limited to:
-    * CoGs/settings.py
-    * CoGs/urls.py
-    * CoGs/wsgi.py
-    * Leaderboards/models.py
-    * Leaderboards/views.py
-    * Leaderboards/admin.py
-    * Essentially if you're copying like this you want to understand each file as you go and what its role is.
-    * Django documentation is real cool there.
+   If you want to start from scratch and get the cleanest of clean projects, I did this once after a major overaul:<br>
+      i. Create a new Pydev Django Project in Eclipse (CoGs)<br>
+      ii. Create a new Django App in Eclipse (Leaderboards)<br>
+      iii. Find the CoGs code and copy individual files as needed into these projects which includes but is not limited to:<br>
+          * CoGs/settings.py<br>
+     	  * CoGs/urls.py<br>
+     	  * CoGs/wsgi.py<br>
+     	  * Leaderboards/models.py<br>
+     	  * Leaderboards/views.py<br>
+     	  * Leaderboards/admin.py<br>
+     	  * Essentially if you're copying like this you want to understand each file as you go and what its role is.<br>
+     	  * Django documentation is real cool there.<br>
     
 3. Seed your database
 	
-I want to find a way to do this in a simple command but in the mean time.
+   I want to find a way to do this in a simple command but in the mean time.
 
-Database tips:
-
-  * In pgAdminIII a user is called a Role.
-  * Create a new Role "CoGs"  (i.e. a login).
-  * Make sure you can log into the database. That is edit the file:
+   Database tips:
+     * In pgAdminIII a user is called a Role.
+     * Create a new Role "CoGs"  (i.e. a login).
+     * Make sure you can log into the database. That is edit the file:
 	`/var/lib/pgsql/data/pg_hba.conf`
 
-	And make sure the connection METHOD for local is "md5" not "peer".
+       And make sure the connection METHOD for local is "md5" not "peer".
 	
-	Peer authentication will mean you're always trying to login with your account name, 
-		but CoGs uses the CoGs user, and you want to be able to log in as the CoGs user by 
-		providing a username and password.
+       Peer authentication will mean you're always trying to login with your account name, 
+       but CoGs uses the CoGs user, and you want to be able to log in as the CoGs user by 
+       providing a username and password.
 		
-	Restart the postgresql server after editing it with:
-		`service postgresql restart`
+       Restart the postgresql server after editing it with:
+	`service postgresql restart`
 
-Export data was done with:
-
+    Export data was done with:
+	```
 	python3 manage.py dumpdata --format xml --indent 4 > data.xml
 	python3 manage.py dumpdata --format json --indent 4 > data.json
 	python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
-	
-Just to get all possible formats for the heck of it. Only need one. 
+	```
+   Just to get all possible formats for the heck of it. Only need one. 
 
-Import data is then done with:
-
+   Import data is then done with:
+	```
 	python3 manage.py loaddata <file>
 	
 	where <file> is one of the three files I dumped with dumpdata. 
+	```
 
-That should see you with a seeded database.
+   That should see you with a seeded database.
 
 4. Try it out
 
   1. Open the CoGs project in Eclips
   2. Right click the project then click "Debug As..." the "PyDev: Django". 
   3. In your Console panel you should see something like:
+  	```
 	Performing system checks...
 
 	System check identified no issues (0 silenced).
@@ -115,6 +117,7 @@ That should see you with a seeded database.
 	Django version 1.10.1, using settings 'CoGs.settings'
 	Starting development server at http://127.0.0.1:8000/
 	Quit the server with CONTROL-C.
+	```
   4. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
 Now dive in ...
