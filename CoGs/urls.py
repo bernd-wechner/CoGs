@@ -22,7 +22,7 @@ from django.views.generic.base import RedirectView
 from functools import reduce
 
 from Leaderboards import views
-from generic_view_extensions import odf
+from django_generic_view_extensions import odf
 
 urlpatterns = [
     # Examples:
@@ -32,7 +32,11 @@ urlpatterns = [
 
     url(r'^$', views.index, name='index'),
     url(r'^admin/', include(admin.site.urls), name='admin'),
-    url(r'^fix', views.view_Fix, name='admin'),
+    
+    # Some temporary internal URLS for now ...
+    url(r'^fix', views.view_Fix, name='fix'),
+    url(r'^check', views.view_CheckIntegrity, name='check'),
+    url(r'^rebuild', views.view_RebuildRatings, name='rebuild'),
 
     # CoGs Generic Views 
     # These expect to receive the following in kwargs 
@@ -46,7 +50,8 @@ urlpatterns = [
     # Always specify a name= to the url as this is how that url is referenced in a template.
     # See: https://docs.djangoproject.com/en/1.10/topics/http/urls/#reverse-resolution-of-urls
      
-    url(r'^list/(?P<model>\w+)$', views.view_List.as_view(), name='list'),
+    url(r'^list/(?P<model>\w+)', views.view_List.as_view(), name='list'),
+    
     url(r'^view/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Detail.as_view(ToManyMode="<br>", format=odf.all|odf.separated|odf.header), name='view'),
     url(r'^add/(?P<model>\w+)$', views.view_Add.as_view(), name='add'),
     url(r'^edit/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Edit.as_view(), name='edit'),

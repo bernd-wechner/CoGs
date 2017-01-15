@@ -1,19 +1,62 @@
 '''
-This module provides some extensions for generic views, with the specific aim of adding more 'context'
-to use in templates, including the forms and field values for related objects.
+Created on 13Jan.,2017
+
+@author: Bernd Wechner
+
+Django provides some excellent generic class based views:
+
+    https://docs.djangoproject.com/en/1.10/topics/class-based-views/generic-display/
+    
+They are excellent for getting a site up and running really quickly from little more than a model specification. 
+
+The admin site of course provides a rather excellent and complete version of generic database administratration:
+
+    https://docs.djangoproject.com/en/1.10/ref/contrib/admin/
+     
+But as at Django 1.10 the built in generic class based views fall somewhat short of complete.
+
+This module provides extensions to the generic clas based views, with the specific aim of adding more context
+to use in templates and including the forms and field values for related objects.
+
+In summary, the built genric class based views we are extending are from django.views.generic: 
+
+ListView - for listing the objects in a model
+DetailView - for examining the details of a specific object (model instance) 
+CreateView - for creating new objects
+UpdateView - for editing existing objects
+DeleteView - for deleting existing objects
+
+The main use of this module is to offer: 
+
+ListViewExtended - for listing the objects in a model
+DetailViewExtended - for examining the details of a specific object (model instance) 
+CreateViewExtended - for creating new objects
+UpdateViewExtended - for editing existing objects
+DeleteViewExtended - for deleting existing objects
+
+which can be used in place of the built-ins. They derive directly from them adding some features as follows:
+
+Enrich the context provided to templates. Specifically these elements:
+
+model - the model class (available as view.model as well, but what the heck.
+model_name - because it's not easy to reference view.model.__name__ in a template alas.
+model_name_plural - because it's handier than referencing view.model._meta.verbose_name_plural
+operation - the value of "operation" passed from urlconf (should be "list", "view", "add", "edit" or "delete")
+title - a convenient titls constructed from the above that can be used in a template 
+default_datetime_input_format - the default Django datetime input format as a PHP datetime format string. Very useful for configuring a datetime picker. 
 '''
 
 import html
 import collections
-
 from titlecase import titlecase
+
+from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.apps import apps
 from django.utils import six
 from django.utils.safestring import mark_safe
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_text
 from django.core.urlresolvers import reverse_lazy
-from django.views.generic import DetailView, CreateView, UpdateView, DeleteView, ListView
 from django.db import models, transaction, IntegrityError
 from django.db.models.query import QuerySet
 from django.forms.models import fields_for_model, inlineformset_factory, modelformset_factory
@@ -21,14 +64,27 @@ from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseRedirect
 
+from url_filter.filtersets import ModelFilterSet
+
 #===============================================================================
 # Helper functions
 #===============================================================================
 
-def class_from_string(app, class_name):
-    '''Given a string returns the model class with that name.'''
-    return apps.get_model(app, class_name)
-    
+def app_from_object(o):
+    '''Given an object returns the name of the Django app that it's declared in'''
+    return type(o).__module__.split('.')[0]    
+
+def class_from_string(app_name_or_object, class_name):
+    '''
+    Given the name of a Django app (or object declared in that Django app) 
+    and a string returns the model class with that name.
+    '''
+    if isinstance(app_name_or_object, str):
+        module = apps.get_model(app_name_or_object, class_name)
+    else:
+        module = apps.get_model(app_from_object(app_name_or_object), class_name)
+    return module
+
 def datetime_format_python_to_PHP(python_format_string):
     '''Given a python datetime format string, attempts to convert it to the nearest PHP datetime format string possible.'''
     python2PHP = {"%a": "D", "%a": "D", "%A": "l", "%b": "M", "%B": "F", "%c": "", "%d": "d", "%H": "H", "%I": "h", "%j": "z", "%m": "m", "%M": "i", "%p": "A", "%S": "s", "%U": "", "%w": "w", "%W": "W", "%x": "", "%X": "", "%y": "y", "%Y": "Y", "%Z": "e" }
@@ -87,6 +143,7 @@ def safetitle(text):
 
 _default_indent = '&nbsp;'*2    # An indent to use in hstr() for each nested level of expanded list
 _flat_list_limit = 3
+
 def hstr(obj, indent=_default_indent):
     '''Produce an HTML string representation of an object
 
@@ -96,19 +153,33 @@ def hstr(obj, indent=_default_indent):
     fnl = (nl + indent) if not indent == _default_indent else ' '
     if isinstance(obj, list) or isinstance(obj, QuerySet):
         lines = []
+        multilineval = False
+        multiwordval = False
         for item in obj:
-            lines.append(hstr(item, indent+indent))
+            valstr = hstr(item, indent+indent)
+            if valstr.count('<br>') > 0:
+                multilineval = True
+            if valstr.count(' ') > 0:
+                multiwordval = True
+            lines.append(valstr)
         
-        if len(lines) > _flat_list_limit:
+        if len(lines) > _flat_list_limit or multilineval or multiwordval:
             text = "[ " + fnl + (nl + indent).join(lines) + " ]"
         else: 
             text = "[ " + ", ".join(lines) + " ]"
     elif isinstance(obj, dict):
         lines = []
+        multilineval = False
+        multiwordval = False
         for key in obj:
-            lines.append("{}: {}".format(key, hstr(obj[key], indent+indent)))
+            valstr = hstr(obj[key], indent+indent)
+            if valstr.count('<br>') > 0:
+                multilineval = True
+            if valstr.count(' ') > 0:
+                multiwordval = True
+            lines.append("{}: {}".format(key, valstr))
 
-        if len(lines) > _flat_list_limit:
+        if len(lines) > _flat_list_limit or multilineval or multiwordval:
             text = "{ " + fnl + (nl + indent).join(lines) + " }"
         else: 
             text = "{ " + ", ".join(lines) + " }"
@@ -229,10 +300,27 @@ class ListViewExtended(ListView):
     # Fetch all the object for this model (all the tuples in this table)
 
     def get_queryset(self, *args, **kwargs):
-        self.app = type(self).__module__.split('.')[0]
-        self.model = class_from_string(self.app, self.kwargs['model'])
-        self.queryset = self.model.objects.all()
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
+        
+        # If the URL has GET parameters (following a ?) then self.request.GET 
+        # will contain a dictionary of name: value pairs that FilterSet uses 
+        # construct a new filtered queryset. 
+        if len(self.request.GET) > 0:
+            FilterSet = type("FilterSet", (ModelFilterSet,), { 
+                'Meta': type("Meta", (object,), { 
+                    'model': self.model 
+                    })
+            })
+            
+            fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())
+            self.filter = fs.get_specs()
+            self.queryset = fs.filter()
+        else:
+            self.queryset = self.model.objects.all()
+            
         self.count = len(self.queryset)
+        
         return self.queryset
 
 class DetailViewExtended(DetailView):
@@ -260,8 +348,8 @@ class DetailViewExtended(DetailView):
 
     # Fetch the URL specified object, needs the URL parameters "model" and "pk"
     def get_object(self, *args, **kwargs):
-        self.app = type(self).__module__.split('.')[0]
-        self.model = class_from_string(self.app, self.kwargs['model'])
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         add_related_fields_to_detail_view(self)
@@ -302,8 +390,8 @@ class DeleteViewExtended(DeleteView):
 
     # Get the actual object to update
     def get_object(self, *args, **kwargs):
-        self.app = type(self).__module__.split('.')[0]
-        self.model = class_from_string(self.app, self.kwargs['model'])
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
@@ -335,6 +423,8 @@ class DeleteViewExtended(DeleteView):
 class CreateViewExtended(CreateView):
     '''A CreateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
 
+    # TODO: the form needs to use combo boxes for list select values like Players in a Session. You have to be able to type and find a player with a pattern match so to speak. The list can get very very long you see. 
+
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
         context = super().get_context_data(*args, **kwargs)
@@ -344,12 +434,14 @@ class CreateViewExtended(CreateView):
 
     def get_queryset(self, *args, **kwargs):
         self.fields = '__all__'
-        self.app = type(self).__module__.split('.')[0]
-        self.model = class_from_string(self.app, self.kwargs['model'])
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
         self.queryset = QuerySet(model=self.model)
         return self.queryset
 
     def form_valid(self, form):
+        # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
+        #       If there's a bail then don't save anything, i.e don't save partial data.  
         self.object = form.save()
         self.kwargs['pk'] = self.object.pk
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
@@ -374,8 +466,8 @@ class UpdateViewExtended(UpdateView):
 
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
-        self.app = type(self).__module__.split('.')[0]
-        self.model = class_from_string(self.app, self.kwargs['model'])
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         self.fields = fields_for_model(self.model)
@@ -877,6 +969,10 @@ def add_model_context(self, context, plural, title=False):
         context["operation"] = self.operation
         context["title"] = (title + ' ' if title else '') + (safetitle(context["model"]._meta.verbose_name_plural) if plural else safetitle(context["model"]._meta.verbose_name))
         context["default_datetime_input_format"] = datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])
+        
+        if len(self.request.GET) > 0:
+            context["get_params"] = self.request.GET
+            context["query"] = self.filter
 
         # Check for related models and pass into the context either a related form or related view.
         # Only do this if the model asks us to do so via the add_related attribute.

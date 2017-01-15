@@ -27,18 +27,18 @@
         <div id="menu">
         	[<a href="/admin">Admin</a>]
         	
-        	[<a href="/leaderboards">Leaderboards</a>]
+        	[<a href="{% url 'leaderboards' %}">Leaderboards</a>]
         	
-        	[<a href="/list/League">Leagues</a> |
-        	<a href="/list/Game">Games</a> |
-        	<a href="/list/Player">Players</a> |
-        	<a href="/list/Location">Locations</a> |
-        	<a href="/list/Session">Sessions</a>]
+        	[<a href="{% url 'list' 'League' %}">Leagues</a> |
+        	<a href="{% url 'list' 'Game' %}">Games</a> |
+        	<a href="{% url 'list' 'Player' %}">Players</a> |
+        	<a href="{% url 'list' 'Location' %}">Locations</a> |
+        	<a href="{% url 'list' 'Session' %}">Sessions</a>]
 
-        	[<a href="/list/Team">Teams</a> |
-        	 <a href="/list/Rank">Ranks</a> |
-        	 <a href="/list/Performance">Performances</a> |
-        	 <a href="/list/Rating">Ratings</a>]
+        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
+        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
+        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
+        	 <a href="{% url 'list' 'Rating' %}">Ratings</a>]
         </div>
         {% endblock %}
 

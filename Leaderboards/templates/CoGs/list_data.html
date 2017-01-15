@@ -1,8 +1,18 @@
 {% extends "CoGs/base.html" %}
 {% block title %}{{title}}{% endblock %}
 {% block content %}
-
 <p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
+
+<p>{{model_name_plural | title}}: {{ object_list | length }}</p>
+
+{% if get_params %}
+<p>{{get_params}}</p>
+{% endif %}
+
+{% if query %}
+<p>{{query}}</p>
+{% endif %}
+
 
 {% if object_list %}
 	<ul>

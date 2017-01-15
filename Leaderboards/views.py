@@ -3,8 +3,8 @@ import json
 import cProfile, pstats, io
 from datetime import datetime, timedelta
 
-from generic_view_extensions import odf, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating
+from django_generic_view_extensions import odf, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES
 
 from django.db.models import Count
 from django.shortcuts import render
@@ -12,17 +12,23 @@ from django.http import HttpResponse
 from django.contrib.auth.models import Group
 from django.core.serializers.json import DjangoJSONEncoder
 
-
+# TODO: Fix timezone handling. By defaul in Django wwe us UTC but we want to enter sesisons in local time and see result sin local time.
+#        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
+#        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
+#        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
+from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
 #TODO: Put a filter in the menu bar, for selecting a league, and then restrict a lot of views only to that league's data.
 
+#TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
+
 #===============================================================================
 # Some support routines
 #===============================================================================
 
-def index(request):
+def index(request):   
     return render(request, 'CoGs/base.html')
 
 def is_registrar(user):
@@ -92,6 +98,8 @@ def process_submitted_model(self):
         #
         # We can sort on pk or creeated_on for the same expected result.
         ranks = Rank.objects.filter(session=session.pk).order_by('created_on')
+        
+        # TODO: Sort Ranks, and map onto a list of 1, 2, 3, 4 ... 
         
         team_play = session.team_play
 
@@ -173,7 +181,7 @@ def process_submitted_model(self):
         session.calculate_trueskill_impacts()
         
         # Then update the ratings for all players of this game
-        Rating.update_from(session)
+        Rating.update(session)
         
         # Now check the integrity of the save. For a sessions, this means that:
         #
@@ -208,8 +216,8 @@ def context_provider(self, context):
     min_players_per_team: minimum number of players in a team in this game. Relevant only if team_play supported.
     max_players_per_team: maximum number of players in a team in this game. Relevant only if team_play supported.
     
-    Clearly alterihg the game should trigger a relaod of this 
-    metadata for the newly selected game. 
+    Clearly altering the game should trigger a relaod of this metadata for the newly selected game.
+    See ajax_Game_Properties below for that. 
     '''
     model = self.model._meta.model_name
     
@@ -270,6 +278,7 @@ class view_Delete(DeleteViewExtended):
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
     operation = 'list'
+    # TODO: Add message reporting how many items listed and the filter used.
 
 class view_Detail(DetailViewExtended):
     template_name = 'CoGs/view_data.html'
@@ -283,22 +292,22 @@ class view_Detail(DetailViewExtended):
 def view_Leaderboards(request):
     leaderboard = {}
     plays = {}
+    sessions = {}
     leaderboards = []
     
-    # TODO: Add to the name of the game a count of all sessions that contributed to this leaderboard.
-    #    This has to equal the count of victories that are in the leaderboard unless there were tied victories!
     # TODO: In leaderboard table link from game name to the game record (internal or BGG)
     # TODO: In leaderboard table link from player name to the player record
     # TODO: In leaderboard table, link from play count to a session list of those plays only
     # TODO: In leaderboard table, link from victory count to a session list of those plays only
     
     for game in Game.objects.all():
-        leaderboard[game] = game.leaderboard() # TODO: support league specific views
-        plays[game] = game.plays['total']
+        leaderboard[game] = game.leaderboard(league=ALL_LEAGUES,indexed=True)          # TODO: support league specific views, currently across all leagues
+        plays[game] = game.global_plays['total']      
+        sessions[game] = game.global_sessions.count() 
     
     # Present leaderboards as a sorted list by a play count (selected above)
     for game in sorted(plays, key=plays.__getitem__, reverse=True):
-        leaderboards.append((game.name, leaderboard[game]))
+        leaderboards.append((game.pk, game.name, plays[game], sessions[game], leaderboard[game]))
 
     c = {'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          'title': "Leaderboards"}
@@ -325,6 +334,39 @@ def ajax_Game_Properties(request, pk):
 # Special sneaky fixerupper and diagnostic view for testing code snippets
 #===============================================================================
 
+def view_CheckIntegrity(request):
+    '''
+    Check integrity of database
+    
+    The check_integrity routines on some models all work with assertions 
+    and raise exceptions when integrity errors are found. So this will bail 
+    on the first error, and outputs will be on the console not sent to the 
+    browser.
+    
+    All needs some serious tidy up for a productions site.    
+    '''
+    
+    print("Checking all Ratings for internal integrity.", flush=True)
+    for R in Rating.objects.all():
+        print(R, flush=True)
+        R.check_integrity()
+    
+    print("Checking all Performances for internal integrity.", flush=True)
+    for P in Performance.objects.all():
+        print(P, flush=True)
+        P.check_integrity()
+    
+    print("Checking all Sessions for internal integrity.", flush=True)
+    for S in Session.objects.all():
+        print(S, flush=True)
+        S.check_integrity()
+        
+    return HttpResponse("Passed All Integrity Tests")
+
+def view_RebuildRatings(request):
+    html = rebuild_ratings()
+    return HttpResponse(html)
+
 def view_Fix(request):
 
 # DONE: Used this to create Performance objects for existing Rank objects
@@ -346,14 +388,17 @@ def view_Fix(request):
 #     table = table + '</table>'
 
     #html = force_unique_session_times()
-    html = rebuild_ratings()
+    #html = rebuild_ratings()
     #html = import_sessions()
+    
+    
+    html = "Success"
     
     return HttpResponse(html)
 
 import csv
 from dateutil import parser
-from generic_view_extensions import hstr
+from django_generic_view_extensions import hstr
 
 def import_sessions():
     title = "Import CoGs scoresheet"
@@ -440,14 +485,14 @@ def import_sessions():
                     performance.player = rank.player
                     performance.save()
                             
-            Rating.update_from(session)
+            Rating.update(session)
     else:
         result += "Missing Games:\n{}\n".format(hstr(missing_games))
         result += "Missing Players:\n{}\n".format(hstr(missing_players))
             
     now = datetime.now()
             
-    return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)      
+    return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
 
 def rebuild_ratings():
     title = "Rebuild of all ratings"
