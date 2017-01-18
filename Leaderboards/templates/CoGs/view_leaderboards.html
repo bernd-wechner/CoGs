@@ -13,14 +13,78 @@
   <option>6</option>
 </select>
 
+<label>League: </label><select id='selLeague'></select>
+
+<label>Player: </label><select id='selPlayer'"></select>
+
+<label>Changed since: </label>
+<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}>
+
+<button type="button" id='btnFilter' onclick="get_filtered_view();">Filter</button>
+
 <button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button>
 
 <table id='tblLB'>
 </table>
 
+{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
+<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>
 <script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
 
 <script>
+	// Nab the data from context
+	var leaderboards = {{leaderboards|safe}};
+	var leagues = {{ leagues|safe }};
+	var league = {{ league|safe }};
+	var players = {{ players|safe }};
+	var player = {{ player|safe }};
+
+	// Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
+	var datetime_format = "{{default_datetime_input_format}}";
+	
+	$(function(){
+		$(".DateTimeField").datetimepicker({
+			"format": datetime_format,
+			"step" : 15
+		});
+	});
+
+	// Populate the League selector
+	var select = $('#selLeague');                        
+    select.find('option').remove();    
+	var league_choices = "";
+	for (var i = 0, len = leagues.length; i < len; i++) {
+		pair = leagues[i];
+	    league_choices += '<option value=' + pair[0] + (pair[0] == league ? ' selected ' : '') + '>' + pair[1] + '</option>';
+	}	
+	select.append(league_choices);
+	
+	// Populate the Player selector
+	var select = $('#selPlayer');                        
+    select.find('option').remove();    
+	var player_choices = "";
+	for (var i = 0, len = players.length; i < len; i++) {
+		pair = players[i];
+	    player_choices += '<option value=' + pair[0] + (pair[0] == player ? ' selected ' : '') + '>' + pair[1] + '</option>';
+	}	
+	select.append(player_choices);
+	
+	function get_filtered_view() {
+		opts = []
+		
+		if (selLeague.value != {{ ALL_LEAGUES|safe }}) opts.push("league="+selLeague.value);	
+		if (selPlayer.value != {{ ALL_PLAYERS|safe }}) opts.push("player="+selPlayer.value);	
+		if (from_date_time.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
+		
+		url = "{% url 'leaderboards' %}"
+		if (opts.length > 0) url += "?" + opts.join("&");
+		
+		window.location.href = url;
+	}
+
+	// Configure the Copy Button
 	var copybutton = document.getElementById("btnCopy");
 	var clipboard = new Clipboard(copybutton);
 	
@@ -44,7 +108,8 @@
 
 	    DrawTables("tblLB_naked", false);
 	}
-	
+
+	// Function to draw one leaderboard table
 	function LBtable(LB, links) {
 		var pkg = LB[0]
 	
@@ -147,7 +212,6 @@
 	            if (j!=1) { td.style.textAlign = 'center'; }
 	            
 	            {# Add Links #}
-
 				var content;
         		if (links && (j==1 || j==3 || j==4) ) {
 	            	content = document.createElement('a');
@@ -162,7 +226,12 @@
     				content.innerHTML = val;
     			} else {
     				content = document.createTextNode(val) 
-		        }   
+		        }
+		        
+	            if (j==1 && pkp==player) {
+	            	content.style.fontWeight = 'bold';
+	            }
+		           
 		        td.appendChild(content);
 	            tr.appendChild(td);
 	        }
@@ -172,6 +241,7 @@
     
 	function OnColsChange(event) { DrawTables("tblLB", true); }
 
+	// Draw all leaderboards, sending to target and enabling links or not
 	function DrawTables(target, links) {	
 		var colSelect = document.getElementById("cols");
 		var cols = parseInt(colSelect.options[colSelect.selectedIndex].text);
@@ -195,8 +265,6 @@
 			}
 		}
 	}
-
-	var leaderboards = {{leaderboards|safe}};
 	
 	DrawTables("tblLB", true);
 </script>

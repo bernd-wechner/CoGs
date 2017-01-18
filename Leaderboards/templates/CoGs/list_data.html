@@ -5,6 +5,8 @@
 
 <p>{{model_name_plural | title}}: {{ object_list | length }}</p>
 
+{#TODO: FInd a nice way to pretty print the filter applied#}
+
 {% if get_params %}
 <p>{{get_params}}</p>
 {% endif %}

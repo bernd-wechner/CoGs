@@ -2,15 +2,18 @@ import re
 import json
 import cProfile, pstats, io
 from datetime import datetime, timedelta
+from collections import OrderedDict
 
-from django_generic_view_extensions import odf, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES
+from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, NEVER
 
 from django.db.models import Count
 from django.shortcuts import render
+from django.utils import timezone
 from django.http import HttpResponse
 from django.contrib.auth.models import Group
 from django.core.serializers.json import DjangoJSONEncoder
+from django.conf.global_settings import DATETIME_INPUT_FORMATS
 
 # TODO: Fix timezone handling. By defaul in Django wwe us UTC but we want to enter sesisons in local time and see result sin local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
@@ -289,28 +292,85 @@ class view_Detail(DetailViewExtended):
 # The Leaderboards view. What it's all about!
 #===============================================================================
 
-def view_Leaderboards(request):
+def view_Leaderboards(request): 
+    '''
+    The raison d'etre of the whole site, this view presents the leaderboards. 
+    '''
+    # FIXME: Respond to GET request specifing columns, league and changed_since
+    # FIXME: Add a league filter drop selector and present the leaderboards for the selected league
+    # FIXME: Add a date_time selection for changed_since, and present only leaderboards changed since that date (so for games with sessions on or after then)
+    
+    # NOTE: request.GET is a dict of the Get parameters.
+    # TODO: Add a league and player and maybe a date time widget to the context somehow (that could)
+    # Or actually just a list of leagues and players, that's better. Form can build the controls.
+    # Should just add the GET params to context so that the form can select the the right elements.
+
+    # Get list of leagues, (pk, name) tuples.
+    leagues = [(ALL_LEAGUES, 'ALL')] 
+    leagues += [(x.pk, str(x)) for x in League.objects.all()]
+    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
+    
+    # Get list of players, (pk, name) tuples.
+    players = [(ALL_PLAYERS, 'ALL')] 
+    if 'league' in request.GET:
+        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=league)]
+    else:   
+        players += [(x.pk, str(x)) for x in Player.objects.all()]
+    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
+
+    # TODO: Be robust against bad formats! 
+    changed_since = parser.parse(request.GET['changed_since'] if 'changed_since' in request.GET else NEVER)
+
     leaderboard = {}
     plays = {}
     sessions = {}
     leaderboards = []
     
-    # TODO: In leaderboard table link from game name to the game record (internal or BGG)
-    # TODO: In leaderboard table link from player name to the player record
-    # TODO: In leaderboard table, link from play count to a session list of those plays only
-    # TODO: In leaderboard table, link from victory count to a session list of those plays only
-    
     for game in Game.objects.all():
-        leaderboard[game] = game.leaderboard(league=ALL_LEAGUES,indexed=True)          # TODO: support league specific views, currently across all leagues
-        plays[game] = game.global_plays['total']      
-        sessions[game] = game.global_sessions.count() 
+        if league == ALL_LEAGUES or game.leagues.filter(pk=league).exists():
+            lb = game.leaderboard(league, player, changed_since, indexed=True)
+            if not lb is None: 
+                leaderboard[game] = lb
+                plays[game] = game.global_plays['total']      
+                sessions[game] = game.global_sessions.count() 
     
     # Present leaderboards as a sorted list by a play count (selected above)
     for game in sorted(plays, key=plays.__getitem__, reverse=True):
         leaderboards.append((game.pk, game.name, plays[game], sessions[game], leaderboard[game]))
 
-    c = {'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
-         'title': "Leaderboards"}
+    # TODO: Make this more robust against illegal PKs. The whole view should be graceful if sent a bad league or player.
+    try:
+        P = Player.objects.get(pk=player)
+    except:
+        P = None
+
+    try:
+        L = League.objects.get(pk=league)
+    except:
+        L = None
+        
+    if player == ALL_PLAYERS:
+        if league == ALL_LEAGUES:
+            title = "Global Leaderboards"
+        else:
+            title = "Leaderboards for the {} league".format(L)
+    else:
+        if league == ALL_LEAGUES:
+            title = "Leaderboards for {}".format(P)
+        else:
+            title = "Leaderboards for {} in the {} league".format(P, L)        
+
+    c = {'title': title,
+         'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
+         'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
+         'players': json.dumps(players, cls=DjangoJSONEncoder),
+         'league': json.dumps(league),
+         'player': json.dumps(player),
+         'changed_since': json.dumps(str(changed_since)),
+         'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
+         'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
+         'now': timezone.now(),
+         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])}
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
 

@@ -1,13 +1,5 @@
 debug = false;
 
-// Attach a datetimepicker to all DateTimeFields. Assumes DatimeField widgets have the class "DateTimeField"
-$(function(){
-	$(".DateTimeField").datetimepicker({
-		"format": datetime_format,
-		"step" : 15
-	});
-});
-
 var id_prefix   =	 "id_";				// This is the prefix to element ID strings Django formsets use. A form element has "id=id_yadayada name=yadayada" properties
 var form_number = '__prefix__';			// This should be replaced by the number of the form, 0, 1, 2, 3 and so on for each form in the formset
 

@@ -58,7 +58,7 @@ urlpatterns = [
     url(r'^delete/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Delete.as_view(ToManyMode="<br>", format=odf.all|odf.separated|odf.header), name='delete'),
    
     # CoGs custom views
-    url(r'^leaderboards$', views.view_Leaderboards, name='leaderboards'),
+    url(r'^leaderboards', views.view_Leaderboards, name='leaderboards'),
     
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     url(r'^game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),

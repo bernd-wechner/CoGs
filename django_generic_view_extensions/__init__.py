@@ -2,6 +2,7 @@
 Created on 13Jan.,2017
 
 @author: Bernd Wechner
+@status: Alpha - works and is in use on a dedicated project. Is not complete, and needs testing for generalities.
 
 Django provides some excellent generic class based views:
 
@@ -43,7 +44,131 @@ model_name - because it's not easy to reference view.model.__name__ in a templat
 model_name_plural - because it's handier than referencing view.model._meta.verbose_name_plural
 operation - the value of "operation" passed from urlconf (should be "list", "view", "add", "edit" or "delete")
 title - a convenient titls constructed from the above that can be used in a template 
-default_datetime_input_format - the default Django datetime input format as a PHP datetime format string. Very useful for configuring a datetime picker. 
+default_datetime_input_format - the default Django datetime input format as a PHP datetime format string. Very useful for configuring a datetime picker.
+
+DetailViewExtended and DeleteViewExtended 
+
+Django provides a really sweet set of context elements for forms:
+
+form.as_table
+form.as_ul
+form.as_p
+
+with which you can rapidly redner the basic form for a model without further ado in three formats. 
+
+Oddly it does not provide these for detail views. So here we do. Direct reproduction of the form
+version only instead of containing HTML form elements it just contains the field contents rendered in
+a nice way (using the __str__ representation of Models). These are available as:
+
+view.as_table
+view.as_ul
+view.as_p
+
+in the context they deliver. 
+
+Thes eviews take an optional ketword argument ToManyMode to specify how lists should be rendered for 
+fields that are relations to many. The many remote obects have their own __str__ representations which 
+can be rich of course and so some control over how lists of these are presented is offered. ToManyMode
+can take any of the 3 formats 'table', 'ul', 'p' as per the view itself, that is display the multiple 
+values as a table as a bulletted list or as a set of paragraphs. It can be any other string as well in
+which case that string is used as a delimeter between values. It can contain  HTML of course, for 
+example '<BR>'.  
+
+CreateViewExtended and UpdateViewExtended 
+
+Easily the biggest extension is to include related form information in the context so that
+it's easy to create a rich forms that include elements from numerous related forms. 
+
+This is delivered in a context element 'related_forms' which is a rich representation of all the 
+related forms you request in a given model. The request is made by including an atttribute 'add_related'
+in the model which is a list of field names that identify a relation. This is recursive, that is, 
+the related models may also contain an 'add_related' attribute. You can probably crash Django by
+creating a closed loop of references if you like - not advised.
+
+The related_forms element contains one entry per related model, being a related form for that model.
+
+For example to illustrate two tiers, if you have a model Family and a family can have Members and 
+Pets and when editing family you want access on your form to the fields of Family, Member and Pet.
+But let's say Members and Pets can have Issues you're trying to track and you want rich forms that 
+let a user enter a family, it smembers pets and issues all at once. 
+
+Well CreateViewExtended and UpdateViewExtended make that easy for you, providing all the form 
+elements in the context if you ask for them and also saving the submitted data properly for 
+you!
+
+Here's what it might look like:
+
+class Family(models.Model):
+    name = models.CharField('Name of the Family', max_length=80)
+    add_related = ['members','pets'] # could also read ['Member.family', 'Pet.family']
+
+class Member(models.Model):
+    name = models.CharField('Name of the Member', max_length=80)
+    family = models.ForeignKey('Family', related_name='members')
+    issues = models.ManyToManyField('Issue', related_name='suffering_members')
+    add_related = ['issues']
+
+class Pet(models.Model):
+    name = models.CharField('Name of the Pet', max_length=80)
+    family = models.ForeignKey('Family', related_name='pets')
+    issues = models.ManyToManyField('Issue', related_name='suffering_pets')
+    add_related = ['issues']
+
+class Issue(models.Model):
+    description = models.CharField('Issue', max_length=200)
+
+well mean the context that CreateViewExtended and UpdateViewExtended provide you with
+the following possible references:
+
+related_forms.Member.name
+related_forms.Member.related_forms.Issue.description
+related_forms.Pet.name
+related_forms.Pet.related_forms.Issue.description
+
+as the form widgets for those fields respectively.
+
+To build rich forms you need more though so added to the related_form for each model 
+are two extra elements management_form and field_values.
+
+management_form is the standard management form Django requires (and you should understand
+these to build rich forms). In summary though they are simply little HTML snippets that 
+contain four hidden input fields named TOTAL_FORMS, INITIAL_FORMS, MIN_NUM_FORMS, MAX_NUM_FORMS.
+Documentation on exactly how these work is meagre in the django world, but they are used
+by the Django code when submitted form data is processed, and to that end in rich forms you
+will need (in Javascript perhaps) to update TOTAL_FORMS in particular to tell Django how many
+forms are being submitted. This is a little more complicated than we can cover here, but
+note that Django uses the word FORM not in the sense of an HTML FORM (of which you'll probably 
+only have one), but for a single model instance that is being submitted.    
+
+In the example above, if you write a form that allows us to create a Family, and specify the
+number of members and pets, and issues for each, you'll be submitting a number of members and
+pets and a number of issues for each. Djnago expects a strict naming convention on all these
+form elements, which embeds a number in the field names and TOTAL_FORMS informs it what
+numbers to look for and process. 
+
+TODO: Document the naming convention of Django form elements too.
+
+field_values cointains one entry for each field which returns the value of that field with a 
+special caveat, the value is complex. If the field is a Django concrete field (not a relation)
+then its actual value. If it's a relation then the pk or list of pks (primary keys) of the 
+related objects.
+
+related_values of course is only provided by UpdateViewExtended for editing existing 
+objects and not by CreateViewExtended.
+
+In the case above these context references are available:
+
+related_forms.Member.management_form   
+related_forms.Pet.management_form   
+related_forms.Member.related_forms.Issue.management_form   
+related_forms.Pet.related_forms.Issue.management_form   
+related_forms.Member.field_values.name      # which is a string, the name 
+related_forms.Member.field_values.issues    # which is a list of integers, the primary keys of the issues 
+related_forms.Pet.field_values.name         # which is a string, the name 
+related_forms.Pet.field_values.issues       # which is a list of integers, the primary keys of the issues 
+related_forms.Member.related_forms.Issue.field_values.description   # which is a list of strings, the descriptions mapping to related_forms.Member.field_values.issues    
+related_forms.Pet.related_forms.Issue.field_values.description      # which is a list of strings, the descriptions mapping to related_forms.Pet.field_values.issues
+
 '''
 
 import html
@@ -693,7 +818,7 @@ def get_related_forms(model, operation, obj=None):
         a standard Django management form for the related model (just four hidden inputs that report the number of items in a formset really)
         a dictionary of field values, which has for each field a list of values one for each related object (each list is the same length, 1 item for each related object)
 
-        If not object is specified, then only the empty and management forms are included, the dictionary of field values is not.
+        If no object is specified, then only the empty and management forms are included, the dictionary of field values is not.
     '''
     related_forms = collections.OrderedDict()
 
@@ -701,7 +826,6 @@ def get_related_forms(model, operation, obj=None):
 
     if len(relations) > 0:
         for relation in relations:
-
             # These are the relations we can expect:
             #     many_to_many:  this is a ManyToManyField
             #     many_to_one:   this is a ForeignKey field
@@ -725,9 +849,30 @@ def get_related_forms(model, operation, obj=None):
             # So field_values could be a list of lists all depending on the relationships. 
             #
             # To include a relation it has to be identified in a model's add_related attribute.
-            # Either this obect has a field which is specified in its add_related list, or
+            # Either this object has a field which is specified in its add_related list, or
             # The related model has a field which is specified in add_related (in the format "model.field")
-            # The relation will have an atribute named "field" if it's a candidate for the latter.  
+            # The relation will have an atribute named "field" if it's a candidate for the latter. 
+            # That "field" in the relation is the field in the related model which points to this one.
+            #
+            # Examples to elucidate:
+            #
+            # 1) If we have a Team model and object there is a related model Member which has a field 
+            # named "team" which is a ForeignKey field pointing team, then this is many_to_one relationship 
+            # (many Members per Team), then the Team model we should have an atttribute add_related = ['Member.team']
+            # to request that we include the related form for Member. There is no field in Team for the relationship
+            # for us to specify! But if the team field in Member has a related_name ('members' for example) a field of 
+            # that name is created in Team and so we also can request the related form with  add_related = ['members'].
+            # Both methods are supported here.
+            #
+            # 2) If on the other hand a Member can be in multiple Teams, then we have a many_to_many relationship. This
+            # could be via a ManyToMany field in Team called "members", and if so to include the related form for Member
+            # we would specify add_related = ['members'].
+            #
+            # In case 2) the name of the relation will be 'members' and this is what we can look for in add_related(model)
+            # In case 1) the name of the relation will be the related_name that was specified for the team field in Member,
+            # and the relation will have a field that is the field in Member that is pointing to Team. In this example
+            # a field 'team' that points to Team and so Member.team is also a way to specify this related form is desired. 
+            
             if ( relation.name in add_related(model)
                 or (hasattr(relation, "field") 
                 and relation.field.model.__name__ + "." + relation.field.name in add_related(model)) ):
@@ -735,7 +880,7 @@ def get_related_forms(model, operation, obj=None):
 
                 # TODO: Can any other operation land here? 
                 #        If so, is this if in the right place? 
-                #        What does a detail view wnat here for example?
+                #        What does a detail view want here for example?
                 if op in ['add', 'edit']:
                     # First thing, let's get the field_values of all related objects
                     field_values = {}   # A dictionary in  {name: list of values}
@@ -861,7 +1006,7 @@ def get_related_forms(model, operation, obj=None):
                     related_forms[related_name].management_form = related_formset.management_form
 
     # Now check each of the related forms to see if any of them want to add related forms!
-    # This could be dangerous if recursive. Relies on desible configuration of the add_related model fields.
+    # This could be dangerous if recursive. Relies on sensible configuration of the add_related model fields.
     for rf in related_forms:
         rm = related_forms[rf].Meta.model
 

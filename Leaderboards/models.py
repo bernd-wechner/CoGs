@@ -5,15 +5,15 @@ from django.db import models
 from django.utils import formats, timezone
 from django.db.models import Sum, Max, Avg, Count, Q
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
-from django.db import ProgrammingError, DataError, IntegrityError
+from django.db import DataError, IntegrityError
 from django.core.validators import RegexValidator
-from django_intenum import IntEnumField
+#from django_intenum import IntEnumField
 
 from collections import OrderedDict
 from itertools import chain
 from enum import IntEnum
 from math import isclose
-from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
+#from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
 from datetime import datetime
 
 # CoGs Leaderboard Server Data Model
@@ -31,6 +31,7 @@ from datetime import datetime
 
 MAX_NAME_LENGTH = 200                       # The maximum length of a name in the database, i.e. the char fields for player, game, team names and so on.
 ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
+ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
 FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
 NEVER = timezone.make_aware(datetime.min)   # Used for times to indicat if there is no last play or victory that has a time 
 
@@ -519,23 +520,53 @@ class Game(models.Model):
         
         return pc
 
-    def leaderboard(self, league=None, indexed=False):
+    def leaderboard(self, league=None, player=ALL_PLAYERS, changed_since=NEVER, indexed=False):
         '''
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
         specified league, or for all leagues if None is specified.
+        
+        Some filters can be applied:
+        
+        league is the primary one, as leaderboards are league based with one special league ALL_LEAGUES for the global leaderboard.
+        player is a secondary filter to focus only on the leaderboards a nominated player appears on.
+        changed_since is also a secondary filter to focus on only leaderboards for games that have been played since that date/time.  
         '''       
         if league is None:
             lb = {}
             leagues = League.objects.filter(games=self)
-            lb[ALL_LEAGUES] = self.leaderboard(ALL_LEAGUES)                
+            lb[ALL_LEAGUES] = self.leaderboard(ALL_LEAGUES, player, changed_since, indexed)                
             for league in leagues:
-                lb[league] = self.leaderboard(league)                
+                lb[league] = self.leaderboard(league, player, changed_since, indexed) 
         else:
+            # Return a leaderboard for this game only if it matches the filters provided.
+            # None if not.  
+            if league != ALL_LEAGUES:
+                sessions = Session.objects.filter(game=self, league__pk=league)
+                if sessions.count() == 0:
+                    return None
+
+            if player != ALL_PLAYERS:
+                sessions = Session.objects.filter(game=self, performances__player__pk=player)
+                if sessions.count() == 0:
+                    return None
+
+            if changed_since != NEVER:
+                sessions = Session.objects.filter(game=self, date_time__gte=changed_since)
+                if sessions.count() == 0:
+                    return None
+
+            # If the game has not been excluded on a filter, it has a leaderboard
+            # to return based on the players only in specified league of course.
+            # If a league is specified they don't want to see people from other leagues
+            # on this leaderboard, only players from the nominated league.  
             if league == ALL_LEAGUES:
-                ratings = Rating.objects.filter(game=self)
-            else:    
-                ratings = Rating.objects.filter(game=self, player__leagues=league)
+                lb_filter = Q(game=self)
+            else:
+                lb_filter = Q(game=self) & Q(player__leagues__pk=league)
+                
+            ratings = Rating.objects.filter(lb_filter)
         
+            # Now build a leaderboard from all the ratings for players (in this league) at this game. 
             lb = []
             for r in ratings:
                 if indexed:
@@ -543,7 +574,7 @@ class Game(models.Model):
                 else:
                     lb.append((str(r.player), r.trueskill_eta, r.plays, r.victories))
                 
-        return lb
+        return None if len(lb) == 0 else lb
             
     add_related = None
     def __unicode__(self): return self.name
@@ -1077,7 +1108,10 @@ class Session(models.Model):
 
         return self.trueskill_impacts 
 
-    add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
+    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
+    # Am testint the new simpler way now leaving it in place for a while to see if any issues arise.
+    #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
+    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): return u'{} - {} - {} - {} - {} {} ({} won)'.format(formats.date_format(self.date_time, 'DATETIME_FORMAT'), self.league, self.location, self.game, self.num_competitors, self.str_competitors, ", ".join([p.name_nickname for p in self.victors]))
     def __str__(self): return self.__unicode__()
 
@@ -1592,8 +1626,7 @@ class Rating(models.Model):
             SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_beta, r.trueskill_delta, r.trueskill_tau, r.trueskill_p)
             SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.beta, TS.delta, game.trueskill_tau, game.trueskill_p)
             raise DataError("Data error: A trueskill setting has changed since the last rating was saved. They were ({}) and now are ({})".format(SettingsWere, SettingsAre))
-            # TODO:
-            # Issue warning to the registrar more cleanly than this
+            # TODO: Issue warning to the registrar more cleanly than this
             # Email admins with notification and suggested action (fixing settings or rebuilding ratings).
             # If only game specific settings changed on that game is impacted of course. 
             # If global settings are changed all ratings are affected.
@@ -1643,14 +1676,9 @@ class Rating(models.Model):
                 # Record the context of the rating 
                 r.plays = impact[player]["plays"]
                 r.victories = impact[player]["victories"]
-                
-                if player.id == 20 and session.game.id == 31 and (session.id == 533 or session.id == 538):
-                    stophere = True
                     
                 r.last_play = session.date_time
                 if session.performance(player).is_victory:
-                    if player.id == 20 and session.game.id == 31 and (session.id == 533 or session.id == 538):
-                        stophere = True
                     r.last_victory = session.date_time
                 # else leave r.last_victory unchanged
                 
@@ -1707,10 +1735,7 @@ class Rating(models.Model):
         # Check that last_play and last_victory dates are accurate reflects on Performance records
         assert self.last_play == last_play.session.date_time, "Integrity error: Last play mismatch. Rating has {} Last play has {}.".format(self.last_play, last_play.session.date_time)
         
-        # TODO: Check why this is failing!
         if last_win:
-            if not (self.last_victory == last_win.session.date_time):
-                stophere = True
             assert self.last_victory == last_win.session.date_time, "Integrity error: Last victory mismatch. Rating has {} Last victory has {}.".format(self.last_victory, last_win.session.date_time)
         else:
             assert self.last_victory == NEVER, "Integrity error: Last victory mismatch. Rating has {} when expecting the NEVER value of {}.".format(self.last_victory, NEVER)

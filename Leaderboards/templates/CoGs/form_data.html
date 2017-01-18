@@ -64,10 +64,20 @@
 				}
 			</script>
 
-			{# Now include the javascript that manages the Session form and then the form template iteself #}
+			{# Now include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
 			<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
 			<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
 			<script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>
+
+			<script>			
+			// Attach a datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
+			$(function(){
+				$(".DateTimeField").datetimepicker({
+					"format": datetime_format,
+					"step" : 15
+				});
+			});
+			</script>
 			
 			{# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}
 			<script src="{% static 'CoGs/js/form_rankings.js'%}"></script>
