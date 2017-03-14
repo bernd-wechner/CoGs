@@ -3,26 +3,55 @@
 {% block title %}Leaderboards{% endblock %}
 {% block content %}
 
-<label>Columns: </label>
-<select id="cols" onchange="OnColsChange(event)" autofocus>
-  <option>1</option>
-  <option>2</option>
-  <option>3</option>
-  <option selected="selected">4</option>
-  <option>5</option>
-  <option>6</option>
-</select>
-
-<label>League: </label><select id='selLeague'></select>
-
-<label>Player: </label><select id='selPlayer'"></select>
-
-<label>Changed since: </label>
-<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}>
-
-<button type="button" id='btnFilter' onclick="get_filtered_view();">Filter</button>
-
-<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button>
+<table class='leaderboard options'><tr><td class='leaderboard options'>
+	<h2 style="margin-top:0;">Options:</h2>
+	<p>
+		Format these {{ leaderboard_count }} leaderboards in
+		<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
+		  <option>1</option>
+		  <option>2</option>
+		  <option>3</option>
+		  <option>4</option>
+		  <option>5</option>
+		  <option>6</option>
+		</select>
+		<label>columns</label>
+		
+		, use player 
+		
+		<select id="selNames" onchange="refetchLeaderboards(event)">
+		  <option value="nick">nickname</option>
+		  <option value="full">full name</option>
+		  <option  value="complete">full name (nickname)</option>
+		</select>
+		
+		and link
+		
+		<select id="selLinks" onchange='DrawTables("tblLB");'>
+		  <option value="none">nowhere</option>
+		  <option value="CoGs">internally</option>
+		  <option value="BGG">boardgamegeek.com</option>
+		</select>
+	</p>
+	
+	<p>
+	<button type="button" id='btnFilter' onclick="get_filtered_view();">Filter</button>
+	
+	leaderboards by
+	
+	<label>League: </label><select id='selLeague'></select>
+	
+	<label>Player: </label><select id='selPlayer'"></select>
+	
+	<label>Changed since: </label>
+	<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}>
+	</p>
+	
+	<p>
+	<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button>
+	leaderboards to clipboard
+	</p>
+</td></tr></table>
 
 <table id='tblLB'>
 </table>
@@ -34,12 +63,26 @@
 <script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
 
 <script>
+	var LinkSelect = document.getElementById("selLinks");
+
 	// Nab the data from context
-	var leaderboards = {{leaderboards|safe}};
+	var leaderboards = {{leaderboards|safe}};   // Games and Players come indexed with pk and BGGid/name before the actual leaderboard data
 	var leagues = {{ leagues|safe }};
 	var league = {{ league|safe }};
 	var players = {{ players|safe }};
 	var player = {{ player|safe }};
+	
+	// Select the request cols
+	selCols = $('#selCols');
+	selCols.val({{ cols|safe }});
+
+	// Select the request name style
+	selNames = $('#selNames');
+	selNames.val({{ names|safe }});
+
+	// Select the request link style
+	selLinks = $('#selLinks');
+	selLinks.val({{ links|safe }});
 
 	// Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
 	var datetime_format = "{{default_datetime_input_format}}";
@@ -70,18 +113,46 @@
 	    player_choices += '<option value=' + pair[0] + (pair[0] == player ? ' selected ' : '') + '>' + pair[1] + '</option>';
 	}	
 	select.append(player_choices);
-	
-	function get_filtered_view() {
+
+	function URLopts() {
 		opts = []
 		
 		if (selLeague.value != {{ ALL_LEAGUES|safe }}) opts.push("league="+selLeague.value);	
 		if (selPlayer.value != {{ ALL_PLAYERS|safe }}) opts.push("player="+selPlayer.value);	
 		if (from_date_time.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
 		
-		url = "{% url 'leaderboards' %}"
-		if (opts.length > 0) url += "?" + opts.join("&");
+		if (selCols.val() != "4") opts.push("cols="+selCols.val());	
+		if (selNames.val() != "full_nick") opts.push("names="+selNames.val());	
+		if (selLinks.val() != "CoGs") opts.push("links="+selLinks.val());
 		
+		return (opts.length > 0) ? "?" + opts.join("&") : "";
+	}
+		
+	function get_filtered_view() {
+		url = "{% url 'leaderboards' %}" + URLopts();
 		window.location.href = url;
+	}
+	
+	function refetchLeaderboards(event) {
+		var url = "{% url 'json_leaderboards' %}" + URLopts();
+		
+		var REQUEST = new XMLHttpRequest();
+		
+		REQUEST.onreadystatechange = function () {
+		    if (this.readyState === 4 && this.status === 200){
+		        // the request is complete, parse data 
+		        var response = JSON.parse(this.responseText);
+
+				// Capture response in leaderboards
+				leaderboards = response;
+				
+				// redraw the leaderboards
+				DrawTables("tblLB");
+		    }
+		};
+	
+		REQUEST.open("GET", url, true);
+		REQUEST.send(null);
 	}
 
 	// Configure the Copy Button
@@ -106,12 +177,21 @@
 
 	    document.body.appendChild(copy_div);
 
-	    DrawTables("tblLB_naked", false);
+	    DrawTables("tblLB_naked", "BGG");
 	}
-
+	
 	// Function to draw one leaderboard table
 	function LBtable(LB, links) {
-		var pkg = LB[0]
+		var pkg = LB[0];
+		var BGGid = LB[1];
+        var game = LB[2];
+        var play_count = LB[3];
+        var session_count =LB[4];
+        var player_list = LB[5];
+		
+		var linkGameCoGs = "{% url 'view' 'Game' '00' %}".replace('00',pkg);
+		var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
+		var linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 	
 	    var table = document.createElement('TABLE');
 	    table.className = 'leaderboard'
@@ -124,12 +204,11 @@
         tableHead.appendChild(tr);
 
         var th = document.createElement('TH');
-        var game = LB[1];
         var content;
-        if (links) {
+        if (linkGame) {
 	    	content = document.createElement('a');
 			content.setAttribute("style", "text-decoration: none; color: inherit;");
-		    content.href =  "{% url 'view' 'Game' '00' %}".replace('00',pkg); 
+		    content.href = linkGame;
 			content.innerHTML = game;
         } else {
 	    	content = document.createTextNode(game);
@@ -140,12 +219,12 @@
         tr.appendChild(th);
 
         var th = document.createElement('TH');
-    	plays = document.createTextNode(LB[2]+" plays in "); {# Play Count #}
+    	plays = document.createTextNode(play_count+" plays in "); {# Play Count #}
         th.appendChild(plays);   
 
-		var sessions = LB[3] + " sessions";
+		var sessions = session_count + " sessions";
         var content;
-        if (links) {
+        if (links == "CoGs") {
 	    	content = document.createElement('a');
 			content.setAttribute("style", "text-decoration: none; color: inherit;");
 		    content.href =  "{% url 'list' 'Session'%}" + "?game=" + pkg; 
@@ -191,7 +270,7 @@
 		var tableBody = document.createElement('TBODY');
 	    table.appendChild(tableBody);
 
-	    for (var i = 0; i < LB[4].length; i++) {
+	    for (var i = 0; i < player_list.length; i++) {
 	        var tr = document.createElement('TR');
 	        tableBody.appendChild(tr);
 	
@@ -201,34 +280,43 @@
             td.appendChild(document.createTextNode(i+1));  {# Rank #}
             tr.appendChild(td);
             
-	        for (var j = 1; j < 5; j++) {
+            // 0 and 1 are the PK and BGGname, 2 to 5 are the leaderboard data
+	        for (var j = 2; j < 6; j++) {
 	            var td = document.createElement('TD');
 			    td.className = 'leaderboard'
 			    
-			    var pkp = LB[4][i][0]
-	            var val = LB[4][i][j]
+			    var pkp = player_list[i][0];
+			    var BGGname = player_list[i][1];
+			    
+				var linkPlayerCoGs = "{% url 'view' 'Player' '00' %}".replace('00',pkp);
+				var linkPlayerBGG = BGGname ? "https:\/\/boardgamegeek.com/user/" + BGGname : null;
+				var linkPlayer = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
+			    
+	            var val = player_list[i][j]
 	            
-	            if (j==2) { val = val.toFixed(1) }
-	            if (j!=1) { td.style.textAlign = 'center'; }
+	            if (j==3) { val = val.toFixed(1) }				// Teeth
+	            if (j!=2) { td.style.textAlign = 'center'; }	// ! Player
 	            
 	            {# Add Links #}
 				var content;
-        		if (links && (j==1 || j==3 || j==4) ) {
+        		if ((linkPlayer && j==2) || (links == "CoGs" && (j==4 || j==5))) {
 	            	content = document.createElement('a');
     				content.setAttribute("style", "text-decoration: none; color: inherit;");
-		            if (j==1) {   {# Player Name #}
-					    content.href =  "{% url 'view' 'Player' '00' %}".replace('00',pkp); 
-	    			} else if (j==3) { {# Play Count #}
+		            if (j==2) {   {# Player Name #}
+					    content.href =  linkPlayer; 
+	    			} else if (j==4) { {# Play Count #}
 					    content.href =  "{% url 'list' 'Session' %}" + "?ranks__player=" + pkp + "&game=" + pkg;  
-	    			} else if (j==4) { {# Victory Count #}
+	    			} else if (j==5) { {# Victory Count #}
 					    content.href =  "{% url 'list' 'Session' %}" + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg;  
 	    			}
     				content.innerHTML = val;
     			} else {
-    				content = document.createTextNode(val) 
+    				content = document.createElement('span');  // Need a span to make it bold on a player filter match
+    				var text = document.createTextNode(val);
+    				content.appendChild(text); 
 		        }
 		        
-	            if (j==1 && pkp==player) {
+	            if (j==2 && pkp==player) {
 	            	content.style.fontWeight = 'bold';
 	            }
 		           
@@ -239,19 +327,20 @@
 	     return table;
     }
     
-	function OnColsChange(event) { DrawTables("tblLB", true); }
-
 	// Draw all leaderboards, sending to target and enabling links or not
 	function DrawTables(target, links) {	
-		var colSelect = document.getElementById("cols");
+		var colSelect = document.getElementById("selCols");
 		var cols = parseInt(colSelect.options[colSelect.selectedIndex].text);
 		var rows = leaderboards.length / cols;
 		var remainder = leaderboards.length - rows*cols;
 		if (remainder > 0) { rows++; }
+		
+		if (links == undefined) links = LinkSelect.value == "none" ? null : LinkSelect.value;
 	
-		var table = document.getElementById(target);
+		// A wrapper table for the leaderboards 
+		var table = document.getElementById(target); 
 		table.innerHTML = "";
-		table.cellSpacing = 10;
+		table.className = 'leaderboard wrapper'
 		
 		for (var i = 0; i < rows; i++) {
 			var row = table.insertRow(i);
@@ -259,14 +348,14 @@
 				k = i*cols+j 
 				if (k < leaderboards.length) {
 					var cell = row.insertCell(j);
-					cell.style.verticalAlign = 'top';
+					cell.className = 'leaderboard wrapper'
 					cell.appendChild(LBtable(leaderboards[k], links));
 				}
 			}
 		}
 	}
 	
-	DrawTables("tblLB", true);
+	DrawTables("tblLB");
 </script>
 
 {% endblock %}

@@ -182,7 +182,9 @@ from django.utils.safestring import mark_safe
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_text
 from django.core.urlresolvers import reverse_lazy
+from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
+from django.db.models import DEFERRED
 from django.db.models.query import QuerySet
 from django.forms.models import fields_for_model, inlineformset_factory, modelformset_factory
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
@@ -190,6 +192,7 @@ from django.shortcuts import get_object_or_404
 from django.http import HttpResponseRedirect
 
 from url_filter.filtersets import ModelFilterSet
+from django.http.response import JsonResponse
 
 #===============================================================================
 # Helper functions
@@ -276,7 +279,7 @@ def hstr(obj, indent=_default_indent):
     '''
     nl = "<br>"
     fnl = (nl + indent) if not indent == _default_indent else ' '
-    if isinstance(obj, list) or isinstance(obj, QuerySet):
+    if isinstance(obj, list) or isinstance(obj, set) or isinstance(obj, QuerySet):
         lines = []
         multilineval = False
         multiwordval = False
@@ -309,7 +312,7 @@ def hstr(obj, indent=_default_indent):
         else: 
             text = "{ " + ", ".join(lines) + " }"
     else:
-        text = str(obj)
+        text = force_text(str(obj))
     return text
 
 table_separator = "<hr>"  # A separator for the object_display_format lists in the as_table() view
@@ -339,6 +342,7 @@ def object_html_output(self, style):
                 else 'Standard fields' if bucket == odf.model and self.format & odf.header
                 else None if bucket == odf.model
                 else 'Unknown ... [internal error]')
+            
             if list_label and (self.format & odf.separated) and self.fields_bucketed[bucket]:
                 label_format = '<div style="float:left;">{}</div>{}' if style == 'table' else '{}'
                 row = normal_row.format(
@@ -353,7 +357,7 @@ def object_html_output(self, style):
             for name in self.fields_bucketed[bucket]:
                 field = self.fields_bucketed[bucket][name]
                 value = field.value
-
+                
                 # If a list is provided it came from a ManyToMany or a OneToMany field (actually a Foreign Key from another model) and we render it according to self.ToManyMode.
                 if type(value) is list:
                     if self.ToManyMode == 'p':
@@ -418,7 +422,7 @@ class ListViewExtended(ListView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, True)
+        add_model_context(self, context, plural=True)
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -490,7 +494,7 @@ class DetailViewExtended(DetailView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, False)
+        add_model_context(self, context, plural=False)
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -528,7 +532,7 @@ class DeleteViewExtended(DeleteView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, False, 'Delete')
+        add_model_context(self, context, plural=False, title='Delete')
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -553,7 +557,7 @@ class CreateViewExtended(CreateView):
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
         context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, False, 'New')
+        add_model_context(self, context, plural=False, title='New')
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -564,20 +568,98 @@ class CreateViewExtended(CreateView):
         self.queryset = QuerySet(model=self.model)
         return self.queryset
 
+    def post(self, request, *args, **kwargs):
+        form = self.get_form()
+        self.form = form
+        self.object = form.instance
+        
+        # NOTE: At this point form.data has the submitted POST fields.
+        # But form.instance seems to be a default instance of the object. form.data not applied,
+        # Theory, form.full_clenan() does the mapping somehow? It calls model.clean() which sees populated attribs anyow.
+        # full_clean() is initiated by form.add_error ro for.is_valid. 
+        
+        # FIXME: Check if these forms have instances attached that can be used for validation.
+        # DONE: There is an instance but not populated yet with data form form.
+        # Which is odd as form.instance is. So it seems to be in get_form() that the mapping 
+        # happens?
+        # related_forms = get_related_forms(self.model, self.operation, self.object)
+        
+        # FIXME:
+        # Form errors can be injected here and they appear on the rendered form
+        # At this point form.instance has an instance of the model (related forms too?)
+        # TODO: Work out how it gest that and ask "Can I create instances of all related models?"         
+        if form.is_valid() and self.is_valid():
+            return self.form_valid(form)
+        else:
+            return self.form_invalid(form)
+
+    def is_valid(self):
+        # TODO: Here we should run is_valid for all related forms.
+        # That runs the clean on each related form.
+        # Then run is_valid on the master form and its clean.
+        # Nothing is saved here yet but objects may well be 
+        # created. We shoudl save them only in form_valid.
+        #
+        # IDEA: Is_valid triggers clean on the form, but not
+        # on related forms. So we need to an explicit full_clean 
+        # or clean on the related forms to get an aggregegate 
+        # is_valid. 
+        #
+        # BUT if that's the case what objects are the cleans seeing?
+        # Not saved yet?
+        stophere = True
+        return True
+
     def form_valid(self, form):
         # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
-        #       If there's a bail then don't save anything, i.e don't save partial data.  
+        #       If there's a bail then don't save anything, i.e don't save partial data.
+        
+        # TODO: Act on submitted timezone info
+        # Arrives at present as self.requst.POST["TZname"] and self.requst.POST["TZoffset"]
+        TZname = self.request.POST["TZname"] if "TZname" in self.request.POST else None  
+        TZoffset = self.request.POST["TZoffset"] if "TZoffset" in self.request.POST else None  
+        
+        # TODO: Consider if we shoudl save the master first then related objects 
+        # or the other way round or f it should be configurable or if it even matters.
+        # For the clean() on models to work, we may want everything saved provisionally, and
+        # if the clean fails roll back the transaction cleanly (unsaving everything). 
+        
+        # Hook for pre-processing the form (before the data is saved)
+        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+
+        # Save this form
         self.object = form.save()
         self.kwargs['pk'] = self.object.pk
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
-        save_related_forms(self)
+        
+        # Save related forms
+        errors = save_related_forms(self)
+        
+        # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
+        # TODO: Tidy this. Render the errors in the message box on the original form somehow.
+        # Basically bounce back to where we were with error messages.
+        # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
+        if errors:
+            return JsonResponse(errors)            
+                    
+        # Hook for post-processing data (after it's all saved) 
         if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+        
         return HttpResponseRedirect(self.get_success_url())
 
 #     def post(self, request, *args, **kwargs):
 #         response = super().post(request, *args, **kwargs)
 #         return response
+
+    def form_invalid(self, form):
+        """
+        If the form is invalid, re-render the context data with the
+        data-filled form and errors.
+        """
+        context = self.get_context_data(form=form)
+        
+        response = self.render_to_response(context)
+        return response
 
 class UpdateViewExtended(UpdateView):
     '''An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
@@ -585,7 +667,7 @@ class UpdateViewExtended(UpdateView):
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
         context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, False, 'Edit')
+        add_model_context(self, context, plural=False, title='Edit')
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -776,20 +858,20 @@ def add_related_fields_to_detail_view(self):
 
     # Capture all the property values
     for name in properties:
-            label = safetitle(name.replace('_', ' '))
-            value = getattr(self.obj, name)
-            if not str(value):
-                value = NOT_SPECIFIED
+        label = safetitle(name.replace('_', ' '))
+        value = getattr(self.obj, name)
+        if not str(value):
+            value = NOT_SPECIFIED
 
-            p = models.Field()
-            p.label = label
+        p = models.Field()
+        p.label = label
 
-            if isIterable(value):
-                p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-                self.fields_list[odf.properties][name] = p
-            else:
-                p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-                self.fields_flat[odf.properties][name] = p
+        if isIterable(value):
+            p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
+            self.fields_list[odf.properties][name] = p
+        else:
+            p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
+            self.fields_flat[odf.properties][name] = p
 
     # Some more buckets to put the fields in so we can separate lists of fields on display
     self.fields = collections.OrderedDict()               # All fields
@@ -808,18 +890,29 @@ def add_related_fields_to_detail_view(self):
 
     pass
 
-def get_related_forms(model, operation, obj=None):
+def get_related_forms(model, operation, form_data=None, db_object=None):
     '''
-    Given a model, an operation and object on that model (abstract eg, User, edit, Bob)
+    Given a model and an operation on that model (abstract eg, User, edit, Bob)
     will return all the related forms useful for that operation (with that object) on that model.
+    
+    if form_data or a db_object are specified will in that order of precedence use them to
+    populate field_values (see below).
 
     Returns a list of forms each of which is:
         a standard Django empty form for the related model
         a standard Django management form for the related model (just four hidden inputs that report the number of items in a formset really)
         a dictionary of field values, which has for each field a list of values one for each related object (each list is the same length, 1 item for each related object)
 
-        If no object is specified, then only the empty and management forms are included, the dictionary of field values is not.
+        The data source for field_values can be form_data (typically a QueryDict from a request.POST or request.GET) or a database object (being the instance of a Model)
+        If no data source is specified, then only the empty and management forms are included, the dictionary of field values is not.
     '''
+    
+    assert operation in ['add', 'edit'], "Coding Error: get_related_forms does not support the operation '{}'".format(operation) 
+
+    # A db_object if supplied must be an instance of the specified model     
+    if not db_object is None:
+        assert isinstance(db_object, model), "Coding Error: db_object must be an instance of the specified model"
+
     related_forms = collections.OrderedDict()
 
     relations = [f for f in model._meta.get_fields() if (f.is_relation)]
@@ -832,21 +925,47 @@ def get_related_forms(model, operation, obj=None):
             #     one_to_many    this is an _set field (i.e. has a ForeignKey in another model pointing to this model and this field is the RelatedManager)
             #     one_to_one:    this is a OneToOneField
             #
-            # At this point we have an object, and a list of relations (other models that relate to it)
+            # At this point we have a model, and a list of relations (other models that relate to it)
             # For a given relation there with be one or more related objects. If the relation is of the
             # form ToOne there will be one related object. If the relation is of the form ToMany there will 
             # be many related objects. 
             #
-            # For this relation we want a "related_form" and in that form we want to build a "field_values" 
-            # dictionary which is keyed on related objects the field name(s). The value will depend on 
-            # whether the relation is to one or many other objects (i.e. contain a value or a list). 
+            # For this relation we want a "related_form" which we'll provide as a empty_form
+            # and if a data_source is provided, to that empty_form we want to add an attribute "field_values" 
+            # which has for each field in the empty form a list of values for each instance.
+            # For completeness we also add instance_forms to the empty form which is a dictionary of forms
+            # keyed on the PK of the indivudal instances (that are listed in field_values) and the value
+            # is a form for that instance (essentially the empty_form with values in the fields).
+            #
+            # The value in field_values might itself be a simple scalar (for ordinary fields), or a PK if 
+            # the field is a _to_one relation (a relation pointing to one object of another model, or a list of
+            # PKs if the field is a _to_many relation (a relation pointing to many objects in another model).  
+            #
+            # This is a proxy for a related_formset in a way. The related_form is an empty_form, a pro
+            # forma for one form in the formset and Field_values contains for each field in the related model a 
+            # list of values, one for each form in the formset from which a web page can, in javascript, create
+            # the individual forms in the formset with populated values. 
+            #
+            # To reiterate:
+            #
+            # There is one Field_values for each related model, and it is dictionary which is keyed on the 
+            # related model's field name(s). The value will depend on whether the relation is to one or many 
+            # other objects (i.e. contain a value or a list). 
             #
             # The field in the related_model can itself be:
             #    a value    - in which case the item added to a field_values list is a value
             #    a relation to one related object - in which case the item added to a field_values list is a PK
             #    a relation to many related objects - in which case the item added to a field_values list is a list of PKs
             #
-            # So field_values could be a list of lists all depending on the relationships. 
+            # So Field_values for a given field could be a list of lists all depending on the relationships.
+            #
+            # This is recursive, in that the related_form may also be given an atttribute "related_forms" which is
+            # a dictionary of related forms in the self same manner for that related model. 
+            # 
+            # For added convenience, the fields in each related model are also included in Field_values.
+            # They are included as lists of values (one for each instance) with psuedo field names in form
+            # model__field (using django's double underscore convention). This is complicated and a good
+            # working example will be useful
             #
             # To include a relation it has to be identified in a model's add_related attribute.
             # Either this object has a field which is specified in its add_related list, or
@@ -871,149 +990,221 @@ def get_related_forms(model, operation, obj=None):
             # In case 2) the name of the relation will be 'members' and this is what we can look for in add_related(model)
             # In case 1) the name of the relation will be the related_name that was specified for the team field in Member,
             # and the relation will have a field that is the field in Member that is pointing to Team. In this example
-            # a field 'team' that points to Team and so Member.team is also a way to specify this related form is desired. 
+            # a field 'team' that points to Team and so Member.team is also a way to specify this related form if desired.
             
             if ( relation.name in add_related(model)
                 or (hasattr(relation, "field") 
                 and relation.field.model.__name__ + "." + relation.field.name in add_related(model)) ):
-                op = operation
+                
+                # A shorthand term
+                rm = relation.related_model
+                
+                # Build the class for the related formset. The related formset will be an instance of this class 
+                Related_Formset = modelformset_factory(relation.related_model, can_delete=False, extra=0, fields=('__all__'), formfield_callback=custom_field_callback)
 
-                # TODO: Can any other operation land here? 
-                #        If so, is this if in the right place? 
-                #        What does a detail view want here for example?
-                if op in ['add', 'edit']:
-                    # First thing, let's get the field_values of all related objects
-                    field_values = {}   # A dictionary in  {name: list of values}
-                    ros = None          # QuerySet of related objects (used to build the management form)
+                # Now collect the fields we want to find the values of (fields_for_model does not return the pk field)
+                fields = fields_for_model(rm)        
 
-                    if not obj is None:
-                        # Now fetch related object values to make them easily available for form initialization
-                        # For fields where there are many values compile a list of those values
-                        fields = fields_for_model(relation.related_model)        # The fields in the related model
+                # fields_for_model doesn't return uneditable fields ...
+                # if this model has an add_related attribute and it specifies any uneditable fields then
+                # override this objection and add them to the fields list, else they won't be added to the
+                # related_forms. You may want for example, to explicitly to add uneditable fields to related_forms 
+                # so as to be able to edit them. The reasoning is as follows: editable=False means the field won't
+                # appear on the standard form editor for that model, whereas add_related means that the field
+                # is offered when it's related to a model so that we can build a custom form editor for that
+                # field through its relation if we want. In short we have suppressed its appearance on standard
+                # model forms but made it available on related custom built model forms.
+                for f in add_related(rm):
+                    if hasattr(rm, f) and not f in fields:
+                        fields[f] = getattr(rm, f)
+                        
+                # always include the pk field
+                fields[rm._meta.pk.name] = getattr(rm, rm._meta.pk.name)
 
-                        # fields_for_model doesn't return uneditable fields ...
-                        # if this model has an add_related attribute and it specifies any uneditable fields then
-                        # override this objection and add them to the fields list, else they won't be added to the
-                        # related_forms. You may want explicitly to add uneditable fields to related_forms so as
-                        # to be able to edit them. The reasoning is as follows: editable=False means the field won't
-                        # appear on the standard form editor for that model, whereas add_related means that the field
-                        # is offered when it's related to a model so that we can build a custom form editor for that
-                        # field through its relation if we want. In short we have suppressed its appearance on standard
-                        # model forms but made it available on related custom built model forms.
-                        for f in add_related(relation.related_model):
-                            if hasattr(relation.related_model, f) and not f in fields:
-                                fields[f] = getattr(relation.related_model, f)
+                # By default, we have no management form. One comes into being if we succeed in
+                # populating a formset with form_data or from a db_object.  
+                has_management_form = False
+                
+                # ==============================================================
+                # Collect the field values and related objects (ros) for this relation
+                # ros are only available for edit operations where the objects all are found in the database
+                # But when available their number should be the same as the length of each list in field_values
+                field_values = {}       # A dictionary in  {name: list of values}
+                ros = rm.objects.none() # QuerySet of related objects (used to build a management form), an empty queryset by default
 
-                        # If many objects are related to this one we'll build a list of values for each field_values entry
-                        if relation.one_to_many or relation.many_to_many:
+                # ==============================================================
+                # Build the related_formset and field_values for this relation
+                
+                # Try to use form_data if it's present (it may fail as the form_data may not include
+                # a submission for the related model).Note success or failure in found_form_data so 
+                # we can look at db_object for field values.
+                found_form_data = False
+                if not form_data is None:
+                    # Build the formset with the supplied data, which can then be cleaned - see full_clean() below.              
+                    related_formset = Related_Formset(prefix=rm.__name__, data=form_data)
 
-                            # Get the related objects, method varies for many_to_many and one_to_many
-                            if relation.many_to_many:
-                                ros = getattr(obj, relation.name).all()
-                            else:
-                                ros = relation.related_model.objects.filter(**{relation.field.name: obj.pk})
+                    # If no management form is present will fail with a ValidationError
+                    # no field_values need be saved then as none are properly submitted
+                    try:
+                        has_management_form = hasattr(related_formset, 'management_form')
+                    except ValidationError as e:
+                        if e.code == "missing_management_form":
+                            has_management_form = False                         
 
-                            # Sorted returns a list, but ros must be a queryset for later use in created the related_form
-                            # So keep ros untouched and build a sorted list separately
-                            # sorted_rows is just used here to populate the lists we insert into field_values in the order specified
-                            sorted_ros = ros
-                            if hasattr(relation.related_model, 'sort_by'):
-                                sort_lambda = "lambda obj: (obj." + ", obj.".join(relation.related_model.sort_by) +")"
-                                sorted_ros = sorted(ros, key=eval(sort_lambda))
+                    # form_data is None for an empty add form, 
+                    # but is not None if the add form is be re-displayed with errors
+                    if has_management_form:
+                        # Clean the formset. 
+                        # This leaves cleaned_data in each form of the formset, 
+                        # which we can use to build field values
+                        related_formset.full_clean()
+    
+                        for field_name in fields:
+                            field_values[field_name] = []                            
+                            for form in related_formset.forms:
+                                if field_name in form.cleaned_data:
+                                    value = form.cleaned_data[field_name]
+                                    # If the cleaned_data value is a database object, then we only want it's PK in the field_values list.
+                                    if hasattr(value, 'pk'):
+                                        value = value.pk
+                                    field_values[field_name].append(value)
+                                else:
+                                    field_values[field_name].append(None)
+                                    
+                        found_form_data = True
 
-                            pk_name = relation.related_model._meta.pk.name                   # Name of the primary key
-                            for field_name in fields:
-                                field_values[field_name] = []                   # empty list
-                            field_values[pk_name] = []
+                # If no form data was found try and find it in the db_object
+                if not found_form_data and not db_object is None:                    
+                    # If many objects are related to this one we'll build a list of values for each field_values entry
+                    if relation.one_to_many or relation.many_to_many:
 
-                            # For every related object, we add a value, PK or list-of-PKs to the growing lists in field_values
-                            # A value if this field has a simple value
-                            # A PK if the field isa foreign key to another object (then that remote objects PK)
-                            # A list of PKs if it is field that points to many remote objects (like a OneToMany or ManyToMany) 
+                        # Get the related objects
+                        ros = getattr(db_object, relation.name).all()
+
+                        # Sorted returns a list, but ros must be a queryset for later use in creating the related_form
+                        # So keep ros untouched and build a sorted list separately
+                        # sorted_ros is just used here to populate the lists we insert into field_values in the order specified
+                        sorted_ros = ros
+                        if hasattr(rm, 'sort_by'):
+                            sort_lambda = "lambda obj: (obj." + ", obj.".join(rm.sort_by) +")"
+                            sorted_ros = sorted(ros, key=eval(sort_lambda))
+
+                        # For every field in the related objects we add to the (growing) list fo values either:
+                        #    a value, PK or list-of-PKs 
+                        # A value if this field has a simple value
+                        # A PK if the field is a foreign key to another object (then that remote objects PK)
+                        # A list of PKs if it is field that points to many remote objects (like a OneToMany or ManyToMany) 
+                        for field_name in fields:
+                            field_values[field_name] = []                            
                             for ro in sorted_ros:
-                                for field_name in field_values:
-                                    field_value = getattr(ro,field_name)
+                                field_value = getattr(ro,field_name)
 
-                                    # If it's a single object from another model (it'll have a primary key field)
-                                    if hasattr(field_value, 'pk'):
-                                        # Add the objects primary key to the list
-                                        field_values[field_name].append(field_value.pk)
+                                # If it's a single object from another model (it'll have a pk attibute) 
+                                if hasattr(field_value, 'pk'):
+                                    # Add the objects primary key to the list
+                                    field_values[field_name].append(field_value.pk)
 
-                                    # If it's many objects from another model (it'll have a model field)
-                                    elif hasattr(field_value, 'model'):
-                                        # Add a list of the objects primary keys to the list
-                                        roros = field_value.model.objects.filter(**field_value.core_filters)
+                                # If it's many objects from another model (it'll have a model attribute)
+                                elif hasattr(field_value, 'model'):
+                                    # Add a list of the objects primary keys to the list
+                                    roros = field_value.model.objects.filter(**field_value.core_filters)
 
-                                        if hasattr(field_value.model, 'sort_by'):
-                                            sort_lambda = "lambda obj: (obj." + ", obj.".join(field_value.model.sort_by) +")"
-                                            roros = sorted(roros, key=eval(sort_lambda))
+                                    if hasattr(field_value.model, 'sort_by'):
+                                        sort_lambda = "lambda obj: (obj." + ", obj.".join(field_value.model.sort_by) +")"
+                                        roros = sorted(roros, key=eval(sort_lambda))
 
-                                        roro_field_values = []
+                                    roro_field_values = []
 
-                                        for roro in roros:
-                                            roro_field_values.append(roro.pk)       # build a list of primary keys
+                                    for roro in roros:
+                                        roro_field_values.append(roro.pk) # build a list of primary keys
 
-                                        field_values[field_name].append(roro_field_values)
+                                    field_values[field_name].append(roro_field_values)
 
-                                    # If it's a scalar value
-                                    else:
-                                        # Add the value to the list
-                                        field_values[field_name].append(field_value)
+                                # If it's a scalar value
+                                else:
+                                    # Add the value to the list
+                                    field_values[field_name].append(field_value)
 
-                        elif relation.many_to_one or relation.one_to_one:
+                    elif relation.many_to_one or relation.one_to_one:
 
-                            # For the one related object unpack its fields into field_values
-                            if hasattr(obj, relation.attname) and getattr(obj, relation.attname) is not None:
-                                ros = relation.related_model.objects.filter(pk=getattr(obj, relation.attname))  # The related object
-                                ro = ros[0]                                                                     # There will only be one
-                                pk_name = ro._meta.model._meta.pk.name                                          # Name of the primary key
-
-                                # Store its PK in field_values
-                                field_values[pk_name] = getattr(ro, pk_name)
-
+                        # For the one related object unpack its fields into field_values
+                        if hasattr(db_object, relation.attname):
+                            if getattr(db_object, relation.attname) is None:
+                                field_value = None
+                            else:
+                                # Although we know there will be only one ro, we need ros to build related_formset below
+                                ros = rm.objects.filter(pk=getattr(db_object, relation.attname))  # The related object
+                                ro = ros[0]                                                       # There will only be one
+    
                                 # Store its remaining field values in field_values
                                 for field_name in fields:
                                     # The value of the field in the related object
                                     field_value = getattr(ro, field_name)
-
+    
                                     # If it's a single object from another model (it'll have a primary key field)
                                     if hasattr(field_value, 'pk'):
                                         # Add the objects primary key to the list
-                                        field_values[field_name].append(field_value.pk)
-
+                                        field_values[field_name] = field_value.pk
+    
                                     # If it's many objects from another model (it'll have a model field)
                                     elif hasattr(field_value,"model"):
                                         # Put a list of the related objects PKs into field_values
-                                        ros = field_value.model.objects.filter(**field_value.core_filters)
+                                        rros = field_value.model.objects.filter(**field_value.core_filters)
                                         field_values[field_name] = []
-                                        for ro in ros:
-                                            field_values[field_name].append(ro.pk)       # build a list of primary keys
-
+                                        for rro in rros:
+                                            field_values[field_name].append(rro.pk)       # build a list of primary keys
+    
                                     # For scalar values though we just record the value of the field in field_values
                                     else:
                                         field_values[field_name] = field_value
+                    
+                    # Build the related formset from the related objects (ros)                
+                    related_formset = Related_Formset(prefix=rm.__name__, queryset=ros)
+                    
+                    # If no management form is present this will fail with a ValidationError
+                    # Catch this fact here quietly, for compatibility with the 'add' 
+                    # approach, and ease of saving it later (the management form that is)
+                    try:
+                        has_management_form = hasattr(related_formset, 'management_form')
+                    except ValidationError as e:
+                        if e.code == "missing_management_form":
+                            has_management_form = False                         
+                    
+                # If we didn't succeed in building a formset from form_data ot a db_object just
+                # build one from the model, for the empty_form including a management form,
+                save_field_values = has_management_form  
+                if not has_management_form:
+                    related_formset = Related_Formset(prefix=rm.__name__)
+                    has_management_form = True
 
-                    # Now that we know about the related objects if any we can build the related forms
-                    # Django can build us an empty form for the related model
-                    # TODO: Must add fk_name=  for case where related model has more than one fk back to this model apparently. No such case I think in CoGs
-                    Related_Formset = modelformset_factory(relation.related_model, can_delete=False, extra=0, fields=('__all__'), formfield_callback=custom_field_callback)
-                    related_formset = Related_Formset(prefix=relation.related_model.__name__, queryset=ros)
-
-                    # Build the related_form for this relation
-                    related_name = relation.related_model.__name__
-                    related_forms[related_name] = related_formset.empty_form
-                    related_forms[related_name].field_values = field_values
+                # Build the related_form for this relation (and field_values only if data was provided)
+                related_name = rm.__name__
+                
+                related_forms[related_name] = related_formset.empty_form
+                
+                if has_management_form:
                     related_forms[related_name].management_form = related_formset.management_form
-
+                else:
+                    raise ValueError("Internal Error: Must have management form. Cannot possibly be missing. But seems to be")
+ 
+                if save_field_values:
+                    related_forms[related_name].field_values = field_values
+                                        
     # Now check each of the related forms to see if any of them want to add related forms!
     # This could be dangerous if recursive. Relies on sensible configuration of the add_related model fields.
+    # TODO: Perhaps keep a history as we recurse to detect loopback
     for rf in related_forms:
         rm = related_forms[rf].Meta.model
-
+            
         if len(add_related(rm)) > 0:
-            # add generic related forms (with no object) to provide easy access to the related empty form and field widgets in the context
+            # add generic related forms (with no object) to provide easy access to 
+            # the related empty form and field widgets in the context. Instance forms
+            # are added later for each related object. 
             related_forms[rf].related_forms = get_related_forms(rm, operation)
 
+            if rf == "Rank":
+                stophere = True
+            
             # add instance_forms for each instance
             if hasattr(related_forms[rf], "field_values") and rm._meta.pk.attname in related_forms[rf].field_values:
                 related_forms[rf].instance_forms = {}
@@ -1022,30 +1213,56 @@ def get_related_forms(model, operation, obj=None):
                 # So we need to observe and respect the order of pk values in field_values when creating instance lists of related values
                 pk_list = []                   # Keep an ordered list of the PKs as the dictionary "instance_forms" loses order
                 pk_attr = rm._meta.pk.attname  # Get the name of the primary key attribute
-                if isinstance(related_forms[rf].field_values[pk_attr], list):
-                    for pk in related_forms[rf].field_values[pk_attr]:
+
+                # Create the instance_forms, that is one related_forms object per related instance  
+                pk_placeholder = 0
+                for pk in related_forms[rf].field_values[pk_attr]:
+                    if pk is None:
+                        ph = 'PK_{}'.format(pk_placeholder)
+                        pk_placeholder += 1
+                    else:
+                        ph = pk
+                    pk_list.append(ph)
+                                    
+                    if not pk is None:
                         o = rm.objects.get(pk=pk)
-                        related_forms[rf].instance_forms[pk] = get_related_forms(rm, operation, o)
-                        pk_list.append(pk)
-                else:
-                    pk = related_forms[rf].field_values[pk_attr]
-                    o = rm.objects.get(pk=pk)
-                    related_forms[rf].instance_forms[pk] = get_related_forms(rm, operation, o)
-                    pk_list.append(pk)
+                    else:
+                        i = len(pk_list)-1
+                        fields = {}
+                        for field, values in related_forms[rf].field_values.items():
+                            f = rm._meta.get_field(field)
+                            if values[i] is None:
+                                val = None
+                            elif f.is_relation:
+                                m = f.related_model
+                                if f.one_to_one or f.many_to_one:
+                                    val = m.objects.get(pk=values[i])
+                                elif f.one_to_many or f.many_to_many:
+                                    # TODO: Test this, could fail, untested code!
+                                    val = m.objects.filter(pk__in=values[i]) 
+                            else:
+                                val = values[i]
+                                
+                            fields[field] = val
+                            
+                        o = rm(**fields)
+                         
+                    instance_forms = get_related_forms(rm, operation, form_data=form_data, db_object=o)
 
-                # At this point pk_list has one pk if there was one instance of the related model and is a list if there was more than one
-
+                    if not instance_forms is None:               
+                        related_forms[rf].instance_forms[ph] = instance_forms
+                        
                 # For ease of use in the template context add field_values for all the instance related fields as well
                 if hasattr(related_forms[rf],"instance_forms"):
                     for pk in pk_list: # Walk the ordered list of PKs
                         for form in related_forms[rf].instance_forms[pk]:
-                            for ro_field in related_forms[rf].instance_forms[pk][form].field_values:
-                                ro_field_name = form + "_" + ro_field
-                                ro_field_value = related_forms[rf].instance_forms[pk][form].field_values[ro_field]
-                                if not ro_field_name in related_forms[rf].field_values:
-                                    related_forms[rf].field_values[ro_field_name] = []
-                                related_forms[rf].field_values[ro_field_name].append(ro_field_value)
-
+                            if hasattr(related_forms[rf].instance_forms[pk][form], "field_values"):
+                                for ro_field in related_forms[rf].instance_forms[pk][form].field_values:
+                                    ro_field_name = form + "__" + ro_field
+                                    ro_field_value = related_forms[rf].instance_forms[pk][form].field_values[ro_field]
+                                    if not ro_field_name in related_forms[rf].field_values:
+                                        related_forms[rf].field_values[ro_field_name] = []
+                                    related_forms[rf].field_values[ro_field_name].append(ro_field_value)
 
     return related_forms
 
@@ -1070,7 +1287,12 @@ def save_related_forms(self):
     # TODO: Can we access a list of all the inital forms in formset?
     # So we can see if the submission contains them all and if not take action?
 
-    related_forms = get_related_forms(self.model, self.operation, self.object)
+    validation_errors = {}
+    
+    # EXPERIMENT, not passing in object but passing in request and follwing through code
+    related_forms = get_related_forms(self.model, self.operation, self.request.POST)
+    
+    #related_forms = get_related_forms(self.model, self.operation, self.object)
     for name,form in related_forms.items():
         model = self.model                  # The model being saved
         obj = self.object                   # The object created when it was saved
@@ -1082,9 +1304,9 @@ def save_related_forms(self):
         if related_formset.is_valid():
             related_formset.save()
         else:
-            # TODO: Report errors cleanly on new edit form
-            # Errors are in related_formset.errors
-            raise ValueError("Invalid Data")
+            validation_errors[name] = related_formset.errors
+    
+    return None if len(validation_errors) == 0 else validation_errors 
 
 def custom_field_callback(field):
     '''A place from which to deliver a customised formfield for a given field'''
@@ -1121,8 +1343,20 @@ def add_model_context(self, context, plural, title=False):
 
         # Check for related models and pass into the context either a related form or related view.
         # Only do this if the model asks us to do so via the add_related attribute.
-        if self.operation in ["add", "edit", "detail", "view"] and len(add_related(context["model"])) > 0:
-            related_forms = get_related_forms(context["model"], self.operation, self.object)
+        if self.operation in ["add", "edit"] and len(add_related(context["model"])) > 0:
+            if hasattr(self.request, 'POST') and not self.request.POST is None and len(self.request.POST)>0:
+                form_data = self.request.POST
+            elif hasattr(self.request, 'GET') and not self.request.GET is None and len(self.request.GET)>0:
+                form_data = self.request.GET
+            else:
+                form_data = None
+            
+            if hasattr(self, 'object') and isinstance(self.object, context['model']):
+                db_object = self.object
+            else:
+                db_object = None
+                  
+            related_forms = get_related_forms(context["model"], self.operation, form_data, db_object)
             context['related_forms'] = related_forms
 
         if self.operation in ["add", "edit"] and 'form' in context:

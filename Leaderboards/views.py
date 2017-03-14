@@ -1,13 +1,14 @@
 import re
 import json
 import cProfile, pstats, io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from collections import OrderedDict
 
-from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, NEVER
 
-from django.db.models import Count
+from django import forms
+from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
@@ -61,11 +62,19 @@ def updated_user_from_form(user, request):
             registrars.user_set.remove(user)
     user.save
 
+def clean_submitted_data(self):
+    '''
+    Do stuff before the model is saved
+    '''
+    model = self.model._meta.model_name
+    
 def process_submitted_model(self):
     '''
-    When a model form is posted, this function will perform model specific updates, based on the model specified in the form (kwargs) as "model"
+    When a model form is posted, this function will perform model specific updates, based on the model 
+    specified in the form (kwargs) as "model"
     
-    It will be running inside a transaction and can bail with an IntegrityError if something goes wrong achieving a rollback.
+    It will be running inside a transaction and can bail with an IntegrityError if something goes wrong 
+    achieving a rollback.
     
     This is executed inside a transaction as a callback from generic_view_extensions CreateViewExtended and UpdateViewExtended,
     so it can throw an Integrity Error to roll back the transaction. This is important if it is trying to update a number of 
@@ -180,6 +189,8 @@ def process_submitted_model(self):
                 else:
                     raise ValueError("Database error: More than one team with same players in database.")
 
+        # TODO: Ensure each player in game is unique.
+        
         # Calculate and save the TrueSkill rating impacts to the Performance records
         session.calculate_trueskill_impacts()
         
@@ -255,6 +266,7 @@ class view_Add(CreateViewExtended):
     template_name = 'CoGs/form_data.html'
     operation = 'add'
     extra_context = context_provider
+    #pre_processor = clean_submitted_data
     post_processor = process_submitted_model
 
 # TODO: Test that this does validation and what it does on submission errors
@@ -270,10 +282,13 @@ class view_Edit(UpdateViewExtended):
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
     extra_context = context_provider
+    #pre_processor = clean_submitted_data
     post_processor = process_submitted_model
 
 class view_Delete(DeleteViewExtended):
     # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
+    # TODO: When deleting a session need to check for ratings that refer to it as last_play or last_win
+    #        and fix the reference or delete the rating.
     template_name = 'CoGs/delete_data.html'
     operation = 'delete'
     format = odf.normal
@@ -281,7 +296,6 @@ class view_Delete(DeleteViewExtended):
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
     operation = 'list'
-    # TODO: Add message reporting how many items listed and the filter used.
 
 class view_Detail(DetailViewExtended):
     template_name = 'CoGs/view_data.html'
@@ -296,47 +310,29 @@ def view_Leaderboards(request):
     '''
     The raison d'etre of the whole site, this view presents the leaderboards. 
     '''
-    # FIXME: Respond to GET request specifing columns, league and changed_since
-    # FIXME: Add a league filter drop selector and present the leaderboards for the selected league
-    # FIXME: Add a date_time selection for changed_since, and present only leaderboards changed since that date (so for games with sessions on or after then)
+    # Fetch the filter requests if provided     
+    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
+    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
+    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else NEVER
     
-    # NOTE: request.GET is a dict of the Get parameters.
-    # TODO: Add a league and player and maybe a date time widget to the context somehow (that could)
-    # Or actually just a list of leagues and players, that's better. Form can build the controls.
-    # Should just add the GET params to context so that the form can select the the right elements.
+    # Fetch rendering options if provided     
+    cols = request.GET['cols'] if 'cols' in request.GET else 4
+    names = request.GET['names'] if 'names' in request.GET else "complete"
+    links = request.GET['links'] if 'links' in request.GET else "CoGs"
 
     # Get list of leagues, (pk, name) tuples.
     leagues = [(ALL_LEAGUES, 'ALL')] 
     leagues += [(x.pk, str(x)) for x in League.objects.all()]
-    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
-    
+
     # Get list of players, (pk, name) tuples.
     players = [(ALL_PLAYERS, 'ALL')] 
     if 'league' in request.GET:
         players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=league)]
     else:   
-        players += [(x.pk, str(x)) for x in Player.objects.all()]
-    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
-
-    # TODO: Be robust against bad formats! 
-    changed_since = parser.parse(request.GET['changed_since'] if 'changed_since' in request.GET else NEVER)
-
-    leaderboard = {}
-    plays = {}
-    sessions = {}
-    leaderboards = []
+        players += [(x.pk, str(x)) for x in Player.objects.all()]    
     
-    for game in Game.objects.all():
-        if league == ALL_LEAGUES or game.leagues.filter(pk=league).exists():
-            lb = game.leaderboard(league, player, changed_since, indexed=True)
-            if not lb is None: 
-                leaderboard[game] = lb
-                plays[game] = game.global_plays['total']      
-                sessions[game] = game.global_sessions.count() 
-    
-    # Present leaderboards as a sorted list by a play count (selected above)
-    for game in sorted(plays, key=plays.__getitem__, reverse=True):
-        leaderboards.append((game.pk, game.name, plays[game], sessions[game], leaderboard[game]))
+    # Fetch the JOSON leaderboards
+    leaderboards = ajax_Leaderboards(request, raw=True) 
 
     # TODO: Make this more robust against illegal PKs. The whole view should be graceful if sent a bad league or player.
     try:
@@ -362,17 +358,65 @@ def view_Leaderboards(request):
 
     c = {'title': title,
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
+         'leaderboard_count': json.dumps(len(leaderboards)),
          'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'league': json.dumps(league),
          'player': json.dumps(player),
-         'changed_since': json.dumps(str(changed_since)),
+         'changed_since': json.dumps(str(changed_since) if changed_since != NEVER else ""),
          'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
          'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
          'now': timezone.now(),
-         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])}
+         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0]),
+         'cols': json.dumps(cols),
+         'names': json.dumps(names),
+         'links': json.dumps(links)}
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
+
+def ajax_Leaderboards(request, raw=False):
+    '''
+    A view that returns a JSON string representing requested leaderboards.
+    
+    This is used with raw=True as well view_Leaderboards to get the leaderboard data. 
+    '''
+    # Fetch the filter requests if provided     
+    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
+    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
+    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else NEVER
+
+    # Fetch the name renderig option if provided
+    names = request.GET['names'] if 'names' in request.GET else "complete"
+
+    leaderboard = {}
+    plays = {}
+    sessions = {}
+    leaderboards = []
+
+    # Now let's build the list of games that match our filter.
+    gfilter = Q()
+    if league != ALL_LEAGUES:
+        gfilter &= Q(sessions__league__pk=league)
+    if player != ALL_PLAYERS:
+        gfilter &= Q(sessions__performances__player__pk=player)
+    if changed_since != NEVER:
+        gfilter &= Q(sessions__date_time__gte=changed_since)
+        
+    games = Game.objects.filter(gfilter)
+    
+    for game in games:
+        if league == ALL_LEAGUES or game.leagues.filter(pk=league).exists():
+            lb = game.leaderboard(league, names=names, indexed=True)
+            if not lb is None: 
+                leaderboard[game] = lb
+                plays[game] = game.global_plays['total']      
+                sessions[game] = game.global_sessions.count() 
+    
+    # Present leaderboards as a sorted list by a play count (selected above)
+    for game in sorted(plays, key=plays.__getitem__, reverse=True):
+        leaderboards.append((game.pk, game.BGGid, game.name, plays[game], sessions[game], leaderboard[game]))
+        
+    return leaderboards if raw else HttpResponse(json.dumps(leaderboards))
 
 def ajax_Game_Properties(request, pk):
     '''
@@ -406,25 +450,59 @@ def view_CheckIntegrity(request):
     All needs some serious tidy up for a productions site.    
     '''
     
-    print("Checking all Ratings for internal integrity.", flush=True)
-    for R in Rating.objects.all():
-        print(R, flush=True)
-        R.check_integrity()
-    
     print("Checking all Performances for internal integrity.", flush=True)
     for P in Performance.objects.all():
-        print(P, flush=True)
+        print("Performance: {}".format(P), flush=True)
         P.check_integrity()
+
+    print("Checking all Ranks for internal integrity.", flush=True)
+    for R in Rank.objects.all():
+        print("Rank: {}".format(R), flush=True)
+        R.check_integrity()
     
     print("Checking all Sessions for internal integrity.", flush=True)
     for S in Session.objects.all():
-        print(S, flush=True)
+        print("Session: {}".format(S), flush=True)
         S.check_integrity()
-        
+
+    print("Checking all Ratings for internal integrity.", flush=True)
+    for R in Rating.objects.all():
+        print("Rating: {}".format(R), flush=True)
+        R.check_integrity()
+
     return HttpResponse("Passed All Integrity Tests")
 
 def view_RebuildRatings(request):
     html = rebuild_ratings()
+    return HttpResponse(html)
+
+def view_UnwindToday(request):
+    '''
+    A simple view that deletes all sessions (and associated ranks and performances) created today. Used when testing. 
+    Dangerous if run on a live database on same day as data was entered clearly. Testing view only.
+    '''
+    
+    unwind_to = date.today() # - timedelta(days=1)
+    
+    performances = Performance.objects.filter(created_on__gte=unwind_to)
+    performances.delete()
+    
+    ranks = Rank.objects.filter(created_on__gte=unwind_to)
+    ranks.delete()
+
+    sessions = Session.objects.filter(created_on__gte=unwind_to)
+    sessions.delete()
+    
+    ratings = Rating.objects.filter(created_on__gte=unwind_to)
+    ratings.delete()
+    
+    # Now for all ratings remaining we have to reset last_play (if test sessions updated that).
+    ratings = Rating.objects.filter(Q(last_play__gte=unwind_to)|Q(last_victory__gte=unwind_to))
+    for r in ratings:
+        r.recalculate_last_play_and_victory()
+
+    html = "Success"
+    
     return HttpResponse(html)
 
 def view_Fix(request):
@@ -451,6 +529,15 @@ def view_Fix(request):
     #html = rebuild_ratings()
     #html = import_sessions()
     
+    
+    html = "Success"
+    
+    return HttpResponse(html)
+
+def view_Kill(request, model, pk):
+    m = class_from_string('Leaderboards', model)
+    o = m.objects.get(pk=pk)
+    o.delete()
     
     html = "Success"
     
@@ -570,7 +657,7 @@ def rebuild_ratings():
     now = datetime.now()
 
     return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
-    
+
 def force_unique_session_times():
     '''
     A quick hack to scan through all sessions and ensure none have the same session time

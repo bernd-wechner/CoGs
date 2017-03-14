@@ -35,8 +35,12 @@ urlpatterns = [
     
     # Some temporary internal URLS for now ...
     url(r'^fix', views.view_Fix, name='fix'),
+    url(r'^unwind', views.view_UnwindToday, name='unwind'),
     url(r'^check', views.view_CheckIntegrity, name='check'),
     url(r'^rebuild', views.view_RebuildRatings, name='rebuild'),
+
+    # Provisional URL (remove in prodcuction, a duke nukem way of deleting records)
+    url(r'^kill/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Kill, name='kill'),
 
     # CoGs Generic Views 
     # These expect to receive the following in kwargs 
@@ -61,7 +65,8 @@ urlpatterns = [
     url(r'^leaderboards', views.view_Leaderboards, name='leaderboards'),
     
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
-    url(r'^game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
+    url(r'^json/game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
+    url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),
      
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

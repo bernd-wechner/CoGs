@@ -35,7 +35,7 @@ could improve below, and improve it!
     sudo apt-get install postgresql pgadmin3
     sudo apt-get install python3 python3-django python3-psycopg2 python3-yaml 
     sudo apt-get install git
-    sudo -H pip3 install trueskill django-debug-toolbar django-url-filter django-intenumfield titlecase
+    sudo -H pip3 install trueskill django-debug-toolbar django-url-filter django-intenumfield django_select2 titlecase 
     ```
 		
 2. Install Eclipse and Pydev

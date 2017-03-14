@@ -17,4 +17,4 @@ FROM
   LEFT OUTER JOIN public."Leaderboards_game" "Game"
   ON "Leaderboards_session".game_id = "Game".id
 WHERE 
-  "Leaderboards_performance".session_id = 537;
+  "Leaderboards_performance".session_id = 580;

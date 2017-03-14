@@ -1,0 +1,7 @@
+Here's what I'm in middle of:
+
+Just fixed it so get_related_forms handles data sources properly priority is form submitted data, then database data, then empty.
+So it now works when a clean raises a ValidationError, and bounces back to the View, with form data.
+
+Now I need to find a place to put a relationship clean for a whole session. Model.clean() is only for internal model related stuff.
+I need an overarching entry point to define a related_clean or compound_clean, namely a clean that cleans a whole Session with its ranks and performances.

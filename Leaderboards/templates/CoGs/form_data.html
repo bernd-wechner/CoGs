@@ -41,8 +41,8 @@
 				var Players 		= {{ related_forms.Performance.field_values.player|NoneToNull }};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
 				var Weights 		= {{ related_forms.Performance.field_values.partial_play_weighting|NoneToNull }}; 	{# Partial play weighting factors corresponding to the players in Players #}
 
-				var Teams 			= {{ related_forms.Rank.field_values.Team_name|QuoteValues|safe }}; 		{# Names of the teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
-				var TeamPlayers 	= {{ related_forms.Rank.field_values.Team_players|NoneToNull }};    		{# Primary Keys of the players in the team in Team. #}
+				var Teams 			= {{ related_forms.Rank.field_values.Team__name|QuoteValues|safe }}; 		{# Names of the teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+				var TeamPlayers 	= {{ related_forms.Rank.field_values.Team__players|NoneToNull }};    		{# Primary Keys of the players in the team in Team. #}
 				
 				
 				{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
@@ -87,5 +87,27 @@
 
 	<input type="submit" value="Submit" style="margin-top:20px;"/>
 </form>
+
+{#We want to submit the local timezone info as best we can with the form so submitted times can be saved in UTC properly. #}
+<script src="{% static 'CoGs/js/jstz.min.js'%}"></script>
+<script>
+	var tz = jstz.determine();
+	var offset = new Date().getTimezoneOffset()/60;
+	
+	var form = document.getElementById("formData");
+	
+	var hiddenTZ = document.createElement("input");
+	hiddenTZ.setAttribute("type", "hidden");
+	hiddenTZ.setAttribute("name", "TZname");
+	hiddenTZ.setAttribute("value", tz.name());	
+
+	var hiddenOffset = document.createElement("input");
+	hiddenOffset.setAttribute("type", "hidden");
+	hiddenOffset.setAttribute("name", "TZoffset");
+	hiddenOffset.setAttribute("value", offset);
+	
+	form.appendChild(hiddenTZ);
+	form.appendChild(hiddenOffset);
+</script>
 
 {% endblock %}
