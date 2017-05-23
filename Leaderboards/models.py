@@ -2,7 +2,7 @@
 import trueskill
 
 from django.db import models, DataError, IntegrityError
-from django.db.models import Sum, Max, Avg, Count, Q
+from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
 from django.core import checks
 from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned
 from django.core.validators import RegexValidator
@@ -34,6 +34,7 @@ from datetime import datetime, timedelta
 MAX_NAME_LENGTH = 200                       # The maximum length of a name in the database, i.e. the char fields for player, game, team names and so on.
 ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
 ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
+ALL_GAMES = "ALL"                           # A reserved key for leaderboard filtering representing all games
 FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
 NEVER = timezone.make_aware(datetime.min)   # Used for times to indicat if there is no last play or victory that has a time 
 
@@ -467,40 +468,88 @@ class Game(models.Model):
         '''
         return self.leaderboard(ALL_LEAGUES)
     
-    def rating(self, player):
+    def rating(self, player, asat=None):
         '''
         Returns the Trueskill rating for this player at the specified game
         '''
-        try:
-            r = Rating.objects.get(player=player, game=self)
-        except ObjectDoesNotExist:
-            r = Rating.create(player=player, game=self)
-        except MultipleObjectsReturned:
-            raise ValueError("Database error: more than one rating for {} at {}".format(player.name_nickname, self.name))
-        return r
+        
+        if asat is None:
+            try:
+                r = Rating.objects.get(player=player, game=self)
+            except ObjectDoesNotExist:
+                r = Rating.create(player=player, game=self)
+            except MultipleObjectsReturned:
+                raise ValueError("Database error: more than one rating for {} at {}".format(player.name_nickname, self.name))
+            return r
+        else:
+            # Use the Performance model (and time stamped associated sessions_ to construct 
+            # a rating object as at a specific date/time
+            # TODO: Implement
+            pass  
 
-    def session_list(self, league=None):
+    def last_performance(self, league=ALL_LEAGUES, player=ALL_PLAYERS, asat=None):
+        '''
+        Returns the last performance at this game (optionally as at a given date time) for
+        a player or all players in a specified league or all players in all leagues. 
+        
+        Returns a Performance queryset. 
+        '''
+        pfilter = Q(session__game=self) 
+        if league != ALL_LEAGUES:
+            pfilter &= Q(player__leagues=league)
+        if player != ALL_PLAYERS:
+            pfilter &= Q(player=player)
+        if not asat is None:
+            pfilter &= Q(session__date_time__lte=asat)
+        
+        # Aggregate for max date_time for a given player. That is we want a Performance 
+        # per player, the one with the greatest date_time (that is before asat if specified) 
+        
+        pfilter = Q(
+            session__date_time=Subquery(
+                (Performance.objects
+                    .filter(Q(player=OuterRef('player')) & pfilter)
+                    .values('player')
+                    .annotate(max_date=Max('session__date_time'))
+                    .values('max_date')[:1]
+                ), output_field=models.DateField()
+            )
+        )
+        
+        return Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
+
+    def session_list(self, league=None, asat=None):
         '''
         Returns a list of sessions that played this game. Useful for counting or traversing.        
 
         Such a list is returned for the specified league or as the value in a dictionary 
-        keyed on league if no leage is specified, with the reserved key ALL_LEAGUES containing 
+        keyed on league if no league is specified, with the reserved key ALL_LEAGUES containing 
         the global play counts. 
+        
+        If league is ALL_LEAGUES this returns the session list for ALL_LEAGUES which is distinct
+        form the dictionary of such session lists that is returned if no league is specified.  
+        
+        Optionally can provide the list of sessions played as at a given date time. 
         '''
         if league is None:
             sl = {}
             leagues = League.objects.filter(games=self)
-            sl[ALL_LEAGUES] = self.session_list(ALL_LEAGUES)                
+            sl[ALL_LEAGUES] = self.session_list(ALL_LEAGUES, asat)                
             for league in leagues:
-                sl[league] = self.session_list(league)
+                sl[league] = self.session_list(league, asat)
             return sl          
-        else:
+        elif asat is None:
             if league == ALL_LEAGUES:
                 return Session.objects.filter(game=self)
             else:    
                 return Session.objects.filter(game=self, league=league)
+        else:
+            if league == ALL_LEAGUES:
+                return Session.objects.filter(game=self, date_time__lte=asat)
+            else:    
+                return Session.objects.filter(game=self, league=league, date_time__lte=asat)
     
-    def play_counts(self, league=None):
+    def play_counts(self, league=None, asat=None):
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
             total: is the sum of all the individual player counts (so a count of total play experiences)
@@ -511,15 +560,17 @@ class Game(models.Model):
             
         Such a dictionary is returned for the specified league or as the value in a dictionary 
         keyed on league if no leage is specified, with the reserved key ALL_LEAGUES containing 
-        the global play counts. 
+        the global play counts.
+        
+        Optionally can provide the count of plays as at a given date time. 
         '''
         if league is None:
             pc = {}
             leagues = League.objects.filter(games=self)
-            pc[ALL_LEAGUES] = self.play_counts(ALL_LEAGUES)                
+            pc[ALL_LEAGUES] = self.play_counts(ALL_LEAGUES, asat)                
             for league in leagues:
-                pc[league] = self.play_counts(league)
-        else:
+                pc[league] = self.play_counts(league, asat)
+        elif asat is None:
             if league == ALL_LEAGUES:
                 ratings = Rating.objects.filter(game=self)
             else:    
@@ -531,27 +582,51 @@ class Game(models.Model):
                     pc[key] = 0
                     
             pc['sessions'] = self.session_list(league).count()
-        
+        else:
+            # Can't use the Ratings model as that stores current ratings (and play counts). Instead use the Performance
+            # model which records ratings (and play counts) after every game session and the sessions have a date/time
+            # so the information can be extracted therefrom.
+            if league == ALL_LEAGUES:
+                performances = self.last_performance(asat=asat)
+            else:
+                performances = self.last_performance(league=league, asat=asat)
+
+            # The play_number of the last performance is the play count at that time.
+            pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
+            for key in pc:
+                if pc[key] is None:
+                    pc[key] = 0
+                    
+            pc['sessions'] = self.session_list(league, asat=asat).count()
+                
         return pc
 
-    def leaderboard(self, league=None, names="complete", indexed=False):
+    def leaderboard(self, league=None, asat=None, names="complete", indexed=False):
         '''
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
-        specified league, or for all leagues if None is specified.
-        '''       
+        specified league, or for all leagues if None is specified. As at a given date/time if such is specified,
+        else, as at now (latest or current, leaderboard).
+        '''
+        
+        # TODO: An idea for a view of leaderboard at a given date (for diffs):
+        # A SQL view is posisble I think which lists all performances of a given
+        # game in a given league sorted by session date, then grouped by player 
+        # selecting max date (latest one). This should be the actual leaderboard 
+        # at that date for that game/leage in on simple query! Sounds very simple!
+        # Do it!  
+                  
         if league is None:
             lb = {}
             leagues = League.objects.filter(games=self)
-            lb[ALL_LEAGUES] = self.leaderboard(ALL_LEAGUES, indexed)                
+            lb[ALL_LEAGUES] = self.leaderboard(ALL_LEAGUES, asat, names, indexed)                
             for league in leagues:
-                lb[league] = self.leaderboard(league, indexed) 
-        else:
+                lb[league] = self.leaderboard(league, asat, names, indexed) 
+        elif asat is None:
             # If a league is specified we don't want to see people from other leagues
             # on this leaderboard, only players from the nominated league.  
-            if league == ALL_LEAGUES:
-                lb_filter = Q(game=self)
-            else:
-                lb_filter = Q(game=self) & Q(player__leagues=league)
+            lb_filter = Q(game=self)
+            if league != ALL_LEAGUES:
+                lb_filter = lb_filter & Q(player__leagues=league)
                 
             ratings = Rating.objects.filter(lb_filter)
         
@@ -559,10 +634,24 @@ class Game(models.Model):
             lb = []
             for r in ratings:
                 name = str(r.player) if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                lb_entry = (name, r.trueskill_eta, r.plays, r.victories) 
                 if indexed:
-                    lb.append((r.player.pk, r.player.BGGname, name, r.trueskill_eta, r.plays, r.victories))
-                else:
-                    lb.append((name, r.trueskill_eta, r.plays, r.victories))
+                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
+                lb.append(lb_entry)
+        else: # Build leaderboard as at a given time as specified
+            # Can't use the Ratings model as that stores current ratings. Instead use the Performance
+            # model which records ratings after every game session and the sessions have a date/time
+            # so the information can be extracted therefrom.
+            ratings = self.last_performance(league=league, asat=asat)            
+
+            # Now build a leaderboard from all the ratings for players (in this league) at this game ... 
+            lb = []
+            for r in ratings:
+                name = str(r.player) if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                lb_entry = (name, r.trueskill_eta_after, r.play_number, r.victory_count) 
+                if indexed:
+                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
+                lb.append(lb_entry)
                 
         return None if len(lb) == 0 else lb
             
@@ -885,7 +974,8 @@ class Session(models.Model):
         FS = []
         for session in future_sessions:
             fs = session.future_sessions
-            FS.append(fs)
+            if not fs is None:
+                FS.append(fs)
             
         # Combine the results
         future_sessions = sorted(chain(future_sessions, *FS), key=lambda s: s.date_time)
@@ -941,8 +1031,7 @@ class Session(models.Model):
         Returns the Rank object for the nominated player in this session
         '''
         if self.team_play:
-            # TODO: Test this, made it up on the fly, need to get the rank of the team the player is in.
-            ranks = self.ranks.filter(team__player=player)   
+            ranks = self.ranks.filter(team__players=player)
         else:
             ranks = self.ranks.filter(player=player)
         
@@ -1104,6 +1193,7 @@ class Session(models.Model):
     # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
     # Am testint the new simpler way now leaving it in place for a while to see if any issues arise.
     #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
+    
     add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
         # Profiling reveals that this is rather expensive. 49 seconds to load a list of 86 sessions! So 0.57s/session. 
@@ -1381,13 +1471,25 @@ class Rank(models.Model):
             assert self.session.team_play, "Ingerity error: Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk)
         
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
-    def __unicode__(self): return  u'{} - {} - {}'.format(self.session.game, self.rank, self.team if self.session.team_play else self.player)
+    def __unicode__(self):
+        if self.session_id is None:
+            return  u'{} - {}'.format(self.rank, self.team if self.player is None else self.player)
+        else: 
+            return  u'{} - {} - {}'.format(self.session.game, self.rank, self.team if self.session.team_play else self.player)
     def __str__(self): return self.__unicode__()
 
     def clean(self):
         # Require that one of self.team and self.player is None 
         if self.team is None and self.player is None:
-            raise ValidationError("No team or player specified in rank {}".format(self.pk))
+            # FIXME: For now let clean pass with no team if teamplay is selected.
+            # This is because the team is not created until post processing (after the clean and save)
+            # at present. This should be rethought and perhaps done in pre-processing so as
+            # to present teams for the validation (and clean).
+            # But because we don't know if it's a team_play session or not, that is,
+            # clean is happening before the link to the session is made (self.session_id = None
+            # we have to pass this condition always for now. 
+            #raise ValidationError("No team or player specified in rank {}".format(self.pk))
+            pass
         if not self.team is None and not self.player is None:
             raise ValidationError("Both team and player specified in rank {}".format(self.pk))
         
@@ -1655,8 +1757,12 @@ class Performance(models.Model):
         pass
 
     add_related = None
-    sort_by = ['session', 'rank']
-    def __unicode__(self): return  u'{} - {} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.session, self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+    sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname'] # Need player to sort ties and team members.
+    def __unicode__(self):
+        if self.session_id is None:
+            return  u'{} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+        else: 
+            return  u'{} - {} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.session, self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
     def __str__(self): return self.__unicode__()
 
     def save(self, *args, **kwargs):
@@ -1772,7 +1878,7 @@ class Rating(Rating_Model):
             self.last_victory = session.date_time
         else:
             last_victory = session.previous_victory(performance.player)
-            self.last_victory = None if last_victory is None else last_victory.date_time   
+            self.last_victory = None if last_victory is None else last_victory.session.date_time   
         
         self.trueskill_mu = performance.trueskill_mu_after
         self.trueskill_sigma = performance.trueskill_sigma_after

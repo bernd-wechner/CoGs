@@ -33,16 +33,16 @@
 				{# Inititial values for  form fields. On needed if the operation is edit (not add) and used in form_rankings.js #}
 				var operation		= "{{operation}}"
 
-				var rIDs            = {{ related_forms.Rank.field_values.id|NoneToNull }};         						{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
-				var pIDs            = {{ related_forms.Performance.field_values.id|NoneToNull }}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+				var rIDs            = {{ related_forms.Rank.field_data.id|NoneToNull }};         						{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+				var pIDs            = {{ related_forms.Performance.field_data.id|NoneToNull }}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
 
-				var Ranking 		= {{ related_forms.Rank.field_values.rank|NoneToNull }};       						{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
+				var Ranking 		= {{ related_forms.Rank.field_data.rank|NoneToNull }};       						{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
 
-				var Players 		= {{ related_forms.Performance.field_values.player|NoneToNull }};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
-				var Weights 		= {{ related_forms.Performance.field_values.partial_play_weighting|NoneToNull }}; 	{# Partial play weighting factors corresponding to the players in Players #}
+				var Players 		= {{ related_forms.Performance.field_data.player|NoneToNull }};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
+				var Weights 		= {{ related_forms.Performance.field_data.partial_play_weighting|NoneToNull }}; 	{# Partial play weighting factors corresponding to the players in Players #}
 
-				var Teams 			= {{ related_forms.Rank.field_values.Team__name|QuoteValues|safe }}; 		{# Names of the teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
-				var TeamPlayers 	= {{ related_forms.Rank.field_values.Team__players|NoneToNull }};    		{# Primary Keys of the players in the team in Team. #}
+				var Teams 			= {{ related_forms.Rank.field_data.Team__name|QuoteValues|safe }}; 		{# Names of the teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+				var TeamPlayers 	= {{ related_forms.Rank.field_data.Team__players|NoneToNull }};    		{# Primary Keys of the players in the team in Team. #}
 				
 				
 				{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
