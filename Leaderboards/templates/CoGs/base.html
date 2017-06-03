@@ -7,6 +7,7 @@
 	<link rel="icon" href="{% static 'favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
+	{% block startscript %}{% endblock %}	
 </head>
 
 <body class="body">
@@ -81,7 +82,8 @@
 	
 	    <!-- Content -->
 	    <div id="content" class="content">
-	        {% block content_title %}{% if title %}<h1>{{ title }}</h1>{% endif %}{% endblock %}
+	        {% block content_title %}{% if title %}<h1>{% autoescape off %}{{ title }}{% endautoescape %}</h1>{% endif %}{% endblock %}
+	        {% block content_subtitle %}{% if subtitle %}<h2>{% autoescape off %}{{ subtitle }}{% endautoescape %}</h2>{% endif %}{% endblock %}
 	        {% block content %}{% endblock %}
 	        {% block sidebar %}{% endblock %}
 	        <br class="clear" />
@@ -92,4 +94,5 @@
 	</div>
 	<!-- END Container -->
 </body>
+{% block endscript %}{% endblock %}
 </html>

@@ -5,22 +5,26 @@ from datetime import datetime, timedelta, date
 from collections import OrderedDict
 
 from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, NEVER
+from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
 from django import forms
-from django.db.models import Count, Q
+from django.db.models import Count, Q, OuterRef, Subquery
+from django.db.models.fields import DateField 
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
 from django.contrib.auth.models import Group
 from django.core.serializers.json import DjangoJSONEncoder
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import is_aware, make_aware
 
-# TODO: Fix timezone handling. By defaul in Django wwe us UTC but we want to enter sesisons in local time and see result sin local time.
+# TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sesisons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
 #        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
 from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
+from django.utils.formats import localize
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
@@ -31,6 +35,12 @@ from django.utils.timezone import get_default_timezone_name, get_current_timezon
 #===============================================================================
 # Some support routines
 #===============================================================================
+
+def get_aware_datetime(date_str):
+    ret = parse_datetime(date_str)
+    if not is_aware(ret):
+        ret = make_aware(ret)
+    return ret
 
 def index(request):   
     return render(request, 'CoGs/base.html')
@@ -67,8 +77,11 @@ def clean_submitted_data(self):
     Do stuff before the model is saved
     '''
     model = self.model._meta.model_name
+
+def pre_process_submitted_model(self):
+    pass
     
-def process_submitted_model(self):
+def post_process_submitted_model(self):
     '''
     When a model form is posted, this function will perform model specific updates, based on the model 
     specified in the form (kwargs) as "model"
@@ -267,7 +280,8 @@ class view_Add(CreateViewExtended):
     operation = 'add'
     extra_context = context_provider
     #pre_processor = clean_submitted_data
-    post_processor = process_submitted_model
+    pre_processor = pre_process_submitted_model
+    post_processor = post_process_submitted_model
 
 # TODO: Test that this does validation and what it does on submission errors
 
@@ -283,7 +297,8 @@ class view_Edit(UpdateViewExtended):
     operation = 'edit'
     extra_context = context_provider
     #pre_processor = clean_submitted_data
-    post_processor = process_submitted_model
+    pre_processor = pre_process_submitted_model
+    post_processor = post_process_submitted_model
 
 class view_Delete(DeleteViewExtended):
     # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
@@ -306,19 +321,42 @@ class view_Detail(DetailViewExtended):
 # The Leaderboards view. What it's all about!
 #===============================================================================
 
+# Define defaults for the view inputs 
+default = {
+    'league': ALL_LEAGUES,
+    'player': ALL_PLAYERS,
+    'game': ALL_GAMES,
+    'as_at': None,
+    'changed_since': NEVER,
+    'compare_till': None,
+    'compare_back_to': None,
+    'compare_with': None,
+    'highlight': True,
+    'cols': 4,
+    'names': 'complete',
+    'links': 'CoGs'
+    }
+
 def view_Leaderboards(request): 
     '''
     The raison d'etre of the whole site, this view presents the leaderboards. 
     '''
-    # Fetch the filter requests if provided     
-    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
-    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
-    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else NEVER
+            
+    # Fetch the filter requests if provided
+    league = request.GET['league'] if 'league' in request.GET else default['league']
+    player = request.GET['player'] if 'player' in request.GET else default['player']
+    game = request.GET['game'] if 'game' in request.GET else default['game']
+    as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
+    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
+    compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
+    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
+    compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
+    highlight = json.loads(request.GET['highlight'].lower()) if 'highlight' in request.GET else default['highlight']
     
-    # Fetch rendering options if provided     
-    cols = request.GET['cols'] if 'cols' in request.GET else 4
-    names = request.GET['names'] if 'names' in request.GET else "complete"
-    links = request.GET['links'] if 'links' in request.GET else "CoGs"
+    # Fetch rendering options if provided    
+    cols = request.GET['cols'] if 'cols' in request.GET else default['cols']
+    names = request.GET['names'] if 'names' in request.GET else default['names']
+    links = request.GET['links'] if 'links' in request.GET else default['links']
 
     # Get list of leagues, (pk, name) tuples.
     leagues = [(ALL_LEAGUES, 'ALL')] 
@@ -326,14 +364,21 @@ def view_Leaderboards(request):
 
     # Get list of players, (pk, name) tuples.
     players = [(ALL_PLAYERS, 'ALL')] 
-    if 'league' in request.GET:
-        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=league)]
-    else:   
+    if league == ALL_LEAGUES:
         players += [(x.pk, str(x)) for x in Player.objects.all()]    
-    
-    # Fetch the JOSON leaderboards
-    leaderboards = ajax_Leaderboards(request, raw=True) 
+    else:   
+        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=league)]
 
+    # Get list of games, (pk, name) tuples.
+    games = [(ALL_GAMES, 'ALL')] 
+    if league == ALL_LEAGUES:
+        games += [(x.pk, str(x)) for x in Game.objects.all()]    
+    else:   
+        games += [(x.pk, str(x)) for x in Game.objects.filter(leagues__pk=league)]
+    
+    # Fetch the leaderboards
+    leaderboards = ajax_Leaderboards(request, raw=True)
+    
     # TODO: Make this more robust against illegal PKs. The whole view should be graceful if sent a bad league or player.
     try:
         P = Player.objects.get(pk=player)
@@ -345,6 +390,7 @@ def view_Leaderboards(request):
     except:
         L = None
         
+    # Format the page title
     if player == ALL_PLAYERS:
         if league == ALL_LEAGUES:
             title = "Global Leaderboards"
@@ -356,21 +402,47 @@ def view_Leaderboards(request):
         else:
             title = "Leaderboards for {} in the {} league".format(P, L)        
 
+    subtitle = []
+    if as_at != default['as_at']:
+        subtitle.append("as at {}".format(localize(as_at)))
+
+    if changed_since != default['changed_since']:
+        subtitle.append("changed after {}".format(localize(changed_since)))
+
+    if compare_back_to != default['compare_back_to']:
+        subtitle.append("compared back to the leaderboard as at {}".format(localize(compare_back_to)))
+    elif compare_with != default['compare_with']:
+        subtitle.append("compared up to with {} prior leaderboards".format(compare_with))
+        
     c = {'title': title,
+         'subtitle': "<br>".join(subtitle),
+         'now': timezone.now(),        
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          'leaderboard_count': json.dumps(len(leaderboards)),
          'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
          'players': json.dumps(players, cls=DjangoJSONEncoder),
+         'games': json.dumps(games, cls=DjangoJSONEncoder),
          'league': json.dumps(league),
          'player': json.dumps(player),
-         'changed_since': json.dumps(str(changed_since) if changed_since != NEVER else ""),
+         'game': json.dumps(game),
+         'changed_since': json.dumps(str(changed_since) if changed_since != default['changed_since'] else ""),
+         'as_at': json.dumps(str(as_at) if not as_at is default['as_at'] else ""),
+         'compare_till': json.dumps(str(compare_till) if compare_till != default['compare_till'] else ""),
+         'compare_back_to': json.dumps(str(compare_back_to) if not compare_back_to is default['compare_back_to'] else ""),
+         'compare_with': json.dumps(compare_with if not compare_with is default['compare_with'] else ""),
+         'highlight': json.dumps(highlight),
          'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
          'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
-         'now': timezone.now(),
-         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0]),
+         'ALL_GAMES': json.dumps(ALL_GAMES), 
          'cols': json.dumps(cols),
          'names': json.dumps(names),
-         'links': json.dumps(links)}
+         'links': json.dumps(links),
+         'default_cols': default['cols'],
+         'default_names': default['names'],
+         'default_links': default['links'],
+         'default_highlight': default['highlight'],
+         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])         
+         }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
 
@@ -378,22 +450,60 @@ def ajax_Leaderboards(request, raw=False):
     '''
     A view that returns a JSON string representing requested leaderboards.
     
-    This is used with raw=True as well view_Leaderboards to get the leaderboard data. 
+    This is used with raw=True as well view_Leaderboards to get the leaderboard data.
+    
+    Should only validly be called from view_Leaderboards when a view is rendered
+    or as an AJAX call when reqeusting a leaderboard refress because the player name 
+    presentation for example has changed. 
+    
+    Caution: This does not have any way of adjusting the context that the original 
+    view received, so any changes to leaderboard content that warrant an update to 
+    the view context (for example to display the nature of a filter) should be coming
+    through view_Leaderboards (which delivers context to the page). 
+    
+    The returned leaderboards are in the following rather general structure of
+    lists within lists. Some are tuples in the Python which whem JSONified for
+    the template become lists (arrays) in Javascript. Tis data structure is central
+    to iteraction with the front-end template for leadeboard rendering.
+    
+    Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier3)  
+    Tier2: A list of four value tuples (date_time, plays[game], sessions[game], Tier2)
+    Tier3: A list of six value tuples (player.pk, player.BGGname, player.name, rating.trueskill_eta, rating.plays, rating.victories)
+    
+    Tier1 is the header for a particular game
+
+    Tier2 is a list of leaderboard snapshots as at the date_time. In the default rendering and standard
+    view, this should be a list with one entry, and date_time of the last play as the timestamp. That 
+    would indicate a structure that presents the leaderboards for now. These could be filtered of course 
+    (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
+    The play count and session count for that game up to that time are in this tuple too.   
+    
+    Tier3 is the leaderboard for that game, a list of players with theit trueskill ratings. 
     '''
-    # Fetch the filter requests if provided     
-    league = request.GET['league'] if 'league' in request.GET else ALL_LEAGUES
-    player = request.GET['player'] if 'player' in request.GET else ALL_PLAYERS
-    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else NEVER
+   
+    # Fetch the filter requests if provided
+    league = request.GET['league'] if 'league' in request.GET else default['league']
+    player = request.GET['player'] if 'player' in request.GET else default['player']
+    game = request.GET['game'] if 'game' in request.GET else default['game']
+    as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
+    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
+    compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
+    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
+    compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
+    
+    # TODO: Bail with an error message
+    # TODO: Do consistency checks on all the dates submitted
+    if league != ALL_LEAGUES and not League.objects.filter(pk=league).exists():
+        pass
+    if player != ALL_PLAYERS and not Player.objects.filter(pk=player).exists():
+        pass
+    if game != ALL_GAMES and not Game.objects.filter(pk=game).exists():
+        pass
 
     # Fetch the name renderig option if provided
     names = request.GET['names'] if 'names' in request.GET else "complete"
 
-    leaderboard = {}
-    plays = {}
-    sessions = {}
-    leaderboards = []
-
-    # Now let's build the list of games that match our filter.
+    # Now let's build the list of games for Tier2 that match our filters.
     gfilter = Q()
     if league != ALL_LEAGUES:
         gfilter &= Q(sessions__league__pk=league)
@@ -402,19 +512,92 @@ def ajax_Leaderboards(request, raw=False):
     if changed_since != NEVER:
         gfilter &= Q(sessions__date_time__gte=changed_since)
         
-    games = Game.objects.filter(gfilter)
+    if game == ALL_GAMES:
+        games = Game.objects.filter(gfilter).distinct()
+    elif Game.objects.filter(pk=game).exists():
+        games = [Game.objects.get(pk=game)]
+    else:
+        games = []
+
+    leaderboard = {}  # Keyed on game, value is dic keyed on time.
+    plays = {}
+    sessions = {}
+    leaderboards = []
+    boardsort = {}   # Keyed on game, value is sort key (total play count by default)
     
     for game in games:
         if league == ALL_LEAGUES or game.leagues.filter(pk=league).exists():
-            lb = game.leaderboard(league, names=names, indexed=True)
-            if not lb is None: 
-                leaderboard[game] = lb
-                plays[game] = game.global_plays['total']      
-                sessions[game] = game.global_sessions.count() 
+            # Let's get the list of times for Tier2 that we want to present, as specified in the request
+            # These should reflect the session time stamps at which that leaderboard came to be.
+            times = []
+            if as_at is None:
+                last_session = Session.objects.filter(game=game).order_by("-date_time")[0]
+            else:
+                last_session = Session.objects.filter(date_time__lte=as_at, game=game).order_by("-date_time")[0]
+
+            if last_session:
+                times.append(last_session.date_time)
+            else:
+                times.append(timezone.make_aware(datetime.now()))
+            
+            # Either comparing with a previsou number of sessions or back to a given date
+            # Will produce a history of leaderboards.
+            if (not compare_with is None) or (not compare_back_to is None):
+                sfilter = Q(game=game)
+                
+                if compare_till is None:
+                    sfilter &= Q(date_time__lt=last_session.date_time)
+                else:
+                    sfilter &= Q(date_time__lte=compare_till)
+
+                if not compare_back_to is None:
+                    sfilter &= Q(
+                        date_time__gte=Subquery(
+                            (Session.objects
+                                .filter(sfilter & Q(date_time__lt=compare_back_to))
+                                .values('date_time')
+                                .order_by('-date_time')[:1]
+                            ), output_field=DateField()
+                        )
+                    )
+                    
+                    # sfilter &= Q(date_time__gte=compare_back_to)
+                    
+                last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
+                
+                if not compare_with is None:
+                    last_sessions = last_sessions[:compare_with]
+
+                for s in last_sessions:
+                    times.append(s.date_time)
+            
+            for time in times:            
+                # The first time should be the last session time for the game and thus should translate 
+                # to the same as what's in the Rating model. 
+                # TODO: Performan an integrity check around that and indeed if it's an ordinary
+                # leaderboard presentation check on performance between asat=time (which reads Performance)
+                # and asat=None (which read Rating).  
+                lb = game.leaderboard(league=league, asat=time, names=names, indexed=True)
+                if not lb is None: 
+                    if not game in leaderboard:
+                        leaderboard[game] = {}
+                        plays[game] = {}
+                        sessions[game] = {}
+                        boardsort[game] = "placeholder"
+                         
+                    leaderboard[game][time] = lb
+                    plays[game][time] = game.play_counts(league=league, asat=time)['total']      
+                    sessions[game][time] = game.session_list(league=league, asat=time).count()
+                    if boardsort[game] == "placeholder":
+                        boardsort[game] = (plays[game][time], sessions[game][time])
     
-    # Present leaderboards as a sorted list by a play count (selected above)
-    for game in sorted(plays, key=plays.__getitem__, reverse=True):
-        leaderboards.append((game.pk, game.BGGid, game.name, plays[game], sessions[game], leaderboard[game]))
+    for game in sorted(boardsort, key=boardsort.__getitem__, reverse=True):
+        snapshots = []
+        for time in sorted(leaderboard[game], reverse=True):
+            snapshot = (localize(time), plays[game][time], sessions[game][time], leaderboard[game][time])
+            snapshots.append(snapshot)
+        gameshot = (game.pk, game.BGGid, game.name, snapshots)
+        leaderboards.append(gameshot)
         
     return leaderboards if raw else HttpResponse(json.dumps(leaderboards))
 

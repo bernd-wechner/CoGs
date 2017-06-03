@@ -162,8 +162,17 @@ td.leaderboard, th.leaderboard
 	margin: 0;
 	padding: 4px;
 	border-width: 1px 1px 0 0;
-	background-color: #FFF7F0;
 	white-space: nowrap;
+}
+
+td.leaderboard.normal, th.leaderboard.normal, td.leaderboard.highlight_off
+{
+	background-color: #FFF7F0;
+}
+
+td.leaderboard.highlight_on
+{
+	background-color: #FFE0E0;
 }
 
 table.leaderboard.wrapper 
@@ -183,12 +192,16 @@ td.leaderboard.wrapper
 
 table.leaderboard.options
 {
+	border-width: 1px 1px 1px 1px;
 	margin-left: 10px;
 }
 
 td.leaderboard.options
 {
+	border-style: none;
+	border-width: 0 0 0 0;
 	padding-top: 10px;
 	padding-left: 10px;
 	padding-right: 10px;
 }
+

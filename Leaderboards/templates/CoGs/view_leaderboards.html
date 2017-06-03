@@ -1,77 +1,153 @@
 {% extends "CoGs/base.html" %}
 {% load staticfiles %}
 {% block title %}Leaderboards{% endblock %}
-{% block content %}
 
-<table class='leaderboard options'><tr><td class='leaderboard options'>
-	<h2 style="margin-top:0;">Options:</h2>
-	<p>
-		Format these {{ leaderboard_count }} leaderboards in
-		<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
-		  <option>1</option>
-		  <option>2</option>
-		  <option>3</option>
-		  <option>4</option>
-		  <option>5</option>
-		  <option>6</option>
-		</select>
-		<label>columns</label>
-		
-		, use player 
-		
-		<select id="selNames" onchange="refetchLeaderboards(event)">
-		  <option value="nick">nickname</option>
-		  <option value="full">full name</option>
-		  <option  value="complete">full name (nickname)</option>
-		</select>
-		
-		and link
-		
-		<select id="selLinks" onchange='DrawTables("tblLB");'>
-		  <option value="none">nowhere</option>
-		  <option value="CoGs">internally</option>
-		  <option value="BGG">boardgamegeek.com</option>
-		</select>
-	</p>
-	
-	<p>
-	<button type="button" id='btnFilter' onclick="get_filtered_view();">Filter</button>
-	
-	leaderboards by
-	
-	<label>League: </label><select id='selLeague'></select>
-	
-	<label>Player: </label><select id='selPlayer'"></select>
-	
-	<label>Changed since: </label>
-	<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}>
-	</p>
-	
-	<p>
-	<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button>
-	leaderboards to clipboard
-	</p>
-</td></tr></table>
+{% block content %}
+<table class='leaderboard options'>
+	<tr>
+		<td class='leaderboard options' valign='top'>
+			<span style="font-size:125%; font-weight: bold;">Format</span>
+		</td>
+		<td class='leaderboard options'>
+			these <b>{{ leaderboard_count }}</b> leaderboards 
+			
+			<label id='lblSnaps'></label>
+			in
+			
+			<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
+			  <option>1</option>
+			  <option>2</option>
+			  <option>3</option>
+			  <option>4</option>
+			  <option>5</option>
+			  <option>6</option>
+			</select>
+			<label>columns</label>
+			
+			, use player 
+			
+			<select id="selNames" onchange="refetchLeaderboards(event)">
+			  <option value="nick">nickname</option>
+			  <option value="full">full name</option>
+			  <option  value="complete">full name (nickname)</option>
+			</select>
+			
+			and link
+			
+			<select id="selLinks" onchange='DrawTables("tblLB");'>
+			  <option value="none">nowhere</option>
+			  <option value="CoGs">internally</option>
+			  <option value="BGG">boardgamegeek.com</option>
+			</select>
+			.			
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
+			Highlight changes.
+		</td>
+	</tr>
+	<tr>
+		<td class='leaderboard options' valign='top'>
+			<button type="button" id='btnFilter' onclick="get_new_view();">Filter</button> 
+		</td>
+		<td class='leaderboard options'>			
+			leaderboards as <i><a onclick="toggle_filters();">follows</a></i>:
+		</td>
+	</tr>
+	<tr class='toggle' style="display:none;">
+		<td class='leaderboard options'/>
+		<td class='leaderboard options' style="line-height:200%; padding-top:0px">
+			<label>Only games played by league: </label><select id='selLeague'></select><br>
+			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
+			<label>Only this game: </label><select id='selGame'></select><br>
+			<label>Only leaderboards that changed on or after: </label>
+			<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}><br>
+			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
+			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
+			<label>Compare each leaderboard with</label>
+			<input id="compare_with" size=3 type="text" value={{ compare_with|safe }}  onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
+			<label>prior leaderboards, or leaderboards back to</label>
+			<input class="DateTimeField" id="compare_back_to_date_time" type="text" value={{ compare_back_to|safe }}>
+			<label>and/or up until</label>			
+			<input class="DateTimeField" id="compare_till_date_time" type="text" value={{ compare_till|safe }}>
+		</td>
+	</tr>
+	<tr>
+		<td class='leaderboard options'>
+			<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> 
+		</td>
+		<td class='leaderboard options'>
+			leaderboards to clipboard
+		</td>
+	</tr>
+</table>
 
 <table id='tblLB'>
 </table>
+{% endblock %}
 
-{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+{% block startscript %}
 <script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
 <script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>
 <script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
 
 <script>
-	var LinkSelect = document.getElementById("selLinks");
-
 	// Nab the data from context
-	var leaderboards = {{leaderboards|safe}};   // Games and Players come indexed with pk and BGGid/name before the actual leaderboard data
 	var leagues = {{ leagues|safe }};
 	var league = {{ league|safe }};
 	var players = {{ players|safe }};
 	var player = {{ player|safe }};
+	var games = {{ games|safe }};
+	var game = {{ game|safe }};
+
+	// The big one! Leaderboards. This is a structure of lists within lists
+	// Games, Snapshots and Players in that order. 
+	//
+	// see view_Leaderboards for specs and generation of what is delivered, but here is
+	// the expectation:
+	// A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
+	// Snapshots is a list of lists which have four values: Date time string, count of plays, count of sessions, Leaderboard
+	// Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
+	//
+	// So lists within lists within a list. This is what we're here to present.
+	//
+	// As a side note, the standard view has one snapshot, the current ratings, and leaderboards pr at some other specified time (as_at) 
+	// Extra snapshots are expected when asked for (for comparisons with history and evolutionary examinations), one
+	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
+	// up to and including the snapshot at compare_till or now if compare_till isn't specified.  
+
+	var leaderboards = {{leaderboards|safe}}; 
 	
+	// Layout is driven by snapshots.
+	// 
+	// If we have one snapshot per game all is normal and we can just layout 
+	//    one board per game using cols as requested.
+	// If we have two snapshots per game max, then we're comparing two points in time
+	//    and snaphots can be presented in pairs. We can sort of respect cols as requested 
+	//    but each col has a pair of snapshots side by side for comparison so we'll ensure it's 
+	//    even (round up) and halve it to get about the requested number of columns.    
+	// If we have more than 2 snapshots per game we are looking at leaderboard timelines 
+	//    or evolutions and so want one game per row, and one column per snapshot, so we
+	//    can safely ignore cols, and use a table as wide as maxshots.   
+	
+	var maxshots = 0;
+	var totalshots = 0;
+	for (var g=0; g<leaderboards.length; g++) {
+		snapshots = leaderboards[g][3].length;
+		totalshots += snapshots;
+		if (snapshots > maxshots) maxshots = snapshots;
+	}
+</script>	
+{% endblock %}
+
+{% block endscript %}
+{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
+<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+<script>
+	// Report the snapshot count
+	if (totalshots > leaderboards.length) {
+		lblSnaps = document.getElementById("lblSnaps");
+		lblSnaps.innerHTML = "(" + totalshots + " snapshots)";
+	}
+
 	// Select the request cols
 	selCols = $('#selCols');
 	selCols.val({{ cols|safe }});
@@ -83,6 +159,10 @@
 	// Select the request link style
 	selLinks = $('#selLinks');
 	selLinks.val({{ links|safe }});
+
+	// Set the requested highlight
+	var chkHighlightChanges = document.getElementById("chkHighlightChanges");
+	chkHighlightChanges.checked = {{highlight}};
 
 	// Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
 	var datetime_format = "{{default_datetime_input_format}}";
@@ -114,22 +194,72 @@
 	}	
 	select.append(player_choices);
 
+	// Populate the Game selector
+	var select = $('#selGame');                        
+    select.find('option').remove();    
+	var game_choices = "";
+	for (var i = 0, len = games.length; i < len; i++) {
+		pair = games[i];
+	    game_choices += '<option value=' + pair[0] + (pair[0] == game ? ' selected ' : '') + '>' + pair[1] + '</option>';
+	}	
+	select.append(game_choices);
+
+	function toggle_filters() {
+		current = $(".toggle")[0].style.display;
+		if (current == "none")
+			$(".toggle").css('display', 'table-row');
+		else
+			$(".toggle").css('display', 'none');		
+	}
+
+	function toggle_highlights() {
+		if (document.getElementById("chkHighlightChanges").checked)
+			$(".leaderboard.highlight_off").removeClass().addClass('leaderboard highlight_on');
+		else
+			$(".leaderboard.highlight_on").removeClass().addClass('leaderboard highlight_off');
+	}
+	
 	function URLopts() {
 		opts = []
+
+		// Get the page elements		
+		var selLeague = document.getElementById("selLeague");
+		var selPlayer = document.getElementById("selPlayer");
+		var selGame = document.getElementById("selGame");
+
+		var from_date_time = document.getElementById("from_date_time");
+		var as_at_date_time = document.getElementById("as_at_date_time");
+		var compare_till_date_time = document.getElementById("compare_till_date_time");
+		var compare_back_to_date_time = document.getElementById("compare_back_to_date_time");
+		var compare_with = document.getElementById("compare_with");
+		var chkHighlightChanges = document.getElementById("chkHighlightChanges");
+
+		var selCols = $("#selCols");
+		var selNames = $("#selNames");
+		var selLinks = $("#selLinks");
 		
+		// Check their values
 		if (selLeague.value != {{ ALL_LEAGUES|safe }}) opts.push("league="+selLeague.value);	
 		if (selPlayer.value != {{ ALL_PLAYERS|safe }}) opts.push("player="+selPlayer.value);	
+		if (selGame.value != {{ ALL_GAMES|safe }}) opts.push("game="+selGame.value);	
+
 		if (from_date_time.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
+		if (as_at_date_time.value != "") opts.push("as_at="+encodeURIComponent(as_at_date_time.value));
+		if (compare_till_date_time.value != "") opts.push("compare_till="+encodeURIComponent(compare_till_date_time.value));
+		if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
+		if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
+		if (chkHighlightChanges.checked != Boolean("{{default_highlight}}")) opts.push("highlight="+encodeURIComponent(chkHighlightChanges.checked));
 		
-		if (selCols.val() != "4") opts.push("cols="+selCols.val());	
-		if (selNames.val() != "full_nick") opts.push("names="+selNames.val());	
-		if (selLinks.val() != "CoGs") opts.push("links="+selLinks.val());
+		
+		if (selCols.val() != {{default_cols}}) opts.push("cols="+selCols.val());
+		if (selNames.val() != "{{default_names}}") opts.push("names="+selNames.val());	
+		if (selLinks.val() != "{{default_links}}") opts.push("links="+selLinks.val());
 		
 		return (opts.length > 0) ? "?" + opts.join("&") : "";
 	}
 		
-	function get_filtered_view() {
-		url = "{% url 'leaderboards' %}" + URLopts();
+	function get_new_view() {
+		var url = "{% url 'leaderboards' %}" + URLopts();
 		window.location.href = url;
 	}
 	
@@ -181,13 +311,27 @@
 	}
 	
 	// Function to draw one leaderboard table
-	function LBtable(LB, links) {
+	function LBtable(LB, snapshot, links) {
+	// A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
+	// Snapshots is a list of lists which have four values: Date time string, count of plays, count of sessions, Leaderboard
+	// Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
+
+		// Extract the data we need
 		var pkg = LB[0];
 		var BGGid = LB[1];
         var game = LB[2];
-        var play_count = LB[3];
-        var session_count =LB[4];
-        var player_list = LB[5];
+        
+        var date_time = LB[3][snapshot][0]
+        var play_count = LB[3][snapshot][1];
+        var session_count =LB[3][snapshot][2];
+        var player_list = LB[3][snapshot][3];
+
+		// Note the previous snapshots player list if there is one
+		// for the purposes of highlighting changes.   
+		var player_prev = null;
+        if (snapshot+1<LB[3].length) {
+			player_prev = LB[3][snapshot+1][3];	
+        }
 		
 		var linkGameCoGs = "{% url 'view' 'Game' '00' %}".replace('00',pkg);
 		var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
@@ -197,12 +341,31 @@
 	    table.className = 'leaderboard'
 	    table.style.width = '100%';
 
+		// Three header rows as folows:
+		// One fullwidth containing the date the leaderboard was set (of lasts ession played that contributed to it)
+		// A second with the game name (2 cols) and play/session summary (3 cols)
+		// A third with 5 column headers (rank, player, rating, plays, victories)
+
 		var tableHead = document.createElement('THEAD');
-	    table.appendChild(tableHead);
-	    
+	    table.appendChild(tableHead);	    
+
+	    // First Header Row
+
         var tr = document.createElement('TR');
         tableHead.appendChild(tr);
 
+        var th = document.createElement('TH');
+        var content = document.createTextNode("Results after " + date_time);
+        th.appendChild(content);
+        th.colSpan = 5;
+	    th.className = 'leaderboard normal'
+        tr.appendChild(th);
+	    
+	    // Second Header Row
+	    
+        var tr = document.createElement('TR');
+        tableHead.appendChild(tr);
+                
         var th = document.createElement('TH');
         var content;
         if (linkGame) {
@@ -215,7 +378,7 @@
         }   
         th.appendChild(content);
         th.colSpan = 2;
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
 
         var th = document.createElement('TH');
@@ -235,37 +398,43 @@
         th.appendChild(content);
     	
         th.colSpan = 3;
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         th.style.textAlign = 'center';
         tr.appendChild(th);
+               
+	    // Third Header Row
 
         var tr = document.createElement('TR');
         tableHead.appendChild(tr);
 
         var th = document.createElement('TH');
         th.appendChild(document.createTextNode("Rank"));
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
 
         var th = document.createElement('TH');
         th.appendChild(document.createTextNode("Player"));
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
 
         var th = document.createElement('TH');
         th.appendChild(document.createTextNode("Teeth"));
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
 
         var th = document.createElement('TH');
         th.appendChild(document.createTextNode("Plays"));
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
 	
         var th = document.createElement('TH');
         th.appendChild(document.createTextNode("Victories"));
-	    th.className = 'leaderboard'
+	    th.className = 'leaderboard normal'
         tr.appendChild(th);
+
+		// Body
+		
+		var highlight = document.getElementById("chkHighlightChanges").checked ? 'leaderboard highlight_on' : 'leaderboard highlight_off';
 
 		var tableBody = document.createElement('TBODY');
 	    table.appendChild(tableBody);
@@ -273,17 +442,27 @@
 	    for (var i = 0; i < player_list.length; i++) {
 	        var tr = document.createElement('TR');
 	        tableBody.appendChild(tr);
-	
+	        
+	        td_class = 'leaderboard normal';
+	        if (player_prev) {
+	        	var this_player = i<player_list.length ? player_list[i][0] : null; 
+	        	var prev_player = i<player_prev.length ? player_prev[i][0] : null;
+	        	if (this_player != prev_player)
+	        		td_class = highlight; 
+	        }
+	        
+			// The Rank column
             var td = document.createElement('TD');
             td.style.textAlign = 'center';
-		    td.className = 'leaderboard'
+		    td.className = td_class;
             td.appendChild(document.createTextNode(i+1));  {# Rank #}
             tr.appendChild(td);
             
+            // The remainining columns
             // 0 and 1 are the PK and BGGname, 2 to 5 are the leaderboard data
 	        for (var j = 2; j < 6; j++) {
 	            var td = document.createElement('TD');
-			    td.className = 'leaderboard'
+			    td.className = td_class;
 			    
 			    var pkp = player_list[i][0];
 			    var BGGname = player_list[i][1];
@@ -328,31 +507,102 @@
     }
     
 	// Draw all leaderboards, sending to target and enabling links or not
-	function DrawTables(target, links) {	
-		var colSelect = document.getElementById("selCols");
-		var cols = parseInt(colSelect.options[colSelect.selectedIndex].text);
-		var rows = leaderboards.length / cols;
-		var remainder = leaderboards.length - rows*cols;
-		if (remainder > 0) { rows++; }
+	function DrawTables(target, links) {
+		// Oddly $('#selLinks) and $('#selCols) fails here. Not sure why. 
+		var selLinks = document.getElementById("selLinks");
+		var selCols = document.getElementById("selCols");
+		var cols = parseInt(selCols.options[selCols.selectedIndex].text);
 		
-		if (links == undefined) links = LinkSelect.value == "none" ? null : LinkSelect.value;
-	
-		// A wrapper table for the leaderboards 
-		var table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
+		if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 		
-		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
-			for (var j = 0; j < cols; j++) {
-				k = i*cols+j 
-				if (k < leaderboards.length) {
-					var cell = row.insertCell(j);
-					cell.className = 'leaderboard wrapper'
-					cell.appendChild(LBtable(leaderboards[k], links));
+		if (maxshots == 1) {
+			var totalboards = leaderboards.length;		
+			var rows = totalboards / cols;
+			var remainder = totalboards - rows*cols;
+			if (remainder > 0) { rows++; }
+			
+			// A wrapper table for the leaderboards 
+			var table = document.getElementById(target); 
+			table.innerHTML = "";
+			table.className = 'leaderboard wrapper'
+			
+			for (var i = 0; i < rows; i++) {
+				var row = table.insertRow(i);
+				for (var j = 0; j < cols; j++) {
+					k = i*cols+j 
+					if (k < totalboards) {
+						var cell = row.insertCell(j);
+						cell.className = 'leaderboard wrapper'
+						cell.appendChild(LBtable(leaderboards[k], 0, links));
+					}
+				}
+			}
+		} 
+		else if (maxshots == 2) {
+			// if cols is odd, add one so that comparisons are always side by side. So cols = 1 becomes 2 
+			// in the extreme.
+			if ( cols % 2 ) cols += 1;
+			
+			// Now halve the number of columns as we're spiting out two tables at a time.
+			cols /= 2;   
+			
+			// And base layout calcs on the total number of boards (so twice those presented, we'll
+			// leave gaps for any that don't have a comparison table.  
+			var totalboards = 2*leaderboards.length;
+			
+			// Now very similar to case of maxshots==1, just in pairs.
+			var rows = totalboards / ( 2 * cols );
+			var remainder = totalboards - rows*cols;
+			if (remainder > 0) { rows++; }
+			
+			// A wrapper table for the leaderboards 
+			var table = document.getElementById(target); 
+			table.innerHTML = "";
+			table.className = 'leaderboard wrapper'
+			
+			var lb = 0; 
+			for (var i = 0; i < rows; i++) {
+				var row = table.insertRow(i);
+				for (var j = 0; j < cols; j++) {
+					if (lb < leaderboards.length) {
+						var cell1 = row.insertCell(2*j);
+						cell1.className = 'leaderboard wrapper'
+						cell1.appendChild(LBtable(leaderboards[lb], 0, links));
+						
+						var cell2 = row.insertCell(2*j+1);
+						cell2.className = 'leaderboard wrapper'
+						if (leaderboards[lb][3].length > 1)		
+							cell2.appendChild(LBtable(leaderboards[lb], 1, links));
+						else
+							cell2.appendChild(document.createTextNode("No prior board for " + leaderboards[lb][2]));												
+					}
+					lb++; 
 				}
 			}
 		}
+		else {
+			// One row per board and its snapshots
+			// Ignore cols and use our own value here
+			cols = maxshots;
+			rows = leaderboards.length;
+			
+			// A wrapper table for the leaderboards 
+			var table = document.getElementById(target); 
+			table.innerHTML = "";
+			table.className = 'leaderboard wrapper'
+			
+			var lb = 0; 
+			for (var i = 0; i < rows; i++) {
+				var row = table.insertRow(i);
+				snaps = leaderboards[lb][3].length;
+				for (var j = 0; j < snaps; j++) {
+					var cell = row.insertCell(j);
+					cell.className = 'leaderboard wrapper'
+					cell.appendChild(LBtable(leaderboards[lb], j, links));
+				}
+				lb++; 
+			}			
+		}			 
 	}
 	
 	DrawTables("tblLB");
