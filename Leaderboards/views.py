@@ -8,7 +8,8 @@ from django_generic_view_extensions import odf, datetime_format_python_to_PHP, D
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
 from django import forms
-from django.db.models import Count, Q
+from django.db.models import Count, Q, OuterRef, Subquery
+from django.db.models.fields import DateField 
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
@@ -328,6 +329,7 @@ default = {
     'as_at': None,
     'changed_since': NEVER,
     'compare_till': None,
+    'compare_back_to': None,
     'compare_with': None,
     'highlight': True,
     'cols': 4,
@@ -347,6 +349,7 @@ def view_Leaderboards(request):
     as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
     changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
     compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
+    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
     compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
     highlight = json.loads(request.GET['highlight'].lower()) if 'highlight' in request.GET else default['highlight']
     
@@ -400,11 +403,16 @@ def view_Leaderboards(request):
             title = "Leaderboards for {} in the {} league".format(P, L)        
 
     subtitle = []
-    if not as_at is None:
+    if as_at != default['as_at']:
         subtitle.append("as at {}".format(localize(as_at)))
 
-    if changed_since != NEVER:
+    if changed_since != default['changed_since']:
         subtitle.append("changed after {}".format(localize(changed_since)))
+
+    if compare_back_to != default['compare_back_to']:
+        subtitle.append("compared back to the leaderboard as at {}".format(localize(compare_back_to)))
+    elif compare_with != default['compare_with']:
+        subtitle.append("compared up to with {} prior leaderboards".format(compare_with))
         
     c = {'title': title,
          'subtitle': "<br>".join(subtitle),
@@ -419,8 +427,9 @@ def view_Leaderboards(request):
          'game': json.dumps(game),
          'changed_since': json.dumps(str(changed_since) if changed_since != default['changed_since'] else ""),
          'as_at': json.dumps(str(as_at) if not as_at is default['as_at'] else ""),
-         'compare_with': json.dumps(compare_with if not compare_with is default['compare_with'] else ""),
          'compare_till': json.dumps(str(compare_till) if compare_till != default['compare_till'] else ""),
+         'compare_back_to': json.dumps(str(compare_back_to) if not compare_back_to is default['compare_back_to'] else ""),
+         'compare_with': json.dumps(compare_with if not compare_with is default['compare_with'] else ""),
          'highlight': json.dumps(highlight),
          'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
          'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
@@ -479,6 +488,7 @@ def ajax_Leaderboards(request, raw=False):
     as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
     changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
     compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
+    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
     compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
     
     # TODO: Bail with an error message
@@ -530,12 +540,34 @@ def ajax_Leaderboards(request, raw=False):
             else:
                 times.append(timezone.make_aware(datetime.now()))
             
-            if not compare_with is None:
+            # Either comparing with a previsou number of sessions or back to a given date
+            # Will produce a history of leaderboards.
+            if (not compare_with is None) or (not compare_back_to is None):
+                sfilter = Q(game=game)
+                
                 if compare_till is None:
-                    last_sessions = Session.objects.filter(date_time__lt=last_session.date_time, game=game).order_by("-date_time")[:compare_with]
+                    sfilter &= Q(date_time__lt=last_session.date_time)
                 else:
-                    last_sessions = Session.objects.filter(date_time__lte=compare_till, game=game).order_by("-date_time")[:compare_with]
+                    sfilter &= Q(date_time__lte=compare_till)
+
+                if not compare_back_to is None:
+                    sfilter &= Q(
+                        date_time__gte=Subquery(
+                            (Session.objects
+                                .filter(sfilter & Q(date_time__lt=compare_back_to))
+                                .values('date_time')
+                                .order_by('-date_time')[:1]
+                            ), output_field=DateField()
+                        )
+                    )
                     
+                    # sfilter &= Q(date_time__gte=compare_back_to)
+                    
+                last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
+                
+                if not compare_with is None:
+                    last_sessions = last_sessions[:compare_with]
+
                 for s in last_sessions:
                     times.append(s.date_time)
             

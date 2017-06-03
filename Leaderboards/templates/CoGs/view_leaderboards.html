@@ -64,8 +64,9 @@
 			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
 			<label>Compare each leaderboard with</label>
 			<input id="compare_with" size=3 type="text" value={{ compare_with|safe }}  onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
-			prior leaderboards
-			<label>up until</label>			
+			<label>prior leaderboards, or leaderboards back to</label>
+			<input class="DateTimeField" id="compare_back_to_date_time" type="text" value={{ compare_back_to|safe }}>
+			<label>and/or up until</label>			
 			<input class="DateTimeField" id="compare_till_date_time" type="text" value={{ compare_till|safe }}>
 		</td>
 	</tr>
@@ -110,7 +111,8 @@
 	//
 	// As a side note, the standard view has one snapshot, the current ratings, and leaderboards pr at some other specified time (as_at) 
 	// Extra snapshots are expected when asked for (for comparisons with history and evolutionary examinations), one
-	// extra snapshot per compare_with (a number specifying how many), up to and including the snapshot at compare_till.  
+	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
+	// up to and including the snapshot at compare_till or now if compare_till isn't specified.  
 
 	var leaderboards = {{leaderboards|safe}}; 
 	
@@ -227,8 +229,9 @@
 
 		var from_date_time = document.getElementById("from_date_time");
 		var as_at_date_time = document.getElementById("as_at_date_time");
-		var compare_with = document.getElementById("compare_with");
 		var compare_till_date_time = document.getElementById("compare_till_date_time");
+		var compare_back_to_date_time = document.getElementById("compare_back_to_date_time");
+		var compare_with = document.getElementById("compare_with");
 		var chkHighlightChanges = document.getElementById("chkHighlightChanges");
 
 		var selCols = $("#selCols");
@@ -242,8 +245,9 @@
 
 		if (from_date_time.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
 		if (as_at_date_time.value != "") opts.push("as_at="+encodeURIComponent(as_at_date_time.value));
-		if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
 		if (compare_till_date_time.value != "") opts.push("compare_till="+encodeURIComponent(compare_till_date_time.value));
+		if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
+		if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
 		if (chkHighlightChanges.checked != Boolean("{{default_highlight}}")) opts.push("highlight="+encodeURIComponent(chkHighlightChanges.checked));
 		
 		
