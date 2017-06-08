@@ -8,7 +8,8 @@ from django.core.exceptions import ValidationError, ObjectDoesNotExist, Multiple
 from django.core.validators import RegexValidator
 from django.utils import formats, timezone
 from django.contrib.auth.models import User
-#from django_intenum import IntEnumField
+
+#from django_intenum import IntEnumField1
 
 from collections import OrderedDict
 from itertools import chain
@@ -16,6 +17,8 @@ from enum import IntEnum
 from math import isclose
 #from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
 from datetime import datetime, timedelta
+
+from django_generic_view_extensions import odf, display_format
 
 
 # CoGs Leaderboard Server Data Model
@@ -112,7 +115,9 @@ class League(models.Model):
     last_edited_by = models.ForeignKey('Player', related_name='leagues_last_edited', editable=False, null=True)
     last_edited_on = models.DateTimeField(editable=False, null=True)
 
+    # TODO: Use @cached_property (everywhere)
     @property
+    #@display_format(odf.list)
     def leaderboards(self):
         '''
         The leaderboards for this league.
@@ -215,6 +220,7 @@ class Player(models.Model):
     # Membership fields
     teams = models.ManyToManyField('Team', editable=False, through=Team.players.through, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
     leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
+    # TODO: Add a default_league which is the users preffered league for filterig after login. 
 
     # account
     user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None)

@@ -2,10 +2,14 @@
 {% block title %}{{title}}{% endblock %}
 {% block content %}
 
+{#TODO: Add previous and next buttons for navigating items easily. SHould go via the models order by value, the order they are listed in on lists.#}
+
 <p>
-<a href="{% url 'edit' model_name pk %}">[Edit]</a>
-<a href="{% url 'delete' model_name pk %}">[Delete]</a>
-<a href="{% url 'add' model_name %}">[New]</a>
+{% if user.is_authenticated %}
+	<a href="{% url 'edit' model_name pk %}">[Edit]</a>
+	<a href="{% url 'delete' model_name pk %}">[Delete]</a>
+	<a href="{% url 'add' model_name %}">[New]</a>
+{% endif %}	  
 <a href="{% url 'list' model_name %}">[List]</a>
 </p>
 

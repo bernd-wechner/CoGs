@@ -74,7 +74,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'CoGs.wsgi.application'
 
-
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
 
@@ -108,3 +107,8 @@ DATETIME_FORMAT = 'r'
 # https://docs.djangoproject.com/en/1.8/howto/static-files/
 
 STATIC_URL = '/static/'
+
+LOGIN_URL = '/login/'
+
+AUTH_PROFILE_MODULE =  'CoGs.Player'
+

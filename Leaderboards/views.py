@@ -14,10 +14,12 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
 from django.contrib.auth.models import Group
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, make_aware
+
 
 # TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sesisons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
@@ -274,7 +276,7 @@ def context_provider(self, context):
 #===============================================================================
 # TODO: Test that this does validation and what it does on submission errors
 
-class view_Add(CreateViewExtended):
+class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
@@ -285,7 +287,7 @@ class view_Add(CreateViewExtended):
 
 # TODO: Test that this does validation and what it does on submission errors
 
-class view_Edit(UpdateViewExtended):
+class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     # TODO: Must be atomic and in such a way that it tests if changes haveintegrity.
     #       notably if a session changes from indiv to team mode say or vice versa,
     #       there is a notable impact on rank objects that could go wrong and we should
@@ -300,7 +302,7 @@ class view_Edit(UpdateViewExtended):
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
 
-class view_Delete(DeleteViewExtended):
+class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
     # TODO: When deleting a session need to check for ratings that refer to it as last_play or last_win
     #        and fix the reference or delete the rating.
@@ -478,7 +480,7 @@ def ajax_Leaderboards(request, raw=False):
     (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
     The play count and session count for that game up to that time are in this tuple too.   
     
-    Tier3 is the leaderboard for that game, a list of players with theit trueskill ratings. 
+    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order. 
     '''
    
     # Fetch the filter requests if provided
@@ -540,7 +542,7 @@ def ajax_Leaderboards(request, raw=False):
             else:
                 times.append(timezone.make_aware(datetime.now()))
             
-            # Either comparing with a previsou number of sessions or back to a given date
+            # Either comparing with a previous number of sessions or back to a given date
             # Will produce a history of leaderboards.
             if (not compare_with is None) or (not compare_back_to is None):
                 sfilter = Q(game=game)
@@ -561,8 +563,6 @@ def ajax_Leaderboards(request, raw=False):
                         )
                     )
                     
-                    # sfilter &= Q(date_time__gte=compare_back_to)
-                    
                 last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
                 
                 if not compare_with is None:
@@ -574,7 +574,7 @@ def ajax_Leaderboards(request, raw=False):
             for time in times:            
                 # The first time should be the last session time for the game and thus should translate 
                 # to the same as what's in the Rating model. 
-                # TODO: Performan an integrity check around that and indeed if it's an ordinary
+                # TODO: Perform an integrity check around that and indeed if it's an ordinary
                 # leaderboard presentation check on performance between asat=time (which reads Performance)
                 # and asat=None (which read Rating).  
                 lb = game.leaderboard(league=league, asat=time, names=names, indexed=True)

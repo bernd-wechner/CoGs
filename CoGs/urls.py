@@ -17,9 +17,10 @@ from django.conf.urls import include, url
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
-from django.contrib.staticfiles.storage import staticfiles_storage
-from django.views.generic.base import RedirectView
-from functools import reduce
+from django.contrib.auth import views as auth_views
+# from django.contrib.staticfiles.storage import staticfiles_storage
+# from django.views.generic.base import RedirectView
+# from functools import reduce
 
 from Leaderboards import views
 from django_generic_view_extensions import odf
@@ -30,8 +31,10 @@ urlpatterns = [
     # url(r'^blog/', include('blog.urls')),
     # url(r'^favicon.ico$', RedirectView.as_view(url=staticfiles_storage.url('favicon.ico'), permanent=False), name="favicon" ),
 
-    url(r'^$', views.index, name='index'),
+    url(r'^$', views.index, name='home'),
     url(r'^admin/', include(admin.site.urls), name='admin'),
+    url(r'^login/$', auth_views.LoginView.as_view(), name='login'),
+    url('^logout/$', auth_views.LogoutView.as_view(), name='logout'),    
     
     # Some temporary internal URLS for now ...
     url(r'^fix', views.view_Fix, name='fix'),
