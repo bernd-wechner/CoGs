@@ -10,16 +10,16 @@ Django provides some excellent generic class based views:
     
 They are excellent for getting a site up and running really quickly from little more than a model specification. 
 
-The admin site of course provides a rather excellent and complete version of generic database administratration:
+The admin site of course provides a rather excellent and complete version of generic database administration:
 
     https://docs.djangoproject.com/en/1.10/ref/contrib/admin/
      
 But as at Django 1.10 the built in generic class based views fall somewhat short of complete.
 
-This module provides extensions to the generic clas based views, with the specific aim of adding more context
+This module provides extensions to the generic class based views, with the specific aim of adding more context
 to use in templates and including the forms and field values for related objects.
 
-In summary, the built genric class based views we are extending are from django.views.generic: 
+In summary, the built generic class based views we are extending are from django.views.generic: 
 
 ListView - for listing the objects in a model
 DetailView - for examining the details of a specific object (model instance) 
@@ -54,7 +54,7 @@ form.as_table
 form.as_ul
 form.as_p
 
-with which you can rapidly redner the basic form for a model without further ado in three formats. 
+with which you can rapidly render the basic form for a model without further ado in three formats. 
 
 Oddly it does not provide these for detail views. So here we do. Direct reproduction of the form
 version only instead of containing HTML form elements it just contains the field contents rendered in
@@ -66,12 +66,12 @@ view.as_p
 
 in the context they deliver. 
 
-Thes eviews take an optional ketword argument ToManyMode to specify how lists should be rendered for 
-fields that are relations to many. The many remote obects have their own __str__ representations which 
+These views take an optional keyword argument ToManyMode to specify how lists should be rendered for 
+fields that are relations to many. The many remote objects have their own __str__ representations which 
 can be rich of course and so some control over how lists of these are presented is offered. ToManyMode
 can take any of the 3 formats 'table', 'ul', 'p' as per the view itself, that is display the multiple 
-values as a table as a bulletted list or as a set of paragraphs. It can be any other string as well in
-which case that string is used as a delimeter between values. It can contain  HTML of course, for 
+values as a table as a bulleted list or as a set of paragraphs. It can be any other string as well in
+which case that string is used as a delimiter between values. It can contain  HTML of course, for 
 example '<BR>'.  
 
 CreateViewExtended and UpdateViewExtended 
@@ -133,7 +133,7 @@ are two extra elements management_form and field_data.
 management_form is the standard management form Django requires (and you should understand
 these to build rich forms). In summary though they are simply little HTML snippets that 
 contain four hidden input fields named TOTAL_FORMS, INITIAL_FORMS, MIN_NUM_FORMS, MAX_NUM_FORMS.
-Documentation on exactly how these work is meagre in the django world, but they are used
+Documentation on exactly how these work is meager in the django world, but they are used
 by the Django code when submitted form data is processed, and to that end in rich forms you
 will need (in Javascript perhaps) to update TOTAL_FORMS in particular to tell Django how many
 forms are being submitted. This is a little more complicated than we can cover here, but
@@ -148,7 +148,7 @@ numbers to look for and process.
 
 TODO: Document the naming convention of Django form elements too.
 
-field_data cointains one entry for each field which returns the value of that field with a 
+field_data contains one entry for each field which returns the value of that field with a 
 special caveat, the value is complex. If the field is a Django concrete field (not a relation)
 then its actual value. If it's a relation then the pk or list of pks (primary keys) of the 
 related objects.
@@ -168,7 +168,6 @@ related_forms.Pet.field_data.name         # which is a string, the name
 related_forms.Pet.field_data.issues       # which is a list of integers, the primary keys of the issues 
 related_forms.Member.related_forms.Issue.field_data.description   # which is a list of strings, the descriptions mapping to related_forms.Member.field_data.issues    
 related_forms.Pet.related_forms.Issue.field_data.description      # which is a list of strings, the descriptions mapping to related_forms.Pet.field_data.issues
-
 '''
 
 import html
@@ -308,7 +307,7 @@ def get_object_display_format(request):
         ODF &= ~odf.list
     if 'nointernal' in request:
         ODF &= ~odf.internal
-    if 'related' in request:
+    if 'norelated' in request:
         ODF &= ~odf.related
     if 'noproperties' in request:
         ODF &= ~odf.properties    
@@ -513,6 +512,83 @@ def apply_sort_by(queryset):
     else:
         return queryset
 
+def pretty_FilterSet(filterset):
+    '''
+    Returns a pretty formatted string version of a filterset 
+    :param filterset:
+    '''
+    
+    operation = {
+        "exact" : " = ",
+        "iexact" : " = ",
+        "contains" : " contains ",
+        "icontains" : " contains ",
+        "startswith" : " starts with ",
+        "istartswith" : " starts with ",
+        "endswith" : " ends with ",
+        "iendswith" : " ends with ",
+        "range" : " is between ",
+        "isnull" : " is NULL ",
+        "regex" : " matches ",
+        "iregex" : " matches ",
+        "in" : " is in ",
+        "gt" : " > ",
+        "gte" : " >= ",
+        "lt" : " < ",
+        "lte" : " <= ",
+#         "year" : "",
+#         "month" : "",
+#         "day" : "",
+#         "week" : "",
+#         "week_day" : "",
+#         "time" : "",
+#         "hour" : "",
+#         "minute" : "",
+#         "second" : "",
+        }
+
+    def concrete_field(model, field_name):
+        for field in model._meta.fields:
+            if field.attname == field_name:
+                return field
+        return None
+    
+    def get_field(components, component, model):
+        field_name = components[component]
+        field = getattr(model, field_name)
+        
+        # To Many fields 
+        if hasattr(field, "rel"):
+            if field.rel.many_to_many:
+                field = get_field(components, component+1, field.field.related_model) 
+            elif field.rel.one_to_many:
+                field = get_field(components, component+1, field.field.model) 
+        # To One fields 
+        elif hasattr(field, "field"): 
+            field = get_field(components, component+1, field.field.related_model)
+        else:
+            field = concrete_field(model, field_name)
+        
+        return field
+    
+    specs = filterset.get_specs()
+    pretty_specs = []
+    for filter in specs:
+        # __year - filter["lookup"] == "year"
+        field = get_field(filter.components, 0, filterset.queryset.model)
+        if len(filter.components) > 1 and filter.lookup == "exact":
+            Os = field.model.objects.filter(**{"{}__{}".format(field.attname, filter.lookup):filter.value})
+            O = Os[0] if Os.count() > 0 else None
+            field_name = field.model._meta.object_name
+            field_value = str(O)
+        else:
+            field_name = field.verbose_name
+            field_value = filter.value
+        
+        pretty_specs += ["{} {} {}".format(field_name, operation[filter.lookup], field_value)]
+    
+    return " and ".join(pretty_specs)
+  
 class ListViewExtended(ListView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
@@ -538,7 +614,7 @@ class ListViewExtended(ListView):
             })
             
             fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())
-            self.filter = fs.get_specs()
+            self.filter = pretty_FilterSet(fs)
             self.queryset = fs.filter()
         else:
             self.queryset = self.model.objects.all()
@@ -809,21 +885,45 @@ class UpdateViewExtended(UpdateView):
 #                     form.fields[field].widget.attrs.update({attr_name:attr_value})
 #         return form
 
-    @transaction.atomic
+    #@transaction.atomic
     def form_valid(self, form):
         # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
-        #       If there's a bail then don't save anything, i.e don't save partial data.  
-        try:
-            with transaction.atomic():
-                self.object = form.save()
-                self.kwargs['pk'] = self.object.pk
-                self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-                if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
-                save_related_forms(self)
-                if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
-                return HttpResponseRedirect(self.get_success_url())
-        except IntegrityError:
-            return HttpResponseRedirect(self.get_success_url())                        
+        #       If there's a bail then don't save anything, i.e don't save partial data. 
+        
+        # Hook for pre-processing the form (before the data is saved)
+        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+
+        # Save this form
+        self.object = form.save()
+        self.kwargs['pk'] = self.object.pk
+        self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+        
+        # Save related forms
+        errors = save_related_forms(self)
+        
+        # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
+        # TODO: Tidy this. Render the errors in the message box on the original form somehow.
+        # Basically bounce back to where we were with error messages.
+        # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
+        if errors:
+            return JsonResponse(errors)            
+                    
+        # Hook for post-processing data (after it's all saved) 
+        if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+
+        return HttpResponseRedirect(self.get_success_url())
+         
+#         try:
+#             with transaction.atomic():
+#                 self.object = form.save()
+#                 self.kwargs['pk'] = self.object.pk
+#                 self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+#                 if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+#                 save_related_forms(self)
+#                 if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+#                 return HttpResponseRedirect(self.get_success_url())
+#         except IntegrityError:
+#             return HttpResponseRedirect(self.get_success_url())                        
 
 #     def post(self, request, *args, **kwargs):
 #         response = super().post(request, *args, **kwargs)
@@ -905,7 +1005,7 @@ def add_related_fields_to_detail_view(self):
                 if ODF & odf.model and field.editable and not field.auto_created:
                     model_fields[field.name] = field
                 elif ODF & odf.internal:
-                        internal_fields[field.name] = field
+                    internal_fields[field.name] = field
             elif ODF & odf.related:
                 related_fields[field.name] = field
 

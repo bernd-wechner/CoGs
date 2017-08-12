@@ -194,7 +194,7 @@ function LBtable(LB, snapshot, links) {
 		player_prev = LB[3][snapshot+1][3];	
 	}
 
-	var linkGameCoGs = "{% url 'view' 'Game' '00' %}".replace('00',pkg);
+	var linkGameCoGs = url_view_Game.replace('00',pkg);
 	var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
 	var linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 
@@ -251,7 +251,7 @@ function LBtable(LB, snapshot, links) {
 	if (links == "CoGs") {
 		content = document.createElement('a');
 		content.setAttribute("style", "text-decoration: none; color: inherit;");
-		content.href =  "{% url 'list' 'Session'%}" + "?game=" + pkg; 
+		content.href =  url_list_Sessions + "?game=" + pkg; 
 		content.innerHTML = sessions;
 	} else {
 		content = document.createTextNode(sessions);
@@ -319,7 +319,7 @@ function LBtable(LB, snapshot, links) {
 		td.appendChild(document.createTextNode(i+1));  // Rank
 		tr.appendChild(td);
 
-		// The remainining columns
+		// The remaining columns
 		// 0 and 1 are the PK and BGGname, 2 to 5 are the leaderboard data
 		for (var j = 2; j < 6; j++) {
 			var td = document.createElement('TD');
@@ -328,7 +328,7 @@ function LBtable(LB, snapshot, links) {
 			var pkp = player_list[i][0];
 			var BGGname = player_list[i][1];
 
-			var linkPlayerCoGs = "{% url 'view' 'Player' '00' %}".replace('00',pkp);
+			var linkPlayerCoGs = url_view_Player.replace('00',pkp);
 			var linkPlayerBGG = BGGname ? "https:\/\/boardgamegeek.com/user/" + BGGname : null;
 			var linkPlayer = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
 
@@ -345,9 +345,9 @@ function LBtable(LB, snapshot, links) {
 				if (j==2) {   // Player Name
 					content.href =  linkPlayer; 
 				} else if (j==4) { // Play Count
-					content.href =  "{% url 'list' 'Session' %}" + "?ranks__player=" + pkp + "&game=" + pkg;  
+					content.href =  url_list_Sessions + "?ranks__player=" + pkp + "&game=" + pkg;  
 				} else if (j==5) { // Victory Count
-					content.href =  "{% url 'list' 'Session' %}" + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg;  
+					content.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg;  
 				}
 				content.innerHTML = val;
 			} else {

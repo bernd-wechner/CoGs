@@ -161,9 +161,13 @@
 	ALL_PLAYERS = {{ ALL_PLAYERS|safe }};
 	ALL_GAMES = {{ ALL_GAMES|safe }};
 	
-	// ANd some URLs
+	// And some URLs
 	url_leaderboards = "{% url 'leaderboards' %}";
-	url_json_leaderboards = "{% url 'json_leaderboards' %}"		
+	url_json_leaderboards = "{% url 'json_leaderboards' %}"
+	
+	url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
+	url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
+	url_list_Sessions = "{% url 'list' 'Session'%}";		
 </script>
 {% endblock %}
 

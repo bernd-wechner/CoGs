@@ -213,14 +213,14 @@ class Player(models.Model):
     email_address = models.EmailField('Email Address', blank=True, null=True)
     BGGname = models.CharField('BoardGameGeek Name', max_length=MAX_NAME_LENGTH, default='', blank=True, null=True)  # BGG URL is https://boardgamegeek.com/user/BGGname
     
-    # Priviledge fields
+    # Privilege fields
     is_registrar = models.BooleanField('Authorised to record session results?', default=False)
     is_staff = models.BooleanField('Authorised to access the admin site?', default=False)
 
     # Membership fields
     teams = models.ManyToManyField('Team', editable=False, through=Team.players.through, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
     leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
-    # TODO: Add a default_league which is the users preffered league for filterig after login. 
+    # TODO: Add a default_league which is the users preferred league for filtering after login. 
 
     # account
     user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None)
@@ -246,6 +246,10 @@ class Player(models.Model):
     @property
     def full_name(self):
         return "{} {}".format(self.name_personal, self.name_family)
+
+    @property
+    def complete_name(self):
+        return "{} {} ({})".format(self.name_personal, self.name_family, self.name_nickname)
 
     @property
     def games_played(self):
@@ -374,8 +378,9 @@ class Player(models.Model):
         return NEVER if (plays is None or plays.count() == 0) else plays[0] 
 
     add_related = None
-    def __unicode__(self): return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
+    def __unicode__(self): return u'{}'.format(self.name_nickname)
     def __str__(self): return self.__unicode__()
+    def __verbose_str__(self): return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
 
     def save(self, *args, **kwargs):
         update_admin_fields(self)
@@ -612,15 +617,7 @@ class Game(models.Model):
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
         specified league, or for all leagues if None is specified. As at a given date/time if such is specified,
         else, as at now (latest or current, leaderboard).
-        '''
-        
-        # TODO: An idea for a view of leaderboard at a given date (for diffs):
-        # A SQL view is posisble I think which lists all performances of a given
-        # game in a given league sorted by session date, then grouped by player 
-        # selecting max date (latest one). This should be the actual leaderboard 
-        # at that date for that game/leage in on simple query! Sounds very simple!
-        # Do it!  
-                  
+        '''      
         if league is None:
             lb = {}
             leagues = League.objects.filter(games=self)
@@ -639,7 +636,7 @@ class Game(models.Model):
             # Now build a leaderboard from all the ratings for players (in this league) at this game. 
             lb = []
             for r in ratings:
-                name = str(r.player) if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                name = r.player.complete_name if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
                 lb_entry = (name, r.trueskill_eta, r.plays, r.victories) 
                 if indexed:
                     lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
@@ -653,7 +650,7 @@ class Game(models.Model):
             # Now build a leaderboard from all the ratings for players (in this league) at this game ... 
             lb = []
             for r in ratings:
-                name = str(r.player) if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                name = r.player.complete_name if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
                 lb_entry = (name, r.trueskill_eta_after, r.play_number, r.victory_count) 
                 if indexed:
                     lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
@@ -701,7 +698,7 @@ class Session(models.Model):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
-    date_time = models.DateTimeField(default=timezone.now)  # When the game session was played
+    date_time = models.DateTimeField('Time', default=timezone.now)  # When the game session was played
     league = models.ForeignKey(League, related_name='sessions')  # The league playing this session
     location = models.ForeignKey(Location, related_name='sessions')  # Where the game sessions was played
     game = models.ForeignKey(Game, related_name='sessions')  # The game that was played
@@ -1202,6 +1199,9 @@ class Session(models.Model):
     
     add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
+        return u'{} - {}'.format(formats.date_format(self.date_time, 'DATETIME_FORMAT'), self.game)
+    def __str__(self): return self.__unicode__()
+    def __verbose_str__(self):
         # Profiling reveals that this is rather expensive. 49 seconds to load a list of 86 sessions! So 0.57s/session. 
 #         return u'{} - {} - {} - {} - {} {} ({} won)'.format(
 #             formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
@@ -1211,7 +1211,6 @@ class Session(models.Model):
 #             self.num_competitors, 
 #             self.str_competitors, 
 #             ", ".join([p.name_nickname for p in self.victors]))
-        
         # Experiment with faster version. 5.7 sec for same list or 0.07s per session. 
         # 10 times faster, but still not fast enough. Imagine 1000 sessions, back to a minute for page load.  
         return u'{} - {} - {} - {}'.format(
@@ -1219,9 +1218,7 @@ class Session(models.Model):
             self.league, 
             self.location, 
             self.game)
-    
-    def __str__(self): return self.__unicode__()
-    
+            
     def check_integrity(self):
         '''
         It should be impossible for a session to go wrong if implemented securely and atomically. 
@@ -1478,11 +1475,13 @@ class Rank(models.Model):
         
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
     def __unicode__(self):
+        return "{}".format(self.rank)
+    def __str__(self): return self.__unicode__()
+    def __verbose_str__(self):
         if self.session_id is None:
             return  u'{} - {}'.format(self.rank, self.team if self.player is None else self.player)
         else: 
-            return  u'{} - {} - {}'.format(self.session.game, self.rank, self.team if self.session.team_play else self.player)
-    def __str__(self): return self.__unicode__()
+            return  u'{} - {} - {}'.format(self.session.game, self.rank, self.team if self.session.team_play else self.player)    
 
     def clean(self):
         # Require that one of self.team and self.player is None 
@@ -1765,11 +1764,13 @@ class Performance(models.Model):
     add_related = None
     sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname'] # Need player to sort ties and team members.
     def __unicode__(self):
+        return  u'{}'.format(self.player)
+    def __str__(self): return self.__unicode__()
+    def __verbose_str__(self):
         if self.session_id is None:
             return  u'{} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
         else: 
             return  u'{} - {} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.session, self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
-    def __str__(self): return self.__unicode__()
 
     def save(self, *args, **kwargs):
         update_admin_fields(self)
