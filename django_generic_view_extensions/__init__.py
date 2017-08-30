@@ -43,7 +43,7 @@ model - the model class (available as view.model as well, but what the heck.
 model_name - because it's not easy to reference view.model.__name__ in a template alas.
 model_name_plural - because it's handier than referencing view.model._meta.verbose_name_plural
 operation - the value of "operation" passed from urlconf (should be "list", "view", "add", "edit" or "delete")
-title - a convenient titls constructed from the above that can be used in a template 
+title - a convenient title constructed from the above that can be used in a template 
 default_datetime_input_format - the default Django datetime input format as a PHP datetime format string. Very useful for configuring a datetime picker.
 
 DetailViewExtended and DeleteViewExtended 
@@ -327,6 +327,43 @@ def get_object_display_format(request):
     
     return ODF
 
+class object_list_format():
+    '''Format options for objects in the list view.
+
+    brief   - The standard __str__ representation of the object
+    verbose - The  __verbose_str__ representation of the object if it exists, else falls back on __str__
+    rich    - The  __rich_str__ representation of the object else falls back on __verbose_str__
+    detail  - the detail view of the object!
+    
+    '''
+
+    # Some format of fields, flat or list
+    brief = 0
+    verbose = 1
+    rich = 1 << 1
+    detail = 1 << 2
+
+# A shorthand for the list format options
+olf = object_list_format
+
+def get_object_list_format(request):
+    '''
+    Standard means of extracting a object list format from a request.
+    
+    Assumes olf.brief and modifies as per request.
+    :param request:
+    '''
+    OLF = olf.brief
+    
+    if 'verbose' in request:
+        OLF |= olf.verbose
+    if 'rich' in request:
+        OLF |= olf.rich
+    if 'detail' in request:
+        OLF |= ~olf.verbose
+    
+    return OLF
+
 def display_format(result_type):
     '''
     A decorator for properties which permits specification of a type for use in deciding whether or 
@@ -594,6 +631,17 @@ class ListViewExtended(ListView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=True)
+        
+        # Pass the selected object list format to the context for selective rendering 
+        # with the list_format template tag (which renders the object accordingly)
+        OLF = get_object_list_format(self.request.GET)
+        if OLF & olf.rich:
+            context['object_list_format'] = "rich"
+        elif OLF & olf.verbose:
+            context['object_list_format'] = "verbose" 
+        else: 
+            context['object_list_format'] = "brief" 
+
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 

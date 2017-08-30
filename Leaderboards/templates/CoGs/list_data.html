@@ -1,5 +1,6 @@
 {% extends "CoGs/base.html" %}
 {% load filters %}
+{% load tags %}
 {% block title %}{{title}}{% endblock %}
 {% block content %}
 {% if user.is_authenticated %}
@@ -25,7 +26,7 @@
 		    	[<a href="{% url 'edit' model_name o.pk %}">edit</a>]
 		    	[<a href="{% url 'delete' model_name o.pk %}">delete</a>]
 			{% endif %}	        
-	    	{{ o | verbose }}
+	    	{% list_format o %}
     	</li>
 	  {% endfor %}
 	</ul>

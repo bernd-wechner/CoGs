@@ -1,18 +1,4 @@
-"""CoGs URL Configuration
-
-The `urlpatterns` list routes URLs to views. For more information please see:
-    https://docs.djangoproject.com/en/1.8/topics/http/urls/
-Examples:
-Function views
-    1. Add an import:  from my_app import views
-    2. Add a URL to urlpatterns:  url(r'^$', views.home, name='home')
-Class-based views
-    1. Add an import:  from other_app.views import Home
-    2. Add a URL to urlpatterns:  url(r'^$', Home.as_view(), name='home')
-Including another URLconf
-    1. Add an import:  from blog import urls as blog_urls
-    2. Add a URL to urlpatterns:  url(r'^blog/', include(blog_urls))
-"""
+"""CoGs URL Configuration"""
 from django.conf.urls import include, url
 from django.contrib import admin
 from django.conf import settings
@@ -26,11 +12,6 @@ from Leaderboards import views
 from django_generic_view_extensions import odf
 
 urlpatterns = [
-    # Examples:
-    # url(r'^$', 'DjangoTest.views.home', name='home'),     name is used for reverse Url resolution as in <a href="{% url 'home' %}">
-    # url(r'^blog/', include('blog.urls')),
-    # url(r'^favicon.ico$', RedirectView.as_view(url=staticfiles_storage.url('favicon.ico'), permanent=False), name="favicon" ),
-
     url(r'^$', views.index, name='home'),
     url(r'^admin/', include(admin.site.urls), name='admin'),
     url(r'^login/$', auth_views.LoginView.as_view(), name='login'),
@@ -42,7 +23,7 @@ urlpatterns = [
     url(r'^check', views.view_CheckIntegrity, name='check'),
     url(r'^rebuild', views.view_RebuildRatings, name='rebuild'),
 
-    # Provisional URL (remove in prodcuction, a duke nukem way of deleting records)
+    # Provisional URL (remove in production, a duke nukem way of deleting records)
     url(r'^kill/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Kill, name='kill'),
 
     # CoGs Generic Views 
@@ -51,7 +32,7 @@ urlpatterns = [
     #     operation:     which must be one of list, view, add, edit, delete
     #     model:         the name of a model to perform the operation on
     #     pk:            required only for object specific operations, namely view, edit, delete (not list or add) and is the primary key of the object to be operated on
-    # any of these that is not derived from the URL can be sepecified in the view itself of course.
+    # any of these that is not derived from the URL can be specified in the view itself of course.
     # Notably: operation.
     #
     # Always specify a name= to the url as this is how that url is referenced in a template.
@@ -72,6 +53,3 @@ urlpatterns = [
     url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),
      
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
-
-# Static file server for Development ONLY
-# See https://docs.djangoproject.com/en/1.8/howto/static-files/

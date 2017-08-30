@@ -55,7 +55,8 @@ def QuoteValues(value):
 
     return "[" + ", ".join([quote_values(obj) for obj in value]) + "]"
 
-@register.filter(name='add_attributes')
+#@register.filter(name='add_attributes')
+@register.filter
 def add_attributes(field, css):
     attrs = {}
     definition = css.split(',')

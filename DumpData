@@ -1,0 +1,18 @@
+#!/bin/bash
+
+DATE=$(date +%Y-%m-%d)
+
+if [[ -f manage.py ]]; then
+	DIR="Seed Data/$DATE dumpdata"
+	mkdir -p "$DIR"
+	
+	BASEARGS="dumpdata Leaderboards --indent 4 --output "
+	
+	# These two args would force use of natural keys. 
+	# This is not good for database seeding alas
+	#"--natural-primary --natural-foreign"
+	
+	./manage.py $BASEARGS "$DIR/data.xml" --format xml 
+	./manage.py $BASEARGS "$DIR/data.json" --format json
+	./manage.py $BASEARGS "$DIR/data.yaml" --format yaml
+fi

@@ -15,17 +15,40 @@ import os
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/1.8/howto/deployment/checklist/
-
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 
-# SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+# TODO: Work static files out when deployed. They are working fine under runserver.
+#       but the following two directives might be important for deployment.
+#       https://docs.djangoproject.com/en/1.11/ref/contrib/staticfiles/
+#       
+# This is where manage.py collectstatic will look for static files. A tuple of dirs.
+STATICFILES_DIRS = (os.path.join(BASE_DIR, "Leaderboards/static/"),)
 
-ALLOWED_HOSTS = []
+# This is where manage.py collectstatic will place all the static files
+STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
+# And this is the URL where static files will be expected by django pages
+STATIC_URL = "/static/"
+    
+# The name of the webserver this is running on (used to select deployment settings)
+WEBSERVER = "Arachne"
+
+import platform
+HOSTNAME = platform.node()
+
+if HOSTNAME == WEBSERVER:
+    print("Django settings: Web Server")
+    ALLOWED_HOSTS = ["127.0.0.1", "leaderboard.space"]
+    #SECURE_CONTENT_TYPE_NOSNIFF = True
+    #SECURE_BROWSER_XSS_FILTER = True
+    #SECURE_SSL_REDIRECT = True
+    #SESSION_COOKIE_SECURE = True
+    #CSRF_COOKIE_SECURE = True
+    #X_FRAME_OPTIONS = 'DENY'
+else:
+    print("Django settings: Development Server")
+    from CoGs.settings_development import * 
 
 # Application definition
 

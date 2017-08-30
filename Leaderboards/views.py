@@ -2,7 +2,7 @@ import re
 import json
 import cProfile, pstats, io
 import pytz
-from datetime import datetime
+from datetime import datetime, date, timedelta
 
 from collections import OrderedDict
 
@@ -56,6 +56,8 @@ def fix_time_zone(dt):
     UTC = pytz.timezone('UTC')
     if not dt is None and dt.tzinfo == None:
         return UTC.localize(dt)
+    else:
+        return dt
 
 #===============================================================================
 # Form processing specific to CoGs
@@ -562,7 +564,7 @@ def ajax_Leaderboards(request, raw=False):
             else:
                 last_time = timezone.make_aware(datetime.now())
                 
-            if last_time > changed_since and last_time < as_at:
+            if (changed_since == default['changed_since'] or last_time > changed_since) and (as_at == default['as_at'] or last_time < as_at):
                 times.append(last_time)
             
             # If we have a current leaderboard in the time window changed_since to as_at

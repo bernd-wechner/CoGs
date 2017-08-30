@@ -78,7 +78,7 @@ class TrueskillSettings(models.Model):
     #    b) We keep the ratings history with the old values and move forward with the new
     # Merits? Methods?
     # Suggest we have a form for editing these with processing logic and don't let the admin site edit them, or create logic
-    # that can adapt to admin site edits - flagging the liklihood. Or perhaps we should make this not a one tuple table
+    # that can adapt to admin site edits - flagging the likelihood. Or perhaps we should make this not a one tuple table
     # but store each version with a date. That in can of course then support staged ratings histories, so not a bad idea.
     mu0 = models.FloatField('TrueSkill Initial Mean (µ0)', default=trueskill.MU)
     sigma0 = models.FloatField('TrueSkill Initial Standard Deviation (σ0)', default=trueskill.SIGMA)
@@ -200,10 +200,6 @@ class Player(models.Model):
     #      i) If nickname is not private can fall back on that
     #      ii) Else if all names are private display some mask like "Private Player ID"
     #   c) Should consider a rule such that privacy of nickname has to be less than or equal to any other name
-    #
-    # TODO: Add user management. Every Player needs to be able to have a User int he auth model.
-    #       This is so that we can apply League privacy. If logged in we know your leagues and can
-    #       determine what you can see.
 
     # Basic Player fields
     name_nickname = models.CharField('Nickname', max_length=MAX_NAME_LENGTH)
@@ -1202,22 +1198,32 @@ class Session(models.Model):
         return u'{} - {}'.format(formats.date_format(self.date_time, 'DATETIME_FORMAT'), self.game)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self):
-        # Profiling reveals that this is rather expensive. 49 seconds to load a list of 86 sessions! So 0.57s/session. 
-#         return u'{} - {} - {} - {} - {} {} ({} won)'.format(
-#             formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
-#             self.league, 
-#             self.location, 
-#             self.game, 
-#             self.num_competitors, 
-#             self.str_competitors, 
-#             ", ".join([p.name_nickname for p in self.victors]))
-        # Experiment with faster version. 5.7 sec for same list or 0.07s per session. 
-        # 10 times faster, but still not fast enough. Imagine 1000 sessions, back to a minute for page load.  
         return u'{} - {} - {} - {}'.format(
             formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
             self.league, 
             self.location, 
             self.game)
+    def __rich_str__(self):
+        if self.team_play:
+            victors = []
+            for t in self.victors:
+                if t.name is None:
+                    victors += ["(" + ", ".join([p.name_nickname for p in t.players.all()]) + ")"]
+                else:
+                    victors += [t.name]
+        else:
+            victors = [p.name_nickname for p in self.victors]
+        try:
+            return u'{} - {} - {} - {} - {} {} ({} won)'.format(
+                formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
+                self.league, 
+                self.location, 
+                self.game, 
+                self.num_competitors, 
+                self.str_competitors, 
+                ", ".join(victors))
+        except:
+            pass
             
     def check_integrity(self):
         '''
@@ -1314,16 +1320,16 @@ class Session(models.Model):
         # FIXME: While bouncing, see what we can do to conserve the form, state!
         # FIXME: Fix the bounce, namely work out how to test the related objects in the right order of events 
         
-        # FIXME: WHen we land here no ranks or performances are saved, ans
+        # FIXME: When we land here no ranks or performances are saved, and
         # self.players finds no related ranks.
         # Does this mean we need to do an is_valid and if so, save on the 
         # ranks and performances first? But if the session is not saved they 
         # too will have dramas with order.
         #
         # Maybe it's hard with clean (which is presave) to do the necessary
-        # relation tests? Is this an application for an atomic save, whcih 
-        # can ber performed on all the forms with minimal clean, then 
-        # susequently an integrity check (or clean) on the enseble and
+        # relation tests? Is this an application for an atomic save, which 
+        # can be performed on all the forms with minimal clean, then 
+        # subsequently an integrity check (or clean) on the enseble and
         # if failed, then roll back?
     
         # For now bypass the clean to do a test    
@@ -1710,8 +1716,8 @@ class Performance(models.Model):
         return # Disable for now, enable only for testing
     
         # Find the previous performance for this player at this game and copy 
-        # the trueskill after values tot he trueskill before values in this 
-        # performance or from initals if no previous.
+        # the trueskill after values to the trueskill before values in this 
+        # performance or from initials if no previous.
         previous = self.previous_play
         
         if previous is None:
