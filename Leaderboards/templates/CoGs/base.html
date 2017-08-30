@@ -21,12 +21,14 @@
 	        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
 				<h1 id="site-name"><a href="/">CoGs Scoreboard Server</a></h1>
 	        </div>
-	        {% endblock %}
 	
+	        {% endblock %}
 	        {% block menu %}
-	        <div id="menu">
-	        	[<a href="/admin">Admin</a>]
-	        	
+	        <div id="menu"  style="float: left;">
+				{% if user.is_authenticated %}	        
+	        		[<a href="/admin">Admin</a>]
+				{% endif %}
+					        	
 	        	[<a href="{% url 'leaderboards' %}">Leaderboards</a>]
 	        	
 	        	[<a href="{% url 'list' 'League' %}">Leagues</a> |
@@ -34,11 +36,22 @@
 	        	<a href="{% url 'list' 'Player' %}">Players</a> |
 	        	<a href="{% url 'list' 'Location' %}">Locations</a> |
 	        	<a href="{% url 'list' 'Session' %}">Sessions</a>]
-	
-	        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
-	        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
-	        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
-	        	 <a href="{% url 'list' 'Rating' %}">Ratings</a>]
+
+				{% if user.is_authenticated %}
+		        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
+		        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
+		        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
+		        	 <a href="{% url 'list' 'Rating' %}">Ratings</a>]
+				{% endif %}	        
+	        	 
+	        </div>
+	        <div id="login" style="float: right; margin-right:50px">
+				{% if user.is_authenticated %}
+		        	[ Logged in as: {{ user.player }}| <a href="{% url 'logout' %}?next={{request.path}}"">Logout</a> ]
+				{% else %}
+		        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a>  ]
+				{% endif %}	        
+	        	
 	        </div>
 	        {% endblock %}
 	

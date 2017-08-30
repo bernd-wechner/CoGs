@@ -1,7 +1,9 @@
 import re
 import json
 import cProfile, pstats, io
-from datetime import datetime, timedelta, date
+import pytz
+from datetime import datetime, date, timedelta
+
 from collections import OrderedDict
 
 from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string
@@ -14,10 +16,12 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
 from django.contrib.auth.models import Group
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, make_aware
+
 
 # TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sesisons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
@@ -47,6 +51,13 @@ def index(request):
 
 def is_registrar(user):
     return user.groups.filter(name='registrars').exists()
+
+def fix_time_zone(dt):
+    UTC = pytz.timezone('UTC')
+    if not dt is None and dt.tzinfo == None:
+        return UTC.localize(dt)
+    else:
+        return dt
 
 #===============================================================================
 # Form processing specific to CoGs
@@ -274,7 +285,7 @@ def context_provider(self, context):
 #===============================================================================
 # TODO: Test that this does validation and what it does on submission errors
 
-class view_Add(CreateViewExtended):
+class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
@@ -285,7 +296,7 @@ class view_Add(CreateViewExtended):
 
 # TODO: Test that this does validation and what it does on submission errors
 
-class view_Edit(UpdateViewExtended):
+class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     # TODO: Must be atomic and in such a way that it tests if changes haveintegrity.
     #       notably if a session changes from indiv to team mode say or vice versa,
     #       there is a notable impact on rank objects that could go wrong and we should
@@ -300,7 +311,7 @@ class view_Edit(UpdateViewExtended):
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
 
-class view_Delete(DeleteViewExtended):
+class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
     # TODO: When deleting a session need to check for ratings that refer to it as last_play or last_win
     #        and fix the reference or delete the rating.
@@ -346,10 +357,11 @@ def view_Leaderboards(request):
     league = request.GET['league'] if 'league' in request.GET else default['league']
     player = request.GET['player'] if 'player' in request.GET else default['player']
     game = request.GET['game'] if 'game' in request.GET else default['game']
-    as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
-    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
-    compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
-    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
+    
+    as_at = fix_time_zone(parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at'])
+    changed_since = fix_time_zone(parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since'])
+    compare_till = fix_time_zone(parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till'])
+    compare_back_to = fix_time_zone(parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to'])
     compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
     highlight = json.loads(request.GET['highlight'].lower()) if 'highlight' in request.GET else default['highlight']
     
@@ -413,6 +425,9 @@ def view_Leaderboards(request):
         subtitle.append("compared back to the leaderboard as at {}".format(localize(compare_back_to)))
     elif compare_with != default['compare_with']:
         subtitle.append("compared up to with {} prior leaderboards".format(compare_with))
+
+    if compare_till != default['compare_till']:
+        subtitle.append("compared up to the leaderboard as at {}".format(localize(compare_till)))
         
     c = {'title': title,
          'subtitle': "<br>".join(subtitle),
@@ -453,7 +468,7 @@ def ajax_Leaderboards(request, raw=False):
     This is used with raw=True as well view_Leaderboards to get the leaderboard data.
     
     Should only validly be called from view_Leaderboards when a view is rendered
-    or as an AJAX call when reqeusting a leaderboard refress because the player name 
+    or as an AJAX call when requesting a leaderboard refresh because the player name 
     presentation for example has changed. 
     
     Caution: This does not have any way of adjusting the context that the original 
@@ -462,9 +477,9 @@ def ajax_Leaderboards(request, raw=False):
     through view_Leaderboards (which delivers context to the page). 
     
     The returned leaderboards are in the following rather general structure of
-    lists within lists. Some are tuples in the Python which whem JSONified for
+    lists within lists. Some are tuples in the Python which when JSONified for
     the template become lists (arrays) in Javascript. Tis data structure is central
-    to iteraction with the front-end template for leadeboard rendering.
+    to interaction with the front-end template for leaderboard rendering.
     
     Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier3)  
     Tier2: A list of four value tuples (date_time, plays[game], sessions[game], Tier2)
@@ -478,17 +493,18 @@ def ajax_Leaderboards(request, raw=False):
     (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
     The play count and session count for that game up to that time are in this tuple too.   
     
-    Tier3 is the leaderboard for that game, a list of players with theit trueskill ratings. 
+    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order. 
     '''
    
     # Fetch the filter requests if provided
     league = request.GET['league'] if 'league' in request.GET else default['league']
     player = request.GET['player'] if 'player' in request.GET else default['player']
     game = request.GET['game'] if 'game' in request.GET else default['game']
-    as_at = parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at']
-    changed_since = parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since']
-    compare_till = parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till']
-    compare_back_to = parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to']
+
+    as_at = fix_time_zone(parser.parse(request.GET['as_at']) if 'as_at' in request.GET else default['as_at'])
+    changed_since = fix_time_zone(parser.parse(request.GET['changed_since']) if 'changed_since' in request.GET else default['changed_since'])
+    compare_till = fix_time_zone(parser.parse(request.GET['compare_till']) if 'compare_till' in request.GET else default['compare_till'])
+    compare_back_to = fix_time_zone(parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to'])
     compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
     
     # TODO: Bail with an error message
@@ -500,7 +516,7 @@ def ajax_Leaderboards(request, raw=False):
     if game != ALL_GAMES and not Game.objects.filter(pk=game).exists():
         pass
 
-    # Fetch the name renderig option if provided
+    # Fetch the name rendering option if provided
     names = request.GET['names'] if 'names' in request.GET else "complete"
 
     # Now let's build the list of games for Tier2 that match our filters.
@@ -531,50 +547,61 @@ def ajax_Leaderboards(request, raw=False):
             # These should reflect the session time stamps at which that leaderboard came to be.
             times = []
             if as_at is None:
-                last_session = Session.objects.filter(game=game).order_by("-date_time")[0]
+                game_sessions = Session.objects.filter(game=game).order_by("-date_time")
             else:
-                last_session = Session.objects.filter(date_time__lte=as_at, game=game).order_by("-date_time")[0]
+                game_sessions = Session.objects.filter(date_time__lte=as_at, game=game).order_by("-date_time")
+                
+            # Fetch the time of the last session in the window changed_since to as_at
+            # That will capture the leaderboard as at that time, but of course only if
+            # it changed since the requested time, else not 
+            if len(game_sessions) > 0:
+                last_session = game_sessions[0]
+            else:
+                last_session = None
 
             if last_session:
-                times.append(last_session.date_time)
+                last_time = last_session.date_time
             else:
-                times.append(timezone.make_aware(datetime.now()))
+                last_time = timezone.make_aware(datetime.now())
+                
+            if (changed_since == default['changed_since'] or last_time > changed_since) and (as_at == default['as_at'] or last_time < as_at):
+                times.append(last_time)
             
-            # Either comparing with a previsou number of sessions or back to a given date
-            # Will produce a history of leaderboards.
-            if (not compare_with is None) or (not compare_back_to is None):
-                sfilter = Q(game=game)
-                
-                if compare_till is None:
-                    sfilter &= Q(date_time__lt=last_session.date_time)
-                else:
-                    sfilter &= Q(date_time__lte=compare_till)
-
-                if not compare_back_to is None:
-                    sfilter &= Q(
-                        date_time__gte=Subquery(
-                            (Session.objects
-                                .filter(sfilter & Q(date_time__lt=compare_back_to))
-                                .values('date_time')
-                                .order_by('-date_time')[:1]
-                            ), output_field=DateField()
+            # If we have a current leaderboard in the time window changed_since to as_at
+            # then we may also want to include its history if requested by:
+            #  compare_back_to, compare_til or compare_with
+            if len(times) > 0:
+                if (not compare_with is None) or (not compare_back_to is None):
+                    sfilter = Q(game=game)
+                    
+                    if compare_till is None:
+                        sfilter &= Q(date_time__lt=last_session.date_time)
+                    else:
+                        sfilter &= Q(date_time__lte=compare_till)
+    
+                    if not compare_back_to is None:
+                        sfilter &= Q(
+                            date_time__gte=Subquery(
+                                (Session.objects
+                                    .filter(sfilter & Q(date_time__lt=compare_back_to))
+                                    .values('date_time')
+                                    .order_by('-date_time')[:1]
+                                ), output_field=DateField()
+                            )
                         )
-                    )
+                        
+                    last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
                     
-                    # sfilter &= Q(date_time__gte=compare_back_to)
-                    
-                last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
-                
-                if not compare_with is None:
-                    last_sessions = last_sessions[:compare_with]
-
-                for s in last_sessions:
-                    times.append(s.date_time)
+                    if not compare_with is None:
+                        last_sessions = last_sessions[:compare_with]
+    
+                    for s in last_sessions:
+                        times.append(s.date_time)
             
             for time in times:            
                 # The first time should be the last session time for the game and thus should translate 
                 # to the same as what's in the Rating model. 
-                # TODO: Performan an integrity check around that and indeed if it's an ordinary
+                # TODO: Perform an integrity check around that and indeed if it's an ordinary
                 # leaderboard presentation check on performance between asat=time (which reads Performance)
                 # and asat=None (which read Rating).  
                 lb = game.leaderboard(league=league, asat=time, names=names, indexed=True)

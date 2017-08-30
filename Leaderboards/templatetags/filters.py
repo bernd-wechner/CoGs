@@ -55,7 +55,8 @@ def QuoteValues(value):
 
     return "[" + ", ".join([quote_values(obj) for obj in value]) + "]"
 
-@register.filter(name='add_attributes')
+#@register.filter(name='add_attributes')
+@register.filter
 def add_attributes(field, css):
     attrs = {}
     definition = css.split(',')
@@ -68,3 +69,11 @@ def add_attributes(field, css):
             attrs[t] = v
 
     return field.as_widget(attrs=attrs)
+
+@register.filter
+def verbose(value):
+    if hasattr(value, "__verbose_str__"):
+        return value.__verbose_str__()
+    else:
+        return value.__str__()
+    

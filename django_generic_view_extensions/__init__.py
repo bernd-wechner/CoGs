@@ -10,16 +10,16 @@ Django provides some excellent generic class based views:
     
 They are excellent for getting a site up and running really quickly from little more than a model specification. 
 
-The admin site of course provides a rather excellent and complete version of generic database administratration:
+The admin site of course provides a rather excellent and complete version of generic database administration:
 
     https://docs.djangoproject.com/en/1.10/ref/contrib/admin/
      
 But as at Django 1.10 the built in generic class based views fall somewhat short of complete.
 
-This module provides extensions to the generic clas based views, with the specific aim of adding more context
+This module provides extensions to the generic class based views, with the specific aim of adding more context
 to use in templates and including the forms and field values for related objects.
 
-In summary, the built genric class based views we are extending are from django.views.generic: 
+In summary, the built generic class based views we are extending are from django.views.generic: 
 
 ListView - for listing the objects in a model
 DetailView - for examining the details of a specific object (model instance) 
@@ -43,7 +43,7 @@ model - the model class (available as view.model as well, but what the heck.
 model_name - because it's not easy to reference view.model.__name__ in a template alas.
 model_name_plural - because it's handier than referencing view.model._meta.verbose_name_plural
 operation - the value of "operation" passed from urlconf (should be "list", "view", "add", "edit" or "delete")
-title - a convenient titls constructed from the above that can be used in a template 
+title - a convenient title constructed from the above that can be used in a template 
 default_datetime_input_format - the default Django datetime input format as a PHP datetime format string. Very useful for configuring a datetime picker.
 
 DetailViewExtended and DeleteViewExtended 
@@ -54,7 +54,7 @@ form.as_table
 form.as_ul
 form.as_p
 
-with which you can rapidly redner the basic form for a model without further ado in three formats. 
+with which you can rapidly render the basic form for a model without further ado in three formats. 
 
 Oddly it does not provide these for detail views. So here we do. Direct reproduction of the form
 version only instead of containing HTML form elements it just contains the field contents rendered in
@@ -66,12 +66,12 @@ view.as_p
 
 in the context they deliver. 
 
-Thes eviews take an optional ketword argument ToManyMode to specify how lists should be rendered for 
-fields that are relations to many. The many remote obects have their own __str__ representations which 
+These views take an optional keyword argument ToManyMode to specify how lists should be rendered for 
+fields that are relations to many. The many remote objects have their own __str__ representations which 
 can be rich of course and so some control over how lists of these are presented is offered. ToManyMode
 can take any of the 3 formats 'table', 'ul', 'p' as per the view itself, that is display the multiple 
-values as a table as a bulletted list or as a set of paragraphs. It can be any other string as well in
-which case that string is used as a delimeter between values. It can contain  HTML of course, for 
+values as a table as a bulleted list or as a set of paragraphs. It can be any other string as well in
+which case that string is used as a delimiter between values. It can contain  HTML of course, for 
 example '<BR>'.  
 
 CreateViewExtended and UpdateViewExtended 
@@ -133,7 +133,7 @@ are two extra elements management_form and field_data.
 management_form is the standard management form Django requires (and you should understand
 these to build rich forms). In summary though they are simply little HTML snippets that 
 contain four hidden input fields named TOTAL_FORMS, INITIAL_FORMS, MIN_NUM_FORMS, MAX_NUM_FORMS.
-Documentation on exactly how these work is meagre in the django world, but they are used
+Documentation on exactly how these work is meager in the django world, but they are used
 by the Django code when submitted form data is processed, and to that end in rich forms you
 will need (in Javascript perhaps) to update TOTAL_FORMS in particular to tell Django how many
 forms are being submitted. This is a little more complicated than we can cover here, but
@@ -148,7 +148,7 @@ numbers to look for and process.
 
 TODO: Document the naming convention of Django form elements too.
 
-field_data cointains one entry for each field which returns the value of that field with a 
+field_data contains one entry for each field which returns the value of that field with a 
 special caveat, the value is complex. If the field is a Django concrete field (not a relation)
 then its actual value. If it's a relation then the pk or list of pks (primary keys) of the 
 related objects.
@@ -168,11 +168,11 @@ related_forms.Pet.field_data.name         # which is a string, the name
 related_forms.Pet.field_data.issues       # which is a list of integers, the primary keys of the issues 
 related_forms.Member.related_forms.Issue.field_data.description   # which is a list of strings, the descriptions mapping to related_forms.Member.field_data.issues    
 related_forms.Pet.related_forms.Issue.field_data.description      # which is a list of strings, the descriptions mapping to related_forms.Pet.field_data.issues
-
 '''
 
 import html
 import collections
+import functools
 from titlecase import titlecase
 from types import SimpleNamespace
 from time import time
@@ -186,7 +186,7 @@ from django.utils.encoding import force_text
 from django.core.urlresolvers import reverse_lazy
 from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
-from django.db.models import DEFERRED
+#from django.db.models import DEFERRED
 from django.db.models.query import QuerySet
 from django.forms.models import fields_for_model, inlineformset_factory, modelformset_factory
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
@@ -262,23 +262,118 @@ class object_display_format():
     all - all of the categories
     '''
 
+    # Some format of fields, flat or list
+    flat = 1
+    list = 1 << 1
+
     # The buckets that fields (and pseudo-fields in the case of properties) can fall into
-    model = 1
-    internal = 1 << 1
-    related = 1 << 2
-    properties = 1 << 3
+    model = 1 << 2
+    internal = 1 << 3
+    related = 1 << 4
+    properties = 1 << 5
 
     # Some rendering options
-    separated = 1 << 4
-    header = 1 << 5
+    separated = 1 << 6
+    header = 1 << 7
 
     # Some shorthand formats
-    normal = model
-    all_model = model | internal | properties
-    all = model | internal | properties | related
+    normal = flat | model
+    all_model = flat | list | model | internal | properties
+    all = flat | list | model | internal | properties | related
 
 # A shorthand for the display format options
 odf = object_display_format
+
+def get_object_display_format(request):
+    '''
+    Standard means of extracting a object display format from a request.
+    
+    Assumes odf.normal and modifies as per request.
+    :param request:
+    '''
+    ODF = odf.normal
+    
+    if 'noall' in request or 'none' in request:
+        ODF &= ~odf.all
+        
+    if 'all' in request:
+        ODF = odf.all
+        
+    if 'noflat' in request:
+        ODF &= ~odf.flat
+    if 'nomodel' in request:
+        ODF &= ~odf.model
+    if 'nolist' in request:
+        ODF &= ~odf.list
+    if 'nointernal' in request:
+        ODF &= ~odf.internal
+    if 'norelated' in request:
+        ODF &= ~odf.related
+    if 'noproperties' in request:
+        ODF &= ~odf.properties    
+        
+    if 'flat' in request:
+        ODF |= odf.flat
+    if 'model' in request:
+        ODF |= odf.model
+    if 'list' in request:
+        ODF |= odf.list
+    if 'internal' in request:
+        ODF |= odf.internal
+    if 'related' in request:
+        ODF |= odf.related
+    if 'properties' in request:
+        ODF |= odf.properties
+    
+    return ODF
+
+class object_list_format():
+    '''Format options for objects in the list view.
+
+    brief   - The standard __str__ representation of the object
+    verbose - The  __verbose_str__ representation of the object if it exists, else falls back on __str__
+    rich    - The  __rich_str__ representation of the object else falls back on __verbose_str__
+    detail  - the detail view of the object!
+    
+    '''
+
+    # Some format of fields, flat or list
+    brief = 0
+    verbose = 1
+    rich = 1 << 1
+    detail = 1 << 2
+
+# A shorthand for the list format options
+olf = object_list_format
+
+def get_object_list_format(request):
+    '''
+    Standard means of extracting a object list format from a request.
+    
+    Assumes olf.brief and modifies as per request.
+    :param request:
+    '''
+    OLF = olf.brief
+    
+    if 'verbose' in request:
+        OLF |= olf.verbose
+    if 'rich' in request:
+        OLF |= olf.rich
+    if 'detail' in request:
+        OLF |= ~olf.verbose
+    
+    return OLF
+
+def display_format(result_type):
+    '''
+    A decorator for properties which permits specification of a type for use in deciding whether or 
+    not to display the property. 
+    :param result_type: Expected to be object_display_format.flat or object_display_format.list
+    '''
+    def decorator(func):
+        func.__type = result_type
+        return func
+    return decorator
 
 def isIterable(obj):
     '''Given an object returns True if it is iterable, False if not.'''
@@ -353,65 +448,64 @@ def object_html_output(self, style):
     # Collect output lines in a list
     output = []
 
-    for bucket in [odf.model, odf.internal, odf.related, odf.properties]:
-        if self.format & bucket:
-            list_label = ('Internal fields' if bucket == odf.internal
-                else 'Related fields' if bucket == odf.related
-                else 'Properties' if bucket == odf.properties
-                else 'Standard fields' if bucket == odf.model and self.format & odf.header
-                else None if bucket == odf.model
-                else 'Unknown ... [internal error]')
+    for bucket in self.fields_bucketed:
+        list_label = ('Internal fields' if bucket == odf.internal
+            else 'Related fields' if bucket == odf.related
+            else 'Properties' if bucket == odf.properties
+            else 'Standard fields' if bucket == odf.model and self.format & odf.header
+            else None if bucket == odf.model
+            else 'Unknown ... [internal error]')
+        
+        if list_label and (self.format & odf.separated) and self.fields_bucketed[bucket]:
+            label_format = '<div style="float:left;">{}</div>{}' if style == 'table' else '{}'
+            row = normal_row.format(
+                label=label_format.format(list_label,table_separator),
+                value=table_separator if style == 'table' else '',
+                help_text='',
+            )
+
+            row_format = '{}<ul>' if style == 'ul' else '{}'
+            output.append(row_format.format(row))
+
+        for name in self.fields_bucketed[bucket]:
+            field = self.fields_bucketed[bucket][name]
+            value = field.value
             
-            if list_label and (self.format & odf.separated) and self.fields_bucketed[bucket]:
-                label_format = '<div style="float:left;">{}</div>{}' if style == 'table' else '{}'
-                row = normal_row.format(
-                    label=label_format.format(list_label,table_separator),
-                    value=table_separator if style == 'table' else '',
-                    help_text='',
-                )
+            # If a list is provided it came from a ManyToMany or a OneToMany field (actually a Foreign Key from another model) and we render it according to self.ToManyMode.
+            if type(value) is list:
+                if self.ToManyMode == 'p':
+                    value = "<p>" + "<br>".join(value) + "</p>"
+                elif self.ToManyMode == 'ul':
+                    value = "<ul><li>" + "</li><li>".join(value) + "</li></ul>"
+                elif self.ToManyMode == 'table':
+                    value = "<table><tr><td>" + "</td></tr><tr><td>".join(value) + "</td></tr></table>"
+                else:  # just accept the mode itself as a list delimiter in a div
+                    value = "<div>" + self.ToManyMode.join(value) + "</div>"
 
-                row_format = '{}<ul>' if style == 'ul' else '{}'
-                output.append(row_format.format(row))
+            if hasattr(field, 'label') and field.label:
+                label = conditional_escape(force_text(field.label))
+            else:
+                label = ''
 
-            for name in self.fields_bucketed[bucket]:
-                field = self.fields_bucketed[bucket][name]
-                value = field.value
-                
-                # If a list is provided it came from a ManyToMany or a OneToMany field (actually a Foreign Key from another model) and we render it according to self.ToManyMode.
-                if type(value) is list:
-                    if self.ToManyMode == 'p':
-                        value = "<p>" + "<br>".join(value) + "</p>"
-                    elif self.ToManyMode == 'ul':
-                        value = "<ul><li>" + "</li><li>".join(value) + "</li></ul>"
-                    elif self.ToManyMode == 'table':
-                        value = "<table><tr><td>" + "</td></tr><tr><td>".join(value) + "</td></tr></table>"
-                    else:  # just accept the mode itself as a list delimiter in a div
-                        value = "<div>" + self.ToManyMode.join(value) + "</div>"
+            if hasattr(field, 'help_text') and field.help_text:
+                help_text = help_text_html % force_text(field.help_text)
+            else:
+                help_text = ''
 
-                if hasattr(field, 'label') and field.label:
-                    label = conditional_escape(force_text(field.label))
-                else:
-                    label = ''
+            label_format = '<div style="padding-left:15px;">{}</div>' if style == 'table' and self.format & odf.separated else '{}'
 
-                if hasattr(field, 'help_text') and field.help_text:
-                    help_text = help_text_html % force_text(field.help_text)
-                else:
-                    help_text = ''
+            row = normal_row.format(
+                 label=label_format.format(force_text(label)),
+                 value=six.text_type(hstr(value)),
+                 help_text=help_text
+             )
 
-                label_format = '<div style="padding-left:15px;">{}</div>' if style == 'table' and self.format & odf.separated else '{}'
+            row_format = '<div style="margin-left:15px;">{}</div>' if style == 'p' and self.format & odf.separated else '{}'
 
-                row = normal_row.format(
-                     label=label_format.format(force_text(label)),
-                     value=six.text_type(hstr(value)),
-                     help_text=help_text
-                 )
+            output.append(row_format.format(row))
 
-                row_format = '<div style="margin-left:15px;">{}</div>' if style == 'p' and self.format & odf.separated else '{}'
-
-                output.append(row_format.format(row))
-
-            if list_label and self.format & odf.separated and style == 'ul':
-                output.append('</ul>')
+        if list_label and self.format & odf.separated and style == 'ul':
+            output.append('</ul>')
 
     return mark_safe('\n'.join(output))
 
@@ -455,11 +549,99 @@ def apply_sort_by(queryset):
     else:
         return queryset
 
+def pretty_FilterSet(filterset):
+    '''
+    Returns a pretty formatted string version of a filterset 
+    :param filterset:
+    '''
+    
+    operation = {
+        "exact" : " = ",
+        "iexact" : " = ",
+        "contains" : " contains ",
+        "icontains" : " contains ",
+        "startswith" : " starts with ",
+        "istartswith" : " starts with ",
+        "endswith" : " ends with ",
+        "iendswith" : " ends with ",
+        "range" : " is between ",
+        "isnull" : " is NULL ",
+        "regex" : " matches ",
+        "iregex" : " matches ",
+        "in" : " is in ",
+        "gt" : " > ",
+        "gte" : " >= ",
+        "lt" : " < ",
+        "lte" : " <= ",
+#         "year" : "",
+#         "month" : "",
+#         "day" : "",
+#         "week" : "",
+#         "week_day" : "",
+#         "time" : "",
+#         "hour" : "",
+#         "minute" : "",
+#         "second" : "",
+        }
+
+    def concrete_field(model, field_name):
+        for field in model._meta.fields:
+            if field.attname == field_name:
+                return field
+        return None
+    
+    def get_field(components, component, model):
+        field_name = components[component]
+        field = getattr(model, field_name)
+        
+        # To Many fields 
+        if hasattr(field, "rel"):
+            if field.rel.many_to_many:
+                field = get_field(components, component+1, field.field.related_model) 
+            elif field.rel.one_to_many:
+                field = get_field(components, component+1, field.field.model) 
+        # To One fields 
+        elif hasattr(field, "field"): 
+            field = get_field(components, component+1, field.field.related_model)
+        else:
+            field = concrete_field(model, field_name)
+        
+        return field
+    
+    specs = filterset.get_specs()
+    pretty_specs = []
+    for filter in specs:
+        # __year - filter["lookup"] == "year"
+        field = get_field(filter.components, 0, filterset.queryset.model)
+        if len(filter.components) > 1 and filter.lookup == "exact":
+            Os = field.model.objects.filter(**{"{}__{}".format(field.attname, filter.lookup):filter.value})
+            O = Os[0] if Os.count() > 0 else None
+            field_name = field.model._meta.object_name
+            field_value = str(O)
+        else:
+            field_name = field.verbose_name
+            field_value = filter.value
+        
+        pretty_specs += ["{} {} {}".format(field_name, operation[filter.lookup], field_value)]
+    
+    return " and ".join(pretty_specs)
+  
 class ListViewExtended(ListView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=True)
+        
+        # Pass the selected object list format to the context for selective rendering 
+        # with the list_format template tag (which renders the object accordingly)
+        OLF = get_object_list_format(self.request.GET)
+        if OLF & olf.rich:
+            context['object_list_format'] = "rich"
+        elif OLF & olf.verbose:
+            context['object_list_format'] = "verbose" 
+        else: 
+            context['object_list_format'] = "brief" 
+
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -480,7 +662,7 @@ class ListViewExtended(ListView):
             })
             
             fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())
-            self.filter = fs.get_specs()
+            self.filter = pretty_FilterSet(fs)
             self.queryset = fs.filter()
         else:
             self.queryset = self.model.objects.all()
@@ -751,21 +933,45 @@ class UpdateViewExtended(UpdateView):
 #                     form.fields[field].widget.attrs.update({attr_name:attr_value})
 #         return form
 
-    @transaction.atomic
+    #@transaction.atomic
     def form_valid(self, form):
         # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
-        #       If there's a bail then don't save anything, i.e don't save partial data.  
-        try:
-            with transaction.atomic():
-                self.object = form.save()
-                self.kwargs['pk'] = self.object.pk
-                self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-                if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
-                save_related_forms(self)
-                if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
-                return HttpResponseRedirect(self.get_success_url())
-        except IntegrityError:
-            return HttpResponseRedirect(self.get_success_url())                        
+        #       If there's a bail then don't save anything, i.e don't save partial data. 
+        
+        # Hook for pre-processing the form (before the data is saved)
+        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+
+        # Save this form
+        self.object = form.save()
+        self.kwargs['pk'] = self.object.pk
+        self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+        
+        # Save related forms
+        errors = save_related_forms(self)
+        
+        # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
+        # TODO: Tidy this. Render the errors in the message box on the original form somehow.
+        # Basically bounce back to where we were with error messages.
+        # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
+        if errors:
+            return JsonResponse(errors)            
+                    
+        # Hook for post-processing data (after it's all saved) 
+        if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+
+        return HttpResponseRedirect(self.get_success_url())
+         
+#         try:
+#             with transaction.atomic():
+#                 self.object = form.save()
+#                 self.kwargs['pk'] = self.object.pk
+#                 self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+#                 if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+#                 save_related_forms(self)
+#                 if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+#                 return HttpResponseRedirect(self.get_success_url())
+#         except IntegrityError:
+#             return HttpResponseRedirect(self.get_success_url())                        
 
 #     def post(self, request, *args, **kwargs):
 #         response = super().post(request, *args, **kwargs)
@@ -813,11 +1019,28 @@ def add_related_fields_to_detail_view(self):
     will define self.fields with a dictionary of fields that a renderer can walk through later.
 
     Additionally self.fields_bucketed is a copy of self.fields in the buckets specified in object_display_format
-    and self.fields_flat and selef.fields_list also contain all the self.fields split into teh scalar (flat) values
+    and self.fields_flat and self.fields_list also contain all the self.fields split into the scalar (flat) values
     and the list values respectively (which are ToMany relations to other models).
     '''
     # Build the list of fields (expects ManyToMany to be set up bi-directionally, in both involved models, i.e. makes no special effort to find them)
     # fields_for_model includes ForeignKey and ManyToMany fields in the model definition
+
+    # Fields are categorized as follows for convenience and layout and performance decisions
+    #    flat or list  
+    #    model, internal, related or properties
+    #
+    # By default we will populate self.fields only with flat model fields.
+    #
+    # if keywords are in the GET request we will add the values of list, internal, related and/or properties.
+    # And even turn off list and model if requested.
+    
+    def is_list(field):
+        return hasattr(field,'is_relation') and field.is_relation and (field.one_to_many or field.many_to_many)
+    
+    def is_property(name):
+        return isinstance(getattr(self.model, name), property)
+
+    ODF = get_object_display_format(self.request.GET)    
 
     all_fields = self.obj._meta.get_fields()                    # All fields
 
@@ -825,28 +1048,45 @@ def add_related_fields_to_detail_view(self):
     internal_fields = collections.OrderedDict()                 # Non-editable fields in the model
     related_fields = collections.OrderedDict()                  # Fields in other models related to this one
     for field in all_fields:
-        if field.concrete:
-            if field.editable and not field.auto_created:
-                model_fields[field.name] = field
-            else:
-                internal_fields[field.name] = field
-        else:
-            related_fields[field.name] = field
+        if (is_list(field) and ODF & odf.list) or (ODF & odf.flat):
+            if field.concrete:
+                if ODF & odf.model and field.editable and not field.auto_created:
+                    model_fields[field.name] = field
+                elif ODF & odf.internal:
+                    internal_fields[field.name] = field
+            elif ODF & odf.related:
+                related_fields[field.name] = field
 
-    properties = [name for name in dir(self.model) if isinstance(getattr(self.model, name), property)]                      # Properties in the model (functions with the @property decorator)
+    # TODO: Is the property list or flat? Can't know without evaluating it unless the model confesses.
+    # Properties in the model (functions with the @property decorator)
+    # FIXME: Currently cannot divine without evaluating the property what type 
+    # it will yield. Need to find a way to decorate properties with a type annotation.
+    if ODF & odf.properties:
+        properties = [name for name in dir(self.model) if is_property(name)]
 
     # Some bucket for all the fields so we can group them on display (scalars and then lists)
-    self.fields_flat = {}                                       # Fields that have scalar values
-    self.fields_flat[odf.model] = collections.OrderedDict()
-    self.fields_flat[odf.internal] = collections.OrderedDict()
-    self.fields_flat[odf.related] = collections.OrderedDict()
-    self.fields_flat[odf.properties] = collections.OrderedDict()
+    
+    if ODF & odf.flat:
+        self.fields_flat = {}                                       # Fields that have scalar values
+        if ODF & odf.model:
+            self.fields_flat[odf.model] = collections.OrderedDict()
+        if ODF & odf.internal:
+            self.fields_flat[odf.internal] = collections.OrderedDict()
+        if ODF & odf.related:
+            self.fields_flat[odf.related] = collections.OrderedDict()
+        if ODF & odf.properties:
+            self.fields_flat[odf.properties] = collections.OrderedDict()
 
-    self.fields_list = {}                                       # Fields that are list items (have multiple values)
-    self.fields_list[odf.model] = collections.OrderedDict()
-    self.fields_list[odf.internal] = collections.OrderedDict()
-    self.fields_list[odf.related] = collections.OrderedDict()
-    self.fields_list[odf.properties] = collections.OrderedDict()
+    if ODF & odf.list:
+        self.fields_list = {}                                       # Fields that are list items (have multiple values)
+        if ODF & odf.model:
+            self.fields_list[odf.model] = collections.OrderedDict()
+        if ODF & odf.internal:
+            self.fields_list[odf.internal] = collections.OrderedDict()
+        if ODF & odf.related:
+            self.fields_list[odf.related] = collections.OrderedDict()
+        if ODF & odf.properties:
+            self.fields_list[odf.properties] = collections.OrderedDict()
 
     # For all fields we've collected set the value and label properly
     # Problem is that relationship fields are by default listed by primary keys (pk)
@@ -872,68 +1112,80 @@ def add_related_fields_to_detail_view(self):
         #                            if the field is a relation to many objects, a list of their string representations
         #
         # We also build fields_model and fields_other
-        #
-        # TODO fields_other needs to split into fields_model_internal and fields_other_related
-        # or some such, so that a full_separated list can group the the detail view can list :
-        #     scalar internal but not editable fields
-        #     list internal but not editable fields
-        #     relations from other models, grouped by model they come from (which seems the default)
 
         bucket = (odf.model if field.name in model_fields
             else odf.internal if field.name in internal_fields
             else odf.related if field.name in related_fields
             else None)
 
-        if bucket == None:
-            raise ValueError("Internal error: Poor field bucketing")
-
-        if hasattr(field,'is_relation') and field.is_relation and (field.one_to_many or field.many_to_many):
-            attname = field.name if hasattr(field,'attname') else field.name+'_set' if field.related_name is None else field.related_name   # If it's a model field it has an attname attribute, else it's a _set atttribute
-            
-            field.label = safetitle(attname.replace('_', ' '))
-
-            ros = apply_sort_by(getattr(self.obj, attname).all())
-
-            if len(ros) == 0:
-                field.value = NONE
+        if not bucket is None:
+            if is_list(field):
+                if ODF & odf.list:
+                    attname = field.name if hasattr(field,'attname') else field.name+'_set' if field.related_name is None else field.related_name   # If it's a model field it has an attname attribute, else it's a _set atttribute
+                    
+                    field.label = safetitle(attname.replace('_', ' '))
+        
+                    ros = apply_sort_by(getattr(self.obj, attname).all())
+        
+                    if len(ros) == 0:
+                        field.value = NONE
+                    else:
+                        field.value = hstr([str(item) for item in ros])
+        
+                    self.fields_list[bucket][field.name] = field
             else:
-                field.value = hstr([str(item) for item in ros])
-
-            self.fields_list[bucket][field.name] = field
-        else:
-            field.label = safetitle(field.verbose_name)
-            field.value = hstr(getattr(self.obj, field.name))
-            if not str(field.value):
-                field.value = NOT_SPECIFIED
-            self.fields_flat[bucket][field.name] = field
+                if ODF & odf.flat:
+                    field.label = safetitle(field.verbose_name)
+                    field.value = hstr(getattr(self.obj, field.name))
+                    if not str(field.value):
+                        field.value = NOT_SPECIFIED
+                    self.fields_flat[bucket][field.name] = field
 
     # Capture all the property values
-    for name in properties:
-        label = safetitle(name.replace('_', ' '))
-        value = getattr(self.obj, name)
-        if not str(value):
-            value = NOT_SPECIFIED
-
-        p = models.Field()
-        p.label = label
-
-        if isIterable(value):
-            p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-            self.fields_list[odf.properties][name] = p
-        else:
-            p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-            self.fields_flat[odf.properties][name] = p
+    if ODF & odf.properties:
+        for name in properties:
+            label = safetitle(name.replace('_', ' '))
+            value = getattr(self.obj, name)
+            if not str(value):
+                value = NOT_SPECIFIED
+    
+            p = models.Field()
+            p.label = label
+    
+            if isIterable(value):
+                if ODF & odf.list:
+                    p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
+                    self.fields_list[odf.properties][name] = p
+            else:
+                if ODF & odf.flat:
+                    p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
+                    self.fields_flat[odf.properties][name] = p
 
     # Some more buckets to put the fields in so we can separate lists of fields on display
     self.fields = collections.OrderedDict()               # All fields
-    self.fields_bucketed = {}
-    self.fields_bucketed[odf.model] = collections.OrderedDict()
-    self.fields_bucketed[odf.internal] = collections.OrderedDict()
-    self.fields_bucketed[odf.related] = collections.OrderedDict()
-    self.fields_bucketed[odf.properties] = collections.OrderedDict()
+    self.fields_bucketed = collections.OrderedDict()
 
-    for bucket in [odf.model, odf.internal, odf.related, odf.properties]:
-        for Pass in [True, False]:
+    buckets = []    
+    if ODF & odf.model:
+        self.fields_bucketed[odf.model] = collections.OrderedDict()
+        buckets += [odf.model]
+    if ODF & odf.internal:
+        self.fields_bucketed[odf.internal] = collections.OrderedDict()
+        buckets += [odf.internal]
+    if ODF & odf.related:
+        self.fields_bucketed[odf.related] = collections.OrderedDict()
+        buckets += [odf.related]
+    if ODF & odf.properties:
+        self.fields_bucketed[odf.properties] = collections.OrderedDict()
+        buckets += [odf.properties]
+
+    for bucket in buckets:
+        passes = []
+        if ODF & odf.flat:
+            passes += [True]
+        if ODF & odf.list:
+            passes += [False]
+        for Pass in passes:
             field_list = self.fields_flat[bucket] if Pass else self.fields_list[bucket]
             for name, value in field_list.items():
                 self.fields_bucketed[bucket][name] = value
@@ -1520,7 +1772,8 @@ def add_model_context(self, context, plural, title=False):
         
         if len(self.request.GET) > 0:
             context["get_params"] = self.request.GET
-            context["query"] = self.filter
+            if hasattr(self, 'filter'):
+                context["query"] = self.filter
 
         # Check for related models and pass into the context either a related form or related view.
         # Only do this if the model asks us to do so via the add_related attribute.
@@ -1546,3 +1799,4 @@ def add_model_context(self, context, plural, title=False):
         raise ValueError("Internal Error: Views must be provided at least 'model' in kwargs and an 'operation' argument. One or the other was missing. This is a site design error relating to defined urlpatterns which failed to provide on or the other.")
 
     return context
+
