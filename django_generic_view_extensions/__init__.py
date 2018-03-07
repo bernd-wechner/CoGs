@@ -122,7 +122,7 @@ the following possible references:
 
 related_forms.Member.name
 related_forms.Member.related_forms.Issue.description
-related_forms.Pet.name
+    related_forms.Pet.name
 related_forms.Pet.related_forms.Issue.description
 
 as the form widgets for those fields respectively.
@@ -149,9 +149,8 @@ numbers to look for and process.
 TODO: Document the naming convention of Django form elements too.
 
 field_data contains one entry for each field which returns the value of that field with a 
-special caveat, the value is complex. If the field is a Django concrete field (not a relation)
-then its actual value. If it's a relation then the pk or list of pks (primary keys) of the 
-related objects.
+special caveat, the value is complex. If the field is not a Django relation then its actual 
+value. If it is a relation then the pk or list of pks (primary keys) of the related objects.
 
 related_values of course is only provided by UpdateViewExtended for editing existing 
 objects and not by CreateViewExtended.
@@ -173,9 +172,15 @@ related_forms.Pet.related_forms.Issue.field_data.description      # which is a l
 import html
 import collections
 import functools
+import inspect
+import types
+import re
+import copy
+from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 from titlecase import titlecase
 from types import SimpleNamespace
 from time import time
+from enum import IntEnum
 
 from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.apps import apps
@@ -186,15 +191,55 @@ from django.utils.encoding import force_text
 from django.core.urlresolvers import reverse_lazy
 from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
+from django.http import HttpResponse, QueryDict, Http404
 #from django.db.models import DEFERRED
 from django.db.models.query import QuerySet
 from django.forms.models import fields_for_model, inlineformset_factory, modelformset_factory
+from django.conf import settings
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseRedirect
+from cuser.middleware import CuserMiddleware
 
 from url_filter.filtersets import ModelFilterSet
 from django.http.response import JsonResponse
+
+#===============================================================================
+# Helper constants
+#===============================================================================
+
+NONE = html.escape("<None>")
+NOT_SPECIFIED = html.escape("<Not specified>")
+HIDDEN = html.escape("<Hidden>")
+FIELD_CLASS = "field_link"
+
+#===============================================================================
+# Decorators
+#===============================================================================
+
+def property_method(f):
+    f.is_property_method = True
+    return f
+        
+def is_property_method(obj):
+    '''
+    Determines if obj has been decorated with @property_method and that it is
+    a method and has defaults for all its parameters. If so it can be considered
+    a propery_method, namely a method that can be evaluated with no parameters
+    (args or kwargs).  
+    :param obj:
+    '''
+    if isinstance(obj, types.MethodType) and hasattr(obj, "is_property_method"):
+        sig = inspect.signature(obj)
+        has_default_val = True
+        for arg in sig.parameters:
+            if sig.parameters[arg].default ==  inspect.Parameter.empty:
+                has_default_val = False
+                break;
+                 
+        return has_default_val
+    else:    
+        return False
 
 #===============================================================================
 # Helper functions
@@ -203,6 +248,10 @@ from django.http.response import JsonResponse
 def app_from_object(o):
     '''Given an object returns the name of the Django app that it's declared in'''
     return type(o).__module__.split('.')[0]    
+
+def model_from_object(o):
+    '''Given an object returns the name of the Django model that it is an instance of'''
+    return o._meta.model.__name__    
 
 def class_from_string(app_name_or_object, class_name):
     '''
@@ -225,6 +274,24 @@ def datetime_format_python_to_PHP(python_format_string):
 
     return php_format_string
 
+def getApproximateArialStringWidth(st):
+    '''
+        An approximation of a strings width in a representative proportional font
+        As recorded here:
+            https://stackoverflow.com/questions/16007743/roughly-approximate-the-width-of-a-string-of-text-in-python
+    '''
+    size = 0 # in milinches
+    for s in st:
+        if s in 'lij|\' ': size += 37
+        elif s in '![]fI.,:;/\\t': size += 50
+        elif s in '`-(){}r"': size += 60
+        elif s in '*^zcsJkvxy': size += 85
+        elif s in 'aebdhnopqug#$L+<>=?_~FZT1234567890': size += 95
+        elif s in 'BSPEAKVXY&UwNRCHD': size += 112
+        elif s in 'QGOMm%W@': size += 135
+        else: size += 50
+    return size * 6 / 1000.0 # Convert to picas
+
 debug_time_first = None
 debug_time_last = None
 
@@ -242,290 +309,985 @@ def print_debug(msg):
     print("{:f}, {:f} - {}".format(now-debug_time_first, now-debug_time_last, msg))
     debug_time_last = now    
 
+def isListValue(obj):
+    '''Given an object returns True if it is a known list type, False if not.'''
+    return (isinstance(obj, list) or 
+            isinstance(obj, set) or
+            isinstance(obj, dict) or 
+            isinstance(obj, QuerySet))
+
+def isListType(typ):
+    '''Given a type returns True if it is a known list type, False if not.'''
+    return (typ is list or 
+            typ is set or
+            typ is dict or 
+            typ is QuerySet)
+
+def isDictionary(obj):
+    '''Given an object returns True if it is a dictionary (key/value pairs), False if not.'''
+    return isinstance(obj, dict)
+
+def isPRE(obj):
+    '''Returns True if the string is an HTML string wrapped in <PRE></PRE>'''
+    return not re.fullmatch(r'^\s*<PRE>.*</PRE>\s*$', obj, ref.IGNORECASE|ref.DOTALL) is None
+
+def containsPRE(obj):
+    '''Returns True if the string is an HTML containing <PRE></PRE>'''
+    return not re.match(r'<PRE>.*</PRE>', obj, ref.IGNORECASE|ref.DOTALL) is None
+
+def safetitle(text):
+    '''Given an object returns a title case version of its string representation.'''
+    return titlecase(text if isinstance(text, str) else str(text))
+
 #===============================================================================
-# Some helper functions for displaying objects (similar to to those Django provides for displaying forms)
+# Privacy support for models
 #===============================================================================
 
-class object_display_format():
-    '''Display format options for objects in the detail view.
+def fields_to_hide(obj, user):
+    '''
+    Given an object and a user (from request.user typically) will return a list of fields in that object
+    that should be hidden. Does this by checking for any attributes in that object that are named visibility_*
+    where * is the name of another attribute in the same object for which it specifies visibility rules by means
+    of a bit flags. The the flags follow a naming convention as follows:
+    
+    all - all users can see the named field, namely it's a public piece of info. This is in fact the default
+          for all fields that do not have a visibility_* partner. Having such a partner attribute with if no 
+          bit flags set will hide the field. Setting the all bit requests the default behaviour.
+          
+    all_* - all users who have an attribute * which is True can see this field.
+
+    all_not_* - all users who have an attribute * which is False can see this field.
+    
+    share_* - all users who share some value in the * attribute. This is intended for memberships, 
+              where * indicates one or more memberships of a user and of the object and if there's
+              an overlap the field will be visible. In an apocryphal case,* might be "group" and users
+              could be in one or more groups and objects could belong to one or more groups and if the
+              user and the object are both members of at least one group the field will be visible.                  
+    '''
+    def get_User_extensions(user):
+        '''
+        Returns a list of attributes that are in request.user which represent User model extensions. That 
+        is have a OneToOne relationship with User. 
+        '''
+        ext = []
+        if user.is_authenticated():
+            for field in user._meta.get_fields():
+                if field.one_to_one:
+                    ext.append(field.name)
+        return ext
+
+    def unique_object_id(obj):
+        if hasattr(obj, "pk"):
+            return "{}.{}.{}".format(app_from_object(obj), model_from_object(obj), obj.pk)
+    
+    def get_User_membership(user, extensions, field_name):
+        '''
+        Given a user (from request.user, and extensions (from get_User_extensions) will check them for
+        an attribute of field_name and for each one it finds will attempt to add its value or values 
+        to the membership set that it will return.
+        '''
+        membership = set()
+        if hasattr(user, field_name):
+            field = getattr(user, field_name)
+            if hasattr(field, 'all') and callable(field.all):
+                membership.add((str(o) for o in field.all())) 
+            else: 
+                membership.add(str(field))
+
+        for e in extensions:
+            obj = getattr(user, e)
+            if hasattr(obj, field_name):
+                field = getattr(obj, field_name)
+                if hasattr(field, 'all') and callable(field.all):
+                    membership.update([unique_object_id(o) for o in field.all()])
+                else: 
+                    membership.add(unique_object_id(field))
+                    
+        return membership
+
+    def get_User_flag(user, extensions, field_name):
+        '''
+        Given a user (from request.user, and extensions (from get_User_extensions) will check them for
+        an attribute of field_name and if it's a bool return the value of the first one it finds. Gives
+        priority to User model extensions but in no guaranteed order.
+        '''
+        for e in extensions:
+            obj = getattr(user, e)
+            if hasattr(obj, field_name):
+                field = getattr(obj, field_name)
+                if type(field) == bool:
+                    return field
+
+        if hasattr(user, field_name):
+            field = getattr(user, field_name)
+            if type(field) == bool:
+                return field
+
+    def get_Owner(obj):
+        '''
+        A generic attempt to find an owner for the object passed. Basically checks the object for a field 
+        called owner which returns a user that is the objects owner. Simple really ;-) Best implemented as 
+        property in the model as in:
+        
+            @property
+            def owner(self) -> User:
+                return <a field in the object that is of type "models.OneToOneField(User)>           
+        '''
+        if hasattr(obj, 'owner'):
+            return obj.owner
+        else:
+            return None
+    
+    hide = []
+    module = inspect.getmodule(obj)
+    if hasattr(module, 'Visibility'):
+        if isinstance(module.Visibility, tuple):
+            # Get the User model extensions (we'll check those for visibility tests)
+            extensions = get_User_extensions(user)
+            
+            # We need attributes of the logged in user that the all_ and share_ flags can apply to.
+            # Given the attribute we can look for it on:
+            #    request.user
+            #    request.user.player            
+            
+            for field in obj._meta.get_fields():
+                prefix = 'visibility_'
+                if field.name.startswith(prefix):
+                    rule_field = field
+                    look_field = field.name[len(prefix):]
+                    
+                    # Begin by assuming it is hidden
+                    hidden = True
+                    
+                    if user == get_Owner(obj): 
+                        hidden = False # Don't ever hide this field from its owner, no tests needed
+                    else:
+                        rule_flags = getattr(obj, rule_field.name)
+                        for flag in rule_flags:
+                            if flag[1]: # flag is set
+                                rule_name = flag[0]
+                                if rule_name == 'all':
+                                    hidden = False # Don't hide this field for anyone, no tests needed
+                                elif rule_name.startswith('all_'):
+                                    # hide this field from anyone who has not got True for the following field in the User (or False if not_)
+                                    target_value = True
+                                    check_field = rule_name[len('all_'):]
+                                    if check_field.startswith('not_'):
+                                        check_field = check_field[len('not_'):]
+                                        target_value = False
+                                    
+                                    check_value = get_User_flag(user, extensions, check_field)
+                                    
+                                    if check_value == target_value:
+                                        hidden = False 
+                                elif rule_name.startswith('share_'):
+                                    # hide this field from anyone who has does not share one element in the following field
+                                    # This is for ManyToMany relations, essentially groups you may share membership of. 
+                                    check_field = rule_name[len('share_'):]
+                                    
+                                    if hasattr(obj, check_field):
+                                        a_membership_field = getattr(obj, check_field)
+                                        if hasattr(a_membership_field, 'all') and callable(a_membership_field.all):
+                                            a_membership_set = set((unique_object_id(o) for o in a_membership_field.all()))
+                                        else:
+                                            a_membership_set = set(unique_object_id(a_membership_field))
+                                            
+                                        b_membership_set = get_User_membership(user, extensions, check_field)
+                                        if a_membership_set.intersection(b_membership_set):
+                                            hidden = False 
+                    if hidden:
+                        hide.append(look_field)
+                           
+        return hide
+
+#===============================================================================
+# Object display 
+#===============================================================================
+
+#===============================================================================
+# Some helper classes for specifying display and render options  
+#===============================================================================
+
+class object_summary_format():
+    '''Format options for objects in the list view.
+
+    3 levels of detail on a single line summary:
+        brief   - Should be a minimalist view of the object as small as practical
+        verbose - Intended to add some detail but should refer only to local model fields not related fields
+        rich    - Intended to use all fields including related objects to build a rich summary
+    
+    1 multi-line rich HTML summary format    
+        detail  - A detailed view of the object like rich, only multi-line with HTML formatting
+    '''
+
+    # Some formats for summarising objects 
+    brief = 1       # Uses __str__ (should access only model local fields)
+    verbose = 2     # Uses __verbose_str__ if available else __str__
+    rich = 3        # Uses __rich_str__ if available else __verbose_str__ 
+    detail = 4      # Uses __detail_str__ if available else __rich_str__
+    
+    default = brief # The default to use
+
+# A shorthand for the list format options
+osf = object_summary_format
+
+def get_object_summary_format(request):
+    '''
+    Standard means of extracting a object summary format from a request.
+    
+    Assumes osf.default and modifies as per request.
+    '''
+    OSF = osf.default
+    
+    if 'brief' in request:
+        OSF = osf.brief
+    elif 'verbose' in request:
+        OSF = osf.verbose
+    elif 'rich' in request:
+        OSF = osf.rich
+    elif 'detail' in request:
+        OSF = osf.detail
+    
+    return OSF
+
+class field_link_target():
+    '''
+    Structured generic target selector for links from object fields in diverse views 
+    (notably the detail view for objects)
+    '''
+
+    # Define some constants that identify modes
+    none = 0        # Suppress links altogether
+    internal = 1    # Render internal links - uses a models link_internal property which must be defined for this to render.
+    external = 2    # Render external links - uses a models link_external property which must be defined for this to render.
+    mailto = 3      # Render the field as a mailto link (i.e. assume field is an email address)
+    
+    default = internal  # The default to use
+
+# A shorthand for the field link targets
+flt = field_link_target
+
+def get_field_link_target(request):
+    '''
+    Standard means of extracting a field link target from a request.
+    
+    Assumes flt.default and modifies as per request.
+    '''
+    link = flt.default
+    if 'no_links' in request:
+        link = flt.none
+    elif 'internal_links' in request:
+        link = flt.internal
+    elif 'external_links' in request:
+        link = flt.external
+    return link
+
+def link_target_url(obj, link_target=flt.default):
+    '''
+    Given an object returns the url linking to that object as defined in the model methods.
+    :param obj:            an object, being an instance of a Django model which has link methods
+    :param link_target:    a field_link_target that selects which link method to use
+    '''
+    url = ""
+    
+    if link_target == flt.internal and hasattr(obj, "link_internal"):
+        url = str(obj.link_internal)
+    elif link_target == flt.external and hasattr(obj, "link_external"):
+        url = str(obj.link_external)
+    
+    return url
+    
+def field_render(field, link_target=flt.default, sum_format=osf.default):
+    '''
+    Given a field attempts to render it as text to use in a view. Tries to do two things:
+    
+    1) Wrap it in an HTML Anchor tag if requested to. CHoosing the appropriate URL to use as specified by link_target.
+    2) Convert the field to text using a method selected by sum_format. 
+     
+    :param field: The contents of a field that we want to wrap in a link. This could be a text scalar value 
+    or an object. If it's a scalar value we do no wrapping and just return it unchanged. If it's an object 
+    we check and honor the specified link_target and sum_format as best possible. 
+     
+    :param link_target: a field_link_target which tells us what to link to. 
+    The object must provide properties that return a URL for this purpose.
+     
+    :param sum_format: an object_summary_format which tells us which string representation to use. The 
+    object should provide methods that return a string for each possible format, if not, there's a 
+    fall back trickle down to the basic str() function.
+
+    detail and rich summaries are expected to contain HTML code including links so they need to know the link_target 
+    and cannot be wrapped in an Anchor tag and must be marked safe
+    
+    verbose and brief summaries are expected to be free of HTML so can be wrapped in an Anchor tag and don't
+    need to be marked safe.
+    '''
+    tgt = None
+    
+    if link_target == flt.mailto:
+        tgt = "mailto:{}".format(field) 
+    elif isinstance(link_target, str) and link_target:
+        tgt = link_target
+    elif link_target == flt.internal and hasattr(field, "link_internal"):
+        tgt = field.link_internal
+    elif link_target == flt.external and hasattr(field, "link_external"):
+        tgt = field.link_external
+
+    fmt = sum_format
+    txt = None        
+    if fmt == osf.detail:
+        if callable(getattr(field, '__detail_str__', None)):
+            tgt = None
+            txt = field.__detail_str__(link_target)
+        else:
+            fmt = osf.rich
+        
+    if fmt == osf.rich:
+        if callable(getattr(field, '__rich_str__', None)):
+            tgt = None
+            txt = field.__rich_str__(link_target)
+        else:
+            fmt = osf.verbose
+        
+    if fmt == osf.verbose:
+        if callable(getattr(field, '__verbose_str__', None)):
+            txt = field.__verbose_str__()
+        else:
+            fmt = osf.brief
+
+    if fmt == osf.brief:
+        if callable(getattr(field, '__str__', None)):
+            txt = field.__str__()
+        else:
+            txt = str(field)
+          
+    if tgt is None:    
+        return mark_safe(txt)
+    else:
+        return  mark_safe(u'<A href="{}" class="{}">{}</A>'.format(tgt, FIELD_CLASS, txt))            
+
+def object_in_list_format(obj, context):
+    '''
+    For use in a template tag which can simply pass the object (from the context item object_list) 
+    and context here and this will produce a string (marked safe as needed) for rendering respecting
+    the requests that came in via the context. 
+    :param obj:        an object, probably from the object_list in a context provided to a list view template 
+    :param context:    the context provided to the view (from which we can extract the formatting requests)
+    '''
+    # we expect an instance list_display_format in the context element "format" 
+    fmt = context['format'].format
+    flt = context['format'].link
+    
+    return field_render(obj, flt, fmt)
+
+class object_display_flags():
+    '''Display flags for objects in the detail view.
 
     model - The standard model fields normally displayed by Django
     internal - the model fields Django won't normally display (primarily non-editable fields)
     related - The fields in other models that refer to this one via a relationship
     properties - The properties declared in the model (presented as pseudo-fields)
 
-    separated - Asks the detail view to render with a separation between the above categories
-    header - By default the model section has no header while the rest do (separations are noly beteen sections).
-
-    normal - The default (=model)
-    all_model - All model fields and properties
-    all - all of the categories
+    _normal - The default
+    _all_model - All model fields and properties
+    _all - all of the categories
     '''
 
-    # Some format of fields, flat or list
-    flat = 1
-    list = 1 << 1
+    # Format of fields, flat or list
+    flat = 1            # scalar model fields
+    list = 1 << 1       # list type model fields
 
     # The buckets that fields (and pseudo-fields in the case of properties) can fall into
-    model = 1 << 2
-    internal = 1 << 3
-    related = 1 << 4
-    properties = 1 << 5
-
-    # Some rendering options
-    separated = 1 << 6
-    header = 1 << 7
+    model = 1 << 2          # fields specified in model
+    internal = 1 << 3       # fields Django adds to the model
+    related = 1 << 4        # fields in other models that point here
+    properties = 1 << 5     # properties calculated in the model
+    methods = 1 << 6        # property_methods calculated in the model
+    
+    # Some general formatting flags
+    separated = 1 << 7       # Separate the buckets above
+    header = 1 << 8          # Put a header on the separators
+    line = 1 << 9            # Draw a line separating buckets
 
     # Some shorthand formats
-    normal = flat | model
-    all_model = flat | list | model | internal | properties
-    all = flat | list | model | internal | properties | related
-
+    _normal = separated | header | line | flat | model
+    _all_model = _normal | list | internal | properties
+    _all = _all_model | related
+    
 # A shorthand for the display format options
-odf = object_display_format
+odf = object_display_flags
+
+class object_display_modes():
+    '''
+    Structured modes for object display in the detail view
+    '''
+
+    # Define some constants that identify modes
+    as_table = 1        # Taken straight from the Django generic forms
+    as_ul = 2           # Taken straight from the Django generic forms
+    as_p = 3            # Taken straight from the Django generic forms
+    as_br = 4           # New here, intended to wrap whole object in P with fields on new lines (BR separated)
+   
+    # Define some mode containers for the object
+    object = as_table               # How to render the object in a detail view
+    list_values = as_ul             # How to render long values in a detail view
+
+    # Define some mode containers for related objects
+    sum_format = osf.default       # How to display the summary of related objects
+    link = flt.default             # How to display links if any to related objects     
+    
+    # Define a threshold for short/long classification
+    #
+    # To be considered short (and win rights to on-line rendering):
+    # A scalar value must contain no line breaks and not be longer than this
+    # A list value when rendered as CSV must satisfy same constraint
+    char_limit = 80                 # Scalars lower than this with no line breaks are considered short    
+    
+    # Define an indent to use where indents are need
+    # Measured in chars, 
+    # where needed will use the ch unit in HTML being the width of a 0 in the current font
+    indent = 4                   
+    
+    # Define the width in chars of bucket separators
+    line_width = 90                 # chars. How wide we should draw separator lines formed with em dashes. 
+    
+# A shorthand for the display format modes
+odm = object_display_modes
+
+class object_display_format():
+    '''
+    Display format options for objects in the detail view.
+    '''
+
+    flags = object_display_flags._normal
+    mode = object_display_modes()
 
 def get_object_display_format(request):
     '''
     Standard means of extracting a object display format from a request.
-    
-    Assumes odf.normal and modifies as per request.
-    :param request:
     '''
-    ODF = odf.normal
+    ODF = object_display_format()
     
+    # Now allow some shortcut turn offs
     if 'noall' in request or 'none' in request:
-        ODF &= ~odf.all
+        ODF.flags &= ~odf._all
+    elif "noall_model" in request or 'none_model' in request:
+        ODF.flags &= ~odf._all_model
+    elif "nonormal" in request or 'none_normal' in request:
+        ODF.flags &= ~odf._normal
         
+    # Now allow and turn ons
     if 'all' in request:
-        ODF = odf.all
-        
+        ODF.flags = odf._all
+    elif "all_model" in request:
+        ODF.flags = odf._all_model
+    elif "normal" in request:
+        ODF.flags = odf._normal          
+
+    # Then individual turn offs       
     if 'noflat' in request:
-        ODF &= ~odf.flat
+        ODF.flags &= ~odf.flat
     if 'nomodel' in request:
-        ODF &= ~odf.model
+        ODF.flags &= ~odf.model
     if 'nolist' in request:
-        ODF &= ~odf.list
+        ODF.flags &= ~odf.list
     if 'nointernal' in request:
-        ODF &= ~odf.internal
+        ODF.flags &= ~odf.internal
     if 'norelated' in request:
-        ODF &= ~odf.related
+        ODF.flags &= ~odf.related
     if 'noproperties' in request:
-        ODF &= ~odf.properties    
-        
+        ODF.flags &= ~odf.properties    
+    if 'nomethods' in request:
+        ODF.flags &= ~odf.methods
+
+    # And individual turn ons        
     if 'flat' in request:
-        ODF |= odf.flat
+        ODF.flags |= odf.flat
     if 'model' in request:
-        ODF |= odf.model
+        ODF.flags |= odf.model
     if 'list' in request:
-        ODF |= odf.list
+        ODF.flags |= odf.list
     if 'internal' in request:
-        ODF |= odf.internal
+        ODF.flags |= odf.internal
     if 'related' in request:
-        ODF |= odf.related
+        ODF.flags |= odf.related
     if 'properties' in request:
-        ODF |= odf.properties
-    
+        ODF.flags |= odf.properties
+    if 'methods' in request:
+        ODF.flags |= odf.methods
+
+    # Separations and headers
+    if 'noseparated' in request:
+        ODF.flags &= ~odf.separated
+    if 'noheader' in request:
+        ODF.flags  &= ~odf.header
+    if 'noline' in request:
+        ODF.flags  &= ~odf.line
+
+    if 'separated' in request:
+        ODF.flags  |= odf.separated
+    if 'header' in request:
+        ODF.flags |= odf.header
+    if 'line' in request:
+        ODF.flags |= odf.line
+
+    # Respect only one of the three HTML object formats
+    if 'as_table' in request:
+        ODF.mode.object = odm.as_table
+    elif 'as_ul' in request:
+        ODF.mode.object = odm.as_ul
+    elif 'as_p' in request:
+        ODF.mode.object = odm.as_p
+    elif 'as_br' in request:
+        ODF.mode.object = odm.as_br
+
+    # Respect only one of the three HTML list value formats 
+    if 'list_values_as_table' in request:
+        ODF.mode.list_values = odm.as_table
+    elif 'list_values_as_ul' in request:
+        ODF.mode.list_values = odm.as_ul
+    elif 'list_values_as_p' in request:
+        ODF.mode.list_values = odm.as_p
+    elif 'list_values_as_br' in request:
+        ODF.mode.list_values = odm.as_br
+
+    # We fetch the object summary format explicitly 
+    # not via get_object_summary_format because we use 
+    # a different request param when displaying objects 
+    # (as compared with lists)
+    if 'brief_sums' in request:
+        ODF.mode.sum_format = osf.brief
+    elif 'verbose_sums' in request:
+        ODF.mode.sum_format = osf.verbose
+    elif 'rich_sums' in request:
+        ODF.mode.sum_format = osf.rich        
+    elif 'detail_sums' in request:
+        ODF.mode.sum_format = osf.detail        
+
+    # Get the field link target from the request
+    ODF.mode.link = get_field_link_target(request)
+
+    if 'charlim' in request:
+        ODF.mode.char_limit = int(request['charlim']) 
+
+    if 'indent' in request:
+        ODF.mode.indent = int(request['indent']) 
+
+    if 'linewidth' in request:
+        ODF.mode.line_width = int(request['linewidth']) 
+         
     return ODF
 
-class object_list_format():
-    '''Format options for objects in the list view.
+#===============================================================================
+# Some helper PRE tag helper functions 
+#===============================================================================
 
-    brief   - The standard __str__ representation of the object
-    verbose - The  __verbose_str__ representation of the object if it exists, else falls back on __str__
-    rich    - The  __rich_str__ representation of the object else falls back on __verbose_str__
-    detail  - the detail view of the object!
+class list_display_format():
+    '''
+    Display format options for objects in the list view.
+    '''
+    format = osf.default
+    link = flt.default
+
+def get_list_display_format(request):
+    '''
+    Standard means of extracting a list display format from a request.
+    '''
+
+    LDF = list_display_format()
     
+    LDF.format = get_object_summary_format(request)    
+    LDF.link = get_field_link_target(request)
+             
+    return LDF
+
+#===============================================================================
+# Some helper PRE tag helper functions 
+#===============================================================================
+
+
+def emulatePRE(string, indent=odm.indent):
+    '''Returns the same string with <PRE></PRE> replaced by a emulation that will work inside of <P></P>'''
+    tag_start = r"<SPAN style='display: block; font-family: monospace; white-space: pre; padding-left:{}ch; margin-top=0;'>".format(indent)
+    tag_end = r"</SPAN>"
+    string = re.sub(r"<PRE>\s*", tag_start, string, 0, flags=ref.IGNORECASE)
+    string = re.sub(r"\s*</PRE>", tag_end, string, 0, flags=ref.IGNORECASE)
+    return string
+
+def indentVAL(string, indent=odm.indent):
+    '''Returns the same string wrapped in a SPAN that indents it'''
+    if indent > 0:
+        tag_start = r"<SPAN style='display: block; padding-left:{}ch; margin-top=0; margin-bottom=0; padding-bottom=0;'>".format(indent)
+        tag_end = r"</SPAN>"
+        return tag_start + string + tag_end
+    else:
+        return "<br>"+string  # The block style SPAN with 0 margin would be equivalent to a simple BR
+
+#===============================================================================
+# Some HTML generators 
+#===============================================================================
+
+def fmt_str(obj):
     '''
-
-    # Some format of fields, flat or list
-    brief = 0
-    verbose = 1
-    rich = 1 << 1
-    detail = 1 << 2
-
-# A shorthand for the list format options
-olf = object_list_format
-
-def get_object_list_format(request):
-    '''
-    Standard means of extracting a object list format from a request.
+    A simple enhancement of str() which formats list values a little more nicely IMO.
     
-    Assumes olf.brief and modifies as per request.
-    :param request:
-    '''
-    OLF = olf.brief
-    
-    if 'verbose' in request:
-        OLF |= olf.verbose
-    if 'rich' in request:
-        OLF |= olf.rich
-    if 'detail' in request:
-        OLF |= ~olf.verbose
-    
-    return OLF
-
-def display_format(result_type):
-    '''
-    A decorator for properties which permits specification of a type for use in deciding whether or 
-    not to display the property. 
-    :param result_type: Expected to be object_display_format.flat or object_display_format.list
-    '''
-    def decorator(func):
-        func.__type = result_type
-        return func
-    return decorator
-
-def isIterable(obj):
-    '''Given an object returns True if it is iterable, False if not.'''
-    return not isinstance(obj, str) and isinstance(obj, collections.Iterable)
-
-def safetitle(text):
-    '''Given an object returns a title case version of its string representation.'''
-    return titlecase(text if isinstance(text, str) else str(text))
-
-_default_indent = '&nbsp;'*2    # An indent to use in hstr() for each nested level of expanded list
-_flat_list_limit = 3
-
-def hstr(obj, indent=_default_indent):
-    '''Produce an HTML string representation of an object
-
-    Tidies up lists and strings a little from their default str() representations.
-    '''
-    nl = "<br>"
-    fnl = (nl + indent) if not indent == _default_indent else ' '
-    if isinstance(obj, list) or isinstance(obj, set) or isinstance(obj, QuerySet):
-        lines = []
-        multilineval = False
-        multiwordval = False
-        for item in obj:
-            valstr = hstr(item, indent+indent)
-            if valstr.count('<br>') > 0:
-                multilineval = True
-            if valstr.count(' ') > 0:
-                multiwordval = True
-            lines.append(valstr)
+    TODO: Consider trickling an odm.char_limit down to this level so that fmt_str can
+         wrap to new lines as per the deprecated hstr. The notable test case is to see 
+         the Session Trueskill Impacts rendered in a nice way,. Issue is that it's not 
+         catered for well yet, where we have odm.list_values == as_ul and the actual 
+         value is a list (so a list of lists as the value). We could inherit 
+         odm.list_value and trickle down supporting tiers. But this will take a little
+         work to implement and is not trivial, given this function is reached currenntly
+         by:
+            collection_rich_object_fields - which has the view and view.format and hence knows what to do   
+            odm_str - which it uses for each value to get string that respect the OSF but it no longer knows the ODM
+            fmt_str - here, which odm_str calls in place of str()
+            
+        That is also not ideal. The problem is odm_str is failing to differentiate between models
+        and standard python data types. Models it needs to respect ODF for, but standard data types
+        not, in fact we are thinking it should respect ODM (the char_lim to wrap). 
         
-        if len(lines) > _flat_list_limit or multilineval or multiwordval:
-            text = "[ " + fnl + (nl + indent).join(lines) + " ]"
-        else: 
-            text = "[ " + ", ".join(lines) + " ]"
-    elif isinstance(obj, dict):
+    '''
+    csv_delim = ', '
+    nl_delim = '\n'
+ 
+    containsdelim = False            
+    multilineval = False
+
+    if isListValue(obj):
         lines = []
         multilineval = False
-        multiwordval = False
-        for key in obj:
-            valstr = hstr(obj[key], indent+indent)
-            if valstr.count('<br>') > 0:
-                multilineval = True
-            if valstr.count(' ') > 0:
-                multiwordval = True
-            lines.append("{}: {}".format(key, valstr))
 
-        if len(lines) > _flat_list_limit or multilineval or multiwordval:
-            text = "{ " + fnl + (nl + indent).join(lines) + " }"
-        else: 
-            text = "{ " + ", ".join(lines) + " }"
+        if isinstance(obj, dict):
+            braces = ['{', '}']
+        else:
+            braces = ['[', ']']
+        
+        for item in obj:
+            if isinstance(obj, dict):
+                valstr = fmt_str(obj[item])
+                lines.append("{}: {}".format(item, valstr))
+            else:
+                valstr = fmt_str(item)
+                lines.append(valstr)
+                 
+            if not re.match(csv_delim, valstr, ref.IGNORECASE) is None:
+                containsdelim = True            
+            if not re.match(r'<br>', valstr, ref.IGNORECASE) is None:
+                multilineval = True
+         
+        if containsdelim or multilineval:
+            text = braces[0] + nl_delim.join(lines) + braces[1]
+        else:
+            text = braces[0] + csv_delim.join(lines) + braces[1]
     else:
         text = force_text(str(obj))
-    return text
+    return text   
 
-table_separator = "<hr>"  # A separator for the object_display_format lists in the as_table() view
-def object_html_output(self, style):
-    '''Helper function for outputting HTML. Used by as_table(), as_ul(), as_p().'''
+def odm_str(obj, ODM):
+    '''
+    Return an object's representative string respecting the ODM (sum_format and link) and privacy configurations. 
+
+    FIXME:  This should take one path for Django models and another for standard data types!
+    Models have rich and verbose and normal str methods. Standard data types have only str but we want to 
+    replace that with fmt_str to make them render more nicely on screen (notably rendering OrderedDict as 
+    Dict, respecting odm.char_lim and finding a way to wrap long items. The problem is a 
+    field may be a list which works well, but it may be a list of lists, and a list of list of lists ...
+    and that is not working elegantly. 
+    
+    :param object:     The object to convert to string
+    :param OLF:        The object_list_format to use    
+    '''    
+    
+    Awrapper = "{}"
+    if ODM.link == flt.internal and hasattr(obj, "link_internal"):
+        Awrapper = "<A href='{}' class='{}'>".format(obj.link_internal, FIELD_CLASS) + "{}</A>"    
+    elif ODM.link == flt.external and hasattr(obj, "link_external"):
+        Awrapper = "<A href='{}' class='{}'>".format(obj.link_external, FIELD_CLASS) + "{}</A>"    
+    
+    if ODM.sum_format == osf.rich:
+        if callable(getattr(obj, '__rich_str__', None)):
+            strobj = obj.__rich_str__()
+        elif callable(getattr(obj, '__verbose_str__', None)):
+            strobj = obj.__verbose_str__()
+        else: 
+            strobj = fmt_str(obj)
+    elif ODM.sum_format & osf.verbose:
+        if callable(getattr(obj, '__verbose_str__', None)):
+            strobj = obj.__verbose_str__()
+        else: 
+            strobj = fmt_str(obj)
+    else:
+        strobj = fmt_str(obj)
+    
+    return Awrapper.format(strobj) 
+
+def object_html_output(self, ODM=None):
+    ''' Helper function for outputting HTML. 
+    
+        Used by as_table(), as_ul(), as_p(), as_br().
+    
+        an object display mode (ODM) can be specified to override the one in self.format if desired 
+        as this is what as_table etc do (providing compatible entry points with the Django Generic Forms).
+        
+        self is an instance of DetailViewExtended or DeleteViewExtended (or any view that wants HTML 
+        rendering of an object.  
+        
+        Relies on:
+             self.fields
+             self.fields_bucketed 
+             
+        which are attributes created by collect_rich_object_fields which should have run earlier
+        when the view's get_object() method was called. When the object is delivered the view is 
+        updated with these (and other) attributes.
+        
+        Notably, each field in self.fields and variants carries a "value" attribvute which is what 
+        we try to render in HTML here. We rely on privacy constraints having already been applied
+        by collect_rich_object_fields and that values affected by provacy are suitably masked 
+        (overwritten). 
+    '''
     #TODO: This should really support CSS classes like BaseForm._html_output, so that a class can be specified
+    
+    ODF = self.format
+    if not ODM is None:
+        ODF.mode.object = ODM
 
-    # Define the standard HTML strings for supported style
-    if style == 'table':
-        normal_row="<tr><th valign='top'>{label:s}</th><td>{value:s}{help_text:s}</td></tr>"
-        help_text_html='<br /><span class="helptext">%s</span>'
-    elif  style == 'ul':
-        normal_row='<li><b>{label:s}:</b> {value:s}{help_text:s}</li>'
-        help_text_html=' <span class="helptext">%s</span>'
-    elif  style == 'p':
-        normal_row='<p><b>{label:s}:</b> {value:s}{help_text:s}</p>'
-        help_text_html=' <span class="helptext">%s</span>'
+    # Define the standard HTML strings for supported formats    
+    if ODF.mode.object == odm.as_table:
+        header_row = "<tr><th valign='top'>{header:s} {line1:s}</th><td>{line2:s}</td></tr>"
+        normal_row = "<tr><th valign='top'>{label:s}</th><td>{value:s}{help_text:s}</td></tr>"
+        help_text_html = '<br /><span class="helptext">%s</span>'
+    elif ODF.mode.object == odm.as_ul:
+        header_row = "<li><b>{header:s}</b> {line1:s}</li>"        
+        normal_row = "<li><b>{label:s}:</b> {value:s}{help_text:s}</li>"
+        help_text_html = ' <span class="helptext">%s</span>'
+    elif ODF.mode.object == odm.as_p:
+        header_row = "<p><b>{header:s}</b> {line1:s}</p>"        
+        normal_row = "<p><b>{label:s}:</b> {value:s}{help_text:s}</p>"
+        help_text_html = ' <span class="helptext">%s</span>'
+    elif ODF.mode.object == odm.as_br:
+        header_row = "<b>{header:s}</b> {line1:s}<br>"        
+        normal_row = '<b>{label:s}:</b> {value:s}{help_text:s}<br>'
+        help_text_html = ' <span class="helptext">%s</span>'
+    else:
+        ValueError("Internal Error: format must always contain one of the object layout modes.")                
 
     # Collect output lines in a list
     output = []
 
     for bucket in self.fields_bucketed:
-        list_label = ('Internal fields' if bucket == odf.internal
+        # Define a label for this bucket
+        bucket_label = ('Internal fields' if bucket == odf.internal
             else 'Related fields' if bucket == odf.related
             else 'Properties' if bucket == odf.properties
-            else 'Standard fields' if bucket == odf.model and self.format & odf.header
+            else 'Methods' if bucket == odf.methods
+            else 'Standard fields' if bucket == odf.model and ODF.flags & odf.header
             else None if bucket == odf.model
             else 'Unknown ... [internal error]')
         
-        if list_label and (self.format & odf.separated) and self.fields_bucketed[bucket]:
-            label_format = '<div style="float:left;">{}</div>{}' if style == 'table' else '{}'
-            row = normal_row.format(
-                label=label_format.format(list_label,table_separator),
-                value=table_separator if style == 'table' else '',
-                help_text='',
-            )
+        # Output a separator for this bucket if needed
+        # Will depend on the object display mode
+        if bucket_label and (ODF.flags & odf.separated) and self.fields_bucketed[bucket]:
+            label = bucket_label if ODF.flags & odf.header else ""
+            
+            if ODF.flags & odf.line:
+                if ODF.mode.object == odm.as_table:
+                    line = "<hr style='display:inline-block; width:60%;' />"
+                else:
+                    label_width = int(round(getApproximateArialStringWidth(bucket_label) / getApproximateArialStringWidth('M'))) 
+                    line = "&mdash;"*(ODF.mode.line_width - label_width - 1)
+            
+            if ODF.mode.object == odm.as_table:
+                label_format = '<span style="float:left;">{}</span>'
+            else:
+                label_format = '{}'
+                
+            row = header_row.format(header=label_format.format(label), line1=line, line2=line)
 
-            row_format = '{}<ul>' if style == 'ul' else '{}'
+            if ODF.mode.object == odm.as_ul:
+                row_format = '{}<ul>'  
+            elif ODF.mode.object == odm.as_br:
+                row_format = '{}</p><p style="padding-left:'+str(ODF.mode.indent)+'ch">'  
+            else:
+                row_format = '{}'
+                
             output.append(row_format.format(row))
 
+        # Output a the fields in this bucket
         for name in self.fields_bucketed[bucket]:
             field = self.fields_bucketed[bucket][name]
-            value = field.value
+            value = field.value 
             
-            # If a list is provided it came from a ManyToMany or a OneToMany field (actually a Foreign Key from another model) and we render it according to self.ToManyMode.
-            if type(value) is list:
-                if self.ToManyMode == 'p':
-                    value = "<p>" + "<br>".join(value) + "</p>"
-                elif self.ToManyMode == 'ul':
-                    value = "<ul><li>" + "</li><li>".join(value) + "</li></ul>"
-                elif self.ToManyMode == 'table':
-                    value = "<table><tr><td>" + "</td></tr><tr><td>".join(value) + "</td></tr></table>"
-                else:  # just accept the mode itself as a list delimiter in a div
-                    value = "<div>" + self.ToManyMode.join(value) + "</div>"
-
             if hasattr(field, 'label') and field.label:
                 label = conditional_escape(force_text(field.label))
             else:
                 label = ''
+
+            # self.format specifies how we'll render the field, i.e. build our row.
+            #
+            # normal_row has been specified above in accord with the as_ format specified.
+            #
+            # The object display mode defines where the value lands.
+            # The long list display mode defines how a list value is rendered in that spot
+            # short lists are rendered as CSV values in situ
+            br_fix = False
+            
+            if field.is_list:
+                proposed_value = value if value == NONE else ", ".join(value) 
+                    
+                is_short = (len(proposed_value) <= ODF.mode.char_limit) and not ("\n" in proposed_value)
+                 
+                if is_short:
+                    value = proposed_value
+                else:
+                    # as_br is special as many fields are in one P with BRs between them. This P cannot contain
+                    # block elements so there is only one sensible rendering (which is to conserve the intended
+                    # paragraph and just put long list values one one BR terminated line each, indenting with 
+                    # a SPAN that is permitted in a P. 
+                    if ODF.mode.object == odm.as_br:
+                        value = indentVAL("<br>".join(value), ODF.mode.indent)
+                        br_fix = ODF.mode.object == odm.as_br
+                    else:
+                        if ODF.mode.list_values == odm.as_table:
+                            strindent = ''
+                            if ODF.mode.object == odm.as_p and ODF.mode.indent > 0:
+                                strindent = " style='padding-left: {}ch'".format(ODF.mode.indent)
+                            value = "<table{}><tr><td>".format(strindent) + "</td></tr><tr><td>".join(value) + "</td></tr></table>"
+                        elif ODF.mode.list_values == odm.as_ul:
+                            strindent = ''
+                            if ODF.mode.object == odm.as_p and ODF.mode.indent > 0:
+                                strindent = " style='padding-left: {}ch'".format(ODF.mode.indent)
+                            value = "<ul{}><li>".format(strindent) + "</li><li>".join(value) + "</li></ul>"
+                        elif ODF.mode.list_values == odm.as_p:
+                            strindent = ''
+                            if ODF.mode.object == odm.as_p and ODF.mode.indent > 0:
+                                strindent = " style='padding-left: {}ch'".format(ODF.mode.indent)
+                            value = "<p{}>".format(strindent) + "</p><p{}>".format(strindent).join(value) + "</p>"
+                        elif ODF.mode.list_values == odm.as_br:
+                            strindent = ''
+                            if ODF.mode.object == odm.as_p and ODF.mode.indent > 0:
+                                strindent = " style='padding-left: {}ch'".format(ODF.mode.indent)
+                            value = "<p{}>".format(strindent) + "<br>".join(value) + "</p>"
+                        else:
+                            raise ValueError("Internal Error: self.format must always contain one of the list layouts.")
+            else:
+                proposed_value = value
+                is_short = (len(proposed_value) <= ODF.mode.char_limit) and not ("\n" in proposed_value)
+                
+                if is_short:
+                    value = proposed_value
+                else:
+                    indent = ODF.mode.indent if ODF.mode.object != odm.as_table else 0
+                    if isPRE(value):
+                        value = emulatePRE(value, indent)
+                        br_fix = ODF.mode.object == odm.as_br
+                    else:
+                        value = indentVAL(value, indent)
 
             if hasattr(field, 'help_text') and field.help_text:
                 help_text = help_text_html % force_text(field.help_text)
             else:
                 help_text = ''
 
-            label_format = '<div style="padding-left:15px;">{}</div>' if style == 'table' and self.format & odf.separated else '{}'
+            # Indent the label only for tables with headed separators.
+            # The other object display modes render best without an indent on the label. 
+            if ODF.mode.object == odm.as_table and ODF.flags & odf.separated and ODF.flags & odf.header: 
+                label_format = indentVAL("{}", ODF.mode.indent) 
+            else:
+                label_format = '{}' 
 
-            row = normal_row.format(
-                 label=label_format.format(force_text(label)),
-                 value=six.text_type(hstr(value)),
-                 help_text=help_text
-             )
+            html_label = label_format.format(force_text(label))
+            html_value = six.text_type(value)
+            html_help = help_text
 
-            row_format = '<div style="margin-left:15px;">{}</div>' if style == 'p' and self.format & odf.separated else '{}'
+            if settings.DEBUG:
+                if field.is_list:
+                    html_label = "<span style='color:red;'>" + html_label + "</span>"
+                if is_short:
+                    html_value = "<span style='color:red;'>" + html_value + "</span>"
+                         
+            row = normal_row.format(label=html_label, value=html_value, help_text=html_help)
+            
+            # FIXME: This works. But we should consider a cleaner way to put the br inside 
+            # the span that goes round the whole list in as_br mode. The fix needs a consideration
+            # of normal_row and indentVAL() the later wrapping in a SPAN the former terminating with
+            # BR at present. And in that order an unwanted blank line appears. If we swap them and
+            # bring the BR inside of the SPAN the render is cleaner.
+            if br_fix:
+                row = re.sub(r"</span><br>$",r"<br></span>",row,0,ref.IGNORECASE)
+
+            # Finally, indent the whole "field: value" row if needed
+            if ODF.mode.object == odm.as_p and ODF.flags & odf.separated and ODF.flags & odf.header: 
+                row_format = indentVAL("{}", ODF.mode.indent)
+            else:
+                row_format = '{}' 
 
             output.append(row_format.format(row))
 
-        if list_label and self.format & odf.separated and style == 'ul':
-            output.append('</ul>')
+        # End the UL sublist (the one with label: value pairs on it, being sub to the header/separator list) if needed 
+        if bucket_label and (ODF.flags & odf.separated) and self.fields_bucketed[bucket]:
+            if ODF.mode.object == odm.as_ul:
+                output.append('</ul>')
+            elif ODF.mode.object == odm.as_br:
+                output.append('</p><p>')
 
     return mark_safe('\n'.join(output))
 
+#======================================================================================
+# Function to provide rendering methods compatible Django Generic Forms (and then some) 
+#======================================================================================
+
 def object_as_table(self):
-    '''Returns this form rendered as HTML <tr>s -- excluding the <table></table>.'''
-    if not hasattr(self, "ToManyMode") or (hasattr(self, "ToManyMode") and self.ToManyMode == None):
-        self.ToManyMode = 'table'
-    return self._html_output('table')
+    '''Returns this object rendered as HTML <tr>s -- excluding the <table></table> - for compatibility with Django generic forms'''
+    return self._html_output(odm.as_table)
 
 def object_as_ul(self):
-    '''Returns this form rendered as HTML <li>s -- excluding the <ul></ul>.'''
-    if not hasattr(self, "ToManyMode") or (hasattr(self, "ToManyMode") and self.ToManyMode == None):
-        self.ToManyMode = 'ul'
-    return self._html_output('ul')
+    '''Returns this object rendered as HTML <li>s -- excluding the <ul></ul> - for compatibility with Django generic forms'''
+    return self._html_output(odm.as_ul)
 
 def object_as_p(self):
-    '''Returns this form rendered as HTML <p>s.'''
-    if not hasattr(self, "ToManyMode") or (hasattr(self, "ToManyMode") and self.ToManyMode == None):
-        self.ToManyMode = 'p'
-    return self._html_output('p')
+    '''Returns this object rendered as HTML <p>s - for compatibility with Django generic forms'''
+    return self._html_output(odm.as_p)
+
+def object_as_br(self):
+    '''Returns this object rendered as an HTML <p> with <br>s between fields - new to these extensions, not in the standard Django generic forms'''
+    return self._html_output(odm.as_br)
+
+def object_as_html(self):
+    ''' Returns this object rendered as per the requested object display format.
+        Essentially selecting one of as_table, as_ul or as_p based on the request.
+        
+        The other as_ methods provide compatibility with Djangos generic forms more 
+        or less and they don't provide the HTML wrappers, this method, our AJAX entry
+        point, does so that a template can justspew out the HTML without having to 
+        worry about such a wrapper. That is, a template would normally contain:
+        
+        <table>
+            {{ view.as_table }}
+        </table>
+        
+        but could skip the wrapper and just use:
+        
+        {{ view.as_html }}
+        
+        which lands here and includes it. Though if using AJAX would want to wrap it 
+        in an IDed div so that javascript can fetch the formatted object and update 
+        the div. So just:
+        
+        <div id="data"></div>
+        
+        would do and Javascript can fetch view.as_html and set the contents of the 
+        div without a page reload (thus permitting format changes in situ with Javascript)
+    '''
+    if self.format.mode.object == odm.as_table:
+        return mark_safe("<table>" + object_as_table(self) + "</table>")
+    elif self.format.mode.object == odm.as_ul:
+        return mark_safe("<ul>" + object_as_ul(self) + "</ul>")
+    elif self.format.mode.object == odm.as_p:
+        return object_as_p(self)
+    elif self.format.mode.object == odm.as_br:
+        return mark_safe("<p>" + object_as_br(self) + "</p>")
+    else:
+        raise ValueError("Internal Error: self.format must always contain one of the HTML layouts.")                
 
 #===============================================================================
 # Extend some Django Generic Views
@@ -544,7 +1306,7 @@ def apply_sort_by(queryset):
         try:        
             sort_lambda = "lambda obj: (obj." + ", obj.".join(model.sort_by) +")"
             return sorted(queryset, key=eval(sort_lambda))
-        except Exception as e:
+        except Exception:
             return queryset
     else:
         return queryset
@@ -610,19 +1372,19 @@ def pretty_FilterSet(filterset):
     
     specs = filterset.get_specs()
     pretty_specs = []
-    for filter in specs:
-        # __year - filter["lookup"] == "year"
-        field = get_field(filter.components, 0, filterset.queryset.model)
-        if len(filter.components) > 1 and filter.lookup == "exact":
-            Os = field.model.objects.filter(**{"{}__{}".format(field.attname, filter.lookup):filter.value})
+    for spec in specs:
+        # __year - spec["lookup"] == "year"
+        field = get_field(spec.components, 0, filterset.queryset.model)
+        if len(spec.components) > 1 and spec.lookup == "exact":
+            Os = field.model.objects.filter(**{"{}__{}".format(field.attname, spec.lookup):spec.value})
             O = Os[0] if Os.count() > 0 else None
             field_name = field.model._meta.object_name
             field_value = str(O)
         else:
             field_name = field.verbose_name
-            field_value = filter.value
+            field_value = spec.value
         
-        pretty_specs += ["{} {} {}".format(field_name, operation[filter.lookup], field_value)]
+        pretty_specs += ["{} {} {}".format(field_name, operation[spec.lookup], field_value)]
     
     return " and ".join(pretty_specs)
   
@@ -631,25 +1393,17 @@ class ListViewExtended(ListView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=True)
-        
-        # Pass the selected object list format to the context for selective rendering 
-        # with the list_format template tag (which renders the object accordingly)
-        OLF = get_object_list_format(self.request.GET)
-        if OLF & olf.rich:
-            context['object_list_format'] = "rich"
-        elif OLF & olf.verbose:
-            context['object_list_format'] = "verbose" 
-        else: 
-            context['object_list_format'] = "brief" 
-
+        add_format_context(self, context)
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
-    # Fetch all the object for this model (all the tuples in this table)
-
+    # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
+
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
         
         # If the URL has GET parameters (following a ?) then self.request.GET 
         # will contain a dictionary of name: value pairs that FilterSet uses 
@@ -668,40 +1422,105 @@ class ListViewExtended(ListView):
             self.queryset = self.model.objects.all()
             
         self.count = len(self.queryset)
+
+        self.format = get_list_display_format(self.request.GET)
         
         return self.queryset
 
 class DetailViewExtended(DetailView):
     '''
     An enhanced DetailView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does (defined in BaseForm).
-    It takes an optional keyword argument 'ToManyMode' which can be either 'p', 'ul' or 'table' and specifies how to render ManyToMany and OneToMany (actually a ForeignKey form another model) relationships.
-    If not specified takes same as the the view itself.
     '''
     # HTML formatters stolen straight form the Django ModelForm class
     _html_output = object_html_output
+    
     as_table = object_as_table
     as_ul = object_as_ul
     as_p = object_as_p
-    ToManyMode = None  # 'p', 'ul' or 'table' or a delimiter specified on __init__ - how to render the output of ManyToManyField and OneToMany (ForeignKey fields pointing to this model) relationships
-
+    as_html = object_as_html # Chooses one of the first three based on request parameters
+    
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         if ('operation' in kwargs):
-            self.ToManyMode = kwargs['operation']
-        if ('ToManyMode' in kwargs):
-            self.ToManyMode = kwargs['ToManyMode']
-        if ('format' in kwargs):
-            self.format = kwargs['format']
-        pass
+            self.operation = kwargs['operation']
 
     # Fetch the URL specified object, needs the URL parameters "model" and "pk"
     def get_object(self, *args, **kwargs):
-        self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
-        self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
-        add_related_fields_to_detail_view(self)
+        
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+        
+        # Support for incoming next/prior requests via a GET
+        if 'next' in self.request.GET or 'prior' in self.request.GET:
+            self.ref = get_object_or_404(self.model, pk=self.pk)
+            
+            # Respect the other GET parameters that accompany next/prior to form a filter
+            FilterSet = type("FilterSet", (ModelFilterSet,), { 
+                'Meta': type("Meta", (object,), { 
+                    'model': self.model 
+                    })
+            })
+            
+            # Create a mutable copy of the GET params to base a filter on (so we can tweak it)
+            get = self.request.GET.copy()
+            
+            # If pk or id come in via GET, ignore them, use the pk from kwargs above as our reference
+            if 'id' in get:
+                del get['id']
+            if 'pk' in get:
+                del get['pk']
+            
+            # Get the ordering list for the model (a list of fields
+            # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
+            order = self.model._meta.ordering
 
+            # If requesting the next or prior object look for that      
+            # FIXME: Totally fails for Ranks, the get dictionary fails when there are ties!
+            #        Doesn't generalise well at all. Must find a general way to do this for
+            #        arbitrary orders. Still should specify orders in models that create unique 
+            #        ordering not reliant on pk break ties. 
+            if 'next' in self.request.GET:
+                for f in order:
+                    if f.startswith("-"):
+                        get[f[1:] + "__lt"] = getattr(self.ref, f[1:])  
+                    else:
+                        get[f + "__gt"] = getattr(self.ref, f)
+                        
+                fs = FilterSet(data=get, queryset=self.model.objects.all())
+                self.filter = pretty_FilterSet(fs)
+                
+                if (fs.filter().count() > 0):
+                    self.obj = fs.filter().first()
+                    self.pk = self.obj.pk
+                    self.kwargs["pk"] = self.pk 
+                else:
+                    raise Http404('No next %s.'.format(self.model))                    
+                    
+            elif 'prior' in self.request.GET:
+                for f in order:
+                    if f.startswith("-"):
+                        get[f[1:] + "__gt"] = getattr(self.ref, f[1:])  
+                    else:
+                        get[f + "__lt"] = getattr(self.ref, f)
+                        
+                fs = FilterSet(data=get, queryset=self.model.objects.all())
+                self.filter = pretty_FilterSet(fs)
+                
+                if (fs.filter().count() > 0):
+                    self.obj = fs.filter().last()
+                    self.pk = self.obj.pk
+                    self.kwargs["pk"] = self.pk 
+                else:
+                    raise Http404('No prior %s.'.format(self.model))                    
+        else:
+            self.obj = get_object_or_404(self.model, pk=self.pk)
+        
+        self.format = get_object_display_format(self.request.GET)
+        collect_rich_object_fields(self)
+        
 #         # TODO: This is just debugging stuff to test trueskill calcs
 #         if self.model is Session:
 #             session = self.obj
@@ -714,6 +1533,7 @@ class DetailViewExtended(DetailView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False)
+        add_format_context(self, context)
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -724,27 +1544,26 @@ class DeleteViewExtended(DeleteView):
     as_table = object_as_table
     as_ul = object_as_ul
     as_p = object_as_p
-    ToManyMode = None  # 'p', 'ul' or 'table' or a delimiter - how to render the output of ManyToManyField and OneToMany (ForeignKey fields pointing to this model) relationships
 
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
         if ('operation' in kwargs):
-            self.ToManyMode = kwargs['operation']
-        if ('ToManyMode' in kwargs):
-            self.ToManyMode = kwargs['ToManyMode']
-        if ('format' in kwargs):
-            self.format = kwargs['format']
-        pass
+            self.opertion = kwargs['operation']
 
     # Get the actual object to update
     def get_object(self, *args, **kwargs):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
+
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+        
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
+        self.format = get_object_display_format(self.request.GET)
         self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
-
-        add_related_fields_to_detail_view(self)
+        collect_rich_object_fields(self)
 
         return self.obj
 
@@ -752,6 +1571,7 @@ class DeleteViewExtended(DeleteView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False, title='Delete')
+        add_format_context(self, context)
         if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
         return context
 
@@ -790,6 +1610,10 @@ class CreateViewExtended(CreateView):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
         self.queryset = QuerySet(model=self.model)
+        
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+        
         print_debug("Got queryset")
         return self.queryset
 
@@ -902,7 +1726,7 @@ class CreateViewExtended(CreateView):
 
 class UpdateViewExtended(UpdateView):
     '''An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
-    # FIXME: If I edit a sessions date/time, the leaderboardsare corrupted (extra session is added).
+    # FIXME: If I edit a sessions date/time, the leaderboards are corrupted (extra session is added).
 
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
@@ -919,6 +1743,10 @@ class UpdateViewExtended(UpdateView):
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         self.fields = fields_for_model(self.model)
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+        
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+        
         return self.obj
 
 #     def get_form(self, form_class):
@@ -977,9 +1805,6 @@ class UpdateViewExtended(UpdateView):
 #         response = super().post(request, *args, **kwargs)
 #         return response
 
-NONE = html.escape("<None>")
-NOT_SPECIFIED = html.escape("<Not specified>")
-
 #===============================================================================
 # Functions for collecting and treating related forms
 #===============================================================================
@@ -1012,17 +1837,26 @@ def add_related(model):
         return model.add_related
      
     return [] 
-    
-def add_related_fields_to_detail_view(self):
-    '''
-    Passed a detail view instance which has an object already (self.obj) (so after or in get_object),
-    will define self.fields with a dictionary of fields that a renderer can walk through later.
 
+def collect_rich_object_fields(self):
+    '''
+    Passed a view instance (a detail view or delete view is expected, but any view could call this) 
+    which has an object already (self.obj) (so after or in get_object), will define self.fields with 
+    a dictionary of fields that a renderer can walk through later.
+    
     Additionally self.fields_bucketed is a copy of self.fields in the buckets specified in object_display_format
     and self.fields_flat and self.fields_list also contain all the self.fields split into the scalar (flat) values
     and the list values respectively (which are ToMany relations to other models).
+    
+    Expects ManyToMany relationships to be set up bi-directionally, in both involved models, 
+    i.e. makes no special effort to find the reverse relationships and if they are not set up 
+    bi-directionally may miss the indirect, or reverse relationship).
+    
+    Converts foreign keys to the string representation of that related object using the level of
+    detail specified self.format and respecting privacy settings where applicable (values are 
+    obtained through odm_str where privacy constraints are checked. 
     '''
-    # Build the list of fields (expects ManyToMany to be set up bi-directionally, in both involved models, i.e. makes no special effort to find them)
+    # Build the list of fields 
     # fields_for_model includes ForeignKey and ManyToMany fields in the model definition
 
     # Fields are categorized as follows for convenience and layout and performance decisions
@@ -1030,44 +1864,79 @@ def add_related_fields_to_detail_view(self):
     #    model, internal, related or properties
     #
     # By default we will populate self.fields only with flat model fields.
-    #
-    # if keywords are in the GET request we will add the values of list, internal, related and/or properties.
-    # And even turn off list and model if requested.
     
     def is_list(field):
         return hasattr(field,'is_relation') and field.is_relation and (field.one_to_many or field.many_to_many)
     
     def is_property(name):
         return isinstance(getattr(self.model, name), property)
+    
+    def is_bitfield(field):
+        return type(field).__name__=="BitField"
 
-    ODF = get_object_display_format(self.request.GET)    
+    ODF = self.format.flags
+
+    # Record the privacy outcomes for this object
+    self.obj.hide = fields_to_hide(self.obj, self.request.user)
 
     all_fields = self.obj._meta.get_fields()                    # All fields
 
     model_fields = collections.OrderedDict()                    # Editable fields in the model
     internal_fields = collections.OrderedDict()                 # Non-editable fields in the model
     related_fields = collections.OrderedDict()                  # Fields in other models related to this one
+    
+    # Categorize all fields into one of the three buckets above (model, internal, related)
     for field in all_fields:
-        if (is_list(field) and ODF & odf.list) or (ODF & odf.flat):
-            if field.concrete:
+        if (is_list(field) and ODF & odf.list) or (not is_list(field) and ODF & odf.flat):
+            if field.is_relation:
+                if ODF & odf.related:
+                    related_fields[field.name] = field
+            else: 
                 if ODF & odf.model and field.editable and not field.auto_created:
                     model_fields[field.name] = field
                 elif ODF & odf.internal:
                     internal_fields[field.name] = field
-            elif ODF & odf.related:
-                related_fields[field.name] = field
 
-    # TODO: Is the property list or flat? Can't know without evaluating it unless the model confesses.
-    # Properties in the model (functions with the @property decorator)
-    # FIXME: Currently cannot divine without evaluating the property what type 
-    # it will yield. Need to find a way to decorate properties with a type annotation.
+    # List properties, but respect the format request (list and flat selectors)  
+    properties = []
     if ODF & odf.properties:
-        properties = [name for name in dir(self.model) if is_property(name)]
+        for name in dir(self.model):
+            if is_property(name):
+                # Function annotations appear in Python 3.6. In 3.5 and earlier they aren't present.
+                # Use the annotations provided on model properties to classify properties and include 
+                # them based on the classification. The classification is for list and flat respecting 
+                # the object_display_flags selected. That is all we need here.
+                if hasattr(getattr(self.model,name).fget, "__annotations__"):
+                    annotations = getattr(self.model,name).fget.__annotations__
+                    if "return" in annotations:
+                        return_type = annotations["return"]
+                        if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
+                            properties.append(name)
+                    else:
+                        properties.append(name)
+                else:
+                    properties.append(name)
 
-    # Some bucket for all the fields so we can group them on display (scalars and then lists)
-    
+    # List properties_methods, but respect the format request (list and flat selectors)  
+    # Look for property_methods (those decorated with property_method and having defaults for all parameters)
+    property_methods = []
+    if ODF & odf.methods:
+        for method in inspect.getmembers(self.obj, predicate=is_property_method):
+            name = method[0]
+            if hasattr(getattr(self.model,name), "__annotations__"):
+                annotations = getattr(self.model,name).__annotations__
+                if "return" in annotations:
+                    return_type = annotations["return"]
+                    if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
+                        property_methods.append(name)
+                else:
+                    property_methods.append(name)
+
+    # Define some (empty) buckets for all the fields so we can group them on 
+    # display (by model, internal, related, property, scalars and lists)
     if ODF & odf.flat:
         self.fields_flat = {}                                       # Fields that have scalar values
+        self.all_fields_flat = collections.OrderedDict()
         if ODF & odf.model:
             self.fields_flat[odf.model] = collections.OrderedDict()
         if ODF & odf.internal:
@@ -1076,9 +1945,12 @@ def add_related_fields_to_detail_view(self):
             self.fields_flat[odf.related] = collections.OrderedDict()
         if ODF & odf.properties:
             self.fields_flat[odf.properties] = collections.OrderedDict()
+        if ODF & odf.methods:
+            self.fields_flat[odf.methods] = collections.OrderedDict()
 
     if ODF & odf.list:
         self.fields_list = {}                                       # Fields that are list items (have multiple values)
+        self.all_fields_list = collections.OrderedDict()
         if ODF & odf.model:
             self.fields_list[odf.model] = collections.OrderedDict()
         if ODF & odf.internal:
@@ -1087,10 +1959,14 @@ def add_related_fields_to_detail_view(self):
             self.fields_list[odf.related] = collections.OrderedDict()
         if ODF & odf.properties:
             self.fields_list[odf.properties] = collections.OrderedDict()
+        if ODF & odf.methods:
+            self.fields_list[odf.methods] = collections.OrderedDict()
 
     # For all fields we've collected set the value and label properly
     # Problem is that relationship fields are by default listed by primary keys (pk)
-    # and we want to fetch the actual string representation of that reference
+    # and we want to fetch the actual string representation of that reference an save 
+    # that not the pk. The question is which string (see object_list_format() for the
+    # types of string we support).
     for field in all_fields:
         # All fields in other models that point to this one should have an is_relation flag
 
@@ -1123,44 +1999,97 @@ def add_related_fields_to_detail_view(self):
                 if ODF & odf.list:
                     attname = field.name if hasattr(field,'attname') else field.name+'_set' if field.related_name is None else field.related_name   # If it's a model field it has an attname attribute, else it's a _set atttribute
                     
+                    field.is_list = True
                     field.label = safetitle(attname.replace('_', ' '))
         
                     ros = apply_sort_by(getattr(self.obj, attname).all())
         
-                    if len(ros) == 0:
-                        field.value = NONE
+                    if not field.name in self.obj.hide:
+                        if len(ros) > 0:
+                            field.value = [odm_str(item, self.format.mode) for item in ros]
+                        else:
+                            field.value = NONE
                     else:
-                        field.value = hstr([str(item) for item in ros])
+                        field.value = HIDDEN
         
                     self.fields_list[bucket][field.name] = field
+            elif is_bitfield(field):
+                if ODF & odf.flat:
+                    flags = []
+                    for f in field.flags:
+                        bit = getattr(getattr(self.obj, field.name), f)
+                        if bit.is_set:
+                            flags.append(getattr(self.obj, field.name).get_label(f))
+                    field.is_list = False
+                    field.label = safetitle(field.verbose_name)
+                    
+                    if not field.name in self.obj.hide:
+                        if len(flags) > 0:
+                            field.value = odm_str(", ".join(flags), self.format.mode)
+                        else:
+                            field.value = NONE
+                    else:
+                        field.value = HIDDEN
+                                    
+                    self.fields_flat[bucket][field.name] = field
             else:
                 if ODF & odf.flat:
+                    field.is_list = False
                     field.label = safetitle(field.verbose_name)
-                    field.value = hstr(getattr(self.obj, field.name))
-                    if not str(field.value):
-                        field.value = NOT_SPECIFIED
+                    
+                    if not field.name in self.obj.hide:
+                        field.value = odm_str(getattr(self.obj, field.name), self.format.mode)
+                        if not str(field.value):
+                            field.value = NOT_SPECIFIED
+                    else:
+                        field.value = HIDDEN
+                        
                     self.fields_flat[bucket][field.name] = field
 
-    # Capture all the property values
-    if ODF & odf.properties:
-        for name in properties:
+    # Capture all the property and property_method values
+    if ODF & odf.properties or ODF & odf.methods:
+        names = []
+        if ODF & odf.properties:
+            names += properties
+        if ODF & odf.methods:
+            names += property_methods
+            
+        for name in names:
             label = safetitle(name.replace('_', ' '))
-            value = getattr(self.obj, name)
+            
+            # property_methods are functions, and properties are attributes
+            # so we have to fetch their values appropriately 
+            if name in property_methods:
+                value = getattr(self.obj, name)()
+                bucket = odf.methods
+            else:
+                value = getattr(self.obj, name)
+                bucket = odf.properties
+                
             if not str(value):
                 value = NOT_SPECIFIED
     
             p = models.Field()
             p.label = label
     
-            if isIterable(value):
+            if isListValue(value):
                 if ODF & odf.list:
-                    p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-                    self.fields_list[odf.properties][name] = p
+                    p.is_list = True
+                    
+                    if len(value) == 0:
+                        p.value = NONE
+                    elif isDictionary(value):
+                        # Value becomes Key: Value
+                        p.value = ["{}: {}".format(odm_str(k, self.format.mode), odm_str(v, self.format.mode)) for k, v in dict.items(value)] 
+                    else:
+                        p.value = [odm_str(val, self.format.mode) for val in list(value)] 
+                    self.fields_list[bucket][name] = p
             else:
                 if ODF & odf.flat:
-                    p.value = hstr(value) # conditional_escape(force_text(hstr(value)))
-                    self.fields_flat[odf.properties][name] = p
-
+                    p.is_list = False
+                    p.value = odm_str(value, self.format.mode) 
+                    self.fields_flat[bucket][name] = p
+        
     # Some more buckets to put the fields in so we can separate lists of fields on display
     self.fields = collections.OrderedDict()               # All fields
     self.fields_bucketed = collections.OrderedDict()
@@ -1178,6 +2107,9 @@ def add_related_fields_to_detail_view(self):
     if ODF & odf.properties:
         self.fields_bucketed[odf.properties] = collections.OrderedDict()
         buckets += [odf.properties]
+    if ODF & odf.methods:
+        self.fields_bucketed[odf.methods] = collections.OrderedDict()
+        buckets += [odf.methods]
 
     for bucket in buckets:
         passes = []
@@ -1190,9 +2122,7 @@ def add_related_fields_to_detail_view(self):
             for name, value in field_list.items():
                 self.fields_bucketed[bucket][name] = value
                 self.fields[name] = value
-
-    pass
-
+    
 def get_form_fields(model):
     '''
     Return a dictionary of fields in a model to be used in form construction and management.
@@ -1386,7 +2316,7 @@ def get_formset_from_object(Form_Set, db_object, field):
 def get_rich_object_from_forms(root_object, related_forms):
     # TODO: This is messy. Consider just building it directly from the form data recursively.
     #       This would mean replicating some of the object creation code in get_related_forms
-    #       But we could savvily buuld objects from form data or db_data based on context
+    #       But we could savvily build objects from form data or db_data based on context
     #       eg, Rank from form, player from database.
     #
     #       Define rich object as the:
@@ -1397,11 +2327,11 @@ def get_rich_object_from_forms(root_object, related_forms):
     #          Performances
     #            Players
     #
-    #        Can we infer this from the add_related attribiutes?
+    #        Can we infer this from the add_related attributes?
     #
     #        Food for thought.
     
-    # TODO: How does this generalize toa  formset of sessions say?
+    # TODO: How does this generalize to a formset of sessions say?
     
     # TODO: If model_history is empty then in this model put an attritibute called
     #       complex_object or such which will be a tree of dictionaries of just the object 
@@ -1756,7 +2686,7 @@ def fix_widgets(form):
 
 def add_model_context(self, context, plural, title=False):
     '''
-    Add some useful context information to views.
+    Add some useful context information to views that reveal information about the model
 
     Specifically, access to the model, and related forms 
     (forms for models that relate to this one).
@@ -1800,3 +2730,78 @@ def add_model_context(self, context, plural, title=False):
 
     return context
 
+def add_format_context(view, context):
+    '''
+    Add some useful context information to views that reveal information about the
+    display and formatting options we have for views
+
+    Specifically a dictionary with one item per available setting and a true/false value.
+    
+    view is generic view object that has a format attribute. As in view.format.
+    
+    Two types are supported Detail and List views, with different context generate
+    for each one.  
+    '''
+
+    if hasattr(view, "operation") and hasattr(view, "format"):
+        # List views are simple
+        if view.operation == "list":
+            context["format"] = view.format
+        
+        # Detail view support a richer array of options that we handle with more care
+        elif view.operation == "view":
+            # Detail views will want a dictionary of object_display_format settings to honor 
+            # when rendering display options if they opt do so.     
+            ODF = {}
+            for setting in vars(odf):
+                if not setting.startswith("_"): # Skip built-ins '__' and the summary settings '_' 
+                    ODF[setting] = (view.format.flags & getattr(odf, setting)) > 0
+                
+            context['format_flags'] = ODF
+        
+            # They may also want to know about the shorthand settings that object_display_format supports
+            # and because these are defined in the class as _ prefixed settings we can set them and 
+            # then test all the settings and build lists of settings each one sets. Thus we can inform
+            # the template of this and it need not break DRY by hard coding any assumptions about the
+            # object_display_format settings. 
+            Shorthand = {}
+            for setting in vars(odf):
+                if not setting.startswith("__") and setting.startswith("_"):  
+                    Shorthand[setting] = []
+            
+            for SH in Shorthand:
+                TestODF = getattr(odf, SH)
+                for setting in ODF:
+                    if TestODF & getattr(odf, setting):
+                        Shorthand[SH].append(setting)
+            
+            context['format_shorthands'] = Shorthand
+        
+            # format modes
+            ODM = {}
+            for setting in vars(odm):
+                if not setting.startswith("_") and not setting.startswith("as_"): # Skip built-ins ('__'), private attributes '_' and the enums ('as_') 
+                    ODM[setting] =  getattr(view.format.mode, setting)
+                 
+            context['format_modes'] = ODM
+            
+#             # enums (so that a template knows the values that the modes can take)
+#             ODME = {}  # Object Display Mode Enums
+#             for setting in vars(odm):
+#                 if setting.startswith("as_"):  
+#                     ODME[setting] =  getattr(odm, setting)
+#          
+#             # Not sure if these are ever useful in a template. But if so, they could be added.
+#             ODSE = {}  # Object Display Summary Enums
+#             for setting in vars(osf):
+#                 if not setting.startswith("_") :  
+#                     ODSE[setting] =  getattr(osf, setting)
+#                            
+#             FE = {} # Format Enums
+#             FE['object'] = ODME.copy()
+#             FE['list_values'] = ODME.copy()
+#             FE['sum_format'] = ODSE.copy()
+#                   
+#             context['format_enums'] = FE     
+    
+    return context

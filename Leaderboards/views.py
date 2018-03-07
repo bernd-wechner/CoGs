@@ -1,4 +1,5 @@
 import re
+from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import json
 import cProfile, pstats, io
 import pytz
@@ -6,7 +7,7 @@ from datetime import datetime, date, timedelta
 
 from collections import OrderedDict
 
-from django_generic_view_extensions import odf, datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string
+from django_generic_view_extensions import  datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string, list_display_format, object_display_format
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
 from django import forms
@@ -15,15 +16,16 @@ from django.db.models.fields import DateField
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
+from django.urls import reverse
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.urlresolvers import resolve
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, make_aware
 
-
-# TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sesisons in local time and see results in local time.
+# TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sessons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
 #        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
@@ -115,7 +117,7 @@ def post_process_submitted_model(self):
     #       all the participating players were in that were played after the edited session.
     #    A general are you sure? system for edits is worth implementing.
     
-    # TODO: When saving a session sort ranks numerically and substitude by 1, 2, 3, 4 ... to ensure victors are always identifes by rank 1 and rank is the ordinal.
+    # TODO: When saving a session sort ranks numerically and substitute by 1, 2, 3, 4 ... to ensure victors are always identifes by rank 1 and rank is the ordinal.
     #        Silently enforcing this is better than requiring the user to. The form can support any integers that indicate order.
 
         session = self.object
@@ -189,7 +191,7 @@ def post_process_submitted_model(self):
                         player = Player.objects.get(id=player_id)
                         team.players.add(player)
 
-                    if new_name and not re.match("^Team \d+$", new_name, re.IGNORECASE):
+                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
                         team.name = new_name
                         team.save()
 
@@ -201,7 +203,7 @@ def post_process_submitted_model(self):
                 elif len(teams) == 1:
                     team = teams[0]
 
-                    if new_name and not re.match("^Team \d+$", new_name, re.IGNORECASE) and new_name != team.name :
+                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name :
                         team.name = new_name
                         team.save()
 
@@ -239,6 +241,17 @@ def post_process_submitted_model(self):
         # TODO: Do these checks. Then do test of the transaction rollback and error catch by 
         #       simulating an integrity error.  
 
+def html_league_options():
+    '''
+    Returns a simple string of HTML OPTION tags for use in a SELECT tag in a template
+    '''
+    leagues = League.objects.all()
+    
+    options = ['<option value="0">Global</option>']  # Reserved ID for global (no league selected).    
+    for league in leagues:
+        options.append('<option value="{}">{}</option>'.format(league.id, league.name))
+    return "\n".join(options)
+
 def context_provider(self, context):
     '''
     Updates the provided context with CoGs specific items 
@@ -250,7 +263,7 @@ def context_provider(self, context):
     individual_play: does this game permit indiviual play
     team_play: does this game support team play
     min_players: minimum number of players for this game
-    max_players: manimum number of players for this game
+    max_players: maximum number of players for this game
     min_players_per_team: minimum number of players in a team in this game. Relevant only if team_play supported.
     max_players_per_team: maximum number of players in a team in this game. Relevant only if team_play supported.
     
@@ -258,8 +271,9 @@ def context_provider(self, context):
     See ajax_Game_Properties below for that. 
     '''
     model = self.model._meta.model_name
+    context['league_options'] = html_league_options()
     
-    if model == 'session':
+    if model == 'session' and hasattr(self, "object"):
         Default = Game()
         context['game_individual_play'] = json.dumps(Default.individual_play)
         context['game_team_play'] = json.dumps(Default.team_play)
@@ -268,7 +282,7 @@ def context_provider(self, context):
         context['game_min_players_per_team'] = Default.min_players_per_team
         context['game_max_players_per_team'] = Default.max_players_per_team
         
-        session = self.object        
+        session = self.object
                 
         if session:
             game = session.game
@@ -317,16 +331,20 @@ class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     #        and fix the reference or delete the rating.
     template_name = 'CoGs/delete_data.html'
     operation = 'delete'
-    format = odf.normal
+    format = object_display_format()
+    extra_context = context_provider
 
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
     operation = 'list'
+    format = list_display_format()
+    extra_context = context_provider
 
 class view_Detail(DetailViewExtended):
     template_name = 'CoGs/view_data.html'
     operation = 'view'
-    format = odf.normal
+    format = object_display_format()
+    extra_context = context_provider
 
 #===============================================================================
 # The Leaderboards view. What it's all about!
@@ -460,6 +478,10 @@ def view_Leaderboards(request):
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
+
+#===============================================================================
+# AJAX providers
+#===============================================================================
 
 def ajax_Leaderboards(request, raw=False):
     '''
@@ -644,9 +666,34 @@ def ajax_Game_Properties(request, pk):
       
     return HttpResponse(json.dumps(props))
 
+def ajax_Detail(request, model, pk):
+    '''
+    Support AJAX rendering of objects on the detail view. 
+    
+    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
+    ''' 
+    view = view_Detail()
+    view.request = request
+    view.kwargs = {'model':model, 'pk': pk}
+    view.get_object()
+    
+    view_url = reverse("view", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
+    json_url = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
+    html = view.as_html()
+    
+    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
+     
+    return HttpResponse(json.dumps(response))
+
 #===============================================================================
 # Special sneaky fixerupper and diagnostic view for testing code snippets
 #===============================================================================
+
+def view_About(request):
+    '''
+    Displays the About page (static HTML wrapped in our base template
+    '''
+    return
 
 def view_CheckIntegrity(request):
     '''
@@ -755,7 +802,7 @@ def view_Kill(request, model, pk):
 
 import csv
 from dateutil import parser
-from django_generic_view_extensions import hstr
+from django_generic_view_extensions import fmt_str
 
 def import_sessions():
     title = "Import CoGs scoresheet"
@@ -813,7 +860,7 @@ def import_sessions():
                 result += "{} exists more than once\n".format(p)
             
     if len(missing_games) == 0 and len(missing_players) == 0:
-        result += hstr(sessions)
+        result += fmt_str(sessions)
         
         Session.objects.all().delete()
         Rank.objects.all().delete()
@@ -844,8 +891,8 @@ def import_sessions():
                             
             Rating.update(session)
     else:
-        result += "Missing Games:\n{}\n".format(hstr(missing_games))
-        result += "Missing Players:\n{}\n".format(hstr(missing_players))
+        result += "Missing Games:\n{}\n".format(fmt_str(missing_games))
+        result += "Missing Players:\n{}\n".format(fmt_str(missing_players))
             
     now = datetime.now()
             

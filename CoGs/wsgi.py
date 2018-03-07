@@ -8,9 +8,16 @@ https://docs.djangoproject.com/en/1.8/howto/deployment/wsgi/
 """
 
 import os
-
-from django.core.wsgi import get_wsgi_application
-
 os.environ.setdefault("DJANGO_SETTINGS_MODULE", "CoGs.settings")
 
-application = get_wsgi_application()
+from django_lighttpd_middleware import METHOD
+
+if METHOD == "middleware":
+    from django.core.wsgi import get_wsgi_application
+    application = get_wsgi_application()
+elif  METHOD == "wsgi":
+    from django_lighttpd_middleware import get_wsgi_application
+    application = get_wsgi_application()
+else:
+    raise NotImplementedError("No WSGI application defined.")
+

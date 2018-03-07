@@ -1,0 +1,13 @@
+{% extends "CoGs/base.html" %}
+{% load staticfiles %}
+{% block title %}{{ flatpage.title }}{% endblock %}
+{% block content %}
+	<script src="{% static 'CoGs/js/toc.js'%}"></script>
+
+	<h1>{{ flatpage.title }}</h1>
+	<div id="flatpage-with-contents">	
+		<div id="generated-toc"></div>
+		
+		{{ flatpage.content }}
+	</div>
+{% endblock %}

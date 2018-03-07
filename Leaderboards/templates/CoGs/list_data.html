@@ -1,11 +1,61 @@
 {% extends "CoGs/base.html" %}
+{% load staticfiles %}
 {% load filters %}
 {% load tags %}
 {% block title %}{{title}}{% endblock %}
 {% block content %}
 {% if user.is_authenticated %}
 	<p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
-{% endif %}	        
+{% endif %}	   
+
+<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script type="text/javascript">
+	// Save the URL when we load for later use
+	function saveURL() {
+		URL = window.location.href.split('?')[0];
+	}
+	window.onload = saveURL;
+
+	function toggle_filters() {
+		current = $(".toggle")[0].style.visibility;
+		if (current == "collapse") 
+			$(".toggle").css('visibility', 'visible'); 
+		else
+			$(".toggle").css('visibility', 'collapse');		
+	}
+	
+	function check_button(which_one) {
+		$("#opt_format_"+which_one).prop("checked", true);
+	}
+	
+	function URLopts() {
+		opts = []
+	
+		format = $('input[type=radio][name=opt_format]:checked').attr('value');
+		link = $('input[type=radio][name=opt_link]:checked').attr('value');
+		
+		opts.push(format);
+		opts.push(link);
+		
+		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
+
+		// Add the global league filter to URL opts used in GET requests 
+		$league_id = $("#id_league_view").val();
+		url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
+
+		return url_opts;
+	}		
+		
+	function reload(event) {
+		$("#reloading_icon").css("visibility", "visible");
+		$("#opt_brief").prop('disabled', true);
+		$("#opt_verbose").prop('disabled', true);
+		$("#opt_rich").prop('disabled', true);
+		$("#opt_detail").prop('disabled', true);
+		var url = URL + URLopts();
+		window.location.href = url;
+	}	
+</script>     
 
 <p>{{model_name_plural | title}}: {{ object_list | length }}</p>
 
@@ -13,24 +63,68 @@
 {#<p>{{get_params}}</p>#}
 {#{% endif %}#}
 
+FIXME: Add as_table, as_ul, as_p, as_br selector here as well!
+<table id="ListViewOptions" class="tight">
+	<tr>
+		<td class='tight options'>
+			<b>Quick Views:</b>
+		</td>
+		<td class='tight options'>
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+			<input type="button" id="opt_brief" value="Brief" onclick="check_button('brief'); reload(event);">
+			<input type="button" id="opt_verbose" value="Verbose" onclick="check_button('verbose'); reload(event);">
+			<input type="button" id="opt_rich" value="Rich" onclick="check_button('rich'); reload(event);">
+			<input type="button" id="opt_detail" value="Detail" onclick="check_button('detail'); reload(event);">
+			<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_filters();">&#9660;</a></b></span>
+		</td>
+	</tr>
+	<tr id="opt_summary_formats" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<br/>
+			<input type="button" id="opt_specified" value="Show:" onclick="reload(event);">
+		</td>
+		<td class='tight options'>
+			<br/>
+			<input type="radio" name="opt_format" id="opt_format_brief" value="brief" {{format.format|checked:1}}>Brief
+			<input type="radio" name="opt_format" id="opt_format_verbose" value="verbose" {{format.format|checked:2}}>Verbose
+			<input type="radio" name="opt_format" id="opt_format_rich" value="rich" {{format.format|checked:3}}>Rich
+			<input type="radio" name="opt_format" id="opt_format_detail" value="detail" {{format.format|checked:4}}>Detail
+		</td>
+	</tr>
+	<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>links:</b>
+		</td>
+		<td class='tight options'>
+			<input type="radio" name="opt_link" id="opt_link_none" value="no_links" {{format.link|checked:0}}>None
+			<input type="radio" name="opt_link" id="opt_link_internal" value="internal_links" {{format.link|checked:1}}>CoGs
+			<input type="radio" name="opt_link" id="opt_link_external" value="external_links" {{format.link|checked:2}}>BGG
+		</td>
+	</tr>		
+</table>
+<p/>
+
 {% if query %}
-<p>{{query}}</p>
+	<p>{{query}}</p>
 {% endif %}
 
-{% if object_list %}
-	<ul>
-	  {% for o in object_list %}
-	    <li class="contact">
-	    	[<a href="{% url 'view' model_name o.pk %}">view</a>]
-			{% if user.is_authenticated %}
-		    	[<a href="{% url 'edit' model_name o.pk %}">edit</a>]
-		    	[<a href="{% url 'delete' model_name o.pk %}">delete</a>]
-			{% endif %}	        
-	    	{% list_format o %}
-    	</li>
-	  {% endfor %}
-	</ul>
-{% else %}
-    <p>No {{model_name_plural}}.</p>
-{% endif %}
+<div id="data">
+	{% if object_list %}
+		<ul>
+		  {% for o in object_list %}
+		    <li class="contact">
+		    	[<a href="{% url 'view' model_name o.pk %}">view</a>]
+				{% if user.is_authenticated %}
+			    	[<a href="{% url 'edit' model_name o.pk %}">edit</a>]
+			    	[<a href="{% url 'delete' model_name o.pk %}">delete</a>]
+				{% endif %}	        
+		    	{% list_format o %}
+	    	</li>
+		  {% endfor %}
+		</ul>
+	{% else %}
+	    <p>No {{model_name_plural}}.</p>
+	{% endif %}
+</div>
+
 {% endblock %}

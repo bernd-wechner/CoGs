@@ -1,24 +1,29 @@
 # -*- coding: utf-8 -*-
 import trueskill
+import html
 
-from django.db import models, DataError, IntegrityError
+from django.db import models, connection, DataError, IntegrityError
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
-from django.core import checks
-from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned
+#from django.core import checks
+from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned, PermissionDenied
 from django.core.validators import RegexValidator
+from django.core.urlresolvers import reverse_lazy
 from django.utils import formats, timezone
+from django.contrib import admin
 from django.contrib.auth.models import User
-
-#from django_intenum import IntEnumField1
+from cuser.middleware import CuserMiddleware
+#from django_intenum import IntEnumField
+from bitfield import BitField
+from bitfield.forms import BitFieldCheckboxSelectMultiple
 
 from collections import OrderedDict
-from itertools import chain
-from enum import IntEnum
+#from itertools import chain
+#from enum import IntEnum
 from math import isclose
 #from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
 from datetime import datetime, timedelta
 
-from django_generic_view_extensions import odf, display_format
+from django_generic_view_extensions import flt, field_render, link_target_url, property_method, fields_to_hide, HIDDEN
 
 
 # CoGs Leaderboard Server Data Model
@@ -35,40 +40,108 @@ from django_generic_view_extensions import odf, display_format
 # converts it into a database schema (table definitions).
 
 MAX_NAME_LENGTH = 200                       # The maximum length of a name in the database, i.e. the char fields for player, game, team names and so on.
-ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
-ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
-ALL_GAMES = "ALL"                           # A reserved key for leaderboard filtering representing all games
 FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
 NEVER = timezone.make_aware(datetime.min)   # Used for times to indicat if there is no last play or victory that has a time 
 
-# An enum for data privacy management
-class Visibility(IntEnum):
-    Public = 0
-    League_only = 1
-    Registrars_only = 2
+# Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
+ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
+ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
+ALL_GAMES = "ALL"                           # A reserved key for leaderboard filtering representing all games
 
-def update_admin_fields(obj):
+#===============================================================================
+# Helper functions
+#===============================================================================
+
+
+# Some flags for describing field privacy for Player info. Used with a BitField.
+Visibility = (
+    ('all', 'Everyone'),
+    ('share_leagues', 'League Members'),
+    ('share_teams', 'Team Members'), 
+    ('all_is_registrar', 'Registrars'), 
+    ('all_is_staff', 'Staff'), 
+)
+
+#===============================================================================
+# Some useful mixins for models
+#===============================================================================
+
+class AdminModel(models.Model):
     '''
-    Update the CoGs admin fields on an object (whenever it is saved).
-    TODO: Use the actual logged in user here not user 1
+    A MixIn that overrides the save method to ensure that on every save some admin
+    fields are checked and updated that record such saves (who and when) 
     '''
-    now = timezone.now()
-    usr = Player.objects.get(pk=1)  # TODO: Get the actual logged in user
+    # Simple history and administrative fields
+    created_by = models.ForeignKey('Player', related_name='%(class)ss_created', editable=False, null=True)
+    created_on = models.DateTimeField(editable=False, null=True)
+    last_edited_by = models.ForeignKey('Player', related_name='%(class)ss_last_edited', editable=False, null=True)
+    last_edited_on = models.DateTimeField(editable=False, null=True)
+    
+    def update_admin_fields(self):
+        '''
+        Update the CoGs admin fields on an object (whenever it is saved).
+        '''
+        now = timezone.now()
+        usr = CuserMiddleware.get_user().player
+    
+        if hasattr(self, "last_edited_by"):
+            self.last_edited_by = usr
+    
+        if hasattr(self, "last_edited_on"):
+            self.last_edited_on = now
+    
+        # We infer that if the object has pk it was being edited and if it has none it was being created
+        if self.pk is None:
+            if hasattr(self, "created_by"):
+                self.created_by = usr
+    
+            if hasattr(self, "created_on"):
+                self.created_on = now
 
-    if hasattr(obj, "last_edited_by"):
-        obj.last_edited_by = usr
+    def save(self, *args, **kwargs):
+        self.update_admin_fields()
+        super().save(*args, **kwargs)
+        print(connection.queries[-1])
+                
+    class Meta:
+        abstract = True
 
-    if hasattr(obj, "last_edited_on"):
-        obj.last_edited_on = now
+class PrivacyMixIn():
+    '''
+    A MixIn that adds database load overrides which populate the "hidden" attribute of
+    an object with the names of fields that should be hidden. It is us to the other
+    methods in the model to implement this hiding where desired.
+    '''
+    @classmethod
+    def create(cls, title):
+        obj = super().create(title)
+        user = CuserMiddleware.get_user()
+        obj.hidden = fields_to_hide(obj, user)
+        return obj
 
-    # We infer that if the object has pk it was being edited and if it has none it was being created
-    if obj.pk is None:
-        if hasattr(obj, "created_by"):
-            obj.created_by = usr
+    @classmethod
+    def from_db(cls, db, field_names, values):        
+        obj = super().from_db(db, field_names, values)
+        user = CuserMiddleware.get_user()
+        obj.hidden = fields_to_hide(obj, user)
+        if len(obj.hidden) > 0:
+            obj.save = obj.disabled_save
+            for f in obj.hidden:
+                setattr(obj, f, HIDDEN)
+        return obj
 
-        if hasattr(obj, "created_on"):
-            obj.created_on = now
+    def refresh_from_db(self, using=None, fields=None, **kwargs):
+        super().refresh_from_db(using, fields, **kwargs)
+        user = CuserMiddleware.get_user()
+        self.hidden = fields_to_hide(self, user)
+        
+    def disabled_save(self):
+        raise PermissionDenied()       
 
+#===============================================================================
+# Helper classes
+#===============================================================================
+    
 class TrueskillSettings(models.Model):
     '''
     The site wide TrueSkill settings to use (i.e. not Game).
@@ -92,7 +165,380 @@ class TrueskillSettings(models.Model):
     class Meta:
         verbose_name_plural = "Trueskill settings"
 
-class League(models.Model):
+#===============================================================================
+# The Ratings model(s) where TrueSkill ratings are stored
+#===============================================================================
+
+class RatingModel(AdminModel):
+    '''
+    A Trueskill rating for a given Player at a give Game.
+
+    This is the ultimate goal of the whole exercise. To record game sessions in order to calculate 
+    ratings for players and rank them in leaderboards.
+    
+    Every player has a rating at every game, though only those deviating from default (i.e. games 
+    that a player has players) are stored in the database.
+    
+    This is an abstract model defining the table structure that us used
+    by Rating and Backup_Rating. The latter being a place to copy Rating 
+    before a complete rebuild of ratings. 
+    
+    The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
+    '''
+    player = models.ForeignKey('Player', related_name='%(class)ss')
+    game = models.ForeignKey('Game', related_name='%(class)ss')
+
+    plays = models.PositiveIntegerField('Play Count', default=0)
+    victories = models.PositiveIntegerField('Victory Count', default=0)
+    
+    last_play = models.DateTimeField(default=timezone.now)
+    last_victory = models.DateTimeField(default=NEVER)
+    
+    # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
+    # To protect ourselves against changes to those global settings, or simply to detect them if it should happen, we capture their value at time of rating update in the Eta.
+    # These values before each game session and their new values after a game session are stored with the Session Ranks for integrity and history plotting.
+    trueskill_mu = models.FloatField('Trueskill Mean (µ)', default=trueskill.MU, editable=False)
+    trueskill_sigma = models.FloatField('Trueskill Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
+    trueskill_eta = models.FloatField('Trueskill Rating (η)', default=trueskill.SIGMA, editable=False)
+    
+    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each rating as an integrity measure.
+    # They can be compared against the global settings and and difference can trigger an update request.
+    # That is, flag a warning and if they are consistent across all stored ratings suggest TrueskillSettings
+    # should be restored (and offer to do so?) or if inconsistent (which is an integrity error) suggest that
+    # ratings be globally recalculated
+    trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
+    trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
+    trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
+    
+    # Record the game specific Trueskill settings tau and p with rating as an integrity measure.
+    # Again for a given game these must be consistent among all ratings and the history of each rating. 
+    # And change while managing leaderboards should trigger an update request for ratings relating to this game.  
+    trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
+    trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
+
+    def __unicode__(self): return  u'{} - {} - {:f} teeth, from (µ={:f}, σ={:f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
+    def __str__(self): return self.__unicode__()
+        
+    class Meta:
+        ordering = ['-trueskill_eta']
+        abstract = True
+    
+class Rating(RatingModel):
+    '''
+    This is the actual repository of ratings that describe leaderboards.
+    
+    Its partner Backup_Rating stores a backup (form before the last rebuild) 
+    '''
+    @property
+    def last_performance(self) -> 'Performance':
+        '''
+        Returns the latest performance object that this player played this game in. 
+        '''
+        game = self.game
+        player = self.player
+        
+        plays = Session.objects.filter(Q(game=game) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
+
+        return None if (plays is None or plays.count() == 0) else plays[0].performance(player) 
+
+    @property
+    def last_winning_performance(self) -> 'Performance':
+        '''
+        Returns the latest performance object that this player played this game in and won. 
+        '''
+        game = self.game
+        player = self.player
+        
+        wins = Session.objects.filter(Q(game=game) & Q(ranks__rank=1) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
+
+        return None if (wins is None or wins.count() == 0) else wins[0].performance(player) 
+
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    def reset(self, session):
+        '''
+        Given a session, resets this rating object to what it was after this session.
+        
+        Allows for a rewind of the rating to what it was at some time in past, so that 
+        it can be rebuilt from that point onward if desired.    
+        '''
+        performance = session.performance(self.player)
+        
+        self.plays = performance.play_number
+        self.victories = performance.victory_count
+        
+        self.last_play = session.date_time
+        
+        if performance.is_victory:
+            self.last_victory = session.date_time
+        else:
+            last_victory = session.previous_victory(performance.player)
+            self.last_victory = None if last_victory is None else last_victory.session.date_time   
+        
+        self.trueskill_mu = performance.trueskill_mu_after
+        self.trueskill_sigma = performance.trueskill_sigma_after
+        self.trueskill_eta = performance.trueskill_eta_after
+        
+        self.trueskill_mu0 = performance.trueskill_mu0
+        self.trueskill_sigma0 = performance.trueskill_sigma0
+        self.trueskill_beta = performance.trueskill_beta
+        self.trueskill_delta = performance.trueskill_delta
+
+        self.trueskill_tau = performance.trueskill_tau
+        self.trueskill_p = performance.trueskill_p
+
+    def recalculate_last_play_and_victory(self):
+        '''
+        last_play and last_victory are fields in the Rating model for convenience, quick retrieval and easy querying.
+        
+        They are a statistic on recorded sessions though. This method requests they  be recalculated from the base
+        data.
+        '''
+        self.last_play = self.player.last_play(self.game)
+        self.last_victory = self.player.last_win(self.game)
+        self.save()
+
+    @classmethod    
+    def create(cls, player, game, mu=None, sigma=None):
+        '''
+        Create a new Rating for player at game, with specified mu and sigma.
+
+        An explicit method, rather than override of __init_ which is called 
+        whenever and object is instantiated which can be when creating a new 
+        Rating or when fetching an old one fromt the database. So not appropriate
+        to override it for new Ratings.
+        ''' 
+
+        TS = TrueskillSettings()
+        
+        trueskill_mu = TS.mu0 if mu == None else mu
+        trueskill_sigma = TS.sigma0 if sigma == None else sigma
+        
+        self = cls(player=player,
+                    game=game,
+                    plays=0,
+                    victories=0,
+                    last_play=NEVER,
+                    last_victory=NEVER,
+                    trueskill_mu=trueskill_mu,
+                    trueskill_sigma=trueskill_sigma,
+                    trueskill_eta=trueskill_mu - TS.mu0 / TS.sigma0 * trueskill_sigma,  # µ − (µ0 ÷ σ0) × σ
+                    trueskill_mu0=TS.mu0,
+                    trueskill_sigma0=TS.sigma0,
+                    trueskill_beta=TS.beta,
+                    trueskill_delta=TS.delta,
+                    trueskill_tau=game.trueskill_tau,
+                    trueskill_p=game.trueskill_p
+                    )  
+        return self
+    
+    @classmethod
+    def get(cls, player, game):
+        '''
+        Fetch (or create fromd efaults) the rating for a given player at a game
+        and perform some quick data integrity checks in the process.  
+        '''
+        TS = TrueskillSettings()
+        
+        try:
+            r = Rating.objects.get(player=player, game=game)
+        except ObjectDoesNotExist:
+            r = Rating.create(player=player, game=game)
+        except MultipleObjectsReturned:
+            raise IntegrityError("Integrity error: more than one rating for {} at {}".format(player.name_nickname, game.name))
+        
+        if not (isclose(r.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE)  
+         and isclose(r.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_tau, game.trueskill_tau, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_p, game.trueskill_p, abs_tol=FLOAT_TOLERANCE)):
+            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_beta, r.trueskill_delta, r.trueskill_tau, r.trueskill_p)
+            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.beta, TS.delta, game.trueskill_tau, game.trueskill_p)
+            raise DataError("Data error: A trueskill setting has changed since the last rating was saved. They were ({}) and now are ({})".format(SettingsWere, SettingsAre))
+            # TODO: Issue warning to the registrar more cleanly than this
+            # Email admins with notification and suggested action (fixing settings or rebuilding ratings).
+            # If only game specific settings changed on that game is impacted of course. 
+            # If global settings are changed all ratings are affected.
+            
+        return r 
+
+    @classmethod
+    def update(self, session, feign_latest=False):
+        '''
+        Update the ratings for all the players of a given session.
+        
+        :param feign_latest: if True will ignore recorded future sessions and pretend the provided one is the latest one. Used for rebuiling a rating by walking through existing sessions.  
+        '''
+        TS = TrueskillSettings()
+        
+        # Check to see if this is the latest play for each player
+        # And capture the current rating for each player (which we ill update) 
+        is_latest = True
+        player_rating = {}
+        for performance in session.performances.all():
+            rating = Rating.get(performance.player, session.game)
+            player_rating[performance.player] = rating
+            if not session.date_time > rating.last_play:
+                is_latest = False
+        
+        if is_latest or feign_latest:
+            # Get the session impact (records results in database Performance objects)
+            impact = session.calculate_trueskill_impacts()    
+            
+            # Update the rating for this player/game combo
+            for player in impact:
+                r = player_rating[player]
+
+                # Record the new rating data                    
+                r.trueskill_mu = impact[player]["after"]["mu"]
+                r.trueskill_sigma = impact[player]["after"]["sigma"]
+                r.trueskill_eta = r.trueskill_mu - TS.mu0 / TS.sigma0 * r.trueskill_sigma  # µ − (µ0 ÷ σ0) × σ
+                
+                # Record the TruesSkill settings used to get them                     
+                r.trueskill_mu0 = TS.mu0
+                r.trueskill_sigma0 = TS.sigma0
+                r.trueskill_beta = TS.beta
+                r.trueskill_delta = TS.delta
+                r.trueskill_tau = session.game.trueskill_tau
+                r.trueskill_p = session.game.trueskill_p
+                
+                # Record the context of the rating 
+                r.plays = impact[player]["plays"]
+                r.victories = impact[player]["victories"]
+                    
+                r.last_play = session.date_time
+                if session.performance(player).is_victory:
+                    r.last_victory = session.date_time
+                # else leave r.last_victory unchanged
+                
+                r.save()
+        else:
+            # One or more players have ratings recorded based on sessions played after the provided session.
+            # This should only happen if someone is adding a session retrospectively and after sessions were
+            # added that were played since the one being recorded. An unusual not a usual circumstance. But
+            # one we need to accommodate all the same.
+            #
+            # The tangled web of (sorted list of all) future sessions impacted by adding this one are returned 
+            # by session.future_sessions.
+            for rating in player_rating.values():
+                if session.date_time < rating.last_play:
+                    rating.reset(session)
+
+            # Having reset the ratings of all players in this session
+            # update with the current session.
+            Rating.update(session, feign_latest=True)
+
+            # Then we want to update for each future session, in order so we want to buld
+            fs = session.future_sessions
+            if not fs is None: 
+                for s in fs:
+                    Rating.update(s, feign_latest=True)
+    
+    @classmethod
+    def rebuild_all(self):
+        # Walk through the history of sessions to rebuild all ratings
+        # If ever performed keep a record of duration overall and per 
+        # session tp permit a cost esitmate should it happen again. 
+        # On a large database this could be a costly exercise, causing
+        # some down time to the server (must either lock server to do 
+        # this as we cannot have new ratings being created while 
+        # rebuilding or we could have the update method above check
+        # if a rebuild is underway and if so schedule an update ro
+        
+        # TODO:        
+        # Copy the whole Ratings table to a backup table
+        # Erase the current table
+        # Walk through the sessions in chronological order rebuilding it.
+        # Create a single abstract model and have both of your models inherit from there: 
+        # https://docs.djangoproject.com/en/1.10/topics/db/models/#abstract-base-classes
+        
+        # Create an entry in Rebuild_Log
+        # Start timer and counter
+        # Copy all ratings to Backup_Rating
+        
+        self.objects.all().delete()
+        sessions = Session.objects.all().order_by('date_time')
+        
+        # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
+        for s in sessions:
+            print(s.pk, s.date_time, s.game.name, flush=False)
+            self.update(s, feign_latest=True)
+
+        # Stop timer
+        # Update the  entry in Rebuild_Log with performance results
+        pass
+
+    def check_integrity(self):
+        '''
+        Perform integrity check on this rating record
+        '''
+        # Check for uniqueness
+        same = Rating.objects.filter(player=self.player, game=self.game)
+        assert same.count() <= 1, "Integrity error: Duplicate rating entries for player: {} and game: {}".format(self.player, self.game)
+        
+        # Check that rating matches last performance
+        last_play = self.last_performance
+        last_win = self.last_winning_performance
+        
+        assert not last_play is None, "Integrity error: Rating {} ({}) has no Last Play".format(self.pk, self)
+        
+        assert isclose(self.trueskill_mu, last_play.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
+        assert isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
+        assert isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+
+        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
+        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
+        assert isclose(self.trueskill_beta, last_play.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+
+        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+
+        # Check that the play and victory counts reflect what Performance says
+        assert self.plays == last_play.play_number, "Integrity error: Play count mismatch. Rating has {} Last play has {}.".format(self.plays, last_play.play_number)
+        assert self.victories == last_play.victory_count, "Integrity error: Victory count mismatch. Rating has {} Last play has {}.".format(self.victories, last_play.victory_count)
+
+        # Check that last_play and last_victory dates are accurate reflects on Performance records
+        assert self.last_play == last_play.session.date_time, "Integrity error: Last play mismatch. Rating has {} Last play has {}.".format(self.last_play, last_play.session.date_time)
+        
+        if last_win:
+            assert self.last_victory == last_win.session.date_time, "Integrity error: Last victory mismatch. Rating has {} Last victory has {}.".format(self.last_victory, last_win.session.date_time)
+        else:
+            assert self.last_victory == NEVER, "Integrity error: Last victory mismatch. Rating has {} when expecting the NEVER value of {}.".format(self.last_victory, NEVER)
+    
+    def clean(self):
+        # TODO: diagnose when this is called. What can we assume about session cleans? And what not?
+        # This rating must be unique
+        same = Rating.objects.filter(player=self.player, game=self.game)
+        
+        if same.count() > 1:
+            raise ValidationError("Duplicate ratings found for player: {} and game: {}".format(self.player, self.game))
+        
+        # Rating should match the last performance
+        # TODO: Wehn do we land here? And how do we sync with self.update? 
+
+class Backup_Rating(RatingModel):
+    '''
+    A simple container for a complete backup of Rating.
+    
+    Used when doing a full rebuild of ratings so as to have the previous copy on hand, and to be able to
+    compare to see what the impact of the rebuild was. This can be very relevant if rebuilding because of
+    a change to TrueSkill settings for example, when tuning the settings for particular games.
+    
+    # TODO: Put an option on the leaderboards view to see the Backup leaderboards, and another to show a comparison
+    '''
+    pass
+
+#===============================================================================
+# The support models, that store all the play records that are needed to
+# calculate and maintain TruesKill ratings for players.
+#===============================================================================
+
+class League(AdminModel):
     '''
     A group of Players who are competing at Games which have a Leaderboard of Ratings.
 
@@ -109,16 +555,9 @@ class League(models.Model):
     players = models.ManyToManyField('Player', blank=True, related_name='member_of_leagues')
     games = models.ManyToManyField('Game', blank=True, related_name='played_by_leagues')
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='leagues_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='leagues_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-
     # TODO: Use @cached_property (everywhere)
     @property
-    #@display_format(odf.list)
-    def leaderboards(self):
+    def leaderboards(self) -> list:
         '''
         The leaderboards for this league.
         
@@ -128,6 +567,11 @@ class League(models.Model):
         '''
         return self.leaderboard()
 
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    @property_method
     def leaderboard(self, game=None):
         '''
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
@@ -150,15 +594,22 @@ class League(models.Model):
     add_related = None
     def __unicode__(self): return self.name
     def __str__(self): return self.__unicode__()
-
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
+    def __verbose_str__(self): 
+        return u"{} (manager: {})".format(self, self.manager)
+    def __rich_str__(self,  link=flt.default): 
+        return u"{} (manager: {})".format(field_render(self, link), field_render(self.manager, link))
+    def __detail_str__(self,  link=flt.default):
+        detail = self.__rich_str__(link)
+        detail += "<UL>"
+        for p in self.players.all():
+            detail += "<LI>{}</LI>".format(field_render(p, link))
+        detail += "</UL>"
+        return detail
 
     class Meta:
         ordering = ['name']
         
-class Team(models.Model):
+class Team(AdminModel):
     '''
     A player team, which is defined when a team play game is recorded and needed to properly display a session as it was played,
     and to calculate team based TrueSkill ratings. Teams have no names just a list of players.
@@ -168,41 +619,71 @@ class Team(models.Model):
     name = models.CharField('Name of the Team (optional)', max_length=MAX_NAME_LENGTH, null=True)
     players = models.ManyToManyField('Player', blank=True, editable=False, related_name='member_of_teams')
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='teams_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='teams_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
+    @property
+    def games_played(self) -> list:
+        games = []
+        for r in self.ranks.all():
+            game = r.session.game
+            if not game in games:
+                games.append(game)
+                
+        return games
+
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     add_related = ["players"]
     def __unicode__(self):
         if self.name:
-            return self.name + u" [" + u", ".join([str(player) for player in self.players.all()]) + u"]"
+            return self.name
         else:
-            return u", ".join([str(player) for player in self.players.all()])
+            return u", ".join([str(p) for p in self.players.all()])
     def __str__(self): return self.__unicode__()
+    def __verbose_str__(self):
+        name = self.name if self.name else "" 
+        return name + u" (" + u", ".join([str(p) for p in self.players.all()]) + u")"
+    
+    def __rich_str__(self,  link=flt.default):
+        games = self.games_played
+        if len(games) > 2:
+            game_str = ", ".join(map(lambda g: field_render(g, link), games[0:1])) + "..."
+        elif len(games) > 0:
+            game_str = ", ".join(map(lambda g: field_render(g, link), games))
+        else:
+            game_str = html.escape("<No Game>")
+        
+        name = field_render(self.name, link_target_url(self, link)) if self.name else "" 
+        return name + u" (" + u", ".join([field_render(p, link) for p in self.players.all()]) + u") for " + game_str 
+        
+    def __detail_str__(self,  link=flt.default):
+        if self.name: 
+            detail = field_render(self.name, link_target_url(self, link))
+        else:
+            detail = html.escape("<Nameless Team>")
 
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
+        games = self.games_played
+        if len(games) > 2:
+            game_str = ", ".join(map(lambda g: field_render(g, link), games[0:1])) + "..."
+        elif len(games) > 0:
+            game_str = ", ".join(map(lambda g: field_render(g, link), games))
+        else:
+            game_str = html.escape("<no game>")
+            
+        detail += " for " + game_str + "<UL>"
+        for p in self.players.all():
+            detail += "<LI>{}</LI>".format(field_render(p, link))
+        detail += "</UL>"
+        return detail
 
-class Player(models.Model):
+class Player(PrivacyMixIn, AdminModel):
     '''
     A player who is presumably collecting Ratings on Games and participating in leaderboards in one or more Leagues.
 
     Players can be Registrars, meaning they are permitted to record session results, or Staff meaning they can access the admin site.
     '''
-    # TODO: Support Privacy. 
-    #
-    # Whenever a record is fetched then that has privacy:
-    #   a) The hidden fields should be delivered None or some marker value like Private
-    #   b) The __str__ method should return an elegrant representation
-    #      i) If nickname is not private can fall back on that
-    #      ii) Else if all names are private display some mask like "Private Player ID"
-    #   c) Should consider a rule such that privacy of nickname has to be less than or equal to any other name
-
     # Basic Player fields
-    name_nickname = models.CharField('Nickname', max_length=MAX_NAME_LENGTH)
+    name_nickname = models.CharField('Nickname', max_length=MAX_NAME_LENGTH, unique=True)
     name_personal = models.CharField('Personal Name', max_length=MAX_NAME_LENGTH)
     name_family = models.CharField('Family Name', max_length=MAX_NAME_LENGTH)
 
@@ -216,7 +697,9 @@ class Player(models.Model):
     # Membership fields
     teams = models.ManyToManyField('Team', editable=False, through=Team.players.through, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
     leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
-    # TODO: Add a default_league which is the users preferred league for filtering after login. 
+
+    # A default or preferred league for each player. Optional. Can be used to customise views.
+    league = models.ForeignKey('League', verbose_name="Preferred League", related_name="preferred_league_of", blank=True, null=True, default=None)
 
     # account
     user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None)
@@ -227,28 +710,36 @@ class Player(models.Model):
     #    In a nutshell: requires overriding the "objects" attribute (models.Manager) and the "queryset" (models.query.QuerySet)
     # It is much easier to support at the view level:  
     #    In a nutshell, override get_queryset in ListView, and get_object in DetailView, UpdateView and DeleteView
-#     name_nickname_visibility = IntEnumField('Nickname Visibility', enum=Visibility, default=Visibility.Public)
-#     name_personal_visibility = IntEnumField('Personal Name Visibility', enum=Visibility, default=Visibility.Public)
-#     name_family_visibility = IntEnumField('Family Name Visibility', enum=Visibility, default=Visibility.Public)
-#     email_address_visibility = IntEnumField('Email Address Visibility', enum=Visibility, default=Visibility.Public)
-#     BGGname_visibility = IntEnumField('BoardGameGeek Name Visibilit', enum=Visibility, default=Visibility.Public)
+    #
+    # We use a django-bitfield here and it is IMHO poorly implemented in that it uses the first
+    # positional argument as the flags so we need to named args (i.e. explicit verbose-name).
+    # See: https://github.com/disqus/django-bitfield    
+    visibility_name_nickname = BitField(verbose_name='Nickname Visibility', flags=Visibility, default=0, blank=True)
+    visibility_name_personal = BitField(verbose_name='Personal Name Visibility', flags=Visibility, default=0, blank=True)
+    visibility_name_family = BitField(verbose_name='Family Name Visibility', flags=Visibility, default=0, blank=True)
+    visibility_email_address = BitField(verbose_name='Email Address Visibility', flags=Visibility, default=0, blank=True)
+    visibility_BGGname = BitField(verbose_name='BoardGameGeek Name Visibility', flags=Visibility, default=0, blank=True)
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='players_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='players_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
+#     visibility_name_nickname = IntEnumField('Nickname Visibility', enum=Visibility, default=Visibility.Everyone)
+#     visibility_name_personal = IntEnumField('Personal Name Visibility', enum=Visibility, default=Visibility.Everyone)
+#     visibility_name_family = IntEnumField('Family Name Visibility', enum=Visibility, default=Visibility.Everyone)
+#     visibility_email_address = IntEnumField('Email Address Visibility', enum=Visibility, default=Visibility.Everyone)
+#     visibility_BGGname = IntEnumField('BoardGameGeek Name Visibility', enum=Visibility, default=Visibility.Everyone)
 
     @property
-    def full_name(self):
+    def owner(self) -> User:
+        return self.user
+
+    @property
+    def full_name(self) -> str:
         return "{} {}".format(self.name_personal, self.name_family)
 
     @property
-    def complete_name(self):
+    def complete_name(self) -> str:
         return "{} {} ({})".format(self.name_personal, self.name_family, self.name_nickname)
 
     @property
-    def games_played(self):
+    def games_played(self) -> list:
         '''
         Returns all the games that that this player has played
         '''
@@ -256,7 +747,7 @@ class Player(models.Model):
         return None if (games is None or games.count() == 0) else games 
 
     @property
-    def games_won(self):
+    def games_won(self) -> list:
         '''
         Returns all the games that that this player has won
         '''
@@ -264,7 +755,7 @@ class Player(models.Model):
         return None if (games is None or games.count() == 0) else games 
 
     @property
-    def last_plays(self):
+    def last_plays(self) -> list:
         '''
         Returns the session of last play for each game played.
         '''
@@ -275,7 +766,7 @@ class Player(models.Model):
         return sessions
 
     @property
-    def last_wins(self):
+    def last_wins(self) -> list:
         '''
         Returns the session of last play for each game won.
         '''
@@ -292,7 +783,7 @@ class Player(models.Model):
     #    A property can return a list of lists, league, game, place on leaderboard
 
     @property
-    def leaderboard_positions(self):
+    def leaderboard_positions(self) -> list:
         '''
         Returns a dictionary of leagues, each value being a dictionary of games with a 
         value that is the leaderboard position this player holds on that league for 
@@ -313,7 +804,7 @@ class Player(models.Model):
         return positions
 
     @property
-    def leaderboards_winning(self):
+    def leaderboards_winning(self) -> list:
         '''
         Returns a dictionary of leagues, each value being a list of games this player
         is winning the leaderboard on. 
@@ -333,6 +824,17 @@ class Player(models.Model):
                     result[league].append(game)
         
         return result
+
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+    
+    @property
+    def link_external(self) -> str:
+        if self.BGGname:
+            return "https://boardgamegeek.com/user/{}".format(self.BGGname)
+        else:
+            return None
 
     def rating(self, game):
         '''
@@ -376,17 +878,36 @@ class Player(models.Model):
     add_related = None
     def __unicode__(self): return u'{}'.format(self.name_nickname)
     def __str__(self): return self.__unicode__()
-    def __verbose_str__(self): return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
+    def __verbose_str__(self): 
+        return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
+    
+    def __rich_str__(self, link=flt.default): 
+        return u'{} - {}'.format(field_render(self.__verbose_str__(), link_target_url(self, link)), field_render(self.email_address, link if link == flt.none else flt.mailto))
 
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
+    def __detail_str__(self,  link=flt.default):
+        detail = self.__rich_str__(link)
+        
+        lps = self.leaderboard_positions
+        
+        detail += "<BR>Leaderboard positions:<UL>"
+        for league in lps:
+            detail += "<LI>in League: {}</LI><UL>".format(field_render(league, link))
+            for game in lps[league]:
+                detail += "<LI>{}: {}</LI>".format(field_render(game, link), lps[league][game])
+            detail += "</UL>"
+        detail += "</UL>"
+                
+        return detail
 
     # TODO: clean() method to force test that player is in a league!
     class Meta:
         ordering = ['name_nickname']
 
-class Game(models.Model):
+@admin.register(Player)
+class PlayerAdmin(admin.ModelAdmin):
+    formfield_overrides = { BitField: {'widget': BitFieldCheckboxSelectMultiple}, }
+    
+class Game(AdminModel):
     '''A game that Players can be Rated on and which has a Leaderboard (global and per League). Defines Game specific Trueskill settings.'''
     name = models.CharField('Name of the Game', max_length=200)
     BGGid = models.PositiveIntegerField('BoardGameGeek ID')  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
@@ -416,32 +937,26 @@ class Game(models.Model):
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='games_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='games_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-
     @property
-    def global_sessions(self):
+    def global_sessions(self) -> list:
         '''
         Returns a list of sessions that played this game. Across all leagues.        
         '''
         return self.session_list(ALL_LEAGUES)        
 
     @property
-    def league_sessions(self):
+    def league_sessions(self) -> dict:
         '''
         Returns a dictionary keyed on league, with a list of sessions that played this game as the value.        
         '''
         return self.session_list()
 
     @property
-    def global_plays(self):
+    def global_plays(self) -> dict:
         return self.play_counts(ALL_LEAGUES)        
 
     @property
-    def league_plays(self):
+    def league_plays(self) -> dict:
         '''
         Returns a dictionary keyed on league, of:
         the number of plays this game has experienced, as a dictionary containing:
@@ -454,7 +969,7 @@ class Game(models.Model):
         return self.play_counts()
 
     @property
-    def league_leaderboards(self):
+    def league_leaderboards(self) -> dict:
         '''
         The leaderboards for this game as a dictionary keyed on league 
         with the special ALL_LEAGUES holding the global leaderboard.
@@ -465,7 +980,7 @@ class Game(models.Model):
         return self.leaderboard()
     
     @property
-    def global_leaderboard(self):
+    def global_leaderboard(self) -> list:
         '''
         The leaderboard for this game considering all leagues together, as a simple property of the game.
         
@@ -475,26 +990,19 @@ class Game(models.Model):
         '''
         return self.leaderboard(ALL_LEAGUES)
     
-    def rating(self, player, asat=None):
-        '''
-        Returns the Trueskill rating for this player at the specified game
-        '''
-        
-        if asat is None:
-            try:
-                r = Rating.objects.get(player=player, game=self)
-            except ObjectDoesNotExist:
-                r = Rating.create(player=player, game=self)
-            except MultipleObjectsReturned:
-                raise ValueError("Database error: more than one rating for {} at {}".format(player.name_nickname, self.name))
-            return r
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+    
+    @property
+    def link_external(self) -> list:
+        if self.BGGid:
+            return "https://boardgamegeek.com/boardgame/{}".format(self.BGGid)
         else:
-            # Use the Performance model (and time stamped associated sessions_ to construct 
-            # a rating object as at a specific date/time
-            # TODO: Implement
-            pass  
-
-    def last_performance(self, league=ALL_LEAGUES, player=ALL_PLAYERS, asat=None):
+            return None
+    
+    @property_method
+    def last_performance(self, league=ALL_LEAGUES, player=ALL_PLAYERS, asat=None) -> object:
         '''
         Returns the last performance at this game (optionally as at a given date time) for
         a player or all players in a specified league or all players in all leagues. 
@@ -525,7 +1033,8 @@ class Game(models.Model):
         
         return Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
 
-    def session_list(self, league=None, asat=None):
+    @property_method
+    def session_list(self, league=None, asat=None) -> list:
         '''
         Returns a list of sessions that played this game. Useful for counting or traversing.        
 
@@ -555,8 +1064,9 @@ class Game(models.Model):
                 return Session.objects.filter(game=self, date_time__lte=asat)
             else:    
                 return Session.objects.filter(game=self, league=league, date_time__lte=asat)
-    
-    def play_counts(self, league=None, asat=None):
+
+    @property_method
+    def play_counts(self, league=None, asat=None) -> list:
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
             total: is the sum of all the individual player counts (so a count of total play experiences)
@@ -608,7 +1118,8 @@ class Game(models.Model):
                 
         return pc
 
-    def leaderboard(self, league=None, asat=None, names="complete", indexed=False):
+    @property_method
+    def leaderboard(self, league=None, asat=None, names="complete", indexed=False) -> list:
         '''
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
         specified league, or for all leagues if None is specified. As at a given date/time if such is specified,
@@ -653,19 +1164,61 @@ class Game(models.Model):
                 lb.append(lb_entry)
                 
         return None if len(lb) == 0 else lb
+
+    def rating(self, player, asat=None):
+        '''
+        Returns the Trueskill rating for this player at the specified game
+        '''
+        
+        if asat is None:
+            try:
+                r = Rating.objects.get(player=player, game=self)
+            except ObjectDoesNotExist:
+                r = Rating.create(player=player, game=self)
+            except MultipleObjectsReturned:
+                raise ValueError("Database error: more than one rating for {} at {}".format(player.name_nickname, self.name))
+            return r
+        else:
+            # Use the Performance model (and time stamped associated sessions_ to construct 
+            # a rating object as at a specific date/time
+            # TODO: Implement
+            pass  
             
     add_related = None
     def __unicode__(self): return self.name
     def __str__(self): return self.__unicode__()
+    def __verbose_str__(self): 
+        return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
 
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
+    def __rich_str__(self, link=flt.default): 
+        return u'{} (plays {}-{}), Luck factor: {:0.2f}, Draw probability: {:d}%'.format(field_render(self.name, link_target_url(self, link)), self.min_players, self.max_players, self.trueskill_tau*100, int(self.trueskill_p*100))    
+
+    def __detail_str__(self,  link=flt.default):
+        detail = self.__rich_str__(link)
+        
+        plays = self.league_plays
+        
+        detail += "<BR>Play counts:<UL>"
+        for league in plays:
+            if league == ALL_LEAGUES:
+                # Don't show the global count if there's only one league!
+                if len(plays) > 2:
+                    league_str = "across all leagues."
+                else:
+                    league_str = ""
+            else:
+                league_str = "in League: {}".format(field_render(league, link)) 
+                
+            if league_str:
+                detail += "<LI>{} plays and {} players {}</LI>".format(plays[league]['sessions'], plays[league]['players'],league_str)
+        detail += "</UL>"
+                
+        return detail
 
     class Meta:
         ordering = ['name']
 
-class Location(models.Model):
+class Location(AdminModel):
     '''
     A location that a game session can take place at.
     '''
@@ -673,24 +1226,24 @@ class Location(models.Model):
 
     leagues = models.ManyToManyField(League, blank=True, related_name='Locations_used', through=League.locations.through)
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='locations_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='locations_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     add_related = None
     def __unicode__(self): return self.name
     def __str__(self): return self.__unicode__()
-
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
+    def __verbose_str__(self): 
+        return u"{} (used by: {})".format(self.__str__(), ", ".join(list(self.leagues.all().values_list('name', flat=True))))
+    def __rich_str__(self,  link=flt.default):
+        leagues = list(self.leagues.all())
+        leagues = list(map(lambda l: field_render(l, link), leagues))
+        return u"{} (used by: {})".format(field_render(self, link), ", ".join(leagues))
 
     class Meta:
         ordering = ['name']
 
-class Session(models.Model):
+class Session(AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
@@ -717,14 +1270,8 @@ class Session(models.Model):
     #     This is because ranks are associated with players in individual play mode but teams in Team play mode, 
     #     while performance is always tracked by player.
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='sessions_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='sessions_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-
     @property
-    def num_competitors(self):
+    def num_competitors(self) -> int:
         '''
         Returns an integer count of the number of competitors in this game session,
         i.e. number of player sin a single-player mode or number of teams in team player mode
@@ -735,7 +1282,7 @@ class Session(models.Model):
             return len(self.players)
 
     @property
-    def str_competitors(self):
+    def str_competitors(self) -> str:
         n = self.num_competitors
         if self.team_play:
             if n == 1:
@@ -749,7 +1296,7 @@ class Session(models.Model):
                 return "players"
 
     @property
-    def ranked_players(self):
+    def ranked_players(self) -> dict:
         '''
         Returns an OrderedDict (keyed on rank) of the players in the session.
         The value is either a player (for individual play sessions) or 
@@ -803,7 +1350,7 @@ class Session(models.Model):
         return players
 
     @property
-    def players(self):
+    def players(self) -> set:
         '''
         Returns an unordered set of the players in the session, with no guranteed 
         order. Useful for traversing a list of all players in a session
@@ -819,7 +1366,7 @@ class Session(models.Model):
         return players
 
     @property
-    def teams(self):
+    def teams(self) -> dict:
         '''
         Returns an OrderedDict (keyed on rank) of the teams in the session.
         The value is a list of players (in team play sessions)
@@ -860,7 +1407,7 @@ class Session(models.Model):
         return teams
 
     @property
-    def victors(self):
+    def victors(self) -> list:
         '''
         Returns the victors, a list of players or teams. Plural because of possible draws.
         '''
@@ -878,7 +1425,7 @@ class Session(models.Model):
         return victors
     
     @property
-    def trueskill_impacts(self):
+    def trueskill_impacts(self) -> dict:
         '''
         Returns the recorded trueskill impacts of this session.
         Does not (re)calculate them, reads the recorded Performance
@@ -919,7 +1466,7 @@ class Session(models.Model):
         return impact
 
     @property
-    def trueskill_code(self):
+    def trueskill_code(self) -> str:
         '''
         A debugging property that prints python code that will replicate this trueskill calculation
         So that this specific trueksill calculation might be diagnosed and debugged in isolation.
@@ -944,40 +1491,62 @@ class Session(models.Model):
         code.append("print(newRGs)")
         code.append("</pre>")
         return "\n".join(code)
-    
+
+    def _get_future_sessions(self, sessions_so_far):
+        '''
+        Internal support for the future_session property, this is a recursive method
+        that takes a list of sessions found so far so as to avoid duplicating any 
+        sessions in the search.
+        
+        sessions_so_far: A list of sessions found so far, that is augmented  and returned
+        '''
+        # We want session in the future only of course
+        dfilter = Q(date_time__gt=self.date_time)
+        
+        # We want only sessions for this sessions game
+        gfilter = Q(game=self.game)
+        
+        # For each player we find all future sessions playing this game
+        pfilter = Q(ranks__player__in=self.players) | Q(ranks__team__players__in=self.players)
+            
+        # Combine the filters
+        filters = dfilter & gfilter & pfilter
+        
+        # Get the list of PKs to exclude
+        exclude_pks = list(map(lambda s: s.pk, sessions_so_far))
+            
+        new_future_sessions = Session.objects.filter(filters).exclude(pk__in=exclude_pks).distinct().order_by('date_time')
+        
+        if new_future_sessions.count() > 0:
+            # augment sessions_so far
+            sessions_so_far += list(new_future_sessions)
+              
+            # The new future sessions may involve new players which 
+            # requires that we scan them for new future sessions too 
+            for session in new_future_sessions:
+                print("Drill To: {}".format(session.pk))
+                
+                new_sessions_so_far = session._get_future_sessions(sessions_so_far)
+                
+                if len(new_sessions_so_far) > len(sessions_so_far):
+                    sessions_so_far = sorted(new_sessions_so_far, key=lambda s: s.date_time)
+
+        return sessions_so_far                
+        
     @property
-    def future_sessions(self):
+    def future_sessions(self) -> list:
         '''
         Returns the sessions ordered by date_time that are in the future relative to this session
         that involve any of the players in this session, or players in those sessions.
         
         Namely every session that needs to be re-evaluated because this one has been inserted before
-        it. Extending tendrils of influence from player to session to player to session ... ad nauseum.
+        it, or edited in some way. 
         '''
-        FS = []
-        
-        dfilter = Q(date_time__gt=self.date_time)
-        gfilter = Q(game=self.game)
-        
-        for player in self.players:
-            pfilter = Q(ranks__player=player) | Q(ranks__team__players=player)
-            fs = Session.objects.filter(dfilter & gfilter & pfilter).order_by('date_time')
-            FS.append(fs)
-            
-        # Combine the future sessions of all players into one sorted list
-        future_sessions = sorted(chain(*FS), key=lambda s: s.date_time)
-        
-        # Now for each future session, recurse (do same) and collect the results
-        # This is where send out tendrils ...every such session has a set of 
-        # future session based on its players not the players of this session.  
-        FS = []
-        for session in future_sessions:
-            fs = session.future_sessions
-            if not fs is None:
-                FS.append(fs)
-            
-        # Combine the results
-        future_sessions = sorted(chain(future_sessions, *FS), key=lambda s: s.date_time)
+        return self._get_future_sessions([])
+
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
     
     def previous_sessions(self, player):
         '''
@@ -988,7 +1557,7 @@ class Session(models.Model):
         time_limit = self.date_time
         
         # Get the list of previous sessions including the current session! So the list must be at least length 1 (the current session).
-        # The list is sorted in descening date_time order, so that the first entry is the current sessions.
+        # The list is sorted in descending date_time order, so that the first entry is the current sessions.
         prev_sessions = Session.objects.filter(Q(date_time__lte=time_limit) & Q(game=self.game) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
 
         return prev_sessions
@@ -1196,34 +1765,60 @@ class Session(models.Model):
     add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
         return u'{} - {}'.format(formats.date_format(self.date_time, 'DATETIME_FORMAT'), self.game)
+    
     def __str__(self): return self.__unicode__()
+    
     def __verbose_str__(self):
         return u'{} - {} - {} - {}'.format(
             formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
             self.league, 
             self.location, 
             self.game)
-    def __rich_str__(self):
+        
+    def __rich_str__(self, link=flt.default):
         if self.team_play:
             victors = []
             for t in self.victors:
                 if t.name is None:
-                    victors += ["(" + ", ".join([p.name_nickname for p in t.players.all()]) + ")"]
+                    victors += ["(" + ", ".join([field_render(p.name_nickname, link_target_url(p, link)) for p in t.players.all()]) + ")"]
                 else:
-                    victors += [t.name]
+                    victors += [field_render(t.name, link_target_url(t, link))]
         else:
-            victors = [p.name_nickname for p in self.victors]
+            victors = [field_render(p.name_nickname, link_target_url(p, link)) for p in self.victors]
+            
         try:
             return u'{} - {} - {} - {} - {} {} ({} won)'.format(
                 formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
-                self.league, 
-                self.location, 
-                self.game, 
+                field_render(self.league, link), 
+                field_render(self.location, link), 
+                field_render(self.game, link), 
                 self.num_competitors, 
                 self.str_competitors, 
                 ", ".join(victors))
         except:
             pass
+    
+    def __detail_str__(self, link=flt.default):
+        detail = field_render(self.game, link)                
+        detail += u'<OL>'
+
+        rankers = OrderedDict()
+        for r in self.ranks.all():
+            if self.team_play:
+                ranker = field_render(r.team, link)
+            else:
+                ranker = field_render(r.player, link)
+            
+            if r.rank in rankers:
+                rankers[r.rank].append(ranker)
+            else:
+                rankers[r.rank] = [ranker]
+            
+        for rank in rankers:
+            detail += u'<LI value={}>{}</LI>'.format(rank, ", ".join(rankers[rank]))
+            
+        detail += u'</OL>'
+        return detail 
             
     def check_integrity(self):
         '''
@@ -1395,14 +1990,10 @@ class Session(models.Model):
                 raise ValidationError("Session {} has a gap in ranks (between {} and {})".format(self.id), last_rank_val, rank)
             last_rank_val = rank
 
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
-
     class Meta:
         ordering = ['-date_time']
 
-class Rank(models.Model):
+class Rank(AdminModel):
     '''
     The record, for a given Session of a Rank (i.e. 1st, 2nd, 3rd etc) for a specified Player or Team.
 
@@ -1419,14 +2010,8 @@ class Rank(models.Model):
     player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks')  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
     team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks')  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='ranks_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='ranks_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-
     @property
-    def players(self):
+    def players(self) -> list:
         '''
         The list of players associated with this rank object (not explicitly at this rank 
         as two Rank objects in one session may have the same rank, i.e. a draw may be recorded)
@@ -1451,7 +2036,7 @@ class Rank(models.Model):
         return players
 
     @property
-    def is_part_of_draw(self):
+    def is_part_of_draw(self) -> bool:
         '''
         Returns True or False, indicating whether or not more than one rank object on this session has the same rank
         (i.e. if this rank object is one part of a recorded draw).
@@ -1460,19 +2045,24 @@ class Rank(models.Model):
         return len(ranks) > 1
 
     @property
-    def is_victory(self):
+    def is_victory(self) -> bool:
         '''
         True if this rank records a victory, False if not.
         '''
         return self.rank == 1
 
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    #@property_method
     def check_integrity(self):
         '''
         Perform basic integrity checks on this Rank object.
         '''
         # Check that one of self.player and self.team has a valid value and the other is None
-        assert not (self.team is None and self.player is None), "Ingerity error: No team or player specified in rank {}".format(self.pk)
-        assert not (not self.team is None and not self.player is None), "Ingerity error: Both team and player specified in rank {}".format(self.pk)
+        assert not (self.team is None and self.player is None), "Integrity error: No team or player specified in rank {}".format(self.pk)
+        assert not (not self.team is None and not self.player is None), "Integrity error: Both team and player specified in rank {}".format(self.pk)
         
         if self.team is None:
             assert not self.session.team_play, "Ingerity error: Rank {} specifies player while session {} specifies team play".format(self.pk, self.session.pk)
@@ -1484,10 +2074,35 @@ class Rank(models.Model):
         return "{}".format(self.rank)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self):
-        if self.session_id is None:
-            return  u'{} - {}'.format(self.rank, self.team if self.player is None else self.player)
+        if self.session is None: # Don't crash of the rank is orphaned!
+            game = "<no game>"
+            ranker = self.player
         else: 
-            return  u'{} - {} - {}'.format(self.session.game, self.rank, self.team if self.session.team_play else self.player)    
+            game = self.session.game
+            ranker = self.team if self.session.team_play else self.player
+        return  u'{} - {} - {}'.format(game, self.rank, ranker)    
+    def __rich_str__(self, link=flt.default):
+        if self.session is None: # Don't crash of the rank is orphaned!
+            game = "<no game>"
+            team_play = False
+            ranker = field_render(self.player, link)
+        else: 
+            game = field_render(self.session.game, link)
+            team_play = self.session.team_play
+            ranker = field_render(self.team, link) if team_play else field_render(self.player, link)
+        return  u'{} - {} - {}'.format(game, field_render(self.rank, link_target_url(self, link)), ranker)    
+    def __detail_str__(self, link=flt.default):
+        if self.session is None: # Don't crash of the rank is orphaned!
+            game = "<no game>"
+            team_play = False
+            ranker = field_render(self.player, link)
+            mode = "individual"
+        else: 
+            game = field_render(self.session.game, link)
+            team_play = self.session.team_play
+            ranker = field_render(self.team, link) if team_play else field_render(self.player, link)
+            mode = "team" if team_play else "individual"
+        return  u'{} - {} - {} ({} play)'.format(game, field_render(self.rank, link_target_url(self, link)), ranker, mode)    
 
     def clean(self):
         # Require that one of self.team and self.player is None 
@@ -1511,15 +2126,10 @@ class Rank(models.Model):
 #         elif self.player is None and not self.session.team_play:
 #             raise ValidationError("Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk))
 
-    def save(self, *args, **kwargs):
-        # TODO: When saving ensure ranks are 1, 2, 3, 4 (sort and renumber as needed)
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
-
     class Meta:
         ordering = ['rank']
 
-class Performance(models.Model):
+class Performance(AdminModel):
     '''
     Each player in each session has a Performance associated with them.
 
@@ -1567,22 +2177,29 @@ class Performance(models.Model):
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU, editable=False)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY, editable=False)
 
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='performances_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='performances_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
+    @property
+    def game(self) -> Game:
+        '''
+        The game this performance relates to
+        '''
+        return self.session.game
 
     @property
-    def rank(self):
+    def date_time(self) -> datetime:
+        '''
+        The game this performance relates to
+        '''
+        return self.session.date_time
+
+    @property
+    def rank(self) -> int:
         '''
         The rank of this player in this session. Most certainly a component of a player's
         performance, but not stored in the Performance model because it is associated either
         with a player or whole team depending on the play mode (Individual or Team). So this
         property fetches the rank from the Rank model where it's stored.
         '''
-        session = Session.objects.get(id=self.session.id)
-        team_play = session.team_play
+        team_play = self.session.team_play
         if team_play:
             ranks = Rank.objects.filter(session=self.session.id)
             for rank in ranks:
@@ -1596,14 +2213,14 @@ class Performance(models.Model):
             return rank
 
     @property
-    def is_victory(self):
+    def is_victory(self) -> bool:
         '''
         True if this performance records a victory for the player, False if not.
         '''
         return self.rank == 1
 
     @property
-    def rating(self):
+    def rating(self) -> Rating:
         '''
         Returns the rating object associated with this performance. That is for the same player/game combo. 
         '''
@@ -1616,18 +2233,22 @@ class Performance(models.Model):
         return r       
 
     @property
-    def previous_play(self):
+    def previous_play(self) -> 'Performance':
         '''
         Returns the previous performance object that this player played this game in. 
         '''
         return self.session.previous_performance(self.player)
 
     @property
-    def previous_win(self):
+    def previous_win(self) -> 'Performance':
         '''
         Returns the previous performance object that this player played this game in and one in 
         '''
         return self.session.previous_victory(self.player)
+
+    @property
+    def link_internal(self) -> str:
+        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
     
     def initialise(self, save=False):
         '''
@@ -1773,385 +2394,53 @@ class Performance(models.Model):
         return  u'{}'.format(self.player)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self):
-        if self.session_id is None:
-            return  u'{} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+        if self.session is None: # Don't crash of the performance is orphaned!
+            when = "<no time>"
+            game = "<no game>"
         else: 
-            return  u'{} - {} - {:.0%} (play number {}, {:+.2f} teeth)'.format(self.session, self.player, self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
-
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
-
-class Rating_Model(models.Model):
-    '''
-    A Trueskill rating for a given Player at a give Game.
-
-    This is the ultimate goal of the whole exercise. To record game sessions in order to calculate 
-    ratings for players and rank them in leaderboards.
-    
-    Every player has a rating at every game, though only those deviating from default (i.e. games 
-    that a player has players) are stored in the database.
-    
-    This is an abstract model defining the table structure that us used
-    by Rating and Backup_Rating. The latter being a place to copy Rating 
-    before a complete rebuild of ratings. 
-    
-    The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
-    '''
-    player = models.ForeignKey(Player, related_name='%(class)ss')
-    game = models.ForeignKey(Game, related_name='%(class)ss')
-
-    plays = models.PositiveIntegerField('Play Count', default=0)
-    victories = models.PositiveIntegerField('Victory Count', default=0)
-    
-    last_play = models.DateTimeField(default=timezone.now)
-    last_victory = models.DateTimeField(default=NEVER)
-    
-    # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
-    # To protect ourselves against changes to those global settings, or simply to detect them if it should happen, we capture their value at time of rating update in the Eta.
-    # These values before each game session and their new values after a game session are stored with the Session Ranks for integrity and history plotting.
-    trueskill_mu = models.FloatField('Trueskill Mean (µ)', default=trueskill.MU, editable=False)
-    trueskill_sigma = models.FloatField('Trueskill Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_eta = models.FloatField('Trueskill Rating (η)', default=trueskill.SIGMA, editable=False)
-    
-    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each rating as an integrity measure.
-    # They can be compared against the global settings and and difference can trigger an update request.
-    # That is, flag a warning and if they are consistent across all stored ratings suggest TrueskillSettings
-    # should be restored (and offer to do so?) or if inconsistent (which is an integrity error) suggest that
-    # ratings be globally recalculated
-    trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
-    trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
-    trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
-    
-    # Record the game specific Trueskill settings tau and p with rating as an integrity measure.
-    # Again for a given game these must be consistent among all ratings and the history of each rating. 
-    # And change while managing leaderboards should trigger an update request for ratings relating to this game.  
-    trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
-    trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
-
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='%(class)ss_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='%(class)ss_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-
-    def __unicode__(self): return  u'{} - {} - {:f} teeth, from (µ={:f}, σ={:f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
-    def __str__(self): return self.__unicode__()
+            when = self.session.date_time
+            game = self.session.game
+        performer = self.player
+        return  u'{} - {:%d, %b %Y} - {}'.format(game, when, performer)    
         
+    def __rich_str__(self, link=flt.default):
+        if self.session is None: # Don't crash of the performance is orphaned!
+            when = "<no time>"
+            game = "<no game>"
+        else: 
+            when = self.session.date_time
+            game = field_render(self.session.game, link)
+        performer = field_render(self.player, link)
+        performance = "play number {}, {:+.1f} teeth".format(self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+        return  u'{} - {:%d, %b %Y} - {}: {}'.format(game, when, performer, field_render(performance, link_target_url(self, link)))    
+
+    def __detail_str__(self, link=flt.default):
+        if self.session is None: # Don't crash of the performance is orphaned!
+            when = "<no time>"
+            game = "<no game>"
+            players = "<no players>"
+        else: 
+            when = self.session.date_time
+            game = field_render(self.session.game, link)
+            players = len(self.session.players)
+            
+        performer = field_render(self.player, link)
+        
+        detail = u'{} - {:%d, %b %Y} - {}:<UL>'.format(game, when, performer)
+        detail += "<LI>Players: {}</LI>".format(players)
+        detail += "<LI>Play number: {}</LI>".format(self.play_number)
+        detail += "<LI>Play Weighting: {:.0%}</LI>".format(self.partial_play_weighting)
+        detail += "<LI>Trueskill Delta: {:+.1f} teeth</LI>".format(self.trueskill_eta_after - self.trueskill_eta_before)
+        detail += "<LI>Victories: {}</LI>".format(self.victory_count)
+        detail += "</UL>"
+        return detail    
+
     class Meta:
-        ordering = ['-trueskill_eta']
-        abstract = True
-    
-class Rating(Rating_Model):
-    '''
-    This is the actual repository of ratings that describe leaderboards.
-    
-    Its partner Backup_Rating stores a backup (form before the last rebuild) 
-    '''
-    @property
-    def last_performance(self):
-        '''
-        Returns the latest performance object that this player played this game in. 
-        '''
-        game = self.game
-        player = self.player
-        
-        plays = Session.objects.filter(Q(game=game) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
+        ordering = ['session', 'player']
 
-        return None if (plays is None or plays.count() == 0) else plays[0].performance(player) 
-
-    @property
-    def last_winning_performance(self):
-        '''
-        Returns the latest performance object that this player played this game in and won. 
-        '''
-        game = self.game
-        player = self.player
-        
-        wins = Session.objects.filter(Q(game=game) & Q(ranks__rank=1) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
-
-        return None if (wins is None or wins.count() == 0) else wins[0].performance(player) 
-
-    def reset(self, session):
-        '''
-        Given a session, resets this rating object to what it was after this session.
-        
-        Allows for a rewind of the rating to what it was at some time in past, so that 
-        it can be rebuilt from that point onward if desired.    
-        '''
-        performance = session.performance(self.player)
-        
-        self.plays = performance.play_number
-        self.victories = performance.victory_count
-        
-        self.last_play = session.date_time
-        
-        if performance.is_victory:
-            self.last_victory = session.date_time
-        else:
-            last_victory = session.previous_victory(performance.player)
-            self.last_victory = None if last_victory is None else last_victory.session.date_time   
-        
-        self.trueskill_mu = performance.trueskill_mu_after
-        self.trueskill_sigma = performance.trueskill_sigma_after
-        self.trueskill_eta = performance.trueskill_eta_after
-        
-        self.trueskill_mu0 = performance.trueskill_mu0
-        self.trueskill_sigma0 = performance.trueskill_sigma0
-        self.trueskill_beta = performance.trueskill_beta
-        self.trueskill_delta = performance.trueskill_delta
-
-        self.trueskill_tau = performance.trueskill_tau
-        self.trueskill_p = performance.trueskill_p
-
-    def recalculate_last_play_and_victory(self):
-        '''
-        last_play and last_victory are fields in the Rating model for convenience, quick retrieval and easy querying.
-        
-        They are a statistic on recorded sessions though. This method requests they  be recalculated from the base
-        data.
-        '''
-        self.last_play = self.player.last_play(self.game)
-        self.last_victory = self.player.last_win(self.game)
-        self.save()
-
-    @classmethod    
-    def create(cls, player, game, mu=None, sigma=None):
-        '''
-        Create a new Rating for player at game, with specified mu and sigma.
-
-        An explicit method, rather than override of __init_ which is called 
-        whenever and object is instantiated which can be when creating a new 
-        Rating or when fetching an old one fromt the database. So not appropriate
-        to override it for new Ratings.
-        ''' 
-
-        TS = TrueskillSettings()
-        
-        trueskill_mu = TS.mu0 if mu == None else mu
-        trueskill_sigma = TS.sigma0 if sigma == None else sigma
-        
-        self = cls(player=player,
-                    game=game,
-                    plays=0,
-                    victories=0,
-                    last_play=NEVER,
-                    last_victory=NEVER,
-                    trueskill_mu=trueskill_mu,
-                    trueskill_sigma=trueskill_sigma,
-                    trueskill_eta=trueskill_mu - TS.mu0 / TS.sigma0 * trueskill_sigma,  # µ − (µ0 ÷ σ0) × σ
-                    trueskill_mu0=TS.mu0,
-                    trueskill_sigma0=TS.sigma0,
-                    trueskill_beta=TS.beta,
-                    trueskill_delta=TS.delta,
-                    trueskill_tau=game.trueskill_tau,
-                    trueskill_p=game.trueskill_p
-                    )  
-        return self
-    
-    @classmethod
-    def get(cls, player, game):
-        '''
-        Fetch (or create fromd efaults) the rating for a given player at a game
-        and perform some quick data integrity checks in the process.  
-        '''
-        TS = TrueskillSettings()
-        
-        try:
-            r = Rating.objects.get(player=player, game=game)
-        except ObjectDoesNotExist:
-            r = Rating.create(player=player, game=game)
-        except MultipleObjectsReturned:
-            raise IntegrityError("Integrity error: more than one rating for {} at {}".format(player.name_nickname, game.name))
-        
-        if not (isclose(r.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE)  
-         and isclose(r.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_tau, game.trueskill_tau, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_p, game.trueskill_p, abs_tol=FLOAT_TOLERANCE)):
-            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_beta, r.trueskill_delta, r.trueskill_tau, r.trueskill_p)
-            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.beta, TS.delta, game.trueskill_tau, game.trueskill_p)
-            raise DataError("Data error: A trueskill setting has changed since the last rating was saved. They were ({}) and now are ({})".format(SettingsWere, SettingsAre))
-            # TODO: Issue warning to the registrar more cleanly than this
-            # Email admins with notification and suggested action (fixing settings or rebuilding ratings).
-            # If only game specific settings changed on that game is impacted of course. 
-            # If global settings are changed all ratings are affected.
-            
-        return r 
-
-    @classmethod
-    def update(self, session, feign_latest=False):
-        '''
-        Update the ratings for all the players of a given session.
-        
-        :param feign_latest: if True will ignore recorded future sessions and pretend the provided one is the latest one. Used for rebuiling a rating by walking through existing sessions.  
-        '''
-        TS = TrueskillSettings()
-        
-        # Check to see if this is the latest play for each player
-        # And capture the current rating for each player (which we ill update) 
-        is_latest = True
-        player_rating = {}
-        for performance in session.performances.all():
-            rating = Rating.get(performance.player, session.game)
-            player_rating[performance.player] = rating
-            if not session.date_time > rating.last_play:
-                is_latest = False
-        
-        if is_latest or feign_latest:
-            # Get the session impact (records results in database Performance objects)
-            impact = session.calculate_trueskill_impacts()    
-            
-            # Update the rating for this player/game combo
-            for player in impact:
-                r = player_rating[player]
-
-                # Record the new rating data                    
-                r.trueskill_mu = impact[player]["after"]["mu"]
-                r.trueskill_sigma = impact[player]["after"]["sigma"]
-                r.trueskill_eta = r.trueskill_mu - TS.mu0 / TS.sigma0 * r.trueskill_sigma  # µ − (µ0 ÷ σ0) × σ
-                
-                # Record the TruesSkill settings used to get them                     
-                r.trueskill_mu0 = TS.mu0
-                r.trueskill_sigma0 = TS.sigma0
-                r.trueskill_beta = TS.beta
-                r.trueskill_delta = TS.delta
-                r.trueskill_tau = session.game.trueskill_tau
-                r.trueskill_p = session.game.trueskill_p
-                
-                # Record the context of the rating 
-                r.plays = impact[player]["plays"]
-                r.victories = impact[player]["victories"]
-                    
-                r.last_play = session.date_time
-                if session.performance(player).is_victory:
-                    r.last_victory = session.date_time
-                # else leave r.last_victory unchanged
-                
-                r.save()
-        else:
-            # One or more players have ratings recorded based on sessions played after the provided session.
-            # This should only happen if someone is adding a session retrospectively and after sessions were
-            # added that were played since the one being recorded. An unusual not a usual circumstance. But
-            # one we need to accommodate all the same.
-            #
-            # The tangled web of (sorted list of all) future sessions impacted by adding this one are returned 
-            # by session.future_sessions.
-            for rating in player_rating.values():
-                if session.date_time < rating.last_play:
-                    rating.reset(session)
-
-            # Having reset the ratings of all players in this session
-            # update with the current session.
-            Rating.update(session, feign_latest=True)
-
-            # Then we want to update for each future session, in order so we want to buld
-            fs = session.future_sessions
-            if not fs is None: 
-                for s in fs:
-                    Rating.update(s, feign_latest=True)
-    
-    @classmethod
-    def rebuild_all(self):
-        # TODO: Implement
-        # Walk through the history of sessions to rebuild all ratings
-        # If ever performed keep a record of duration overall and per 
-        # session tp permit a cost esitmate should it happen again. 
-        # On a large database this could be a costly exercise, causing
-        # some down time to the server (must either lock server to do 
-        # this as we cannot have new ratings being created while 
-        # rebuilding or we could have the update method above check
-        # if a rebuild is underway and if so schedule an update ro
-        
-        
-        # Copy the whole Ratings table to a backup table
-        # Erase the current table
-        # Walk through the sessions in chronological order rebuilding it.
-        # Create a single abstract model and have both of your models inherit from there: 
-        # https://docs.djangoproject.com/en/1.10/topics/db/models/#abstract-base-classes
-        
-        # Create an entry in Rebuild_Log
-        # Start timer and counter
-        # Copy all ratings to Backup_Rating
-        
-        self.objects.all().delete()
-        sessions = Session.objects.all().order_by('date_time')
-        
-        # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
-        for s in sessions:
-            print(s.pk, s.date_time, s.game.name, flush=False)
-            self.update(s, feign_latest=True)
-
-        # Stop timer
-        # Update the  entry in Rebuild_Log with performance results
-        pass
-
-    def check_integrity(self):
-        '''
-        Perform integrity check on this rating record
-        '''
-        # Check for uniqueness
-        same = Rating.objects.filter(player=self.player, game=self.game)
-        assert same.count() <= 1, "Integrity error: Duplicate rating entries for player: {} and game: {}".format(self.player, self.game)
-        
-        # Check that rating matches last performance
-        last_play = self.last_performance
-        last_win = self.last_winning_performance
-        
-        assert not last_play is None, "Integrity error: Rating {} ({}) has no Last Play".format(self.pk, self)
-        
-        assert isclose(self.trueskill_mu, last_play.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
-        assert isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
-        assert isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-
-        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
-        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
-        assert isclose(self.trueskill_beta, last_play.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-
-        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-
-        # Check that the play and victory counts reflect what Performance says
-        assert self.plays == last_play.play_number, "Integrity error: Play count mismatch. Rating has {} Last play has {}.".format(self.plays, last_play.play_number)
-        assert self.victories == last_play.victory_count, "Integrity error: Victory count mismatch. Rating has {} Last play has {}.".format(self.victories, last_play.victory_count)
-
-        # Check that last_play and last_victory dates are accurate reflects on Performance records
-        assert self.last_play == last_play.session.date_time, "Integrity error: Last play mismatch. Rating has {} Last play has {}.".format(self.last_play, last_play.session.date_time)
-        
-        if last_win:
-            assert self.last_victory == last_win.session.date_time, "Integrity error: Last victory mismatch. Rating has {} Last victory has {}.".format(self.last_victory, last_win.session.date_time)
-        else:
-            assert self.last_victory == NEVER, "Integrity error: Last victory mismatch. Rating has {} when expecting the NEVER value of {}.".format(self.last_victory, NEVER)
-    
-    def clean(self):
-        # TODO: diagnose when this is called. What can we assume about session cleans? And what not?
-        # This rating must be unique
-        same = Rating.objects.filter(player=self.player, game=self.game)
-        
-        if same.count() > 1:
-            raise ValidationError("Duplicate ratings found for player: {} and game: {}".format(self.player, self.game))
-        
-        # Rating should match the last performance
-        # TODO: Wehn do we land here? And how do we sync with self.update? 
-
-    def save(self, *args, **kwargs):
-        update_admin_fields(self)
-        super().save(*args, **kwargs)
-        
-class Backup_Rating(Rating_Model):
-    '''
-    A simple container for a complete backup of Rating.
-    
-    Used when doing a full rebuild of ratings so as to have the previous copy on hand, and to be able to
-    compare to see what the impact of the rebuild was. This can be very relevant if rebuilding because of
-    a change to TrueSkill settings for example, when tuning the settings for particular games.
-    
-    # TODO: Put an option on the leaderboards view to see the Backup leaderboards, and another to show a comparison
-    '''
-    pass
+#===============================================================================
+# Administrative models
+#===============================================================================
 
 class Rebuild_Log(models.Model):
     '''

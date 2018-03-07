@@ -34,18 +34,23 @@ STATIC_URL = "/static/"
 # The name of the webserver this is running on (used to select deployment settings)
 WEBSERVER = "Arachne"
 
+# The SIte ID for the django.contrib.sites app, 
+# which just a prerequisite for the django.contrib.flatpages app
+# which is used for serving the about page (and any other flat pages).
+SITE_ID = 1
+
 import platform
 HOSTNAME = platform.node()
 
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space"]
 if HOSTNAME == WEBSERVER:
     print("Django settings: Web Server")
-    ALLOWED_HOSTS = ["127.0.0.1", "leaderboard.space"]
-    #SECURE_CONTENT_TYPE_NOSNIFF = True
-    #SECURE_BROWSER_XSS_FILTER = True
-    #SECURE_SSL_REDIRECT = True
-    #SESSION_COOKIE_SECURE = True
-    #CSRF_COOKIE_SECURE = True
-    #X_FRAME_OPTIONS = 'DENY'
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = 'DENY'
 else:
     print("Django settings: Development Server")
     from CoGs.settings_development import * 
@@ -55,18 +60,20 @@ else:
 INSTALLED_APPS = (
     'dal',
     'dal_select2',
+    'cuser',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',    
+    'django.contrib.staticfiles',
+    'django.contrib.sites',
+    'django.contrib.flatpages',
     'django_extensions',
-    #'debug_toolbar',
-    'Leaderboards'   
+    'Leaderboards'
 )
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -75,7 +82,13 @@ MIDDLEWARE_CLASSES = (
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'cuser.middleware.CuserMiddleware',
 )
+
+if HOSTNAME == WEBSERVER:
+    from django_lighttpd_middleware import METHOD
+    if METHOD == "middleware":
+        MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
 
 ROOT_URLCONF = 'CoGs.urls'
 
@@ -132,6 +145,3 @@ DATETIME_FORMAT = 'r'
 STATIC_URL = '/static/'
 
 LOGIN_URL = '/login/'
-
-AUTH_PROFILE_MODULE =  'CoGs.Player'
-

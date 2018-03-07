@@ -76,4 +76,16 @@ def verbose(value):
         return value.__verbose_str__()
     else:
         return value.__str__()
-    
+
+@register.filter
+def checked(value, compare=None):
+    if compare is None:
+        if value:
+            return "checked"
+        else:
+            return ""
+    else:
+        if value == compare:
+            return "checked"
+        else:
+            return ""

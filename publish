@@ -1,0 +1,54 @@
+#!/bin/bash
+# Publish the CoGs Site to the webserver
+
+# To mount the router and webserver we need to have SSH access and SSH keys installed
+# as we'll use sshfs to mount them if needed
+rsa_file=/home/bernd/.ssh/id_rsa
+
+server=Arachne
+server_mount_dir=/home/bernd/Mounts/leaderboard.space
+server_account=weaver@arachne.lan
+server_dir=/mnt/passport/www/html/leaderboard.space
+
+# Ensure the server is properly mounted (or we can't publish to them)
+mountpoint -q $server_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $server_mount_dir ]; then
+		echo Creating $server_mount_dir ...
+	    mkdir -p $server_mount_dir
+	fi
+
+	echo Mounting $server_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$server_dir $server_mount_dir
+fi
+
+# Build an rsync exclusons file
+exclusion_file="publish-exclusions"
+cat > $exclusion_file <<-EOF
+	__pycache__
+	*.pyc
+	migrations
+	static
+EOF
+
+# Directory the script is in (expected to be in the project directory)
+source_dir=$(dirname $0)
+
+# Now collect the static files
+$source_dir/manage.py collectstatic  --verbosity 0 --noinput
+
+# Now publish the site
+echo Copying site to $server...
+site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware manage.py DumpData)
+for source in ${site[@]}; do
+	# If we're excluding static dirs, we still want to copy the static folder
+	if grep -q $source $exclusion_file; then
+		exclude=""
+	else
+		exclude="--exclude-from $exclusion_file"
+	fi
+
+	rsync -r $exclude $source_dir/$source $server_mount_dir
+done
+
+echo Done.

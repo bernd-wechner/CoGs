@@ -3,12 +3,12 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
-<table class='leaderboard options'>
+<table class='options'>
 	<tr>
-		<td class='leaderboard options' valign='top'>
+		<td class='options' valign='top'>
 			<span style="font-size:125%; font-weight: bold;">Format</span>
 		</td>
-		<td class='leaderboard options'>
+		<td class='options'>
 			these <b>{{ leaderboard_count }}</b> leaderboards 
 			
 			<label id='lblSnaps'></label>
@@ -45,21 +45,21 @@
 		</td>
 	</tr>
 	<tr>
-		<td class='leaderboard options' valign='top'>
+		<td class='options' valign='top'>
 			<button type="button" id='btnFilter' onclick="get_new_view();">Filter</button> 
 		</td>
-		<td class='leaderboard options'>			
+		<td class='options'>			
 			leaderboards as <i><a onclick="toggle_filters();">follows</a></i>:
 		</td>
 	</tr>
 	<tr class='toggle' style="display:none;">
-		<td class='leaderboard options'/>
-		<td class='leaderboard options' style="line-height:200%; padding-top:0px">
+		<td class='options'/>
+		<td class='options' style="line-height:200%; padding-top:0px">
 			<label>Only games played by league: </label><select id='selLeague'></select><br>
 			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}><br>
+			<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }} onchange="copy_if_empty('#from_date_time','#compare_back_to_date_time')"><br>
 			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
 			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
 			<label>Compare each leaderboard with</label>
@@ -71,10 +71,10 @@
 		</td>
 	</tr>
 	<tr>
-		<td class='leaderboard options'>
+		<td class='options'>
 			<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> 
 		</td>
-		<td class='leaderboard options'>
+		<td class='options'>
 			leaderboards to clipboard
 		</td>
 	</tr>

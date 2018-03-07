@@ -1,0 +1,36 @@
+#!/bin/bash
+# Mount some useful directories for CoGs website management
+
+# To mount the router and webserver we need to have SSH access and SSH keys installed
+# as we'll use sshfs to mount them if needed
+rsa_file=/home/bernd/.ssh/id_rsa
+
+server_account=root@arachne.lan
+server_mount_dir=/home/bernd/Mounts/Arachne
+server_dir=/
+
+www_account=weaver@arachne.lan
+www_mount_dir=/home/bernd/Mounts/leaderboard.space
+www_dir=/mnt/passport/www/html/leaderboard.space
+
+mountpoint -q $server_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $server_mount_dir ]; then
+		echo Creating $server_mount_dir ...
+	  mkdir -p $server_mount_dir
+	fi
+
+	echo Mounting $server_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$server_dir $server_mount_dir
+fi
+
+mountpoint -q $www_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $www_mount_dir ]; then
+		echo Creating $www_mount_dir ...
+	  mkdir -p $wwww_mount_dir
+	fi
+
+	echo Mounting $www_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $www_account:$www_dir $www_mount_dir
+fi
