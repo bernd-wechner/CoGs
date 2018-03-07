@@ -117,6 +117,10 @@ class PrivacyMixIn():
         obj = super().create(title)
         user = CuserMiddleware.get_user()
         obj.hidden = fields_to_hide(obj, user)
+        if len(obj.hidden) > 0:
+            obj.save = obj.disabled_save
+            for f in obj.hidden:
+                setattr(obj, f, HIDDEN)
         return obj
 
     @classmethod
@@ -134,6 +138,10 @@ class PrivacyMixIn():
         super().refresh_from_db(using, fields, **kwargs)
         user = CuserMiddleware.get_user()
         self.hidden = fields_to_hide(self, user)
+        if len(self.hidden) > 0:
+            self.save = self.disabled_save
+            for f in self.hidden:
+                setattr(self, f, HIDDEN)
         
     def disabled_save(self):
         raise PermissionDenied()       
