@@ -210,7 +210,6 @@ from django.http.response import JsonResponse
 
 NONE = html.escape("<None>")
 NOT_SPECIFIED = html.escape("<Not specified>")
-HIDDEN = html.escape("<Hidden>")
 FIELD_CLASS = "field_link"
 
 #===============================================================================
@@ -338,167 +337,6 @@ def containsPRE(obj):
 def safetitle(text):
     '''Given an object returns a title case version of its string representation.'''
     return titlecase(text if isinstance(text, str) else str(text))
-
-#===============================================================================
-# Privacy support for models
-#===============================================================================
-
-def fields_to_hide(obj, user):
-    '''
-    Given an object and a user (from request.user typically) will return a list of fields in that object
-    that should be hidden. Does this by checking for any attributes in that object that are named visibility_*
-    where * is the name of another attribute in the same object for which it specifies visibility rules by means
-    of a bit flags. The the flags follow a naming convention as follows:
-    
-    all - all users can see the named field, namely it's a public piece of info. This is in fact the default
-          for all fields that do not have a visibility_* partner. Having such a partner attribute with if no 
-          bit flags set will hide the field. Setting the all bit requests the default behaviour.
-          
-    all_* - all users who have an attribute * which is True can see this field.
-
-    all_not_* - all users who have an attribute * which is False can see this field.
-    
-    share_* - all users who share some value in the * attribute. This is intended for memberships, 
-              where * indicates one or more memberships of a user and of the object and if there's
-              an overlap the field will be visible. In an apocryphal case,* might be "group" and users
-              could be in one or more groups and objects could belong to one or more groups and if the
-              user and the object are both members of at least one group the field will be visible.                  
-    '''
-    def get_User_extensions(user):
-        '''
-        Returns a list of attributes that are in request.user which represent User model extensions. That 
-        is have a OneToOne relationship with User. 
-        '''
-        ext = []
-        if user.is_authenticated():
-            for field in user._meta.get_fields():
-                if field.one_to_one:
-                    ext.append(field.name)
-        return ext
-
-    def unique_object_id(obj):
-        if hasattr(obj, "pk"):
-            return "{}.{}.{}".format(app_from_object(obj), model_from_object(obj), obj.pk)
-    
-    def get_User_membership(user, extensions, field_name):
-        '''
-        Given a user (from request.user, and extensions (from get_User_extensions) will check them for
-        an attribute of field_name and for each one it finds will attempt to add its value or values 
-        to the membership set that it will return.
-        '''
-        membership = set()
-        if hasattr(user, field_name):
-            field = getattr(user, field_name)
-            if hasattr(field, 'all') and callable(field.all):
-                membership.add((str(o) for o in field.all())) 
-            else: 
-                membership.add(str(field))
-
-        for e in extensions:
-            obj = getattr(user, e)
-            if hasattr(obj, field_name):
-                field = getattr(obj, field_name)
-                if hasattr(field, 'all') and callable(field.all):
-                    membership.update([unique_object_id(o) for o in field.all()])
-                else: 
-                    membership.add(unique_object_id(field))
-                    
-        return membership
-
-    def get_User_flag(user, extensions, field_name):
-        '''
-        Given a user (from request.user, and extensions (from get_User_extensions) will check them for
-        an attribute of field_name and if it's a bool return the value of the first one it finds. Gives
-        priority to User model extensions but in no guaranteed order.
-        '''
-        for e in extensions:
-            obj = getattr(user, e)
-            if hasattr(obj, field_name):
-                field = getattr(obj, field_name)
-                if type(field) == bool:
-                    return field
-
-        if hasattr(user, field_name):
-            field = getattr(user, field_name)
-            if type(field) == bool:
-                return field
-
-    def get_Owner(obj):
-        '''
-        A generic attempt to find an owner for the object passed. Basically checks the object for a field 
-        called owner which returns a user that is the objects owner. Simple really ;-) Best implemented as 
-        property in the model as in:
-        
-            @property
-            def owner(self) -> User:
-                return <a field in the object that is of type "models.OneToOneField(User)>           
-        '''
-        if hasattr(obj, 'owner'):
-            return obj.owner
-        else:
-            return None
-    
-    hide = []
-    module = inspect.getmodule(obj)
-    if hasattr(module, 'Visibility'):
-        if isinstance(module.Visibility, tuple):
-            # Get the User model extensions (we'll check those for visibility tests)
-            extensions = get_User_extensions(user)
-            
-            # We need attributes of the logged in user that the all_ and share_ flags can apply to.
-            # Given the attribute we can look for it on:
-            #    request.user
-            #    request.user.player            
-            
-            for field in obj._meta.get_fields():
-                prefix = 'visibility_'
-                if field.name.startswith(prefix):
-                    rule_field = field
-                    look_field = field.name[len(prefix):]
-                    
-                    # Begin by assuming it is hidden
-                    hidden = True
-                    
-                    if user == get_Owner(obj): 
-                        hidden = False # Don't ever hide this field from its owner, no tests needed
-                    else:
-                        rule_flags = getattr(obj, rule_field.name)
-                        for flag in rule_flags:
-                            if flag[1]: # flag is set
-                                rule_name = flag[0]
-                                if rule_name == 'all':
-                                    hidden = False # Don't hide this field for anyone, no tests needed
-                                elif rule_name.startswith('all_'):
-                                    # hide this field from anyone who has not got True for the following field in the User (or False if not_)
-                                    target_value = True
-                                    check_field = rule_name[len('all_'):]
-                                    if check_field.startswith('not_'):
-                                        check_field = check_field[len('not_'):]
-                                        target_value = False
-                                    
-                                    check_value = get_User_flag(user, extensions, check_field)
-                                    
-                                    if check_value == target_value:
-                                        hidden = False 
-                                elif rule_name.startswith('share_'):
-                                    # hide this field from anyone who has does not share one element in the following field
-                                    # This is for ManyToMany relations, essentially groups you may share membership of. 
-                                    check_field = rule_name[len('share_'):]
-                                    
-                                    if hasattr(obj, check_field):
-                                        a_membership_field = getattr(obj, check_field)
-                                        if hasattr(a_membership_field, 'all') and callable(a_membership_field.all):
-                                            a_membership_set = set((unique_object_id(o) for o in a_membership_field.all()))
-                                        else:
-                                            a_membership_set = set(unique_object_id(a_membership_field))
-                                            
-                                        b_membership_set = get_User_membership(user, extensions, check_field)
-                                        if a_membership_set.intersection(b_membership_set):
-                                            hidden = False 
-                    if hidden:
-                        hide.append(look_field)
-                           
-        return hide
 
 #===============================================================================
 # Object display 
@@ -1741,7 +1579,7 @@ class UpdateViewExtended(UpdateView):
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
-        self.fields = fields_for_model(self.model)
+        self.fields = self.obj.fields_for_model()           
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
         
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
@@ -1876,9 +1714,6 @@ def collect_rich_object_fields(self):
 
     ODF = self.format.flags
 
-    # Record the privacy outcomes for this object
-    self.obj.hide = fields_to_hide(self.obj, self.request.user)
-
     all_fields = self.obj._meta.get_fields()                    # All fields
 
     model_fields = collections.OrderedDict()                    # Editable fields in the model
@@ -2004,13 +1839,10 @@ def collect_rich_object_fields(self):
         
                     ros = apply_sort_by(getattr(self.obj, attname).all())
         
-                    if not field.name in self.obj.hide:
-                        if len(ros) > 0:
-                            field.value = [odm_str(item, self.format.mode) for item in ros]
-                        else:
-                            field.value = NONE
+                    if len(ros) > 0:
+                        field.value = [odm_str(item, self.format.mode) for item in ros]
                     else:
-                        field.value = HIDDEN
+                        field.value = NONE
         
                     self.fields_list[bucket][field.name] = field
             elif is_bitfield(field):
@@ -2023,13 +1855,10 @@ def collect_rich_object_fields(self):
                     field.is_list = False
                     field.label = safetitle(field.verbose_name)
                     
-                    if not field.name in self.obj.hide:
-                        if len(flags) > 0:
-                            field.value = odm_str(", ".join(flags), self.format.mode)
-                        else:
-                            field.value = NONE
+                    if len(flags) > 0:
+                        field.value = odm_str(", ".join(flags), self.format.mode)
                     else:
-                        field.value = HIDDEN
+                        field.value = NONE
                                     
                     self.fields_flat[bucket][field.name] = field
             else:
@@ -2037,12 +1866,9 @@ def collect_rich_object_fields(self):
                     field.is_list = False
                     field.label = safetitle(field.verbose_name)
                     
-                    if not field.name in self.obj.hide:
-                        field.value = odm_str(getattr(self.obj, field.name), self.format.mode)
-                        if not str(field.value):
-                            field.value = NOT_SPECIFIED
-                    else:
-                        field.value = HIDDEN
+                    field.value = odm_str(getattr(self.obj, field.name), self.format.mode)
+                    if not str(field.value):
+                        field.value = NOT_SPECIFIED
                         
                     self.fields_flat[bucket][field.name] = field
 

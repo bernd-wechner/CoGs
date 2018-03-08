@@ -11,7 +11,6 @@ from django.core.urlresolvers import reverse_lazy
 from django.utils import formats, timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
-from cuser.middleware import CuserMiddleware
 #from django_intenum import IntEnumField
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
@@ -22,9 +21,12 @@ from collections import OrderedDict
 from math import isclose
 #from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
 from datetime import datetime, timedelta
+from cuser.middleware import CuserMiddleware
 
-from django_generic_view_extensions import flt, field_render, link_target_url, property_method, fields_to_hide, HIDDEN
+from django_model_admin_fields import AdminModel
+from django_model_privacy_mixin import PrivacyMixIn
 
+from django_generic_view_extensions import flt, field_render, link_target_url, property_method
 
 # CoGs Leaderboard Server Data Model
 #
@@ -49,105 +51,8 @@ ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard fil
 ALL_GAMES = "ALL"                           # A reserved key for leaderboard filtering representing all games
 
 #===============================================================================
-# Helper functions
-#===============================================================================
-
-
-# Some flags for describing field privacy for Player info. Used with a BitField.
-Visibility = (
-    ('all', 'Everyone'),
-    ('share_leagues', 'League Members'),
-    ('share_teams', 'Team Members'), 
-    ('all_is_registrar', 'Registrars'), 
-    ('all_is_staff', 'Staff'), 
-)
-
-#===============================================================================
-# Some useful mixins for models
-#===============================================================================
-
-class AdminModel(models.Model):
-    '''
-    A MixIn that overrides the save method to ensure that on every save some admin
-    fields are checked and updated that record such saves (who and when) 
-    '''
-    # Simple history and administrative fields
-    created_by = models.ForeignKey('Player', related_name='%(class)ss_created', editable=False, null=True)
-    created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey('Player', related_name='%(class)ss_last_edited', editable=False, null=True)
-    last_edited_on = models.DateTimeField(editable=False, null=True)
-    
-    def update_admin_fields(self):
-        '''
-        Update the CoGs admin fields on an object (whenever it is saved).
-        '''
-        now = timezone.now()
-        usr = CuserMiddleware.get_user().player
-    
-        if hasattr(self, "last_edited_by"):
-            self.last_edited_by = usr
-    
-        if hasattr(self, "last_edited_on"):
-            self.last_edited_on = now
-    
-        # We infer that if the object has pk it was being edited and if it has none it was being created
-        if self.pk is None:
-            if hasattr(self, "created_by"):
-                self.created_by = usr
-    
-            if hasattr(self, "created_on"):
-                self.created_on = now
-
-    def save(self, *args, **kwargs):
-        self.update_admin_fields()
-        super().save(*args, **kwargs)
-        print(connection.queries[-1])
-                
-    class Meta:
-        abstract = True
-
-class PrivacyMixIn():
-    '''
-    A MixIn that adds database load overrides which populate the "hidden" attribute of
-    an object with the names of fields that should be hidden. It is us to the other
-    methods in the model to implement this hiding where desired.
-    '''
-    @classmethod
-    def create(cls, title):
-        obj = super().create(title)
-        user = CuserMiddleware.get_user()
-        obj.hidden = fields_to_hide(obj, user)
-        if len(obj.hidden) > 0:
-            obj.save = obj.disabled_save
-            for f in obj.hidden:
-                setattr(obj, f, HIDDEN)
-        return obj
-
-    @classmethod
-    def from_db(cls, db, field_names, values):        
-        obj = super().from_db(db, field_names, values)
-        user = CuserMiddleware.get_user()
-        obj.hidden = fields_to_hide(obj, user)
-        if len(obj.hidden) > 0:
-            obj.save = obj.disabled_save
-            for f in obj.hidden:
-                setattr(obj, f, HIDDEN)
-        return obj
-
-    def refresh_from_db(self, using=None, fields=None, **kwargs):
-        super().refresh_from_db(using, fields, **kwargs)
-        user = CuserMiddleware.get_user()
-        self.hidden = fields_to_hide(self, user)
-        if len(self.hidden) > 0:
-            self.save = self.disabled_save
-            for f in self.hidden:
-                setattr(self, f, HIDDEN)
-        
-    def disabled_save(self):
-        raise PermissionDenied()       
-
-#===============================================================================
-# Helper classes
+# The support models, that store all the play records that are needed to
+# calculate and maintain TruesKill ratings for players.
 #===============================================================================
     
 class TrueskillSettings(models.Model):
@@ -541,11 +446,6 @@ class Backup_Rating(RatingModel):
     '''
     pass
 
-#===============================================================================
-# The support models, that store all the play records that are needed to
-# calculate and maintain TruesKill ratings for players.
-#===============================================================================
-
 class League(AdminModel):
     '''
     A group of Players who are competing at Games which have a Leaderboard of Ratings.
@@ -712,27 +612,20 @@ class Player(PrivacyMixIn, AdminModel):
     # account
     user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None)
 
-    # Privacy fields
-    # Field privacy is hard to manage at the model level: 
-    #    http://stackoverflow.com/questions/6520445/overriding-get-method-in-models
-    #    In a nutshell: requires overriding the "objects" attribute (models.Manager) and the "queryset" (models.query.QuerySet)
-    # It is much easier to support at the view level:  
-    #    In a nutshell, override get_queryset in ListView, and get_object in DetailView, UpdateView and DeleteView
-    #
-    # We use a django-bitfield here and it is IMHO poorly implemented in that it uses the first
-    # positional argument as the flags so we need to named args (i.e. explicit verbose-name).
-    # See: https://github.com/disqus/django-bitfield    
-    visibility_name_nickname = BitField(verbose_name='Nickname Visibility', flags=Visibility, default=0, blank=True)
-    visibility_name_personal = BitField(verbose_name='Personal Name Visibility', flags=Visibility, default=0, blank=True)
-    visibility_name_family = BitField(verbose_name='Family Name Visibility', flags=Visibility, default=0, blank=True)
-    visibility_email_address = BitField(verbose_name='Email Address Visibility', flags=Visibility, default=0, blank=True)
-    visibility_BGGname = BitField(verbose_name='BoardGameGeek Name Visibility', flags=Visibility, default=0, blank=True)
-
-#     visibility_name_nickname = IntEnumField('Nickname Visibility', enum=Visibility, default=Visibility.Everyone)
-#     visibility_name_personal = IntEnumField('Personal Name Visibility', enum=Visibility, default=Visibility.Everyone)
-#     visibility_name_family = IntEnumField('Family Name Visibility', enum=Visibility, default=Visibility.Everyone)
-#     visibility_email_address = IntEnumField('Email Address Visibility', enum=Visibility, default=Visibility.Everyone)
-#     visibility_BGGname = IntEnumField('BoardGameGeek Name Visibility', enum=Visibility, default=Visibility.Everyone)
+    # Privacy control
+    visibility = (
+        ('all', 'Everyone'),
+        ('share_leagues', 'League Members'),
+        ('share_teams', 'Team Members'), 
+        ('all_is_registrar', 'Registrars'), 
+        ('all_is_staff', 'Staff'), 
+    )
+    
+    visibility_name_nickname = BitField(verbose_name='Nickname Visibility', flags=visibility, default=0, blank=True)
+    visibility_name_personal = BitField(verbose_name='Personal Name Visibility', flags=visibility, default=0, blank=True)
+    visibility_name_family = BitField(verbose_name='Family Name Visibility', flags=visibility, default=0, blank=True)
+    visibility_email_address = BitField(verbose_name='Email Address Visibility', flags=visibility, default=0, blank=True)
+    visibility_BGGname = BitField(verbose_name='BoardGameGeek Name Visibility', flags=visibility, default=0, blank=True)
 
     @property
     def owner(self) -> User:
