@@ -7,7 +7,7 @@ from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
 #from django.core import checks
 from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned, PermissionDenied
 from django.core.validators import RegexValidator
-from django.core.urlresolvers import reverse_lazy
+from django.urls import reverse_lazy
 from django.utils import formats, timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
@@ -98,8 +98,8 @@ class RatingModel(AdminModel):
     
     The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
     '''
-    player = models.ForeignKey('Player', related_name='%(class)ss')
-    game = models.ForeignKey('Game', related_name='%(class)ss')
+    player = models.ForeignKey('Player', related_name='%(class)ss', on_delete=models.CASCADE)
+    game = models.ForeignKey('Game', related_name='%(class)ss', on_delete=models.CASCADE)
 
     plays = models.PositiveIntegerField('Play Count', default=0)
     victories = models.PositiveIntegerField('Victory Count', default=0)
@@ -457,7 +457,7 @@ class League(AdminModel):
     meaningful global leaderboard can be reported for any game across all leagues.
     '''
     name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved')])
-    manager = models.ForeignKey('Player', related_name='leagues_managed')
+    manager = models.ForeignKey('Player', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
 
     locations = models.ManyToManyField('Location', blank=True, related_name='leagues_playing_here')
     players = models.ManyToManyField('Player', blank=True, related_name='member_of_leagues')
@@ -607,12 +607,12 @@ class Player(PrivacyMixIn, AdminModel):
     leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
 
     # A default or preferred league for each player. Optional. Can be used to customise views.
-    league = models.ForeignKey('League', verbose_name="Preferred League", related_name="preferred_league_of", blank=True, null=True, default=None)
+    league = models.ForeignKey('League', verbose_name="Preferred League", related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     # account
-    user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None)
+    user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
-    # Privacy control
+    # Privacy control (interfaces with django_model_privacy_mixin)
     visibility = (
         ('all', 'Everyone'),
         ('share_leagues', 'League Members'),
@@ -1148,10 +1148,10 @@ class Session(AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
-    date_time = models.DateTimeField('Time', default=timezone.now)  # When the game session was played
-    league = models.ForeignKey(League, related_name='sessions')  # The league playing this session
-    location = models.ForeignKey(Location, related_name='sessions')  # Where the game sessions was played
-    game = models.ForeignKey(Game, related_name='sessions')  # The game that was played
+    date_time = models.DateTimeField('Time', default=timezone.now)                                          # When the game session was played
+    league = models.ForeignKey(League, related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
+    location = models.ForeignKey(Location, related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
+    game = models.ForeignKey(Game, related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
     
     # The game must support team play if this is true, 
     # and conversely, it must support individual play if this false.
@@ -1901,15 +1901,15 @@ class Rank(AdminModel):
     Either a player or team is specified, neither or both is a data error.
     Which one, is specified in the Session model where a record is kept of whether this was a Team play session or not (i.e. Individual play)
     '''
-    session = models.ForeignKey(Session, related_name='ranks')  # The session that this ranking belongs to
+    session = models.ForeignKey(Session, related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
     rank = models.PositiveIntegerField()  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
 
     # One or the other of these has a value the other should be null (enforce in integrity checks)
     # We coudlof course opt to use a single GenericForeignKey here: 
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
     #    but there are some complexites they introduce that are rather unnatracive as well
-    player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks')  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
-    team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks')  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+    player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
+    team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
 
     @property
     def players(self) -> list:
@@ -2043,8 +2043,8 @@ class Performance(AdminModel):
     '''
     TS = TrueskillSettings()
 
-    session = models.ForeignKey(Session, related_name='performances')  # The session that this weighting belongs to
-    player = models.ForeignKey(Player, related_name='performances')  # The player in that session to whom the weighting applies
+    session = models.ForeignKey(Session, related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
+    player = models.ForeignKey(Player, related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
 
@@ -2355,5 +2355,5 @@ class Rebuild_Log(models.Model):
     date_time = models.DateTimeField(default=timezone.now)
     ratings = models.PositiveIntegerField()
     duration = models.DurationField()
-    rebuilt_by = models.ForeignKey('Player', related_name='rating_rebuilds', editable=False, null=True)
+    rebuilt_by = models.ForeignKey(User, related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
     reason = models.TextField('Reason')    

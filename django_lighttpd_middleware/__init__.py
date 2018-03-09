@@ -80,7 +80,7 @@ METHOD = "middleware"
 
 DEBUG = False
 
-from django.core.urlresolvers import set_script_prefix, get_script_prefix
+from django.urls import set_script_prefix, get_script_prefix
 class LighttpdMiddleware(object):
     '''
     A Django MIDDLEWARE class which basically fixes request.path_info after lightttpd munged it ;-)

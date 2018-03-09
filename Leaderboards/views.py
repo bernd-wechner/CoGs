@@ -16,11 +16,10 @@ from django.db.models.fields import DateField
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
-from django.urls import reverse
+from django.urls import reverse, resolve
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.core.urlresolvers import resolve
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, make_aware

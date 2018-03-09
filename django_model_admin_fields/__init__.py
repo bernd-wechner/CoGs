@@ -22,9 +22,9 @@ class AdminModel(models.Model):
     save these fields are updated (who and when) 
     '''
     # Simple history and administrative fields
-    created_by = models.ForeignKey(User, related_name='%(class)ss_created', editable=False, null=True)
+    created_by = models.ForeignKey(User, related_name='%(class)ss_created', editable=False, null=True, on_delete=models.SET_NULL)
     created_on = models.DateTimeField(editable=False, null=True)
-    last_edited_by = models.ForeignKey(User, related_name='%(class)ss_last_edited', editable=False, null=True)
+    last_edited_by = models.ForeignKey(User, related_name='%(class)ss_last_edited', editable=False, null=True, on_delete=models.SET_NULL)
     last_edited_on = models.DateTimeField(editable=False, null=True)
     
     def update_admin_fields(self):

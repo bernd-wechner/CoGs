@@ -188,7 +188,7 @@ from django.utils import six
 from django.utils.safestring import mark_safe
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_text
-from django.core.urlresolvers import reverse_lazy
+from django.urls import reverse_lazy
 from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
 from django.http import HttpResponse, QueryDict, Http404
