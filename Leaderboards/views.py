@@ -251,10 +251,9 @@ def html_league_options():
         options.append('<option value="{}">{}</option>'.format(league.id, league.name))
     return "\n".join(options)
 
-def context_provider(self, context):
+def context_provider(self):
     '''
-    Updates the provided context with CoGs specific items 
-    :param context: The context to update, a dictionary.
+    Returns a dictionary for extra_context with CoGs specific items 
     
     Specifically The session form when editing existing sessions has a game already known,
     and this game has some key properties that the form wants to know about. Namely:
@@ -269,6 +268,7 @@ def context_provider(self, context):
     Clearly altering the game should trigger a relaod of this metadata for the newly selected game.
     See ajax_Game_Properties below for that. 
     '''
+    context = {}
     model = self.model._meta.model_name
     context['league_options'] = html_league_options()
     
@@ -302,7 +302,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
-    extra_context = context_provider
+    context_provider = context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
@@ -319,7 +319,7 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     #       if an integrity error is found in such a transaction (or any transaction).
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
-    extra_context = context_provider
+    extra_context_provider = context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
@@ -331,19 +331,19 @@ class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     template_name = 'CoGs/delete_data.html'
     operation = 'delete'
     format = object_display_format()
-    extra_context = context_provider
+    extra_context_provider = context_provider
 
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
     operation = 'list'
     format = list_display_format()
-    extra_context = context_provider
+    extra_context_provider = context_provider
 
 class view_Detail(DetailViewExtended):
     template_name = 'CoGs/view_data.html'
     operation = 'view'
     format = object_display_format()
-    extra_context = context_provider
+    extra_context_provider = context_provider
 
 #===============================================================================
 # The Leaderboards view. What it's all about!

@@ -78,7 +78,6 @@ MIDDLEWARE = (
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
@@ -86,6 +85,7 @@ MIDDLEWARE = (
 )
 
 if HOSTNAME == WEBSERVER:
+    WSGI_APPLICATION = 'CoGs.wsgi.application'
     from django_lighttpd_middleware import METHOD
     if METHOD == "middleware":
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
@@ -107,8 +107,6 @@ TEMPLATES = [
         },
     },
 ]
-
-WSGI_APPLICATION = 'CoGs.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases

@@ -1232,7 +1232,7 @@ class ListViewExtended(ListView):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=True)
         add_format_context(self, context)
-        if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
+        if hasattr(self, 'extra_context_provider') and callable(self.extra_context_provider): self.extra_context_provider()
         return context
 
     # Fetch all the objects for this model

@@ -59,7 +59,7 @@ class PrivacyMixIn():
             is have a OneToOne relationship with User. 
             '''
             ext = []
-            if user.is_authenticated():
+            if user.is_authenticated:
                 for field in user._meta.get_fields():
                     if field.one_to_one:
                         ext.append(field.name)
