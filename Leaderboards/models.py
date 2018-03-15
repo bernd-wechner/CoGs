@@ -1425,8 +1425,6 @@ class Session(AdminModel):
             # The new future sessions may involve new players which 
             # requires that we scan them for new future sessions too 
             for session in new_future_sessions:
-                print("Drill To: {}".format(session.pk))
-                
                 new_sessions_so_far = session._get_future_sessions(sessions_so_far)
                 
                 if len(new_sessions_so_far) > len(sessions_so_far):

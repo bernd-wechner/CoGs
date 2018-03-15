@@ -193,6 +193,8 @@ from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
 from django.http import HttpResponse, QueryDict, Http404
 #from django.db.models import DEFERRED
+from django.db.models import F, Q, Window, Subquery
+from django.db.models.functions import Lag, Lead
 from django.db.models.query import QuerySet
 from django.forms.models import fields_for_model, inlineformset_factory, modelformset_factory
 from django.conf import settings
@@ -907,7 +909,7 @@ def object_html_output(self, ODM=None):
         normal_row = '<b>{label:s}:</b> {value:s}{help_text:s}<br>'
         help_text_html = ' <span class="helptext">%s</span>'
     else:
-        ValueError("Internal Error: format must always contain one of the object layout modes.")                
+        raise ValueError("Internal Error: format must always contain one of the object layout modes.")                
 
     # Collect output lines in a list
     output = []
@@ -1265,6 +1267,64 @@ class ListViewExtended(ListView):
         
         return self.queryset
 
+def get_neighbor_pks(model, pk, filterset=None, ordering=None):
+    '''
+    Given a model and pk that identify an object (model instance) will, given an ordering
+    (defaulting to the models ordering) and optionally a filterset (from url_filter), will
+    return a tuple that contains two PKs that of the prior and next neighbour in the list
+    either of all objects by that ordering or the filtered list (if a filterset is provided) 
+    :param model:        The model the object is an instance of
+    :param pk:           The primary key of the model instance being considered
+    :param filterset:    An optional filterset (see https://github.com/miki725/django-url-filter)
+    :param ordering:     An optional ordering (otherwise default model ordering is used). See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering  
+    '''
+    # If a filterset is provided ensure it's of the same model as specified (consistency).
+    if filterset and not filterset.Meta.model == model:
+        return None    
+    
+    # Get the ordering list for the model (a list of fields
+    # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
+    if ordering is None:
+        ordering = model._meta.ordering
+    
+    order_by = []
+    for f in ordering:
+        if f.startswith("-"):
+            order_by.append(F(f[1:]).desc())
+        else:
+            order_by.append(F(f).asc())
+
+    # Define the window functions for each neighbour    
+    window_lag = Window(expression=Lag("pk"), order_by=order_by)
+    window_lead = Window(expression=Lead("pk"), order_by=order_by)
+
+    # Get a queryset annotated with neighbours. If annotated attrs clash with existing attrs an exception 
+    # will be raised: https://code.djangoproject.com/ticket/11256    
+    try:
+        # If a non-empty filterset is supplied, respect that
+        if filterset and filterset.filter:
+            qs = filterset.filter() | model.objects.filter(pk=pk).distinct()
+        # Else we just use all objects
+        else:
+            qs = model.objects
+            
+        # Now annotate the querset with the prior and next PKs
+        qs = qs.annotate(neighbour_prior=window_lag, neighbour_next=window_lead)
+    except:
+        return None
+    
+    # Finally we need some trickery alas to do a query on the queryset! We can't add this WHERE
+    # as a filter because the LAG and LEAD Window functions fail then, they are emoty because 
+    # there is no lagger or leader on the one line result! So we have to run that query on the 
+    # whole table.then extract form the result the one line we want! Wish I could find a way to 
+    # do this in the Django ORM not with a raw() call.    
+    ao = model.objects.raw("SELECT * FROM ({}) ao WHERE {}=%s".format(str(qs.query), model._meta.pk.name),[pk])
+    
+    if ao:
+        return (ao[0].neighbour_prior,ao[0].neighbour_next)
+    else:
+        raise None    
+    
 class DetailViewExtended(DetailView):
     '''
     An enhanced DetailView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does (defined in BaseForm).
@@ -1301,7 +1361,7 @@ class DetailViewExtended(DetailView):
                     'model': self.model 
                     })
             })
-            
+
             # Create a mutable copy of the GET params to base a filter on (so we can tweak it)
             get = self.request.GET.copy()
             
@@ -1311,60 +1371,29 @@ class DetailViewExtended(DetailView):
             if 'pk' in get:
                 del get['pk']
             
-            # Get the ordering list for the model (a list of fields
-            # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
-            order = self.model._meta.ordering
-
+            fs = FilterSet(data=get, queryset=self.model.objects.all())
+            
+            neighbours = get_neighbor_pks(self.model, self.pk, fs)            
+            
             # If requesting the next or prior object look for that      
             # FIXME: Totally fails for Ranks, the get dictionary fails when there are ties!
             #        Doesn't generalise well at all. Must find a general way to do this for
             #        arbitrary orders. Still should specify orders in models that create unique 
             #        ordering not reliant on pk break ties. 
-            if 'next' in self.request.GET:
-                for f in order:
-                    if f.startswith("-"):
-                        get[f[1:] + "__lt"] = getattr(self.ref, f[1:])  
-                    else:
-                        get[f + "__gt"] = getattr(self.ref, f)
-                        
-                fs = FilterSet(data=get, queryset=self.model.objects.all())
-                self.filter = pretty_FilterSet(fs)
+            if 'next' in self.request.GET and not neighbours[1] is None:
+                self.pk = neighbours[1]
+            elif 'prior' in self.request.GET and not neighbours[0] is None:
+                self.pk = neighbours[0]
                 
-                if (fs.filter().count() > 0):
-                    self.obj = fs.filter().first()
-                    self.pk = self.obj.pk
-                    self.kwargs["pk"] = self.pk 
-                else:
-                    raise Http404('No next %s.'.format(self.model))                    
-                    
-            elif 'prior' in self.request.GET:
-                for f in order:
-                    if f.startswith("-"):
-                        get[f[1:] + "__gt"] = getattr(self.ref, f[1:])  
-                    else:
-                        get[f + "__lt"] = getattr(self.ref, f)
-                        
-                fs = FilterSet(data=get, queryset=self.model.objects.all())
-                self.filter = pretty_FilterSet(fs)
-                
-                if (fs.filter().count() > 0):
-                    self.obj = fs.filter().last()
-                    self.pk = self.obj.pk
-                    self.kwargs["pk"] = self.pk 
-                else:
-                    raise Http404('No prior %s.'.format(self.model))                    
+            self.obj = get_object_or_404(self.model, pk=self.pk)
+            self.kwargs["pk"] = self.pk
+                             
         else:
             self.obj = get_object_or_404(self.model, pk=self.pk)
         
         self.format = get_object_display_format(self.request.GET)
         collect_rich_object_fields(self)
         
-#         # TODO: This is just debugging stuff to test trueskill calcs
-#         if self.model is Session:
-#             session = self.obj
-#             impacts = session.calculate_trueskill_impacts()
-#             pass
-
         return self.obj
 
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
