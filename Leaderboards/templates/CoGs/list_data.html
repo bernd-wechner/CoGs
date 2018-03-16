@@ -12,7 +12,7 @@
 <script type="text/javascript">
 	// Save the URL when we load for later use
 	function saveURL() {
-		URL = window.location.href.split('?')[0];
+		URL = "{% url 'get_list_html' model=model_name %}";
 	}
 	window.onload = saveURL;
 
@@ -25,17 +25,21 @@
 	}
 	
 	function check_button(which_one) {
-		$("#opt_format_"+which_one).prop("checked", true);
+		$("#opt_elements_"+which_one).prop("checked", true);
 	}
 	
 	function URLopts() {
 		opts = []
 	
-		format = $('input[type=radio][name=opt_format]:checked').attr('value');
+		elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
+		complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
 		link = $('input[type=radio][name=opt_link]:checked').attr('value');
+		menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
 		
-		opts.push(format);
+		opts.push(elements);
+		opts.push(complete);
 		opts.push(link);
+		opts.push(menus);
 		
 		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 
@@ -44,16 +48,36 @@
 		url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
 
 		return url_opts;
-	}		
-		
+	}
+	
+	var REQUEST = new XMLHttpRequest();
+	REQUEST.onreadystatechange = function () {
+	    // Process the returned JSON
+		if (this.readyState === 4 && this.status === 200){
+			var response = JSON.parse(this.responseText);
+			$("#data").html(response.HTML);
+			URL = response.json_URL 
+ 			window.history.pushState("","", response.view_URL);
+			$("#reloading_icon").css("visibility", "hidden");
+			$("#opt_brief").prop('disabled', false);
+			$("#opt_verbose").prop('disabled', false);
+			$("#opt_rich").prop('disabled', false);
+			$("#opt_detail").prop('disabled', false);
+			$("#opt_specified").prop('disabled', false);
+		}
+	};
+	
+	
 	function reload(event) {
 		$("#reloading_icon").css("visibility", "visible");
 		$("#opt_brief").prop('disabled', true);
 		$("#opt_verbose").prop('disabled', true);
 		$("#opt_rich").prop('disabled', true);
 		$("#opt_detail").prop('disabled', true);
+		$("#opt_specified").prop('disabled', true);
 		var url = URL + URLopts();
-		window.location.href = url;
+		REQUEST.open("GET", url, true);
+		REQUEST.send(null);		
 	}	
 </script>     
 
@@ -63,7 +87,6 @@
 {#<p>{{get_params}}</p>#}
 {#{% endif %}#}
 
-FIXME: Add as_table, as_ul, as_p, as_br selector here as well!
 <table id="ListViewOptions" class="tight">
 	<tr>
 		<td class='tight options'>
@@ -85,12 +108,23 @@ FIXME: Add as_table, as_ul, as_p, as_br selector here as well!
 		</td>
 		<td class='tight options'>
 			<br/>
-			<input type="radio" name="opt_format" id="opt_format_brief" value="brief" {{format.format|checked:1}}>Brief
-			<input type="radio" name="opt_format" id="opt_format_verbose" value="verbose" {{format.format|checked:2}}>Verbose
-			<input type="radio" name="opt_format" id="opt_format_rich" value="rich" {{format.format|checked:3}}>Rich
-			<input type="radio" name="opt_format" id="opt_format_detail" value="detail" {{format.format|checked:4}}>Detail
+			<input type="radio" name="opt_elements" id="opt_elements_brief" value="brief" {{format.elements|checked:1}}>Brief
+			<input type="radio" name="opt_elements" id="opt_elements_verbose" value="verbose" {{format.elements|checked:2}}>Verbose
+			<input type="radio" name="opt_elements" id="opt_elements_rich" value="rich" {{format.elements|checked:3}}>Rich
+			<input type="radio" name="opt_elements" id="opt_elements_detail" value="detail" {{format.elements|checked:4}}>Detail
 		</td>
 	</tr>
+	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>In:</b>
+		</td>
+		<td class='tight options'>
+			<input type="radio" name="opt_complete" id="opt_complete_as_table" value="as_table" {{format.complete|checked:1}}>a table
+			<input type="radio" name="opt_complete" id="opt_complete_as_ul" value="as_ul" {{format.complete|checked:2}}>a bulleted list
+			<input type="radio" name="opt_complete" id="opt_complete_as_p" value="as_p" {{format.complete|checked:3}}>paragaphs
+			<input type="radio" name="opt_complete" id="opt_complete_as_br" value="as_br" {{format.complete|checked:4}}>a pargraph
+		</td>
+	</tr>		
 	<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
 		<td class='tight options'>
 			<b>links:</b>
@@ -101,6 +135,16 @@ FIXME: Add as_table, as_ul, as_p, as_br selector here as well!
 			<input type="radio" name="opt_link" id="opt_link_external" value="external_links" {{format.link|checked:2}}>BGG
 		</td>
 	</tr>		
+	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>Menus:</b>
+		</td>
+		<td class='tight options'>
+			<input type="radio" name="opt_menus" id="opt_menus_none" value="no_menus" {{format.menus|checked:0}}>None
+			<input type="radio" name="opt_menus" id="opt_menus_text" value="text_menus" {{format.menus|checked:1}}>Text
+			<input type="radio" name="opt_menus" id="opt_menus_buttons" value="button_menus" {{format.menus|checked:2}}>Buttons
+		</td>
+	</tr>		
 </table>
 <p/>
 
@@ -108,23 +152,6 @@ FIXME: Add as_table, as_ul, as_p, as_br selector here as well!
 	<p>{{query}}</p>
 {% endif %}
 
-<div id="data">
-	{% if object_list %}
-		<ul>
-		  {% for o in object_list %}
-		    <li class="contact">
-		    	[<a href="{% url 'view' model_name o.pk %}">view</a>]
-				{% if user.is_authenticated %}
-			    	[<a href="{% url 'edit' model_name o.pk %}">edit</a>]
-			    	[<a href="{% url 'delete' model_name o.pk %}">delete</a>]
-				{% endif %}	        
-		    	{% list_format o %}
-	    	</li>
-		  {% endfor %}
-		</ul>
-	{% else %}
-	    <p>No {{model_name_plural}}.</p>
-	{% endif %}
-</div>
+<div id="data">{{ view.as_html }}</div>
 
 {% endblock %}

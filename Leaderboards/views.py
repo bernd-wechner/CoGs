@@ -251,21 +251,21 @@ def html_league_options():
         options.append('<option value="{}">{}</option>'.format(league.id, league.name))
     return "\n".join(options)
 
-def context_provider(self):
+def extra_context_provider(self):
     '''
     Returns a dictionary for extra_context with CoGs specific items 
     
     Specifically The session form when editing existing sessions has a game already known,
     and this game has some key properties that the form wants to know about. Namely:
     
-    individual_play: does this game permit indiviual play
+    individual_play: does this game permit individual play
     team_play: does this game support team play
     min_players: minimum number of players for this game
     max_players: maximum number of players for this game
     min_players_per_team: minimum number of players in a team in this game. Relevant only if team_play supported.
     max_players_per_team: maximum number of players in a team in this game. Relevant only if team_play supported.
     
-    Clearly altering the game should trigger a relaod of this metadata for the newly selected game.
+    Clearly altering the game should trigger a reload of this metadata for the newly selected game.
     See ajax_Game_Properties below for that. 
     '''
     context = {}
@@ -292,6 +292,8 @@ def context_provider(self):
                 context['game_max_players'] = game.max_players
                 context['game_min_players_per_team'] = game.min_players_per_team
                 context['game_max_players_per_team'] = game.max_players_per_team
+    
+    return context
 
 #===============================================================================
 # Customize Generic Views for CoGs
@@ -302,7 +304,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
-    context_provider = context_provider
+    extra_context_provider = extra_context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
@@ -319,7 +321,7 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     #       if an integrity error is found in such a transaction (or any transaction).
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
-    extra_context_provider = context_provider
+    extra_context_provider = extra_context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
@@ -331,19 +333,19 @@ class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     template_name = 'CoGs/delete_data.html'
     operation = 'delete'
     format = object_display_format()
-    extra_context_provider = context_provider
+    extra_context_provider = extra_context_provider
 
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
     operation = 'list'
     format = list_display_format()
-    extra_context_provider = context_provider
+    extra_context_provider = extra_context_provider
 
 class view_Detail(DetailViewExtended):
     template_name = 'CoGs/view_data.html'
     operation = 'view'
     format = object_display_format()
-    extra_context_provider = context_provider
+    extra_context_provider = extra_context_provider
 
 #===============================================================================
 # The Leaderboards view. What it's all about!
@@ -664,6 +666,25 @@ def ajax_Game_Properties(request, pk):
              }
       
     return HttpResponse(json.dumps(props))
+
+def ajax_List(request, model):
+    '''
+    Support AJAX rendering of lists of objects on the list view. 
+    
+    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
+    ''' 
+    view = view_List()
+    view.request = request
+    view.kwargs = {'model':model}
+    view.get_queryset()
+    
+    view_url = reverse("list", kwargs={"model":view.model.__name__})
+    json_url = reverse("get_list_html", kwargs={"model":view.model.__name__})
+    html = view.as_html()
+    
+    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
+     
+    return HttpResponse(json.dumps(response))
 
 def ajax_Detail(request, model, pk):
     '''

@@ -11,7 +11,6 @@ TODO: Document here
 '''
 
 import inspect
-import html
 from django.core.exceptions import PermissionDenied
 from django.forms.models import fields_for_model
 from cuser.middleware import CuserMiddleware
@@ -22,7 +21,7 @@ class PrivacyMixIn():
     an object with the names of fields that should be hidden. It is us to the other
     methods in the model to implement this hiding where desired.
     '''
-    HIDDEN = html.escape("<Hidden>")
+    HIDDEN = "<Hidden>"
     
     def fields_to_hide(self, user):
         '''

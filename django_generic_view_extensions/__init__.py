@@ -188,7 +188,7 @@ from django.utils import six
 from django.utils.safestring import mark_safe
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_text
-from django.urls import reverse_lazy
+from django.urls import reverse, reverse_lazy
 from django.core.exceptions import ValidationError
 from django.db import models, transaction, IntegrityError
 from django.http import HttpResponse, QueryDict, Http404
@@ -202,6 +202,8 @@ from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponseRedirect
 from cuser.middleware import CuserMiddleware
+
+from django_model_privacy_mixin import PrivacyMixIn
 
 from url_filter.filtersets import ModelFilterSet
 from django.http.response import JsonResponse
@@ -307,7 +309,7 @@ def print_debug(msg):
         debug_time_first = now
     if debug_time_last is None:
         debug_time_last = now
-    print("{:f}, {:f} - {}".format(now-debug_time_first, now-debug_time_last, msg))
+    print("{:10.4f}, {:10.4f} - {}".format(now-debug_time_first, now-debug_time_last, msg))
     debug_time_last = now    
 
 def isListValue(obj):
@@ -339,6 +341,64 @@ def containsPRE(obj):
 def safetitle(text):
     '''Given an object returns a title case version of its string representation.'''
     return titlecase(text if isinstance(text, str) else str(text))
+
+def get_neighbor_pks(model, pk, filterset=None, ordering=None):
+    '''
+    Given a model and pk that identify an object (model instance) will, given an ordering
+    (defaulting to the models ordering) and optionally a filterset (from url_filter), will
+    return a tuple that contains two PKs that of the prior and next neighbour in the list
+    either of all objects by that ordering or the filtered list (if a filterset is provided) 
+    :param model:        The model the object is an instance of
+    :param pk:           The primary key of the model instance being considered
+    :param filterset:    An optional filterset (see https://github.com/miki725/django-url-filter)
+    :param ordering:     An optional ordering (otherwise default model ordering is used). See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering  
+    '''
+    # If a filterset is provided ensure it's of the same model as specified (consistency).
+    if filterset and not filterset.Meta.model == model:
+        return None    
+    
+    # Get the ordering list for the model (a list of fields
+    # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
+    if ordering is None:
+        ordering = model._meta.ordering
+    
+    order_by = []
+    for f in ordering:
+        if f.startswith("-"):
+            order_by.append(F(f[1:]).desc())
+        else:
+            order_by.append(F(f).asc())
+
+    # Define the window functions for each neighbour    
+    window_lag = Window(expression=Lag("pk"), order_by=order_by)
+    window_lead = Window(expression=Lead("pk"), order_by=order_by)
+
+    # Get a queryset annotated with neighbours. If annotated attrs clash with existing attrs an exception 
+    # will be raised: https://code.djangoproject.com/ticket/11256    
+    try:
+        # If a non-empty filterset is supplied, respect that
+        if filterset and filterset.filter:
+            qs = filterset.filter() | model.objects.filter(pk=pk).distinct()
+        # Else we just use all objects
+        else:
+            qs = model.objects
+            
+        # Now annotate the querset with the prior and next PKs
+        qs = qs.annotate(neighbour_prior=window_lag, neighbour_next=window_lead)
+    except:
+        return None
+    
+    # Finally we need some trickery alas to do a query on the queryset! We can't add this WHERE
+    # as a filter because the LAG and LEAD Window functions fail then, they are emoty because 
+    # there is no lagger or leader on the one line result! So we have to run that query on the 
+    # whole table.then extract form the result the one line we want! Wish I could find a way to 
+    # do this in the Django ORM not with a raw() call.    
+    ao = model.objects.raw("SELECT * FROM ({}) ao WHERE {}=%s".format(str(qs.query), model._meta.pk.name),[pk])
+    
+    if ao:
+        return (ao[0].neighbour_prior,ao[0].neighbour_next)
+    else:
+        raise None    
 
 #===============================================================================
 # Object display 
@@ -390,6 +450,40 @@ def get_object_summary_format(request):
     
     return OSF
 
+class list_menu_format():
+    '''Format options for the object menu in the list view HTML formats.
+    '''
+
+    # TODO: implement text and buttons with CSS classes so that they can be
+    #       formatted by style sheets 
+    
+    # Some formats for summarising objects
+    none = 0        # No menu 
+    text = 1        # A simple text format
+    buttons = 2     # Using HTML buttons
+    
+    default = text # The default to use
+
+# A shorthand for the list format options
+lmf = list_menu_format
+
+def get_list_menu_format(request):
+    '''
+    Standard means of extracting a list menu format from a request.
+    
+    Assumes lmf.default and modifies as per request.
+    '''
+    LMF = lmf.default
+    
+    if 'no_menus' in request:
+        LMF = lmf.none
+    elif 'text_menus' in request:
+        LMF = lmf.text
+    elif 'button_menus' in request:
+        LMF = lmf.buttons
+    
+    return LMF
+
 class field_link_target():
     '''
     Structured generic target selector for links from object fields in diverse views 
@@ -431,9 +525,9 @@ def link_target_url(obj, link_target=flt.default):
     url = ""
     
     if link_target == flt.internal and hasattr(obj, "link_internal"):
-        url = str(obj.link_internal)
+        url = obj.link_internal
     elif link_target == flt.external and hasattr(obj, "link_external"):
-        url = str(obj.link_external)
+        url = obj.link_external
     
     return url
     
@@ -441,7 +535,7 @@ def field_render(field, link_target=flt.default, sum_format=osf.default):
     '''
     Given a field attempts to render it as text to use in a view. Tries to do two things:
     
-    1) Wrap it in an HTML Anchor tag if requested to. CHoosing the appropriate URL to use as specified by link_target.
+    1) Wrap it in an HTML Anchor tag if requested to. Choosing the appropriate URL to use as specified by link_target.
     2) Convert the field to text using a method selected by sum_format. 
      
     :param field: The contents of a field that we want to wrap in a link. This could be a text scalar value 
@@ -490,17 +584,17 @@ def field_render(field, link_target=flt.default, sum_format=osf.default):
         
     if fmt == osf.verbose:
         if callable(getattr(field, '__verbose_str__', None)):
-            txt = field.__verbose_str__()
+            txt = html.escape(field.__verbose_str__())
         else:
             fmt = osf.brief
 
     if fmt == osf.brief:
         if callable(getattr(field, '__str__', None)):
-            txt = field.__str__()
+            txt = html.escape(field.__str__())
         else:
             txt = str(field)
-          
-    if tgt is None:    
+
+    if tgt is None:
         return mark_safe(txt)
     else:
         return  mark_safe(u'<A href="{}" class="{}">{}</A>'.format(tgt, FIELD_CLASS, txt))            
@@ -514,7 +608,7 @@ def object_in_list_format(obj, context):
     :param context:    the context provided to the view (from which we can extract the formatting requests)
     '''
     # we expect an instance list_display_format in the context element "format" 
-    fmt = context['format'].format
+    fmt = context['format'].elements
     flt = context['format'].link
     
     return field_render(obj, flt, fmt)
@@ -566,6 +660,9 @@ class object_display_modes():
     as_ul = 2           # Taken straight from the Django generic forms
     as_p = 3            # Taken straight from the Django generic forms
     as_br = 4           # New here, intended to wrap whole object in P with fields on new lines (BR separated)
+    
+    # Provide an accessible default
+    default = as_table
    
     # Define some mode containers for the object
     object = as_table               # How to render the object in a detail view
@@ -725,8 +822,10 @@ class list_display_format():
     '''
     Display format options for objects in the list view.
     '''
-    format = osf.default
-    link = flt.default
+    complete = odm.default     # Format for the whole list if relevant
+    elements = osf.default     # Format for the list elements 
+    link = flt.default         # Whether to add links to the display and what kind
+    menus = lmf.default        # Whether and how to display menus against each list item
 
 def get_list_display_format(request):
     '''
@@ -735,8 +834,10 @@ def get_list_display_format(request):
 
     LDF = list_display_format()
     
-    LDF.format = get_object_summary_format(request)    
-    LDF.link = get_field_link_target(request)
+    LDF.complete = get_object_display_format(request).mode.object
+    LDF.menus = get_list_menu_format(request)
+    LDF.elements = get_object_summary_format(request)    
+    LDF.link = get_field_link_target(request)  # Technically already in LDF.complete.mode.link
              
     return LDF
 
@@ -821,9 +922,11 @@ def fmt_str(obj):
             text = braces[0] + csv_delim.join(lines) + braces[1]
     else:
         text = force_text(str(obj))
-    return text   
+        
+    # Always escape the string, no obj should land here with HTML in its string rendition        
+    return html.escape(text)    
 
-def odm_str(obj, ODM):
+def odm_str(obj, format):
     '''
     Return an object's representative string respecting the ODM (sum_format and link) and privacy configurations. 
 
@@ -835,25 +938,52 @@ def odm_str(obj, ODM):
     and that is not working elegantly. 
     
     :param object:     The object to convert to string
-    :param OLF:        The object_list_format to use    
+    :param format:     The format to use, cane be an object of type: object_display_modes or of type list_display_format
+                       depends on who's calling us and what they prefer to offer.
+                       
+    Depends on:
+        format.link (which both object_display_modes and list_display_format provide)
+        an OSF (Object Summary Format) which it pilfers from format.sum_format or format.elements based on the provided format 
     '''    
     
+    if type(format) == object_display_modes:
+        OSF = format.sum_format
+        LT = format.link
+    elif type(format) == list_display_format:
+        OSF = format.elements
+        LT = format.link
+
+    # Rich and Detail sviews on an object are responsible for their own linking.
+    # They should do that vial field_render().
+    # Verbose and Brief views don't so we apply a link wrapper if requested.   
     Awrapper = "{}"
-    if ODM.link == flt.internal and hasattr(obj, "link_internal"):
-        Awrapper = "<A href='{}' class='{}'>".format(obj.link_internal, FIELD_CLASS) + "{}</A>"    
-    elif ODM.link == flt.external and hasattr(obj, "link_external"):
-        Awrapper = "<A href='{}' class='{}'>".format(obj.link_external, FIELD_CLASS) + "{}</A>"    
+    if not (OSF == osf.detail or OSF == osf.rich):
+        if format.link == flt.internal and hasattr(obj, "link_internal") and obj.link_internal:
+            Awrapper = "<A href='{}' class='{}'>".format(obj.link_internal, FIELD_CLASS) + "{}</A>"    
+        elif format.link == flt.external and hasattr(obj, "link_external") and obj.link_external:
+            Awrapper = "<A href='{}' class='{}'>".format(obj.link_external, FIELD_CLASS) + "{}</A>"    
     
-    if ODM.sum_format == osf.rich:
-        if callable(getattr(obj, '__rich_str__', None)):
-            strobj = obj.__rich_str__()
+    # Verbose and Brief should never contain HTML and so should be escaped.
+    # Rich and Detail might contain HTML so we expect them do their own escaping
+    if OSF == osf.detail:
+        if callable(getattr(obj, '__detail_str__', None)):
+            strobj = obj.__detail_str__(LT)
+        elif callable(getattr(obj, '__rich_str__', None)):
+            strobj = obj.__rich_str__(LT)
         elif callable(getattr(obj, '__verbose_str__', None)):
-            strobj = obj.__verbose_str__()
+            strobj = html.escape(obj.__verbose_str__())
         else: 
             strobj = fmt_str(obj)
-    elif ODM.sum_format & osf.verbose:
+    elif OSF == osf.rich:
+        if callable(getattr(obj, '__rich_str__', None)):
+            strobj = obj.__rich_str__(LT)
+        elif callable(getattr(obj, '__verbose_str__', None)):
+            strobj = html.escape(obj.__verbose_str__())
+        else: 
+            strobj = fmt_str(obj)
+    elif OSF & osf.verbose:
         if callable(getattr(obj, '__verbose_str__', None)):
-            strobj = obj.__verbose_str__()
+            strobj = html.escape(obj.__verbose_str__())
         else: 
             strobj = fmt_str(obj)
     else:
@@ -861,8 +991,91 @@ def odm_str(obj, ODM):
     
     return Awrapper.format(strobj) 
 
+#======================================================================================
+# Function to provide rendering methods compatible Django Generic Forms (and then some) 
+#======================================================================================
+
+def list_html_output(self, LDF=None):
+    ''' Helper function for outputting HTML lists of objects (intended for ListViews). 
+    
+        Used by as_table(), as_ul(), as_p(), as_br().
+    
+        an object display mode (ODM) can be specified to override the one in self.format if desired 
+        as this is what as_table etc do (providing compatible entry points with the Django Generic Forms).
+        
+        self is an instance of ListViewExtended (or any view that wants HTML rendering of a list of objects).
+        
+        Relies on:
+            odm_str:  which displays an object respecting the object_summary_format specified in self.format
+                      which in turn should be populated by get_list_display_format() which parses the request 
+                      for options.
+                      
+            self.queryset:    Which must be initialised by the calling form, defining the list of objects to format in HTML
+            
+            self.format:      Which should be of type list_display_format 
+    '''
+    #TODO: This should really support CSS classes like BaseForm._html_output, so that a class can be specified
+    
+    if LDF is None:
+        LDF = self.format.complete
+        
+    LMF = self.format.menus
+
+    # Define the standard HTML strings for supported formats    
+    if LDF == odm.as_table:
+        normal_row = "<tr>{menu:s}<td>{value:s}</td></tr>"
+    elif LDF == odm.as_ul:
+        normal_row = "<li>{menu:s}{value:s}</li>"
+    elif LDF == odm.as_p:
+        normal_row = "<p>{menu:s}{value:s}</p>"
+    elif LDF == odm.as_br:
+        normal_row = '{menu:s}{value:s}<br>'
+    else:
+        raise ValueError("Internal Error: format must always contain one of the object layout modes.")                
+
+    # Menu support is for three menu items against each list item
+    #    View for a DetailView
+    #    Edit for an UpdateView
+    #    Delete for a DeleteView
+
+    if LMF == lmf.none:
+        menu = ""
+    elif LMF == lmf.text:
+        menu = "[<a href='{view:s}'>view</a>] "
+        if self.request.user.is_authenticated:
+            menu += "[<a href='{edit:s}'>edit</a>] [<a href='{delete:s}'>delete</a>] "
+        if LDF == odm.as_table:
+            menu = "<td>{}</td>".format(menu)                    
+    elif LMF == lmf.buttons:
+        button = "<input type='button' onclick='location.href={};' value='{}' /> "
+        menu = button.format('"{view:s}"', 'view')
+        if self.request.user.is_authenticated:
+            menu += button.format('"{edit:s}"', 'edit') + button.format('"{delete:s}"', 'delete')
+        if LDF == odm.as_table:
+            menu = "<td>{}</td>".format(menu)                    
+
+    # Collect output lines in a list
+    output = []
+
+    # This evaluates the queryset
+    for o in self.queryset:
+        url_view = reverse('view', kwargs={'model': self.kwargs['model'], 'pk': o.pk})
+        url_edit = reverse('edit', kwargs={'model': self.kwargs['model'], 'pk': o.pk})
+        url_delete = reverse('delete', kwargs={'model': self.kwargs['model'], 'pk': o.pk})
+        
+        if self.request.user.is_authenticated:
+            html_menu = menu.format(view=url_view, edit=url_edit, delete=url_delete)
+        else:        
+            html_menu = menu.format(view=url_view)
+        
+        html_value = six.text_type(odm_str(o, self.format))
+        row = normal_row.format(menu=html_menu, value=html_value)
+        output.append(row)
+
+    return mark_safe('\n'.join(output))
+
 def object_html_output(self, ODM=None):
-    ''' Helper function for outputting HTML. 
+    ''' Helper function for outputting HTML formatted objects (intended for DetailViews). 
     
         Used by as_table(), as_ul(), as_p(), as_br().
     
@@ -1093,12 +1306,13 @@ def object_as_br(self):
     return self._html_output(odm.as_br)
 
 def object_as_html(self):
-    ''' Returns this object rendered as per the requested object display format.
-        Essentially selecting one of as_table, as_ul or as_p based on the request.
+    ''' Returns this object (self.object) rendered as per the requested object display format.
+        
+        Essentially selecting one of as_table, as_ul, as_p or as_brbased on the request.
         
         The other as_ methods provide compatibility with Djangos generic forms more 
         or less and they don't provide the HTML wrappers, this method, our AJAX entry
-        point, does so that a template can justspew out the HTML without having to 
+        point, does so that a template can just spew out the HTML without having to 
         worry about such a wrapper. That is, a template would normally contain:
         
         <table>
@@ -1118,13 +1332,19 @@ def object_as_html(self):
         would do and Javascript can fetch view.as_html and set the contents of the 
         div without a page reload (thus permitting format changes in situ with Javascript)
     '''
-    if self.format.mode.object == odm.as_table:
+    # The ListView and DetailView store format differently.
+    if type(self.format) == object_display_format:
+        fmt = self.format.mode.object
+    elif type(self.format) == list_display_format:
+        fmt = self.format.complete
+    
+    if fmt == odm.as_table:
         return mark_safe("<table>" + object_as_table(self) + "</table>")
-    elif self.format.mode.object == odm.as_ul:
+    elif fmt == odm.as_ul:
         return mark_safe("<ul>" + object_as_ul(self) + "</ul>")
-    elif self.format.mode.object == odm.as_p:
+    elif fmt == odm.as_p:
         return object_as_p(self)
-    elif self.format.mode.object == odm.as_br:
+    elif fmt == odm.as_br:
         return mark_safe("<p>" + object_as_br(self) + "</p>")
     else:
         raise ValueError("Internal Error: self.format must always contain one of the HTML layouts.")                
@@ -1135,10 +1355,10 @@ def object_as_html(self):
 
 def apply_sort_by(queryset):
     '''
-    Sorts a query set by the the fields and properties listed in a sort_by attribute if it's sepecified.
+    Sorts a query set by the the fields and properties listed in a sort_by attribute if it's specified.
     This augments the meta option order_by in models because that option cannot respect properties.
     This option though wants a sortable property to be specified and that isn't an object, has to be
-    like an into or string or something, specifically a field in the object that is sortable. So usage
+    like an int or string or something, specifically a field in the object that is sortable. So usage
     is a tad different to order_by. 
     '''
     model = queryset.model
@@ -1229,12 +1449,22 @@ def pretty_FilterSet(filterset):
     return " and ".join(pretty_specs)
   
 class ListViewExtended(ListView):
+    # HTML formattters stolen straight form the Django ModelForm class basically.
+    # Allowing us to present lists basically with the same flexibility as pre-formattted
+    # HTML objects.  
+    _html_output = list_html_output
+    
+    as_table = object_as_table
+    as_ul = object_as_ul
+    as_p = object_as_p
+    as_html = object_as_html # Chooses one of the first three based on request parameters
+        
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=True)
         add_format_context(self, context)
-        if hasattr(self, 'extra_context_provider') and callable(self.extra_context_provider): self.extra_context_provider()
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
     # Fetch all the objects for this model
@@ -1267,69 +1497,13 @@ class ListViewExtended(ListView):
         
         return self.queryset
 
-def get_neighbor_pks(model, pk, filterset=None, ordering=None):
-    '''
-    Given a model and pk that identify an object (model instance) will, given an ordering
-    (defaulting to the models ordering) and optionally a filterset (from url_filter), will
-    return a tuple that contains two PKs that of the prior and next neighbour in the list
-    either of all objects by that ordering or the filtered list (if a filterset is provided) 
-    :param model:        The model the object is an instance of
-    :param pk:           The primary key of the model instance being considered
-    :param filterset:    An optional filterset (see https://github.com/miki725/django-url-filter)
-    :param ordering:     An optional ordering (otherwise default model ordering is used). See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering  
-    '''
-    # If a filterset is provided ensure it's of the same model as specified (consistency).
-    if filterset and not filterset.Meta.model == model:
-        return None    
-    
-    # Get the ordering list for the model (a list of fields
-    # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
-    if ordering is None:
-        ordering = model._meta.ordering
-    
-    order_by = []
-    for f in ordering:
-        if f.startswith("-"):
-            order_by.append(F(f[1:]).desc())
-        else:
-            order_by.append(F(f).asc())
-
-    # Define the window functions for each neighbour    
-    window_lag = Window(expression=Lag("pk"), order_by=order_by)
-    window_lead = Window(expression=Lead("pk"), order_by=order_by)
-
-    # Get a queryset annotated with neighbours. If annotated attrs clash with existing attrs an exception 
-    # will be raised: https://code.djangoproject.com/ticket/11256    
-    try:
-        # If a non-empty filterset is supplied, respect that
-        if filterset and filterset.filter:
-            qs = filterset.filter() | model.objects.filter(pk=pk).distinct()
-        # Else we just use all objects
-        else:
-            qs = model.objects
-            
-        # Now annotate the querset with the prior and next PKs
-        qs = qs.annotate(neighbour_prior=window_lag, neighbour_next=window_lead)
-    except:
-        return None
-    
-    # Finally we need some trickery alas to do a query on the queryset! We can't add this WHERE
-    # as a filter because the LAG and LEAD Window functions fail then, they are emoty because 
-    # there is no lagger or leader on the one line result! So we have to run that query on the 
-    # whole table.then extract form the result the one line we want! Wish I could find a way to 
-    # do this in the Django ORM not with a raw() call.    
-    ao = model.objects.raw("SELECT * FROM ({}) ao WHERE {}=%s".format(str(qs.query), model._meta.pk.name),[pk])
-    
-    if ao:
-        return (ao[0].neighbour_prior,ao[0].neighbour_next)
-    else:
-        raise None    
-    
 class DetailViewExtended(DetailView):
     '''
     An enhanced DetailView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does (defined in BaseForm).
     '''
     # HTML formatters stolen straight form the Django ModelForm class
+    # Allowing us to present object detail views  basically with the same flexibility 
+    # as pre-formattted HTML objects.  
     _html_output = object_html_output
     
     as_table = object_as_table
@@ -1401,7 +1575,7 @@ class DetailViewExtended(DetailView):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False)
         add_format_context(self, context)
-        if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
 class DeleteViewExtended(DeleteView):
@@ -1439,7 +1613,7 @@ class DeleteViewExtended(DeleteView):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False, title='Delete')
         add_format_context(self, context)
-        if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
 # TODO: Ranks, Performances  etc. Fix edit forms
@@ -1467,7 +1641,7 @@ class CreateViewExtended(CreateView):
         print_debug("Adding model context")
         add_model_context(self, context, plural=False, title='New')
         print_debug("Adding extra context")
-        if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         print_debug("Got context data")
         return context
 
@@ -1555,7 +1729,7 @@ class CreateViewExtended(CreateView):
         # or the other way round or if it should be configurable or if it even matters.
         
         # Hook for pre-processing the form (before the data is saved)
-        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
 
         # Save this form
         self.object = form.save()
@@ -1573,7 +1747,7 @@ class CreateViewExtended(CreateView):
             return JsonResponse(errors)            
                     
         # Hook for post-processing data (after it's all saved) 
-        if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+        if callable(getattr(self, 'post_processor', None)): self.post_processor()
         
         return HttpResponseRedirect(self.get_success_url())
 
@@ -1599,7 +1773,7 @@ class UpdateViewExtended(UpdateView):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False, title='Edit')
-        if hasattr(self, 'extra_context') and callable(self.extra_context): self.extra_context(context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
     def get_object(self, *args, **kwargs):
@@ -1608,7 +1782,10 @@ class UpdateViewExtended(UpdateView):
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
-        self.fields = self.obj.fields_for_model()           
+        if callable(getattr(self.obj, 'fields_for_model', None)): 
+            self.fields = self.obj.fields_for_model()
+        else:           
+            self.fields = fields_for_model(self.model)
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
         
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
@@ -1634,7 +1811,7 @@ class UpdateViewExtended(UpdateView):
         #       If there's a bail then don't save anything, i.e don't save partial data. 
         
         # Hook for pre-processing the form (before the data is saved)
-        if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
+        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
 
         # Save this form
         self.object = form.save()
@@ -1652,7 +1829,7 @@ class UpdateViewExtended(UpdateView):
             return JsonResponse(errors)            
                     
         # Hook for post-processing data (after it's all saved) 
-        if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
+        if callable(getattr(self, 'post_processor')): self.post_processor()
 
         return HttpResponseRedirect(self.get_success_url())
          
@@ -2250,13 +2427,15 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
     specified in the models add_related property.
     
     if form_data or a db_object are specified will in that order of precedence 
-    use them to populate field_data (see below) so that a form can initialise 
+    use them to populate field_data (see below) so that a form can initialize 
     forms with data.
 
     Returns a list of generic forms each of which is:
         a standard Django empty form for the related model
-        a standard Django management form for the related model (just four hidden inputs that report the number of items in a formset really)
-        a dictionary of field data, which has for each field a list of values one for each related object (each list is the same length, 1 item for each related object)
+        a standard Django management form for the related model (just four hidden inputs that 
+                    report the number of items in a formset really)
+        a dictionary of field data, which has for each field a list of values one for each 
+                    related object (each list is the same length, 1 item for each related object)
 
         The data source for field_data can be 
             form_data (typically a QueryDict from a request.POST or request.GET) or 
@@ -2532,8 +2711,9 @@ def custom_field_callback(field):
 
 def fix_widgets(form):
     '''
-        For each field in a form, will add the type name of the field as a CSS class to the widget so that
-        Javascript in the form can act on the field based on class if needed.
+        For each field in a form, will add the type name of the field as a CSS class 
+        to the widget so that Javascript in the form can act on the field based on 
+        class if needed.
     '''
     for field in form.fields.values():
         field.widget.attrs["class"] =  type(field).__name__

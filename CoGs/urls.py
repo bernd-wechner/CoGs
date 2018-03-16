@@ -51,6 +51,7 @@ urlpatterns = [
     url(r'^leaderboards', views.view_Leaderboards, name='leaderboards'),
     
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
+    url(r'^json/(?P<model>\w+)$', views.ajax_List, name='get_list_html'),
     url(r'^json/(?P<model>\w+)/(?P<pk>\d+)$', views.ajax_Detail, name='get_detail_html'),
     url(r'^json/game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
     url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),

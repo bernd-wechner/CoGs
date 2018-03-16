@@ -732,7 +732,7 @@ class Player(PrivacyMixIn, AdminModel):
     
     @property
     def link_external(self) -> str:
-        if self.BGGname:
+        if self.BGGname and not 'BGGname' in self.hidden:
             return "https://boardgamegeek.com/user/{}".format(self.BGGname)
         else:
             return None
