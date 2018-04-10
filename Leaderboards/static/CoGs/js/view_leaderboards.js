@@ -349,8 +349,13 @@ function LBtable(LB, snapshot, links) {
 				if (j==2) {   // Player Name
 					content.href =  linkPlayer; 
 				} else if (j==4) { // Play Count
-					content.href =  url_list_Sessions + "?ranks__player=" + pkp + "&game=" + pkg;  
+					content.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg;  
 				} else if (j==5) { // Victory Count
+					// FIXME: What link can get victories in teams as well?
+					//        And are team victories listed in the victory count at all?
+					//        url_filters can only be ANDs I think, so this hard for team
+					//        victories. One way is if Performance has a field is_victory
+					//        that can be filtered on. Currently has a property that returns this
 					content.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg;  
 				}
 				content.innerHTML = val;

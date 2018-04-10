@@ -5,9 +5,14 @@ import cProfile, pstats, io
 import pytz
 from datetime import datetime, date, timedelta
 
-from collections import OrderedDict
+#from collections import OrderedDict
 
-from django_generic_view_extensions import  datetime_format_python_to_PHP, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended, class_from_string, list_display_format, object_display_format
+from django_generic_view_extensions.views import DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended 
+from django_generic_view_extensions.util import  datetime_format_python_to_PHP, class_from_string
+from django_generic_view_extensions.options import  list_display_format, object_display_format
+
+
+
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
 from django import forms
@@ -702,6 +707,20 @@ def ajax_Detail(request, model, pk):
     html = view.as_html()
     
     response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
+
+    # Add object browser details if available. Should be added by DetailViewExtended    
+    if hasattr(view, 'object_browser'):
+        response['object_browser'] = view.object_browser
+        
+        if view.object_browser[0]:
+            response['json_URL_prior'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[0]})
+        else:
+            response['json_URL_prior'] = response['json_URL']
+             
+        if view.object_browser[1]:
+            response['json_URL_next'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[1]})
+        else:
+            response['json_URL_next'] = response['json_URL']
      
     return HttpResponse(json.dumps(response))
 
@@ -822,7 +841,7 @@ def view_Kill(request, model, pk):
 
 import csv
 from dateutil import parser
-from django_generic_view_extensions import fmt_str
+from django_generic_view_extensions.html import fmt_str
 
 def import_sessions():
     title = "Import CoGs scoresheet"

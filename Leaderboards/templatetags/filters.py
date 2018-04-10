@@ -35,6 +35,10 @@ def NoneToNull(value):
     return "[" + ", ".join([none_to_null(obj) for obj in value]) + "]"
 
 @register.filter
+def ToArray(value):
+    return list(value)
+
+@register.filter
 def QuoteValues(value):
     """
     Replaces all strings in a list with a quoted copy.
@@ -55,7 +59,6 @@ def QuoteValues(value):
 
     return "[" + ", ".join([quote_values(obj) for obj in value]) + "]"
 
-#@register.filter(name='add_attributes')
 @register.filter
 def add_attributes(field, css):
     attrs = {}

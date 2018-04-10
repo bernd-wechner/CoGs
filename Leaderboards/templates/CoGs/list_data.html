@@ -8,13 +8,16 @@
 	<p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
 {% endif %}	   
 
-<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
 	// Save the URL when we load for later use
 	function saveURL() {
 		URL = "{% url 'get_list_html' model=model_name %}";
 	}
 	window.onload = saveURL;
+	
+	var filters	= {{filters}};
 
 	function toggle_filters() {
 		current = $(".toggle")[0].style.visibility;
@@ -29,8 +32,9 @@
 	}
 	
 	function URLopts() {
-		opts = []
+		var opts = []
 	
+		// The basic formatting and layout options
 		elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
 		complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
 		link = $('input[type=radio][name=opt_link]:checked').attr('value');
@@ -41,8 +45,14 @@
 		opts.push(link);
 		opts.push(menus);
 		
+		// The filter if specified
+		for (f in filters) opts.push(filters[f]);
+		
+		opts.push(filter_url_opts());
+		opts.push(ordering_url_opts());
+		
 		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
-
+		
 		// Add the global league filter to URL opts used in GET requests 
 		$league_id = $("#id_league_view").val();
 		url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
@@ -67,7 +77,6 @@
 		}
 	};
 	
-	
 	function reload(event) {
 		$("#reloading_icon").css("visibility", "visible");
 		$("#opt_brief").prop('disabled', true);
@@ -78,6 +87,65 @@
 		var url = URL + URLopts();
 		REQUEST.open("GET", url, true);
 		REQUEST.send(null);		
+	}
+	
+
+	// These functions need to be writen/tested/ and then made part of the widgets themselves.
+	// They are here for now to write and test before moving into widgets
+
+	// Filter widget code seems in order and tested bar:
+	// TODO add add datetimepicker to these
+	// TODO: Ignore options who have no value! Don't add them to fopts.
+	// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
+  	function CollectFilterField(index, value) {
+  		var field = $(value);
+  		console.log("CollectFilterField: " + field);
+  		
+  		var opt = field.prop('name');
+  		
+  		var val = null;
+  		if (field.is("input"))
+  			val = field.val();
+  		else if (field.is("select"))
+  			val = field.find(":selected").val();
+  		
+		fopts.push(opt + "=" + val);
+  	}
+	
+ 	function filter_url_opts() {
+		fopts = [];
+		var widgetid = "session_filtering_widget";
+  		console.log("filter_url_opts: " + widgetid);
+		$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
+		return fopts.join("&");	
+ 	}
+  	
+	// Ordering widget code seems in order and tested. Need to move this into widget def.	 
+  	function CollectOrderingField(index, value) {fields.push($(value).text());}
+  	function CollectOrderingDir(index, value) {dirs.push($(value).text());}
+
+	function get_ordering_dir(text) {
+	  if (text == String.fromCharCode(9650)) return "";
+	  else if (text == String.fromCharCode(9660)) return "-";
+	  else if (text == String.fromCharCode(9644)) return null;
+	  else return null;
+	}
+
+ 	function ordering_url_opts() {
+		var widgetid = "session_ordering_widget";  	
+		fields = [];  dirs = [];
+		$("#"+widgetid).find("span[id^='ordering_field']").each(CollectOrderingField);
+		$("#"+widgetid).find("span[id^='ordering_dir']").each(CollectOrderingDir);
+		
+		var opts = [];
+		for (i = 0; i < fields.length; i++) {
+			pfx = get_ordering_dir(dirs[i]);
+			if (pfx != null) { 
+				opts.push(pfx+fields[i]);
+			}
+		}
+		
+		return "ordering=" + opts.join(",");
 	}	
 </script>     
 
@@ -145,11 +213,27 @@
 			<input type="radio" name="opt_menus" id="opt_menus_buttons" value="button_menus" {{format.menus|checked:2}}>Buttons
 		</td>
 	</tr>		
+	<tr id="opt_filters" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>Filter on:</b>
+		</td>
+		<td class='tight options'>
+			{{ widget_filters }}		
+		</td>
+	</tr>
+	<tr id="opt_ordering" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>Order by:</b>
+		</td>
+		<td class='tight options'>
+			{{ widget_ordering }}		
+		</td>
+	</tr>	
 </table>
 <p/>
 
-{% if query %}
-	<p>{{query}}</p>
+{% if txt_filters %}
+	<p><b>{{model_name_plural|title}} for:</b> {{txt_filters}}</p>
 {% endif %}
 
 <div id="data">{{ view.as_html }}</div>

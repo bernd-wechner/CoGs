@@ -1,32 +1,28 @@
-# -*- coding: utf-8 -*-
 import trueskill
 import html
 
-from django.db import models, connection, DataError, IntegrityError
+from django.db import models, DataError, IntegrityError #, connection, 
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
-#from django.core import checks
-from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned, PermissionDenied
+from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
 from django.urls import reverse_lazy
 from django.utils import formats, timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
-#from django_intenum import IntEnumField
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 
 from collections import OrderedDict
-#from itertools import chain
-#from enum import IntEnum
 from math import isclose
-#from IPython.external.jsonschema._jsonschema import FLOAT_TOLERANCE
 from datetime import datetime, timedelta
-from cuser.middleware import CuserMiddleware
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
 
-from django_generic_view_extensions import flt, field_render, link_target_url, property_method
+from django_generic_view_extensions.options import flt
+from django_generic_view_extensions.model import field_render, link_target_url
+from django_generic_view_extensions.decorators import property_method
+
 
 # CoGs Leaderboard Server Data Model
 #
@@ -1170,6 +1166,11 @@ class Session(AdminModel):
     #     either one player per Rank (in an Individual play session) or one Team per rank (in a Team play session)
     #     This is because ranks are associated with players in individual play mode but teams in Team play mode, 
     #     while performance is always tracked by player.
+
+    # TODO: consider if we can filter onj properties or specify annotations 
+    #       somehow to filter on
+    filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
+    order_options = ['date_time', 'game', 'league']
 
     @property
     def num_competitors(self) -> int:

@@ -146,8 +146,9 @@ class PrivacyMixIn():
                         # Begin by assuming it is hidden
                         hidden = True
                         
-                        if user == get_Owner(self): 
-                            hidden = False # Don't ever hide this field from its owner, no tests needed
+                        # Don't ever hide this field from an admin (superuser) or its owner, no tests needed
+                        if user.is_superuser or user == get_Owner(self): 
+                            hidden = False 
                         else:
                             rule_flags = getattr(self, rule_field.name)
                             for flag in rule_flags:

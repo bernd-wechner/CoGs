@@ -10,7 +10,6 @@ from django.contrib.flatpages import views as flat_views
 # from functools import reduce
 
 from Leaderboards import views
-from django_generic_view_extensions import odf
 
 urlpatterns = [
     url(r'^$', views.index, name='home'),

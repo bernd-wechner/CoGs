@@ -4,30 +4,45 @@
 {% block title %}{{title}}{% endblock %}
 {% block content %}
 
-{#TODO: Add previous and next buttons for navigating items easily. Should go via the models order by value, the order they are listed in on lists.#}
-
-<p>
-{# The best site I know for finding good arrows: http://stackoverflow.com/questions/6520445/overriding-get-method-in-models #}
-	<a onclick="fetch_neighbour('prior');">&#9664;</a>
-{% if user.is_authenticated %}
-	<a href="{% url 'edit' model_name pk %}">[Edit]</a>
-	<a href="{% url 'delete' model_name pk %}">[Delete]</a>
-	<a href="{% url 'add' model_name %}">[New]</a>
-{% endif %}	  
-	<a href="{% url 'list' model_name %}">[List]</a>
-	<a onclick="fetch_neighbour('next');">&#9658;</a>
-</p>
-
-
 {% if view %}
 	<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
 	<script type="text/javascript">
 		// Save the URL when we load for later use
-		function saveURL() {
+		function init() {
+			filters	= {{filters}};
+			object_browser = {{view.object_browser|NoneToNull}};
+			
 			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
+			
+			// It's awkward how we can to come via the template/context on load and via the ajax response on browsing. 
+			// So this kind of info has to pass into the page from two directions. 
+			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse) 
+			{% if view.object_browser.0 %}
+				URL_prior = "{% url 'get_detail_html' model=model_name pk=view.object_browser.0 %}";
+			{% else %}
+				URL_prior = URL
+			{% endif %}
+
+			{% if view.object_browser.1 %}
+				URL_next = "{% url 'get_detail_html' model=model_name pk=view.object_browser.1 %}";
+			{% else %}
+				URL_next = URL
+			{% endif %}
+			
+			update_browser();
 		}
-		window.onload = saveURL;
-	
+		window.onload = init;
+		
+		function update_browser() {
+			pk_prior = object_browser[0];
+			pk_next = object_browser[1];
+		
+			$("#browser_prior").css("visibility", pk_prior == null ? "hidden" : "visible");
+			$("#browser_next").css("visibility", pk_next == null ? "hidden" : "visible");
+		
+			$("#browser_position").html("{{model_name}} " + object_browser[2] + " of "  + object_browser[3]);
+		}
+		
 		function toggle_filters() {
 			current = $(".toggle")[0].style.visibility;
 			if (current == "collapse") {
@@ -72,6 +87,7 @@
 					opts.push("no{{setting}}")
 			{% endfor %}
 
+			// The basic formatting and layout options
 			format_object = $('input[type=radio][name=opt_as]:checked').attr('value');
 			format_list_vals = $('input[type=radio][name=opt_list_values_as]:checked').attr('value');
 			format_obj_str = $('input[type=radio][name=opt_sum_format]:checked').attr('value');
@@ -87,6 +103,9 @@
 			opts.push('charlim='+format_char_lim);
 			opts.push('indent='+format_indent);
 			opts.push('linewidth='+format_line_width);
+
+			// The filter if specified (relevant only for prior/next browsing, but needs to be conserved if specified)
+			for (f in filters) opts.push(filters[f]);
 			
 			url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 
@@ -103,8 +122,15 @@
 			if (this.readyState === 4 && this.status === 200){
 				var response = JSON.parse(this.responseText);
 				$("#data").html(response.HTML);
+				
 				URL = response.json_URL 
+				URL_prior = response.json_URL_prior
+				URL_next = response.json_URL_next
+				object_browser = response.object_browser
+				update_browser();
+				
      			window.history.pushState("","", response.view_URL);
+				
 				$("#reloading_icon").css("visibility", "hidden");
 				$("#opt_normal").prop('disabled', false);
 				$("#opt_all_model").prop('disabled', false);
@@ -125,13 +151,23 @@
 			REQUEST.send(null);
 		}
 		
-		function fetch_neighbour(which) {
+		function fetch_neighbour(url) {
 			// fetch a neighbouring object without reloading the whole page (AJAX request)
-			var url = URL + URLopts() + "&" + which;
-			REQUEST.open("GET", url, true);
+			REQUEST.open("GET", url + URLopts(), true);
 			REQUEST.send(null);
 		}								
 	</script>
+	
+	<div id="pagemenu">
+		<p>
+			{% if user.is_authenticated %}
+				<a href="{% url 'edit' model_name pk %}">[Edit]</a>
+				<a href="{% url 'delete' model_name pk %}">[Delete]</a>
+				<a href="{% url 'add' model_name %}">[New]</a>
+			{% endif %}	  
+				<a href="{% url 'list' model_name %}">[List]</a>
+		</p>
+	</div>
 	
 	<table id="DetailViewOptions" class="tight">
 		<tr>
@@ -241,6 +277,17 @@
 		</tr>
 	</table>
 	<p/>
+
+	<div id="browser_control"><p>
+		{# The best site I know for finding good arrows: http://stackoverflow.com/questions/6520445/overriding-get-method-in-models #}
+		<a id="browser_prior" onclick="fetch_neighbour(URL_prior);">&#9664;</a>
+		<span id="browser_position"></span>		
+		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>	
+		{% if txt_filters %}
+			in the <b>filtered set:</b> {{txt_filters}}
+		{% endif %}
+		</p>
+	</div>
 
 	<div id="data">{{ view.as_html }}</div>
 {% else %}
