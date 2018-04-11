@@ -213,7 +213,9 @@
 			<input type="radio" name="opt_menus" id="opt_menus_buttons" value="button_menus" {{format.menus|checked:2}}>Buttons
 		</td>
 	</tr>		
-	<tr id="opt_filters" class='tight options toggle' style="visibility:collapse;">
+{#	Removed the toggle class from these two rows so they remain hidden.#}
+{#	In development and not ready yet.#}
+	<tr id="opt_filters" class='tight options' style="visibility:collapse;">
 		<td class='tight options'>
 			<b>Filter on:</b>
 		</td>
@@ -221,7 +223,7 @@
 			{{ widget_filters }}		
 		</td>
 	</tr>
-	<tr id="opt_ordering" class='tight options toggle' style="visibility:collapse;">
+	<tr id="opt_ordering" class='tight options' style="visibility:collapse;">
 		<td class='tight options'>
 			<b>Order by:</b>
 		</td>

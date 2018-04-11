@@ -72,6 +72,7 @@ class ListViewExtended(ListView):
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
+
         add_model_context(self, context, plural=True)
         add_format_context(self, context)
         add_filter_context(self, context, self.filterset)

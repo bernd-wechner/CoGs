@@ -23,7 +23,7 @@ SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 #       https://docs.djangoproject.com/en/1.11/ref/contrib/staticfiles/
 #       
 # This is where manage.py collectstatic will look for static files. A tuple of dirs.
-STATICFILES_DIRS = (os.path.join(BASE_DIR, "Leaderboards/static/"),)
+# STATICFILES_DIRS = [os.path.join(BASE_DIR, "Leaderboards/static")]
 
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
@@ -70,6 +70,7 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.flatpages',
     'django_extensions',
+    'reset_migrations',
     'Leaderboards'
 )
 

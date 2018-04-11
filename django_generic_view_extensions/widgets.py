@@ -69,8 +69,8 @@ class FilterWidget(SelectMultiple):
                 for option in self.model.filter_options:
                     choices.append((option, None))  # None is  a placeholder. We'll put subwidgets there when rendering
 
-            # Remove model from kwargs and add choices before calling super (SelectMultiple wants choices!)
-            kwargs["choices"] = choices
+                # Add choices before calling super (SelectMultiple wants choices!)
+                kwargs["choices"] = choices
                                         
         super().__init__(*args, **kwargs)
 
@@ -88,7 +88,7 @@ class FilterWidget(SelectMultiple):
         # Only useful if a) not already done on page and with jquery added. So better idea is to supply        
         # context items for including jquery, and the datetimepiccker bits and for including this scriplet.
         # i.e. not here.
-        script = '<script>$(function(){$(".DateTimeField").datetimepicker({"format": datetime_format,"step" : 15});});</script>'
+        script = "" #'<script>$(function(){$(".DateTimeField").datetimepicker({"format": datetime_format,"step" : 15});});</script>'
         
         for index, (option, _) in enumerate(self.choices):
             option = self.choices[index][0]
@@ -150,7 +150,7 @@ class OrderingWidget(SelectMultiple):
         # If an ordering is requested via the URL, it comes in as the choices kwarg.
         ordering = kwargs.pop('choices', None)
         
-        # If we got an orderig in the URL save it, else if the model has a default orderig use that
+        # If we got an ordering in the URL save it, else if the model has a default ordering use that
         if ordering:
             self.initial_values = ordering.split(',')
         elif self.model and hasattr(self.model._meta, 'ordering'):
@@ -178,7 +178,7 @@ class OrderingWidget(SelectMultiple):
                         
                     requested[fieldname] = option 
 
-            # Now we want to do same of order_options
+            # Now we want to do same for order_options
             defaults = OrderedDict()        
             if hasattr(self.model, 'order_options') and isinstance(self.model.order_options, list):
                 for option in self.model.order_options:
@@ -195,7 +195,8 @@ class OrderingWidget(SelectMultiple):
             if len(requested) > 0:
                 for fieldname, option in requested.items():
                     choices.append((option, fields[fieldname].label))
-                    del defaults[fieldname]
+                    if fieldname in defaults:
+                        del defaults[fieldname]
 
             if len(defaults) > 0:
                 for fieldname, option in defaults.items():

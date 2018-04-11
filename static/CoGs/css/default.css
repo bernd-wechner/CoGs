@@ -41,10 +41,6 @@ th {
     white-space: nowrap;
 }
 
-.greedy {
-    width: 100%;
-}
-
 
 .Number {}
 .String {}
@@ -62,6 +58,16 @@ a:link {
 a:visited {
     text-decoration: none;
     color: blue;
+}
+
+a.field_link:link {
+    text-decoration: none;
+    color: initial;
+}
+
+a.field_link:visited {
+    text-decoration: none;
+    color: initial;
 }
 
 a:hover {
@@ -115,28 +121,30 @@ table.teamplayers {
 
 table.options
 {
+	margin-left: 10px;
 	margin-right: 10px;
+	
 	border-color: #600;
 	border-style: solid;
 	border-collapse: collapse;
 	border-spacing: 10px;
 	border-width: 1px 1px 1px 1px;
-	margin-left: 10px;
 }
 
 td.options
 {
-	border-color: #600;
-	border-style: solid;
 	margin: 0;
-	white-space: nowrap;	
 	
-	border-style: none;
-	border-width: 0 0 0 0;
 	padding-top: 10px;
 	padding-bottom: 4px;
 	padding-left: 10px;
 	padding-right: 10px;
+
+	white-space: nowrap;	
+
+	border-color: #600;
+	border-style: none;
+	border-width: 0 0 0 0;
 }
 
 td.options.indent
@@ -219,5 +227,18 @@ td.leaderboard.wrapper
 	border-style: none;
 	padding-left: 0;
 	padding-right: 15px;
+}
+
+/* A simple override to kill margins and padding on an element */
+.tight
+{
+  padding: 0 !important;
+  margin: 0 !important;
+  border-spacing: 0 !important;
+}
+
+/* A simple override to force an element to consume space  */
+.greedy {
+    width: 100% !important;
 }
 

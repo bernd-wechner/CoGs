@@ -151,6 +151,9 @@ def add_filter_context(view, context, filterset):
     '''
     context['widget_filters'] = FilterWidget(model=view.model, choices=view.request.GET)
     
+    # Default empty value so templates can include Javascript "var filters    = {{filters}};" without issue.
+    context["filters"] = mark_safe('""')  
+    
     if hasattr(view, 'filterset') and not view.filterset is None:
         context["txt_filters"] = mark_safe(format_filterset(view.filterset, as_text=True))        
         context["filters"] = mark_safe(format_filterset(view.filterset, as_text=False))
