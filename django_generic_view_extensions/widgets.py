@@ -220,15 +220,18 @@ class OrderingWidget(SelectMultiple):
             #option = self.choices[index][0]
             if option.startswith("~"):
                 arrow = "&#{};".format(self.no_arrow)
+                name = option[1:]
             elif option.startswith("-"):
                 arrow = "&#{};".format(self.down_arrow)
+                name = option[1:]
             else:
                 arrow = "&#{};".format(self.up_arrow)
+                name = option
                 
             widget = ("<div>" 
-                      "<span id='ordering_field{index}'>{field}</span> "  
+                      "<span id='ordering_field{index}' name='{name}'>{field}</span> "  
                       "<span id='ordering_dir{index}' onclick='toggle_ordering_dir(this);'>{arrow}</span>"
-                      "</div>").format(index=index, field=label, arrow=arrow)
+                      "</div>").format(index=index, name=name, field=label, arrow=arrow)
                       
             widgets.append(widget)
 
@@ -277,7 +280,7 @@ class OrderingWidget(SelectMultiple):
 #                             "return URL"
 #                         "}"
                         
-                    "</script>").format(id=name, up=self.up_arrow, down=self.down_arrow, nodir=self.no_arrow)
+                    "</script>\n").format(id=name, up=self.up_arrow, down=self.down_arrow, nodir=self.no_arrow)
       
         footer = "</div>"
                       

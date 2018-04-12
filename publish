@@ -39,7 +39,7 @@ $source_dir/manage.py collectstatic  --verbosity 0 --noinput
 
 # Now publish the site
 echo Copying site to $server...
-site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware manage.py DumpData)
+site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware django_model_admin_fields django_model_privacy_mixin DumpData manage.py)
 for source in ${site[@]}; do
 	# If we're excluding static dirs, we still want to copy the static folder
 	if grep -q $source $exclusion_file; then

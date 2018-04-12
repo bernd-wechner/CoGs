@@ -13,11 +13,18 @@
 <script type="text/javascript">
 	// Save the URL when we load for later use
 	function saveURL() {
-		URL = "{% url 'get_list_html' model=model_name %}";
+		URL_ajax = "{% url 'get_list_html' model=model_name %}";
+		URL_page = window.location.href.split('?')[0];
 	}
 	window.onload = saveURL;
-	
+
 	var filters	= {{filters}};
+	var default_elements = "{{format_default.object_summary_format}}";
+	var default_complete = "{{format_default.object_display_modes}}";
+	var default_link = "{{format_default.field_link_target}}";
+	var default_menus = "{{format_default.list_menu_format}}";
+	var default_index = "{{format_default.index}}";
+	var default_ordering = "{{ordering_default}}";
 
 	function toggle_filters() {
 		current = $(".toggle")[0].style.visibility;
@@ -39,17 +46,25 @@
 		complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
 		link = $('input[type=radio][name=opt_link]:checked').attr('value');
 		menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
+		index = $('#opt_index').is(':checked') ? "index" : "noindex";
 		
-		opts.push(elements);
-		opts.push(complete);
-		opts.push(link);
-		opts.push(menus);
+		filter_opts = filter_url_opts();
+		ordering_opts = ordering_url_opts();
 		
-		// The filter if specified
-		for (f in filters) opts.push(filters[f]);
-		
-		opts.push(filter_url_opts());
-		opts.push(ordering_url_opts());
+		// The filter if specified on the URL may contain condition the filter widget doesn't support
+		// So if  URL supplied filter is not in the widget provided filter opts, include it
+		for (f in filters)
+			if (filter_opts.indexOf(filters[f]) < 0) 
+				opts.push(filters[f]);
+
+		if (elements != default_elements) opts.push(elements);
+		if (complete != default_complete) opts.push(complete);
+		if (link != default_link) opts.push(link);
+		if (menus != default_menus) opts.push(menus);
+		if (index != default_index) opts.push(index);	
+				
+		if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
+		if (ordering_opts.length > 0) opts.push(ordering_opts.join("&"));
 		
 		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 		
@@ -66,7 +81,7 @@
 		if (this.readyState === 4 && this.status === 200){
 			var response = JSON.parse(this.responseText);
 			$("#data").html(response.HTML);
-			URL = response.json_URL 
+			URL_ajax = response.json_URL 
  			window.history.pushState("","", response.view_URL);
 			$("#reloading_icon").css("visibility", "hidden");
 			$("#opt_brief").prop('disabled', false);
@@ -84,7 +99,7 @@
 		$("#opt_rich").prop('disabled', true);
 		$("#opt_detail").prop('disabled', true);
 		$("#opt_specified").prop('disabled', true);
-		var url = URL + URLopts();
+		var url = URL_ajax + URLopts();
 		REQUEST.open("GET", url, true);
 		REQUEST.send(null);		
 	}
@@ -94,8 +109,8 @@
 	// They are here for now to write and test before moving into widgets
 
 	// Filter widget code seems in order and tested bar:
-	// TODO add add datetimepicker to these
-	// TODO: Ignore options who have no value! Don't add them to fopts.
+	// TODO: add datetimepicker to these
+	// TODO: ignore options who have no value! Don't add them to fopts.
 	// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
   	function CollectFilterField(index, value) {
   		var field = $(value);
@@ -108,8 +123,9 @@
   			val = field.val();
   		else if (field.is("select"))
   			val = field.find(":selected").val();
-  		
-		fopts.push(opt + "=" + val);
+
+		if (val != 'None' && val != "")
+			fopts.push(opt + "=" + val);
   	}
 	
  	function filter_url_opts() {
@@ -117,11 +133,11 @@
 		var widgetid = "session_filtering_widget";
   		console.log("filter_url_opts: " + widgetid);
 		$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
-		return fopts.join("&");	
+		return fopts;	
  	}
   	
 	// Ordering widget code seems in order and tested. Need to move this into widget def.	 
-  	function CollectOrderingField(index, value) {fields.push($(value).text());}
+  	function CollectOrderingField(index, value) {fields.push($(value).attr('name'));}
   	function CollectOrderingDir(index, value) {dirs.push($(value).text());}
 
 	function get_ordering_dir(text) {
@@ -145,8 +161,13 @@
 			}
 		}
 		
-		return "ordering=" + opts.join(",");
-	}	
+		return opts.length > 0 ? ["ordering=" + opts.join(",")] : [];
+	}
+	
+	function show_url() {
+		var url = URL_page + URLopts();
+		window.history.pushState("","", url);
+	}
 </script>     
 
 <p>{{model_name_plural | title}}: {{ object_list | length }}</p>
@@ -180,6 +201,7 @@
 			<input type="radio" name="opt_elements" id="opt_elements_verbose" value="verbose" {{format.elements|checked:2}}>Verbose
 			<input type="radio" name="opt_elements" id="opt_elements_rich" value="rich" {{format.elements|checked:3}}>Rich
 			<input type="radio" name="opt_elements" id="opt_elements_detail" value="detail" {{format.elements|checked:4}}>Detail
+			<a onclick='show_url()' style='margin-left: 8ch;'>[URL]</a>
 		</td>
 	</tr>
 	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
@@ -211,6 +233,14 @@
 			<input type="radio" name="opt_menus" id="opt_menus_none" value="no_menus" {{format.menus|checked:0}}>None
 			<input type="radio" name="opt_menus" id="opt_menus_text" value="text_menus" {{format.menus|checked:1}}>Text
 			<input type="radio" name="opt_menus" id="opt_menus_buttons" value="button_menus" {{format.menus|checked:2}}>Buttons
+		</td>
+	</tr>		
+	<tr id="opt_index_formats" class='tight options toggle' style="visibility:collapse;">
+		<td class='tight options'>
+			<b>Index:</b>
+		</td>
+		<td class='tight options'>
+			<input type="checkbox" id="opt_index" {{format.index|checked}}>
 		</td>
 	</tr>		
 {#	Removed the toggle class from these two rows so they remain hidden.#}

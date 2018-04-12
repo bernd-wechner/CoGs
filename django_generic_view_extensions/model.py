@@ -45,12 +45,12 @@ __detail_str__,    are properties like __str__ that permit a model to supply dif
                         
     __rich_str__        like __verbose_str__, but can contain internal HTML markup for a richer presentation.
                         Should have a signature of:
-                            def __rich_str__(self,  link=flt.default):
+                            def __rich_str__(self,  link=None):
                         and should call on field_render herein passing that link in.
     
     __detail_str__      like __richs_str__, but can span multiple lines.
                         Should have a signature of:
-                            def __detail_str__(self,  link=flt.default):
+                            def __detail_str__(self,  link=None):
                         and should call on field_render herein passing that link in.
     
 TODO: Add __table_str__ which returns a TR, and if an arg is specified or if it's a class method perhaps a header TR 
@@ -65,9 +65,10 @@ from django.db import models
 # Package imports
 from . import FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
 from .util import isListType, isListValue, isDictionary, safetitle
-from .options import flt, osf, odf
+from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str
+from django_generic_view_extensions.options import field_link_target
 
 
 def add_related(model):
@@ -117,13 +118,16 @@ def apply_sort_by(queryset):
     else:
         return queryset
 
-def link_target_url(obj, link_target=flt.default):
+def link_target_url(obj, link_target=None):
     '''
     Given an object returns the url linking to that object as defined in the model methods.
     :param obj:            an object, being an instance of a Django model which has link methods
     :param link_target:    a field_link_target that selects which link method to use
     '''
     url = ""
+    
+    if link_target is None:
+        link_target = default(flt)
     
     if link_target == flt.internal and hasattr(obj, "link_internal"):
         url = obj.link_internal
@@ -132,7 +136,7 @@ def link_target_url(obj, link_target=flt.default):
     
     return url
 
-def field_render(field, link_target=flt.default, sum_format=osf.default):
+def field_render(field, link_target=None, sum_format=None):
     '''
     Given a field attempts to render it as text to use in a view. Tries to do two things:
     
@@ -156,6 +160,12 @@ def field_render(field, link_target=flt.default, sum_format=osf.default):
     verbose and brief summaries are expected to be free of HTML so can be wrapped in an Anchor tag and don't
     need to be marked safe.
     '''
+    if link_target is None:
+        link_target = default(flt)
+    
+    if sum_format is None:
+        sum_format = default(osf)
+    
     tgt = None
     
     if link_target == flt.mailto:

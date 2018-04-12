@@ -8,12 +8,16 @@ Functions that add to the context that templates see.
 # Django imports
 from django.utils.safestring import mark_safe
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
+from django.core.serializers.json import DjangoJSONEncoder
+
+# Python imports
+import json
 
 # Package imports
 from .util import safetitle, datetime_format_python_to_PHP
 from .model import add_related
 from .forms import get_related_forms, classify_widgets
-from .options import odf, odm
+from .options import urldefaults, odf, odm
 from .widgets import FilterWidget, OrderingWidget
 from .filterset import format_filterset
 
@@ -79,6 +83,7 @@ def add_format_context(view, context):
         # List views are simple
         if view.operation == "list":
             context["format"] = view.format
+            context["format_default"] = urldefaults
         
         # Detail view support a richer array of options that we handle with more care
         elif view.operation == "view":
@@ -174,5 +179,12 @@ def add_ordering_context(view, context, ordering):
     context['widget_ordering'] = OrderingWidget(model=view.model, choices=view.request.GET.get('ordering', None))
     
     if hasattr(view, 'ordering') and not view.ordering is None:
-        context["ordering"] = view.ordering        
+        context["ordering"] = view.ordering
+    else:   
+        context["ordering"] = ""
+
+    if hasattr(view.model._meta, 'ordering'):
+        context["ordering_default"] = "ordering=" + ",".join(view.model._meta.ordering)        
+    else:   
+        context["ordering_default"] = ""
 

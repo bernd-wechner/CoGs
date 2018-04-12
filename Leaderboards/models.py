@@ -500,9 +500,9 @@ class League(AdminModel):
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (manager: {})".format(self, self.manager)
-    def __rich_str__(self,  link=flt.default): 
+    def __rich_str__(self,  link=None): 
         return u"{} (manager: {})".format(field_render(self, link), field_render(self.manager, link))
-    def __detail_str__(self,  link=flt.default):
+    def __detail_str__(self,  link=None):
         detail = self.__rich_str__(link)
         detail += "<UL>"
         for p in self.players.all():
@@ -548,7 +548,7 @@ class Team(AdminModel):
         name = self.name if self.name else "" 
         return name + u" (" + u", ".join([str(p) for p in self.players.all()]) + u")"
     
-    def __rich_str__(self,  link=flt.default):
+    def __rich_str__(self,  link=None):
         games = self.games_played
         if len(games) > 2:
             game_str = ", ".join(map(lambda g: field_render(g, link), games[0:1])) + "..."
@@ -560,7 +560,7 @@ class Team(AdminModel):
         name = field_render(self.name, link_target_url(self, link)) if self.name else "" 
         return name + u" (" + u", ".join([field_render(p, link) for p in self.players.all()]) + u") for " + game_str 
         
-    def __detail_str__(self,  link=flt.default):
+    def __detail_str__(self,  link=None):
         if self.name: 
             detail = field_render(self.name, link_target_url(self, link))
         else:
@@ -778,10 +778,10 @@ class Player(PrivacyMixIn, AdminModel):
     def __verbose_str__(self): 
         return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
     
-    def __rich_str__(self, link=flt.default): 
+    def __rich_str__(self, link=None): 
         return u'{} - {}'.format(field_render(self.__verbose_str__(), link_target_url(self, link)), field_render(self.email_address, link if link == flt.none else flt.mailto))
 
-    def __detail_str__(self,  link=flt.default):
+    def __detail_str__(self,  link=None):
         detail = self.__rich_str__(link)
         
         lps = self.leaderboard_positions
@@ -1087,10 +1087,10 @@ class Game(AdminModel):
     def __verbose_str__(self): 
         return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
 
-    def __rich_str__(self, link=flt.default): 
+    def __rich_str__(self, link=None): 
         return u'{} (plays {}-{}), Luck factor: {:0.2f}, Draw probability: {:d}%'.format(field_render(self.name, link_target_url(self, link)), self.min_players, self.max_players, self.trueskill_tau*100, int(self.trueskill_p*100))    
 
-    def __detail_str__(self,  link=flt.default):
+    def __detail_str__(self,  link=None):
         detail = self.__rich_str__(link)
         
         plays = self.league_plays
@@ -1132,7 +1132,7 @@ class Location(AdminModel):
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (used by: {})".format(self.__str__(), ", ".join(list(self.leagues.all().values_list('name', flat=True))))
-    def __rich_str__(self,  link=flt.default):
+    def __rich_str__(self,  link=None):
         leagues = list(self.leagues.all())
         leagues = list(map(lambda l: field_render(l, link), leagues))
         return u"{} (used by: {})".format(field_render(self, link), ", ".join(leagues))
@@ -1675,7 +1675,7 @@ class Session(AdminModel):
             self.location, 
             self.game)
         
-    def __rich_str__(self, link=flt.default):
+    def __rich_str__(self, link=None):
         if self.team_play:
             victors = []
             for t in self.victors:
@@ -1698,8 +1698,9 @@ class Session(AdminModel):
         except:
             pass
     
-    def __detail_str__(self, link=flt.default):
-        detail = field_render(self.game, link)                
+    def __detail_str__(self, link=None):
+        detail = field_render(self.game, link) + "<br>"
+        detail += str(self.date_time) + "<br>"
         detail += u'<OL>'
 
         rankers = OrderedDict()
@@ -1981,7 +1982,7 @@ class Rank(AdminModel):
             game = self.session.game
             ranker = self.team if self.session.team_play else self.player
         return  u'{} - {} - {}'.format(game, self.rank, ranker)    
-    def __rich_str__(self, link=flt.default):
+    def __rich_str__(self, link=None):
         if self.session is None: # Don't crash of the rank is orphaned!
             game = "<no game>"
             team_play = False
@@ -1991,7 +1992,7 @@ class Rank(AdminModel):
             team_play = self.session.team_play
             ranker = field_render(self.team, link) if team_play else field_render(self.player, link)
         return  u'{} - {} - {}'.format(game, field_render(self.rank, link_target_url(self, link)), ranker)    
-    def __detail_str__(self, link=flt.default):
+    def __detail_str__(self, link=None):
         if self.session is None: # Don't crash of the rank is orphaned!
             game = "<no game>"
             team_play = False
@@ -2303,7 +2304,7 @@ class Performance(AdminModel):
         performer = self.player
         return  u'{} - {:%d, %b %Y} - {}'.format(game, when, performer)    
         
-    def __rich_str__(self, link=flt.default):
+    def __rich_str__(self, link=None):
         if self.session is None: # Don't crash of the performance is orphaned!
             when = "<no time>"
             game = "<no game>"
@@ -2314,7 +2315,7 @@ class Performance(AdminModel):
         performance = "play number {}, {:+.1f} teeth".format(self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
         return  u'{} - {:%d, %b %Y} - {}: {}'.format(game, when, performer, field_render(performance, link_target_url(self, link)))    
 
-    def __detail_str__(self, link=flt.default):
+    def __detail_str__(self, link=None):
         if self.session is None: # Don't crash of the performance is orphaned!
             when = "<no time>"
             game = "<no game>"

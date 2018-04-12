@@ -7,11 +7,9 @@ from datetime import datetime, date, timedelta
 
 #from collections import OrderedDict
 
-from django_generic_view_extensions.views import DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended 
+from django_generic_view_extensions.views import TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended 
 from django_generic_view_extensions.util import  datetime_format_python_to_PHP, class_from_string
 from django_generic_view_extensions.options import  list_display_format, object_display_format
-
-
 
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
@@ -51,9 +49,6 @@ def get_aware_datetime(date_str):
     if not is_aware(ret):
         ret = make_aware(ret)
     return ret
-
-def index(request):   
-    return render(request, 'CoGs/base.html')
 
 def is_registrar(user):
     return user.groups.filter(name='registrars').exists()
@@ -274,10 +269,12 @@ def extra_context_provider(self):
     See ajax_Game_Properties below for that. 
     '''
     context = {}
-    model = self.model._meta.model_name
+    model = getattr(self, "model", None)
+    model_name = model._meta.model_name if model else ""
+     
     context['league_options'] = html_league_options()
     
-    if model == 'session' and hasattr(self, "object"):
+    if model_name == 'session' and hasattr(self, "object"):
         Default = Game()
         context['game_individual_play'] = json.dumps(Default.individual_play)
         context['game_team_play'] = json.dumps(Default.team_play)
@@ -304,6 +301,10 @@ def extra_context_provider(self):
 # Customize Generic Views for CoGs
 #===============================================================================
 # TODO: Test that this does validation and what it does on submission errors
+
+class view_Home(TemplateViewExtended):
+    template_name = 'CoGs/view_home.html'
+    extra_context_provider = extra_context_provider
 
 class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
@@ -357,6 +358,7 @@ class view_Detail(DetailViewExtended):
 #===============================================================================
 
 # Define defaults for the view inputs 
+
 default = {
     'league': ALL_LEAGUES,
     'player': ALL_PLAYERS,

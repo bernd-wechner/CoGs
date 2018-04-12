@@ -34,7 +34,7 @@ STATIC_URL = "/static/"
 # The name of the webserver this is running on (used to select deployment settings)
 WEBSERVER = "Arachne"
 
-# The SIte ID for the django.contrib.sites app, 
+# The Site ID for the django.contrib.sites app, 
 # which just a prerequisite for the django.contrib.flatpages app
 # which is used for serving the about page (and any other flat pages).
 SITE_ID = 1

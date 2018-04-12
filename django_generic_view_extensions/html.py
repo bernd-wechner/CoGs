@@ -182,16 +182,17 @@ def list_html_output(self, LDF=None):
         LDF = self.format.complete
         
     LMF = self.format.menus
+    LIF = self.format.index
 
     # Define the standard HTML strings for supported formats    
     if LDF == odm.as_table:
-        normal_row = "<tr>{menu:s}<td>{value:s}</td></tr>"
+        normal_row = "<tr>{menu:s}{index:s}<td class='list_item'>{value:s}</td></tr>"
     elif LDF == odm.as_ul:
-        normal_row = "<li>{menu:s}{value:s}</li>"
+        normal_row = "<li class='list_item'>{menu:s}{index:s}{value:s}</li>"
     elif LDF == odm.as_p:
-        normal_row = "<p>{menu:s}{value:s}</p>"
+        normal_row = "<p class='list_item'>{menu:s}{index:s}{value:s}</p>"
     elif LDF == odm.as_br:
-        normal_row = '{menu:s}{value:s}<br>'
+        normal_row = '{menu:s}{index:s}{value:s}<br>'
     else:
         raise ValueError("Internal Error: format must always contain one of the object layout modes.")                
 
@@ -208,19 +209,28 @@ def list_html_output(self, LDF=None):
         if self.request.user.is_authenticated:
             menu += text.format("'{edit:s}'", 'edit') + text.format("'{delete:s}'", 'delete')
         if LDF == odm.as_table:
-            menu = "<td>{}</td>".format(menu)                    
+            menu = "<td class='list_menu_cell'>{}</td>".format(menu)                    
     elif LMF == lmf.buttons:
         button = "<input type='button' onclick='location.href={};' value='{}' class='list_menu_button' /> "
         menu = button.format('"{view:s}"', 'view')
         if self.request.user.is_authenticated:
             menu += button.format('"{edit:s}"', 'edit') + button.format('"{delete:s}"', 'delete')
         if LDF == odm.as_table:
-            menu = "<td>{}</td>".format(menu)                    
+            menu = "<td class='list_menu_cell'>{}</td>".format(menu)                    
+
+    # Index support is for one index running down page
+    if LIF:
+        index = "<span class='list_index_text'>{index}</span>"
+        if LDF == odm.as_table:
+            index = "<td class='list_index_cell'>{}</td>".format(index)                    
+    else:
+        index = ""
 
     # Collect output lines in a list
     output = []
 
     # This evaluates the queryset
+    i = 1
     for o in self.queryset:
         url_view = reverse('view', kwargs={'model': self.kwargs['model'], 'pk': o.pk})
         url_edit = reverse('edit', kwargs={'model': self.kwargs['model'], 'pk': o.pk})
@@ -236,9 +246,12 @@ def list_html_output(self, LDF=None):
             html_menu = menu.format(view=url_view, edit=url_edit, delete=url_delete)
         else:        
             html_menu = menu.format(view=url_view)
+            
+        html_index = index.format(index=i)
+        i += 1
         
         html_value = six.text_type(odm_str(o, self.format))
-        row = normal_row.format(menu=html_menu, value=html_value)
+        row = normal_row.format(menu=html_menu, index=html_index, value=html_value)
         output.append(row)
 
     return mark_safe('\n'.join(output))

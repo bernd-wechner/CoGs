@@ -11,8 +11,13 @@ from django.contrib.flatpages import views as flat_views
 
 from Leaderboards import views
 
+# A note on flatpages:
+#    These are loaded from the database table django_flatpage (model "Flat pages" in the admin interface
+#    They are not loaded from disk files. To wit the about.html file is just a source that has to be 
+#    manually copied into that table for now. Be nice to write a loader.
+
 urlpatterns = [
-    url(r'^$', views.index, name='home'),
+    url(r'^$', views.view_Home.as_view(), name='home'),
     url(r'^about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
     url(r'^admin/', admin.site.urls, name='admin'),
     url(r'^login/$', auth_views.LoginView.as_view(), name='login'),

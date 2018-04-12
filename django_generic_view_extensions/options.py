@@ -22,6 +22,41 @@ list_display_format            - which contains all of the above used for defini
 object_display_format          - which contains all of the above used for defining the format of a DetailView
 '''
 
+# Python imports
+import inspect
+
+# A dictionary of default options. The name of the option and the default attribute.
+# TODO: extend to detail views. For now just written for list views 
+defaults = { 'object_summary_format': 'brief', 
+             'list_menu_format': 'text',
+             'field_link_target': 'internal',
+             'object_display_flags': 'TODO',
+             'object_display_modes': 'as_table',
+             'index': False
+            }
+
+# The URL parameters that select the defaults above
+# This has to tie in with the various get_ methods to follow
+# The aim is to make this available in template context so that 
+# a view that builds links can avoid putting default values on the URL
+urldefaults = { 'object_summary_format': 'brief', 
+             'list_menu_format': 'text_menus',
+             'field_link_target': 'internal_links',
+             'object_display_flags': 'TODO',
+             'object_display_modes': 'as_table',
+             'index': 'noindex'
+            }
+
+
+def default(obj):
+    '''
+    A shorthand method for getting the default value of one of the option classes
+    or if an option is not a class of the option itself.
+    '''
+    if inspect.isclass(obj):
+        return getattr(obj, defaults[obj.__name__])
+    elif isinstance(obj, str):
+        return defaults[obj]
 
 class object_summary_format():
     '''Format options for objects in the list view.
@@ -43,13 +78,13 @@ class object_summary_format():
     verbose = 2     # Uses __verbose_str__ if available else __str__
     rich = 3        # Uses __rich_str__ if available else __verbose_str__ 
     detail = 4      # Uses __detail_str__ if available else __rich_str__
-    # TODO: consdier a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
+    # TODO: consider a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
     # That way in the model we could define a neat table layout to use in List View. 
     # table = 5     # Uses __table_str__ if available else __detail_str__
     # TODO: implement a json format that asks a model to summarise itself in JSON format.
     # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)
     
-    default = brief # The default to use
+    #default = brief # The default to use
 
 # A shorthand for the list format options
 osf = object_summary_format
@@ -57,10 +92,8 @@ osf = object_summary_format
 def get_object_summary_format(request):
     '''
     Standard means of extracting a object summary format from a request.
-    
-    Assumes osf.default and modifies as per request.
     '''
-    OSF = osf.default
+    OSF = default(object_summary_format)
     
     if 'brief' in request:
         OSF = osf.brief
@@ -85,7 +118,7 @@ class list_menu_format():
     text = 1        # A simple text format
     buttons = 2     # Using HTML buttons
     
-    default = text # The default to use
+    #default = text # The default to use
 
 # A shorthand for the list format options
 lmf = list_menu_format
@@ -93,10 +126,8 @@ lmf = list_menu_format
 def get_list_menu_format(request):
     '''
     Standard means of extracting a list menu format from a request.
-    
-    Assumes lmf.default and modifies as per request.
     '''
-    LMF = lmf.default
+    LMF = default(list_menu_format)
     
     if 'no_menus' in request:
         LMF = lmf.none
@@ -119,7 +150,7 @@ class field_link_target():
     external = 2    # Render external links - uses a models link_external property which must be defined for this to render.
     mailto = 3      # Render the field as a mailto link (i.e. assume field is an email address)
     
-    default = internal  # The default to use
+    #default = internal  # The default to use
 
 # A shorthand for the field link targets
 flt = field_link_target
@@ -127,10 +158,9 @@ flt = field_link_target
 def get_field_link_target(request):
     '''
     Standard means of extracting a field link target from a request.
-    
-    Assumes flt.default and modifies as per request.
     '''
-    link = flt.default
+    link = default(field_link_target)
+    
     if 'no_links' in request:
         link = flt.none
     elif 'internal_links' in request:
@@ -200,15 +230,15 @@ class object_display_modes():
     #as_json = 5         # New here, intended to return a given object as a JSON string for AJAX applications
     
     # Provide an accessible default
-    default = as_table
+    #default = as_table
    
     # Define some mode containers for the object
     object = as_table               # How to render the object in a detail view
     list_values = as_ul             # How to render long field values when the object is displayed in a detail view
 
     # Define some mode containers for related objects
-    sum_format = osf.default       # How to display the summary of related objects
-    link = flt.default             # How to display links if any to related objects     
+    sum_format = default(object_summary_format) # How to display the summary of related objects
+    link = default(field_link_target)           # How to display links if any to related objects     
     
     # Define a threshold for short/long classification
     #
@@ -231,11 +261,12 @@ odm = object_display_modes
 class list_display_format():
     '''
     Display format options for objects in the list view.
-    '''
-    complete = odm.default     # Format for the whole list if relevant
-    elements = osf.default     # Format for the list elements 
-    link = flt.default         # Whether to add links to the display and what kind
-    menus = lmf.default        # Whether and how to display menus against each list item
+    '''    
+    complete = default(object_display_modes)    # Format for the whole list if relevant
+    elements = default(object_summary_format)   # Format for the list elements 
+    link = default(field_link_target)           # Whether to add links to the display and what kind
+    menus = default(list_menu_format)           # Whether and how to display menus against each list item
+    index = default('index')                    # A bool with request an index, counting 1, 2, 3, 4 down the list.
 
 def get_list_display_format(request):
     '''
@@ -245,9 +276,16 @@ def get_list_display_format(request):
     LDF = list_display_format()
     
     LDF.complete = get_object_display_format(request).mode.object
-    LDF.menus = get_list_menu_format(request)
     LDF.elements = get_object_summary_format(request)    
     LDF.link = get_field_link_target(request)  # Technically already in LDF.complete.mode.link
+    LDF.menus = get_list_menu_format(request)
+    
+    if 'index' in request:
+        LDF.index = True
+    elif 'noindex' in request:
+        LDF.index = False
+    else:
+        LDF.index = list_display_format().index
              
     return LDF
 

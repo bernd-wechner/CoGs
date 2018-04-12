@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
 # Django imports
-from django.views.generic import ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.db.models.query import QuerySet
@@ -42,6 +42,15 @@ from .model import collect_rich_object_fields
 from .debug import print_debug
 from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
 
+class TemplateViewExtended(TemplateView):
+    '''
+    An extension of the basic TemplateView for a home page on the site say (not related to any model)
+    which provides some extra context if desired in a manner compatible with the other Extended Views
+    '''
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
 
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
