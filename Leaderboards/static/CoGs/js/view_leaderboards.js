@@ -20,6 +20,10 @@ function InitControls() {
 	//Set the requested highlight
 	var chkHighlightChanges = document.getElementById("chkHighlightChanges");
 	chkHighlightChanges.checked = value_highlight;
+
+	//Set the requested detail
+	var chkSessionDetails = document.getElementById("chkSessionDetails");
+	chkSessionDetails.checked = value_details;
 	
 	//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
 	var datetime_format = value_date_format;
@@ -105,6 +109,7 @@ function URLopts() {
 	var compare_back_to_date_time = document.getElementById("compare_back_to_date_time");
 	var compare_with = document.getElementById("compare_with");
 	var chkHighlightChanges = document.getElementById("chkHighlightChanges");
+	var chkSessionDetails = document.getElementById("chkSessionDetails");
 
 	var selCols = $("#selCols");
 	var selNames = $("#selNames");
@@ -121,6 +126,7 @@ function URLopts() {
 	if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
 	if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
 	if (chkHighlightChanges.checked != Boolean(default_highlight)) opts.push("highlight="+encodeURIComponent(chkHighlightChanges.checked));
+	if (chkSessionDetails.checked != Boolean(default_details)) opts.push("details="+encodeURIComponent(chkSessionDetails.checked));
 
 	if (selCols.val() != default_cols) opts.push("cols="+selCols.val());
 	if (selNames.val() != default_names) opts.push("names="+selNames.val());	
@@ -189,13 +195,14 @@ function LBtable(LB, snapshot, links) {
 	var date_time = LB[3][snapshot][0]
 	var play_count = LB[3][snapshot][1];
 	var session_count =LB[3][snapshot][2];
-	var player_list = LB[3][snapshot][3];
+	var session_details = LB[3][snapshot][3];
+	var player_list = LB[3][snapshot][4];
 
 	// Note the previous snapshots player list if there is one
 	// for the purposes of highlighting changes.   
 	var player_prev = null;
 	if (snapshot+1<LB[3].length) {
-		player_prev = LB[3][snapshot+1][3];	
+		player_prev = LB[3][snapshot+1][4];	
 	}
 
 	var linkGameCoGs = url_view_Game.replace('00',pkg);
@@ -204,7 +211,7 @@ function LBtable(LB, snapshot, links) {
 
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
-		table.style.width = '100%';
+	table.style.width = '100%';
 
 	// Three header rows as folows:
 	// One fullwidth containing the date the leaderboard was set (of lasts ession played that contributed to it)
@@ -216,15 +223,28 @@ function LBtable(LB, snapshot, links) {
 
 	// First Header Row
 
-	var tr = document.createElement('TR');
-	tableHead.appendChild(tr);
+	var details = document.getElementById("chkSessionDetails").checked;
+	
+	if (details) {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
 
-	var th = document.createElement('TH');
-	var content = document.createTextNode("Results after " + date_time);
-	th.appendChild(content);
-	th.colSpan = 5;
-	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+		var td = document.createElement('TD');
+		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details + "</div>";
+		td.colSpan = 5;
+		td.className = 'leaderboard normal'
+		tr.appendChild(td);
+	} else {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var th = document.createElement('TH');
+		var content = document.createTextNode("Results after " + date_time);
+		th.appendChild(content);
+		th.colSpan = 5;
+		th.className = 'leaderboard normal'
+		tr.appendChild(th);		
+	}	
 
 	// Second Header Row
 
@@ -244,7 +264,7 @@ function LBtable(LB, snapshot, links) {
 	th.appendChild(content);
 	th.colSpan = 2;
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
 	var th = document.createElement('TH');
 	plays = document.createTextNode(play_count+" plays in "); // Play Count
@@ -408,48 +428,51 @@ function DrawTables(target, links) {
 				}
 			}
 	} 
-	else if (maxshots == 2) {
-		// if cols is odd, add one so that comparisons are always side by side. So cols = 1 becomes 2 
-		// in the extreme.
-		if ( cols % 2 ) cols += 1;
-
-		// Now halve the number of columns as we're spiting out two tables at a time.
-		cols /= 2;   
-
-		// And base layout calcs on the total number of boards (so twice those presented, we'll
-		// leave gaps for any that don't have a comparison table.  
-		var totalboards = 2*leaderboards.length;
-
-		// Now very similar to case of maxshots==1, just in pairs.
-		var rows = totalboards / ( 2 * cols );
-		var remainder = totalboards - rows*cols;
-		if (remainder > 0) { rows++; }
-
-		// A wrapper table for the leaderboards 
-		var table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
-
-		var lb = 0; 
-		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
-			for (var j = 0; j < cols; j++) {
-				if (lb < leaderboards.length) {
-					var cell1 = row.insertCell(2*j);
-					cell1.className = 'leaderboard wrapper'
-						cell1.appendChild(LBtable(leaderboards[lb], 0, links));
-
-					var cell2 = row.insertCell(2*j+1);
-					cell2.className = 'leaderboard wrapper'
-						if (leaderboards[lb][3].length > 1)		
-							cell2.appendChild(LBtable(leaderboards[lb], 1, links));
-						else
-							cell2.appendChild(document.createTextNode("No prior board for " + leaderboards[lb][2]));												
-				}
-				lb++; 
-			}
-		}
-	}
+//  This was a clever way to to support pairs that run across the screen.
+//  Have decided in interim that we won't support that. It's much nicer even with pairs
+//  to run them one pair per row.
+//	else if (maxshots == 2) {
+//		// if cols is odd, add one so that comparisons are always side by side. So cols = 1 becomes 2 
+//		// in the extreme.
+//		if ( cols % 2 ) cols += 1;
+//
+//		// Now halve the number of columns as we're spiting out two tables at a time.
+//		cols /= 2;   
+//
+//		// And base layout calcs on the total number of boards (so twice those presented, we'll
+//		// leave gaps for any that don't have a comparison table.  
+//		var totalboards = 2*leaderboards.length;
+//
+//		// Now very similar to case of maxshots==1, just in pairs.
+//		var rows = totalboards / ( 2 * cols );
+//		var remainder = totalboards - rows*cols;
+//		if (remainder > 0) { rows++; }
+//
+//		// A wrapper table for the leaderboards 
+//		var table = document.getElementById(target); 
+//		table.innerHTML = "";
+//		table.className = 'leaderboard wrapper'
+//
+//		var lb = 0; 
+//		for (var i = 0; i < rows; i++) {
+//			var row = table.insertRow(i);
+//			for (var j = 0; j < cols; j++) {
+//				if (lb < leaderboards.length) {
+//					var cell1 = row.insertCell(2*j);
+//					cell1.className = 'leaderboard wrapper'
+//						cell1.appendChild(LBtable(leaderboards[lb], 0, links));
+//
+//					var cell2 = row.insertCell(2*j+1);
+//					cell2.className = 'leaderboard wrapper'
+//						if (leaderboards[lb][3].length > 1)		
+//							cell2.appendChild(LBtable(leaderboards[lb], 1, links));
+//						else
+//							cell2.appendChild(document.createTextNode("No prior board for " + leaderboards[lb][2]));												
+//				}
+//				lb++; 
+//			}
+//		}
+//	}
 	else {
 		// One row per board and its snapshots
 		// Ignore cols and use our own value here

@@ -13,13 +13,13 @@ from django_generic_view_extensions.options import  list_display_format, object_
 
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
 
-from django import forms
-from django.db.models import Count, Q, OuterRef, Subquery
-from django.db.models.fields import DateField 
+#from django import forms
+from django.db.models import Count, Q
+#from django.db.models.fields import DateField 
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
-from django.urls import reverse, resolve
+from django.urls import reverse #, resolve
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
@@ -27,7 +27,7 @@ from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
 from django.utils.timezone import is_aware, make_aware
 
-# TODO: Fix timezone handling. By default in Django wwe use UTC but we want to enter sessons in local time and see results in local time.
+# TODO: Fix timezone handling. By default in Django we use UTC but we want to enter sessons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
 #        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
@@ -369,6 +369,7 @@ default = {
     'compare_back_to': None,
     'compare_with': None,
     'highlight': True,
+    'details': False,
     'cols': 4,
     'names': 'complete',
     'links': 'CoGs'
@@ -390,6 +391,7 @@ def view_Leaderboards(request):
     compare_back_to = fix_time_zone(parser.parse(request.GET['compare_back_to']) if 'compare_back_to' in request.GET else default['compare_back_to'])
     compare_with = int(request.GET['compare_with']) if 'compare_with' in request.GET and request.GET['compare_with'].isdigit() else default['compare_with']
     highlight = json.loads(request.GET['highlight'].lower()) if 'highlight' in request.GET else default['highlight']
+    details = json.loads(request.GET['details'].lower()) if 'details' in request.GET else default['details']    
     
     # Fetch rendering options if provided    
     cols = request.GET['cols'] if 'cols' in request.GET else default['cols']
@@ -472,6 +474,7 @@ def view_Leaderboards(request):
          'compare_back_to': json.dumps(str(compare_back_to) if not compare_back_to is default['compare_back_to'] else ""),
          'compare_with': json.dumps(compare_with if not compare_with is default['compare_with'] else ""),
          'highlight': json.dumps(highlight),
+         'details': json.dumps(details),
          'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
          'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
          'ALL_GAMES': json.dumps(ALL_GAMES), 
@@ -482,6 +485,7 @@ def view_Leaderboards(request):
          'default_names': default['names'],
          'default_links': default['links'],
          'default_highlight': default['highlight'],
+         'default_details': default['details'],
          'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])         
          }
     
@@ -508,11 +512,11 @@ def ajax_Leaderboards(request, raw=False):
     
     The returned leaderboards are in the following rather general structure of
     lists within lists. Some are tuples in the Python which when JSONified for
-    the template become lists (arrays) in Javascript. Tis data structure is central
+    the template become lists (arrays) in Javascript. This data structure is central
     to interaction with the front-end template for leaderboard rendering.
     
-    Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier3)  
-    Tier2: A list of four value tuples (date_time, plays[game], sessions[game], Tier2)
+    Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier2)  
+    Tier2: A list of five value tuples (date_time, plays[game], sessions[game], session_detail, Tier3)
     Tier3: A list of six value tuples (player.pk, player.BGGname, player.name, rating.trueskill_eta, rating.plays, rating.victories)
     
     Tier1 is the header for a particular game
@@ -565,60 +569,61 @@ def ajax_Leaderboards(request, raw=False):
     else:
         games = []
 
-    leaderboard = {}  # Keyed on game, value is dic keyed on time.
+    leaderboard = {}  # Keyed on game, value is dic keyed on time.    
     plays = {}
     sessions = {}
+    session_details = {}
+    
     leaderboards = []
     boardsort = {}   # Keyed on game, value is sort key (total play count by default)
     
     for game in games:
         if league == ALL_LEAGUES or game.leagues.filter(pk=league).exists():
-            # Let's get the list of times for Tier2 that we want to present, as specified in the request
-            # These should reflect the session time stamps at which that leaderboard came to be.
-            times = []
-            if as_at is None:
-                game_sessions = Session.objects.filter(game=game).order_by("-date_time")
-            else:
-                game_sessions = Session.objects.filter(date_time__lte=as_at, game=game).order_by("-date_time")
+            # Let's build a list of board times for Tier2 that we want to present, as specified in the request
+            # These should reflect the session time stamps at which that leaderboard came to be. We bundle a 
+            # session_detail string with each time stamp.
+            boards = []
+            
+            sfilter = Q(game=game)
+            if not as_at is None:
+                sfilter &= Q(date_time__lte=as_at)
+                
+            S = Session.objects.filter(sfilter).order_by("-date_time")
+            latest_session = S[0] if S.count() > 0 else None
                 
             # Fetch the time of the last session in the window changed_since to as_at
             # That will capture the leaderboard as at that time, but of course only if
-            # it changed since the requested time, else not 
-            if len(game_sessions) > 0:
-                last_session = game_sessions[0]
-            else:
-                last_session = None
-
-            if last_session:
-                last_time = last_session.date_time
-            else:
-                last_time = timezone.make_aware(datetime.now())
-                
-            if (changed_since == default['changed_since'] or last_time > changed_since) and (as_at == default['as_at'] or last_time < as_at):
-                times.append(last_time)
+            # it changed since the requested time, else not. 
+            if latest_session:
+                last_time = latest_session.date_time
+                if (changed_since == default['changed_since'] or last_time > changed_since) and (as_at == default['as_at'] or last_time <= as_at):
+                    boards.append((last_time, latest_session.leaderboard_header()))
             
             # If we have a current leaderboard in the time window changed_since to as_at
             # then we may also want to include its history if requested by:
             #  compare_back_to, compare_til or compare_with
-            if len(times) > 0:
+            if len(boards) > 0:
                 if (not compare_with is None) or (not compare_back_to is None):
                     sfilter = Q(game=game)
                     
                     if compare_till is None:
-                        sfilter &= Q(date_time__lt=last_session.date_time)
+                        sfilter &= Q(date_time__lt=latest_session.date_time)
                     else:
                         sfilter &= Q(date_time__lte=compare_till)
     
                     if not compare_back_to is None:
-                        sfilter &= Q(
-                            date_time__gte=Subquery(
-                                (Session.objects
-                                    .filter(sfilter & Q(date_time__lt=compare_back_to))
-                                    .values('date_time')
-                                    .order_by('-date_time')[:1]
-                                ), output_field=DateField()
-                            )
-                        )
+                        # we want to include, if it exists, the last session prior to compare_back_to
+                        # As a comparison board for the last snapshot. So it has a reference.
+                        ref_session = Session.objects.filter(sfilter & Q(date_time__lt=compare_back_to)).order_by('-date_time')[:1]
+
+                        # Of course if there is no session prior to compare_back_to, we can't do that
+                        count = ref_session.count()
+                        if count == 0:
+                            sfilter &= Q(date_time__gte=compare_back_to)
+                        elif count == 1:
+                            sfilter &= Q(date_time__gte=ref_session[0].date_time)
+                        else:
+                            raise ValueError("Internal error: Illegal count of reference sessions.")
                         
                     last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
                     
@@ -626,32 +631,39 @@ def ajax_Leaderboards(request, raw=False):
                         last_sessions = last_sessions[:compare_with]
     
                     for s in last_sessions:
-                        times.append(s.date_time)
+                        boards.append((s.date_time, s.leaderboard_header()))
             
-            for time in times:            
-                # The first time should be the last session time for the game and thus should translate 
-                # to the same as what's in the Rating model. 
+            for board in boards:            
+                # IF as_at is now, the first time should be the last session time for the game 
+                # and thus should translate to the same as what's in the Rating model. 
                 # TODO: Perform an integrity check around that and indeed if it's an ordinary
-                # leaderboard presentation check on performance between asat=time (which reads Performance)
-                # and asat=None (which read Rating).  
+                #       leaderboard presentation check on performance between asat=time (which reads Performance)
+                #       and asat=None (which reads Rating).
+                # TODO: Consider if performance here improves with a prefetch or such noting that
+                #       game.play_counts and game.session_list might run faster with one query rather 
+                #       than two.
+                time = board[0]
+                detail = board[1]
                 lb = game.leaderboard(league=league, asat=time, names=names, indexed=True)
                 if not lb is None: 
                     if not game in leaderboard:
                         leaderboard[game] = {}
                         plays[game] = {}
                         sessions[game] = {}
+                        session_details[game] = {} 
                         boardsort[game] = "placeholder"
                          
                     leaderboard[game][time] = lb
                     plays[game][time] = game.play_counts(league=league, asat=time)['total']      
                     sessions[game][time] = game.session_list(league=league, asat=time).count()
+                    session_details[game][time] = detail
                     if boardsort[game] == "placeholder":
                         boardsort[game] = (plays[game][time], sessions[game][time])
     
     for game in sorted(boardsort, key=boardsort.__getitem__, reverse=True):
         snapshots = []
         for time in sorted(leaderboard[game], reverse=True):
-            snapshot = (localize(time), plays[game][time], sessions[game][time], leaderboard[game][time])
+            snapshot = (localize(time), plays[game][time], sessions[game][time], session_details[game][time], leaderboard[game][time])
             snapshots.append(snapshot)
         gameshot = (game.pk, game.BGGid, game.name, snapshots)
         leaderboards.append(gameshot)

@@ -9,6 +9,8 @@ from django.urls import reverse_lazy
 from django.utils import formats, timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.utils.formats import localize
+
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 
@@ -1447,6 +1449,29 @@ class Session(AdminModel):
     @property
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    def leaderboard_header(self, link=None) -> str:
+        detail = u"<b>" + localize(self.date_time) + u"</b><br><br>"
+        detail += u'<OL>'
+
+        rankers = OrderedDict()
+        for r in self.ranks.all():
+            if self.team_play:
+                ranker = field_render(r.team, link)
+            else:
+                ranker = field_render(r.player, link)
+            
+            if r.rank in rankers:
+                rankers[r.rank].append(ranker)
+            else:
+                rankers[r.rank] = [ranker]
+            
+        for rank in rankers:
+            detail += u'<LI value={}>{}</LI>'.format(rank, ", ".join(rankers[rank]))
+            
+        detail += u'</OL>'
+        return detail 
+        
     
     def previous_sessions(self, player):
         '''
@@ -1664,13 +1689,13 @@ class Session(AdminModel):
     
     add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
-        return u'{} - {}'.format(formats.date_format(self.date_time, 'DATETIME_FORMAT'), self.game)
+        return u'{} - {}'.format(localize(self.date_time), self.game)
     
     def __str__(self): return self.__unicode__()
     
     def __verbose_str__(self):
         return u'{} - {} - {} - {}'.format(
-            formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
+            localize(self.date_time), 
             self.league, 
             self.location, 
             self.game)
@@ -1688,7 +1713,7 @@ class Session(AdminModel):
             
         try:
             return u'{} - {} - {} - {} - {} {} ({} won)'.format(
-                formats.date_format(self.date_time, 'DATETIME_FORMAT'), 
+                localize(self.date_time), 
                 field_render(self.league, link), 
                 field_render(self.location, link), 
                 field_render(self.game, link), 
@@ -1699,8 +1724,8 @@ class Session(AdminModel):
             pass
     
     def __detail_str__(self, link=None):
-        detail = field_render(self.game, link) + "<br>"
-        detail += str(self.date_time) + "<br>"
+        detail = localize(self.date_time) + "<br>"
+        detail += field_render(self.game, link) + "<br>"
         detail += u'<OL>'
 
         rankers = OrderedDict()

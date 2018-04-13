@@ -39,9 +39,11 @@
 			  <option value="CoGs">internally</option>
 			  <option value="BGG">boardgamegeek.com</option>
 			</select>
-			.			
+			.<br>			
 			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
 			Highlight changes.
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+			Show session details.
 		</td>
 	</tr>
 	<tr>
@@ -148,12 +150,14 @@
 	value_names = {{ names|safe }};
 	value_links = {{ links|safe }};
 	value_highlight = {{highlight}};
+	value_details = {{details}};
 	value_date_format = "{{default_datetime_input_format}}";
 	
 	// Note the default values of same controls
 	default_cols = {{default_cols}};
 	default_names = "{{default_names}}";
-	default_highlight = "{{default_highlight}}";
+	default_highlight = JSON.parse("{{default_highlight}}".toLowerCase());
+	default_details = JSON.parse("{{default_details}}".toLowerCase());
 	default_links = "{{default_links}}";
 	
 	// And some catch all values

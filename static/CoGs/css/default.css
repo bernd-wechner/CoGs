@@ -45,6 +45,10 @@ td.list_menu_cell {
 	vertical-align: top;
 }
 
+td.list_index_cell {
+	vertical-align: top;
+}
+
 td.list_item {
 	vertical-align: top;	
 }

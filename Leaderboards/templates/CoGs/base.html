@@ -7,10 +7,16 @@
 	<link rel="icon" href="{% static 'favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
+	<script>
+		function check_for_leagues() {
+			if ("{{league_options|safe}}"=="") 
+				document.getElementById("league_selector").style.display = 'none';
+		}
+	</script>
 	{% block startscript %}{% endblock %}	
 </head>
 
-<body class="body">
+<body class="body"  onload="check_for_leagues()">
 	<!-- Container -->
 	<div id="container">
 	
@@ -49,8 +55,7 @@
 {#		          1) When logging in, set it to the default league of the logged in user.#}
 {#						- for this we need to give each logged in user a default league.#}
 {#		          2) When viewing a session, set it to the league of the session that was loaded.#}
-		        <div id="league_selector" style="margin: 0 auto;">
-					League:
+		        <div id="league_selector" style="margin: 0 auto;">League:
 					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view">
 						{{league_options|safe}}
 					</select>				

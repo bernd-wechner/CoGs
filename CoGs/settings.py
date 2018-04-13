@@ -18,13 +18,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 
-# TODO: Work static files out when deployed. They are working fine under runserver.
-#       but the following two directives might be important for deployment.
-#       https://docs.djangoproject.com/en/1.11/ref/contrib/staticfiles/
-#       
-# This is where manage.py collectstatic will look for static files. A tuple of dirs.
-# STATICFILES_DIRS = [os.path.join(BASE_DIR, "Leaderboards/static")]
-
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
