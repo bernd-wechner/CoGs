@@ -184,7 +184,7 @@ function prepare_target()  {
 //Function to draw one leaderboard table
 function LBtable(LB, snapshot, links) {
 //	A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
-//	Snapshots is a list of lists which have four values: Date time string, count of plays, count of sessions, Leaderboard
+//	Snapshots is a list of lists which have five values: Date time string, count of plays, count of sessions, session details and Leaderboard
 //	Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
 
 	// Extract the data we need
@@ -195,7 +195,8 @@ function LBtable(LB, snapshot, links) {
 	var date_time = LB[3][snapshot][0]
 	var play_count = LB[3][snapshot][1];
 	var session_count =LB[3][snapshot][2];
-	var session_details = LB[3][snapshot][3];
+	var session_details_html = LB[3][snapshot][3][0];
+	var session_details_data = LB[3][snapshot][3][1];
 	var player_list = LB[3][snapshot][4];
 
 	// Note the previous snapshots player list if there is one
@@ -205,10 +206,40 @@ function LBtable(LB, snapshot, links) {
 		player_prev = LB[3][snapshot+1][4];	
 	}
 
+	// Create the Game link based on the requested link target
 	var linkGameCoGs = url_view_Game.replace('00',pkg);
 	var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
 	var linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 
+	// Fix the session detail header which was provided with templated links
+	var linkPlayerCoGs = url_view_Player.replace('00','{ID}');
+	var linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
+	var linkTeamCoGs = url_view_Team.replace('00','{ID}');
+	
+	var linkRanker = {};
+	linkRanker["Player"] = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
+	linkRanker["Team"] = links == "CoGs" ? linkTeamCoGs : links == "BGG" ?  null : null;
+
+	var linkRankerID = {}
+	for (var r = 0; r < session_details_data.length; r++) {
+		var PK = session_details_data[r][0];
+		var BGGname = session_details_data[r][1];
+		
+		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
+	}
+
+	function fix_session_detail_link(match, klass, model, id, txt) {
+		if (linkRankerID[id] == null) 
+			return txt;
+		else {
+			var url = linkRanker[model].replace('{ID}', linkRankerID[id]);
+			return "<A href='"+url+"' class='"+klass+"'>"+txt+"</A>";
+		}
+	}
+	
+	if (links == "CoGs" || links == "BGG" )
+		session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_session_detail_link);
+	
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
 	table.style.width = '100%';
@@ -230,7 +261,7 @@ function LBtable(LB, snapshot, links) {
 		tableHead.appendChild(tr);
 
 		var td = document.createElement('TD');
-		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details + "</div>";
+		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
 		td.colSpan = 5;
 		td.className = 'leaderboard normal'
 		tr.appendChild(td);
@@ -403,6 +434,7 @@ function DrawTables(target, links) {
 	var selCols = document.getElementById("selCols");
 	var cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
+	// TODO: We need to respect links in the new detail header!
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
 	if (maxshots == 1) {

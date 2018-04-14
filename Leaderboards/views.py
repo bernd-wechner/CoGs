@@ -12,7 +12,6 @@ from django_generic_view_extensions.util import  datetime_format_python_to_PHP, 
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
-
 #from django import forms
 from django.db.models import Count, Q
 #from django.db.models.fields import DateField 
@@ -527,7 +526,10 @@ def ajax_Leaderboards(request, raw=False):
     (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
     The play count and session count for that game up to that time are in this tuple too.   
     
-    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order. 
+    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order.
+    
+    Links to games and players in the leaderboard are built in the template, wrapping a player name in
+    a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
    
     # Fetch the filter requests if provided
@@ -597,7 +599,7 @@ def ajax_Leaderboards(request, raw=False):
             if latest_session:
                 last_time = latest_session.date_time
                 if (changed_since == default['changed_since'] or last_time > changed_since) and (as_at == default['as_at'] or last_time <= as_at):
-                    boards.append((last_time, latest_session.leaderboard_header()))
+                    boards.append((last_time, latest_session.leaderboard_header(names)))
             
             # If we have a current leaderboard in the time window changed_since to as_at
             # then we may also want to include its history if requested by:
@@ -631,7 +633,7 @@ def ajax_Leaderboards(request, raw=False):
                         last_sessions = last_sessions[:compare_with]
     
                     for s in last_sessions:
-                        boards.append((s.date_time, s.leaderboard_header()))
+                        boards.append((s.date_time, s.leaderboard_header(names)))
             
             for board in boards:            
                 # IF as_at is now, the first time should be the last session time for the game 

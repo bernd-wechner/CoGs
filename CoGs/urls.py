@@ -55,9 +55,12 @@ urlpatterns = [
     url(r'^leaderboards', views.view_Leaderboards, name='leaderboards'),
     
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
+    # Specific URLS first
+    url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),
+    url(r'^json/game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
+    
+    # General patterns next
     url(r'^json/(?P<model>\w+)$', views.ajax_List, name='get_list_html'),
     url(r'^json/(?P<model>\w+)/(?P<pk>\d+)$', views.ajax_Detail, name='get_detail_html'),
-    url(r'^json/game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
-    url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),
      
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

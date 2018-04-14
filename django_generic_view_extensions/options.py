@@ -70,7 +70,12 @@ class object_summary_format():
         detail  - A detailed view of the object like rich, only multi-line with HTML formatting
         
     1 AJAX related summary format:
-        json - return a JSON summary of the object 
+        json - return a JSON summary of the object
+    
+    1 template related summary format:
+        template - the object is rendered simply as "{model.pk}".
+                   This is useful internally to exploit a wrapper like field_render
+                   The idea is to reserve space in a surrounding string for 
     '''
 
     # Some formats for summarising objects 
@@ -82,7 +87,8 @@ class object_summary_format():
     # That way in the model we could define a neat table layout to use in List View. 
     # table = 5     # Uses __table_str__ if available else __detail_str__
     # TODO: implement a json format that asks a model to summarise itself in JSON format.
-    # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)
+    # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    
+    template = 7    # Render the objects value as "{model.pk}" 
     
     #default = brief # The default to use
 
@@ -149,8 +155,7 @@ class field_link_target():
     internal = 1    # Render internal links - uses a models link_internal property which must be defined for this to render.
     external = 2    # Render external links - uses a models link_external property which must be defined for this to render.
     mailto = 3      # Render the field as a mailto link (i.e. assume field is an email address)
-    
-    #default = internal  # The default to use
+    template = 4    # Links to a template value rendered as {link_model_pk} for example {link_Player_23} 
 
 # A shorthand for the field link targets
 flt = field_link_target

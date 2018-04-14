@@ -1,5 +1,6 @@
 import trueskill
 import html
+import re
 
 from django.db import models, DataError, IntegrityError #, connection, 
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
@@ -21,7 +22,7 @@ from datetime import datetime, timedelta
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
 
-from django_generic_view_extensions.options import flt
+from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url
 from django_generic_view_extensions.decorators import property_method
 
@@ -735,6 +736,13 @@ class Player(PrivacyMixIn, AdminModel):
         else:
             return None
 
+    def name(self, style):
+        '''
+        Renders the players name in a nominated style
+        :param style: Supports "nick", "full", "complete"
+        '''
+        return self.complete_name if style == "complete" else self.full_name if style == "full" else self.name_nickname if style == "nick" else "Anonymous"        
+
     def rating(self, game):
         '''
         Returns the Trueskill rating for this player at the specified game
@@ -1042,7 +1050,7 @@ class Game(AdminModel):
             # Now build a leaderboard from all the ratings for players (in this league) at this game. 
             lb = []
             for r in ratings:
-                name = r.player.complete_name if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                name = r.player.name(names)
                 lb_entry = (name, r.trueskill_eta, r.plays, r.victories) 
                 if indexed:
                     lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
@@ -1056,7 +1064,7 @@ class Game(AdminModel):
             # Now build a leaderboard from all the ratings for players (in this league) at this game ... 
             lb = []
             for r in ratings:
-                name = r.player.complete_name if names == "complete" else r.player.full_name if names == "full" else r.player.name_nickname if names == "nick" else "Anonymous"
+                name = r.player.name(names)
                 lb_entry = (name, r.trueskill_eta_after, r.play_number, r.victory_count) 
                 if indexed:
                     lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
@@ -1450,16 +1458,43 @@ class Session(AdminModel):
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
-    def leaderboard_header(self, link=None) -> str:
+    def leaderboard_header(self, name_style):
+        '''
+        Returns a HTML header that can be used on leaderboards.
+
+        It includes the ranked list of performers in that session. 
+        
+        This comes in two parts, a template, and ancillary data.
+        
+        The template is HTML with placeholders for the ancillary data.
+        
+        This permits a leaderboard view to render the template altering how 
+        the template is rendered.  The ancillary data is for now just the
+        pk and BGG name of the ranker in that session. 
+        
+        :param name_style: Must be supplied
+        '''
+        data = []
+        
         detail = u"<b>" + localize(self.date_time) + u"</b><br><br>"
         detail += u'<OL>'
 
         rankers = OrderedDict()
         for r in self.ranks.all():
             if self.team_play:
-                ranker = field_render(r.team, link)
+                # Teams we can render with the default format
+                ranker = field_render(r.team, flt.template)
+                data.append((r.team.pk, None))
             else:
-                ranker = field_render(r.player, link)
+                # Players should obey name_style which is one of the styles 
+                # that Player.name supports
+                ranker = field_render(r.player, flt.template, osf.template)
+                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
+                
+                # WE try to be careful about dud BBGnames here supplying None reliably for such. 
+                PK = r.player.pk
+                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname 
+                data.append((PK, BGG))
             
             if r.rank in rankers:
                 rankers[r.rank].append(ranker)
@@ -1470,8 +1505,8 @@ class Session(AdminModel):
             detail += u'<LI value={}>{}</LI>'.format(rank, ", ".join(rankers[rank]))
             
         detail += u'</OL>'
-        return detail 
         
+        return (detail, data)         
     
     def previous_sessions(self, player):
         '''
@@ -1642,7 +1677,7 @@ class Session(AdminModel):
                     # eta_before was saved when the performance ws initialised from the previous performance.
                     # We recalculate it now as an integrity check against global TrueSkill settings change.
                     # A change in eta_before suggests one of the global values TSS.mu0 or TSS.sigma0 has changed 
-                    # and that is a conditon that needs handling. In theory it should forrce a complete rebuild 
+                    # and that is a conditon that needs handling. In theory it should force a complete rebuild 
                     # of the ratings. For now, just throw an exception.
                     # TODO: Handle changes in TSS.mu0 or TSS.sigma0 cleanly. Namely:
                     #    trigger a neat warning to the registrar (person saving a session now)

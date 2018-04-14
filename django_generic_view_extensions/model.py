@@ -205,7 +205,17 @@ def field_render(field, link_target=None, sum_format=None):
         else:
             txt = str(field)
 
-    if tgt is None:
+    if fmt == osf.template:
+        if hasattr(field, 'pk'):
+            txt = "{{{}.{}}}".format(field._meta.model.__name__, field.pk)
+        else:
+            txt = "{field_value}"            
+            raise ValueError("Internal error, template format not supported for field.")
+
+    if link_target == flt.template:
+        tgt = "{{link.{}.{}.{}}}".format(FIELD_LINK_CLASS, field._meta.model.__name__, field.pk)
+        return  mark_safe(u'{}{}{}'.format(tgt, txt, '{link_end}')) # Provides enough info for a template to build the link below.           
+    elif tgt is None:
         return mark_safe(txt)
     else:
         return  mark_safe(u'<A href="{}" class="{}">{}</A>'.format(tgt, FIELD_LINK_CLASS, txt))            
