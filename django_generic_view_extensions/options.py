@@ -65,6 +65,7 @@ class object_summary_format():
         brief   - Should be a minimalist view of the object as small as practical
         verbose - Intended to add some detail but should refer only to local model fields not related fields
         rich    - Intended to use all fields including related objects to build a rich summary, can include HTML
+        table   - Same as Rich, but offered as TR element so that it can be used in a table construction (esp. in a ListView)
     
     1 multi-line rich HTML summary format:    
         detail  - A detailed view of the object like rich, only multi-line with HTML formatting
@@ -83,8 +84,7 @@ class object_summary_format():
     verbose = 2     # Uses __verbose_str__ if available else __str__
     rich = 3        # Uses __rich_str__ if available else __verbose_str__ 
     detail = 4      # Uses __detail_str__ if available else __rich_str__
-    # TODO: consider a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
-    # That way in the model we could define a neat table layout to use in List View. 
+    # TODO: implement a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
     # table = 5     # Uses __table_str__ if available else __detail_str__
     # TODO: implement a json format that asks a model to summarise itself in JSON format.
     # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    

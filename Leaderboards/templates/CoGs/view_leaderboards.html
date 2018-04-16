@@ -6,7 +6,8 @@
 <table class='options'>
 	<tr>
 		<td class='options' valign='top'>
-			<span style="font-size:125%; font-weight: bold;">Format</span>
+			<span style="font-size:125%; font-weight: bold;">Format</span><br>
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='visibility:hidden;'>
 		</td>
 		<td class='options'>
 			these <b>{{ leaderboard_count }}</b> leaderboards 
@@ -48,7 +49,7 @@
 	</tr>
 	<tr>
 		<td class='options' valign='top'>
-			<button type="button" id='btnFilter' onclick="get_new_view();">Filter</button> 
+			<button type="button" id='btnFilter' onclick="refetchLeaderboards(event);">Filter</button> 
 		</td>
 		<td class='options'>			
 			leaderboards as <i><a onclick="toggle_filters();">follows</a></i>:
@@ -78,6 +79,14 @@
 		</td>
 		<td class='options'>
 			leaderboards to clipboard
+		</td>
+	</tr>
+	<tr>
+		<td class='options'>
+			<button type="button" id='btnShowURL' onclick="show_url();">Show</button> 
+		</td>
+		<td class='options'>
+			URL
 		</td>
 	</tr>
 </table>
@@ -120,26 +129,6 @@
 	// up to and including the snapshot at compare_till or now if compare_till isn't specified.  
 	
 	var leaderboards = {{leaderboards|safe}};
-	
-	// Layout is driven by snapshots.
-	// 
-	// If we have one snapshot per game all is normal and we can just layout 
-	//    one board per game using cols as requested.
-	// If we have two snapshots per game max, then we're comparing two points in time
-	//    and snaphots can be presented in pairs. We can sort of respect cols as requested 
-	//    but each col has a pair of snapshots side by side for comparison so we'll ensure it's 
-	//    even (round up) and halve it to get about the requested number of columns.    
-	// If we have more than 2 snapshots per game we are looking at leaderboard timelines 
-	//    or evolutions and so want one game per row, and one column per snapshot, so we
-	//    can safely ignore cols, and use a table as wide as maxshots.   
-	
-	var maxshots = 0;
-	var totalshots = 0;
-	for (var g=0; g<leaderboards.length; g++) {
-		snapshots = leaderboards[g][3].length;
-		totalshots += snapshots;
-		if (snapshots > maxshots) maxshots = snapshots;
-	}	 
 	
 	/// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that

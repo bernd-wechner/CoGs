@@ -1,3 +1,30 @@
+// Layout is driven by snapshots.
+// 
+// If we have one snapshot per game all is normal and we can just layout 
+//    one board per game using cols as requested.
+// If we have two snapshots per game max, then we're comparing two points in time
+//    and snaphots can be presented in pairs. We can sort of respect cols as requested 
+//    but each col has a pair of snapshots side by side for comparison so we'll ensure it's 
+//    even (round up) and halve it to get about the requested number of columns.    
+// If we have more than 2 snapshots per game we are looking at leaderboard timelines 
+//    or evolutions and so want one game per row, and one column per snapshot, so we
+//    can safely ignore cols, and use a table as wide as maxshots.   
+	
+var maxshots = 0;
+var totalshots = 0;
+
+// We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
+function getmaxtotal() {
+	for (var g=0; g<leaderboards.length; g++) {
+		snapshots = leaderboards[g][3].length;
+		totalshots += snapshots;
+		if (snapshots > maxshots) maxshots = snapshots;
+	}	 
+}
+
+// But on first load we have leaderboards that were provided through context, so process those now 
+getmaxtotal();
+
 //Report the snapshot count
 if (totalshots > leaderboards.length) {
 	lblSnaps = document.getElementById("lblSnaps");
@@ -135,28 +162,36 @@ function URLopts() {
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
 
-function get_new_view() {
+function show_url() {
 	var url = url_leaderboards + URLopts();
-	window.location.href = url;
+	window.history.pushState("","", url);
 }
+
+var REQUEST = new XMLHttpRequest();
+REQUEST.onreadystatechange = function () {
+	if (this.readyState === 4 && this.status === 200){
+		// the request is complete, parse data 
+		var response = JSON.parse(this.responseText);
+
+		// Capture response in leaderboards
+		$('#title').html(response[0]); 
+		$('#subtitle').html(response[1]); 
+		leaderboards = response[2];
+		
+		// Get the max and total for rendering
+		getmaxtotal()
+
+		// redraw the leaderboards
+		DrawTables("tblLB");
+		
+		$("#reloading_icon").css("visibility", "hidden");		
+	}
+};
 
 function refetchLeaderboards(event) {
 	var url = url_json_leaderboards + URLopts();
 
-	var REQUEST = new XMLHttpRequest();
-
-	REQUEST.onreadystatechange = function () {
-		if (this.readyState === 4 && this.status === 200){
-			// the request is complete, parse data 
-			var response = JSON.parse(this.responseText);
-
-			// Capture response in leaderboards
-			leaderboards = response;
-
-			// redraw the leaderboards
-			DrawTables("tblLB");
-		}
-	};
+	$("#reloading_icon").css("visibility", "visible");
 
 	REQUEST.open("GET", url, true);
 	REQUEST.send(null);
@@ -400,14 +435,14 @@ function LBtable(LB, snapshot, links) {
 				if (j==2) {   // Player Name
 					content.href =  linkPlayer; 
 				} else if (j==4) { // Play Count
-					content.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg;  
+					content.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";  
 				} else if (j==5) { // Victory Count
 					// FIXME: What link can get victories in teams as well?
 					//        And are team victories listed in the victory count at all?
 					//        url_filters can only be ANDs I think, so this hard for team
 					//        victories. One way is if Performance has a field is_victory
 					//        that can be filtered on. Currently has a property that returns this
-					content.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg;  
+					content.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";;  
 				}
 				content.innerHTML = val;
 			} else {

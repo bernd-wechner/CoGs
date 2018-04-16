@@ -1,18 +1,23 @@
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
 <html>
   <head>
-
-    <meta http-equiv="content-type" content="text/html; charset=windows-1252">
+    <meta http-equiv="content-type" content="text/html;
+      charset=windows-1252">
+    <title></title>
   </head>
   <body>
     <h2>What are CoGs?</h2>
-    Competitive Gamers. Just a moniker game players who like to compete.
-    Specifically at tabletop games, sometimes going under the labels of
-    board games, card games, social games, Euro games, German games.
+    Competitive Gamers. Just a moniker for game players who like to
+    compete, specifically at tabletop games, sometimes going under the
+    labels of board games, card games, social games, Euro games, German
+    games.<br>
+    <br>
+    In the ideal, CoGs are not people who are out to win at all costs,
+    but people who enjoy the thrill of competition, playing against well
+    matched opponents, balanced and exciting games.<br>
     <h2>What is a leaderboard?</h2>
     A list of all the players, of a given game ranked by some measure of
-    performance or skill.
-    Every game has its own leaderboard. There are <a
+    performance or skill. There are <a
       href="http://www.pga.com/news/golf-leaderboard">Golf leaderboards</a>,
     <a href="https://www.atpworldtour.com/en/stats/leaderboard">Tennis
       leaderboards</a>, <a
@@ -20,11 +25,6 @@
     and more. The CoGs Leaderbard Space hopes provides a place to store,
     manage and present leaderboards for any number of games (Golf
     excluded ;-).
-    <h2>What's the Leaderboard Space?</h2>
-    A place to track leaderboards for tabletop games. The Leaderboard
-    Space is where many leaderboards for tabletop games live (and are
-    managed and presented). It's is at its heart, a database with a web
-    interface, as are most web sites today.
     <h2>Why leaderboards?</h2>
     Leaderboards are popular for a number of reasons:
     <ol>
@@ -35,89 +35,83 @@
       </li>
       <li> They help plan balanced games.<br>
         Players at similar ranks can plan to play together, helping to
-        avoid runaway victories and create more in-game tension.
+        avoid runaway victories and create more in-game tension.<br>
       </li>
       <li> They promote replay and focus.<br>
-        Get better at a game you like, play it again and again. Of
+        Get better at a game you like, play it again and again. This has
         particular relevance in the tabletop gaming world where new
-        games are being published at unprecendent rates, and the novelty
-        factor and game learning are eclipsing enjoyment of good quality
-        games. </li>
+        games are being published at unprecedented rates, and the
+        novelty factor of discovering and learning new games threatens
+        to eclipse enjoyment of good-quality games. </li>
     </ol>
     <h2>How are players ranked on a leaderboard?</h2>
     We use the <a
 href="https://www.microsoft.com/en-us/research/project/trueskill-ranking-system/">TrueSkill</a>
     algorithm to estimate a players skill (or rating), measured in teeth
-    (CoGs have teeth after all) at a game based on the
-    history of their plays (of that game).
-    We derive a rating using the recorded performance (history of game
-    placements), and rank players on a given leaderboard (for a given
-    game) based on that rating.
+    (CoGs have teeth, after all) at a game based on the history of their
+    plays of that game. We derive a rating using the recorded
+    performance (history of game placements), and rank players on a
+    given leaderboard (for a given game) based on that rating.
     Leaderboards can be for a specific league or global.
     <h2>What is a league?</h2>
-    A gaming league is just a group of players who are interested in
+    A gaming league is simply a group of players who are interested in
     running a leaderboard against one another. It's a useful way of
-    group players who habitually play together. The CoGs Leaderboard
-    space can present leaderboards
-    that include only the players of a specified league, or globally.
-    Every player has a primary league noted, and if they have an account
-    and log in, thenvarious views will default to the primary league.
-    Otherwise various views can be filtered to show players, teams,
-    games or sessions of on league only.
+    grouping players who regularly play together. The CoGs Leaderboard
+    Sspace can present leaderboards that include only the players of a
+    specified league, or globally. Every player has a primary league
+    noted, and if they have an account and log in, then relevant&nbsp;
+    views will default to the primary league. Otherwise various views
+    can be filtered to show players, teams, games or sessions of one
+    league only.
+    <h2>What's the Leaderboard Space?</h2>
+    A place to track leaderboards for tabletop games. The Leaderboard
+    Space is where many leaderboards for tabletop games live (and are
+    managed and presented). It is, at its heart, a database with a web
+    interface, as are most web sites today.
     <h2>What is stored in the CoGs Leaderboard space?</h2>
-    We aim to store everything needed to calculate TrueSkill ratings as
+    We aim to store everything needed to calculate TrueSkill ratings and
     nothing more. That is, primarily:
     <ul>
       <li> Basic player information.<br>
         Includes an email for sending notifications if desired, and <a
           href="http://boardgamegeek.com">BoardGameGeek</a> ID if
-        desired, where more player information can be offered/found.
-      </li>
+        desired, where more player information can be offered/found. </li>
       <li> Basic game information.<br>
         Only details that help manage leaderboards. A <a
           href="http://boardgamegeek.com">BoardGameGeek</a> ID is stored
         for each game where possible to provide links to further
-        information.
-      </li>
+        information. </li>
       <li> Session records.<br>
         Every game session is time stamped, identifies the game played,
-        the league that it played in, a venue, the order the players
-        finished in and the portion of the game they played
-      </li>
+        the league that it played in, a venue, the order that the
+        players finished in and the portion of the game they played. </li>
       <li> Supporting information for those session records:<br>
-        Basically summary info about leagues, venues and teams (groups
-        of players playing together)
-      </li>
+        Basic summary information about leagues, venues and teams
+        (groups of players playing together) </li>
     </ul>
     <h2>How is a TrueSkill rating calculated?</h2>
     There's plenty to read about TrueSkill <a
 href="https://drive.google.com/drive/folders/0B11fEatiLQkhMmlWSV9vTjlFNHM">on-line</a>,
     but in summary:
     <ol>
-      <li>TrueSkill attempts to assess a players skill at a given game.
+      <li>TrueSkill attempts to assess a player's skill at a given game.
       </li>
       <li>It acknowledges that skill is an uncertain thing, that we are
         trying to assess (that is, we are unsure of a given player's
-        skill).
-      </li>
-      <li>Therefore it models skill as a probability distribution (PD)
-        rather than a value
-        <ul>
-          <li>At it's simplest you could view this as a way of saying, a
-            player's skill is probably one value, confidently at least
-            another value and confidently at most another value.
-          </li>
-        </ul>
-      </li>
-      <li>Everyone is given the same initial skill PD
-      </li>
+        skill). </li>
+      <ul>
+        <li>Therefore it models skill as a probability distribution (PD)
+          rather than a value, which is one way of saying "a player's
+          skill is probably 'one value' but we're only 'so' sure of
+          that".</li>
+      </ul>
+      <li>Everyone is given the same initial skill PD </li>
       <li>Evidence, that is, game results, are used to modify the PD
-        using <a href="iki/Bayes%27_theorem">Bayes' Theorem</a>.
-      </li>
+        using <a href="iki/Bayes%27_theorem">Bayes' Theorem</a>. </li>
       <li>In general the expected value of skill tries to track
         performance, and the confidence in that value rises with more
-        and more evidence.
-      </li>
+        and more evidence and declines slightly over time (absence of
+        evidence). </li>
     </ol>
     <p>And with that in mind, a little more detail, with specific
       attention to how we at the CoGs Leaderboard Space use TrueSkill:</p>
@@ -126,47 +120,52 @@ href="https://drive.google.com/drive/folders/0B11fEatiLQkhMmlWSV9vTjlFNHM">on-li
       from the evidence.</p>
     <p>In practice, the PD is modeled by a <a
         href="https://en.wikipedia.org/wiki/Normal_distribution">Gaussian
+
+
+
+
         or Normal distribution</a>, which can be described by two
       values, a <a href="https://en.wikipedia.org/wiki/Mean">mean</a>
       and a <a href="https://en.wikipedia.org/wiki/Variance">variance</a>
       (or <a href="https://en.wikipedia.org/wiki/Standard_deviation">standard
+
+
+
+
         deviation</a>).</p>
-    <p>In layman's terms the Normal Distribution is the probably
-      familiar bell curve (hence it's name "Normal", because it's pretty
-      often seen) and the mean describes where the peak of the bell is,
-      while the variance (or standard deviation) describes the width of
-      the bell. A high variance is a wide bell, a low variance a narrow
-      bell. <br>
+    <p>In layman's terms the Normal Distribution is the familiar bell
+      curve (hence it's name "Normal", because it's pretty often seen)
+      and the mean describes where the peak of the bell is, while the
+      variance (or standard deviation) describes the width of the bell.
+      A high variance is a wide bell, a low variance a narrow bell. <br>
     </p>
     <p>The mean can be considered the most likely skill and the variance
-      is a measure of our uncertainty, or confidence. That is, the lower
-      the variance (the narrower the bell curve) the more confident we
-      are that skill is close to that mean. Conversely the higher thew
-      variance (the wider the bell) the more uncertain we are about that
-      mean.</p>
-    <p>We can't use a a bell curve to rank players though, we need a
-      single value to order them by, some assessment of skill. We could
-      choose the most likely value (the mean) and run with that. But
-      instead we use a value that we are very confident the skill is "at
-      least", some value below the mean. The standard deviation is
-      useful here. <br>
+      is a measure of our uncertainty, or conversely our confidence.
+      That is, the lower the variance (the narrower the bell curve) the
+      more confident we are that skill is close to that mean. Conversely
+      the higher the variance (the wider the bell) the more uncertain we
+      are about that mean.</p>
+    <p>We can't use a bell curve to rank players though. We need a
+      single value to rank players by, some assessment of skill. We
+      could choose the most likely value (the mean) and run with that.
+      But instead, as per TrueSkill's recommendation, we use a value
+      that we are very confident the skill is "at least", i.e. some
+      value below the mean. The standard deviation is useful here. <br>
     </p>
-    <p>If we used the mean as the rating we're effectively saying that
-      we're 50% sure that the players skill is at least this.<br>
+    <p>If we used the mean as the rating, we're effectively saying that
+      we're 50% sure that the player's skill is at least this.<br>
     </p>
     <p>If we were to use the mean minus one standard deviation, we're
-      saying that we're about 84% sure that the players skill is at
+      saying that we're about 84% sure that the player's skill is at
       least that value. <br>
     </p>
-    <p>
-      If we were to use the mean minus two standard deviations, we're
-      saying that we're about 98% sure that the players skill is at
+    <p> If we were to use the mean minus two standard deviations, we're
+      saying that we're about 98% sure that the player's skill is at
       least that value. <br>
     </p>
     <p>If we were to use the mean minus three standard deviations, we're
-      saying that we're about 99.9% sure that the players skill is at
-      least that value.
-      <br>
+      saying that we're about 99.9% sure that the player's skill is at
+      least that value. <br>
     </p>
     <p>TrueSkill by default uses the mean minus three standard
       deviations to estimate skill (though it's configurable), so the
@@ -179,147 +178,174 @@ href="https://drive.google.com/drive/folders/0B11fEatiLQkhMmlWSV9vTjlFNHM">on-li
       PD. <br>
     </p>
     <h2>How do TrueSkill ratings behave?</h2>
-    <p>
-      There are some TrueSkill parameters that can be tuned either
-      globally or for a given game. On the whole though:
-    </p>
+    <p> There are some TrueSkill parameters that can be tuned either
+      globally or for a given game. On the whole though: </p>
     <ul>
       <li>Your rating at a given game will start at 0 (precisely because
         the initial PD has a mean that is three standard deviations
-        above zero)
-      </li>
+        above zero) </li>
       <li>As you play games, win or lose, the standard deviation gets
-        lower, or the confidence in our assessment of your skill rises.
-        This effectively raises your rating (because the mean minus
-        three standard deviations goes up) - simply by playing.
-      </li>
+        lower (i.e. the confidence in our assessment of your skill
+        rises). This effectively raises your rating (because the mean
+        minus three standard deviations goes up) - simply by playing the
+        game and recording the result. </li>
       <ul>
         <li>It will rise more quickly at first, and more slowly as more
           and more evidence is collected (i.e. game results are
-          recorded).
-        </li>
+          recorded). </li>
       </ul>
       <li>After a given game is recorded some players' ratings will go
         up and others may go down. Winners tend to steal ratings from
         losers.</li>
     </ul>
-    <h2>Known issues with TrueSkill</h2>
-    <p>
-      TrueSkill is not perfect. Nothing is. And there are some known
-      issues at present (waiting for you, if you're math whiz with
+    <h2>Is TrueSkill perfect?</h2>
+    <p>No, TrueSkill is not perfect. Nothing is. And there are some
+      known issues at present (waiting for you, if you're math whiz with
       passion and time or funding, to fix). Some of these will allow
-      players to game the system so to speak.
-    </p>
+      players to game the system so to speak. </p>
     <ul>
       <li>Rating risk: <br>
         Because winners tend to steal ratings from losers, there's a
         definite risk to playing if your rating is high. <br>
         So someone with a very high rating may feel inclined to protect
-        their rating by not playing any more.
-        <br>
+        their rating by not playing that game any more. <br>
         The current leader so to speak on any leaderboard has only one
         direction to go after all ... down. <br>
         <br>
       </li>
+      <ul>
+        <li>Ranking surprise:<br>
+          Trueskill introduces two rating trends. The first is that
+          confidence goes up with new evidence. <br>
+        </li>
+        <ul>
+          <li>Every time you play, it gets more and more sure of your
+            rating. This effect is strong at first, the difference
+            between two game results and one is very large and
+            confidence responses appropriately. The difference between
+            three games results and two is a little less, and so on the
+            more evidence we collect the smaller the effect of any new
+            piece of evidence. Which means that the rise in confidence
+            gets smaller and smaller over time. <br>
+          </li>
+          <li>Over time, without any evidence (between games), skill is
+            known to vary (notably it declines a little without
+            practice, but the bottom line is it varies). To model this
+            TrueSkill reduces confidence a little with every skill
+            update. <br>
+          </li>
+        </ul>
+        In time the diminishing rise in confidence (first effect)
+        becomes smaller than the decline in confidence (second effect)
+        and a player can record a game result, win, and still go down in
+        ranking! We will keep an eye on this at the CoGs Leaderboard
+        Space and are in fact exploring ways to improve TrueSkill in
+        this space.<br>
+        <br>
+      </ul>
       <li>Strategic opponent selection: <br>
         If you understand the algorithm well, it's conceivable to choose
-        opponents which maximise the liklihood of a ratings improvement.
-        <br>
+        opponents which maximise the likelihood of a ratings improvement
+        for you. <br>
         <br>
       </li>
       <li>Biased draws: <br>
         You'd expect in a draw that all drawing players experience the
         same impact to their rating. <br>
-        Alas, that is not guaranteed.<br>
+        Alas, that is not guaranteed. TrueSkill can be fixed to secure
+        this, and at the CoGs Leaderboard Space we're giving that some
+        thought (no promises yet).<br>
       </li>
     </ul>
     <p>All these issues can be fixed. Let's hope someone does. In the
-      mean time we feel TrueSkill is the best rating system available to
-      gamers, and a bulk of the Chess fraternity (through the adoption
-      of <a href="https://en.wikipedia.org/wiki/Elo_rating_system">Elo</a>)
+      mean, time we feel TrueSkill is the best rating system available
+      to gamers, and a bulk of the Chess fraternity (through the
+      adoption of <a
+        href="https://en.wikipedia.org/wiki/Elo_rating_system">Elo</a>)
       and the Xbox community (through the application of TrueSkill)
       agree. </p>
     <h2>Who runs this site?</h2>
     The <a href="https://www.facebook.com/CoGsLeagueHobart/">Competitive
-      Gamers League of Hobart</a> (CoGs Hobart).
-    <br>
-    <h2>What is the status of the site?
-    </h2>
+
+
+
+
+
+
+
+      Gamers League of Hobart</a> (CoGs Hobart). <br>
+    <h2>What is the status of the site? </h2>
     <p><a
-        href="https://en.wikipedia.org/wiki/Software_release_life_cycle#BETA">Beta</a>.
+        href="https://en.wikipedia.org/wiki/Software_release_life_cycle#Alpha">Alpha</a>.
     </p>
     <p>There's an adage in innovation circles that if you release a
       product when it's ready, you've released too late! </p>
     <p>It's a very busy world out there, and time to market is more
-      important than ever!
-      Not that this site has a particularly aggressive market or grand
-      aspirations. It's a service to one small community of gamers in
-      the first instance with readiness to grow if popularity rises and
-      others want to join and help grow it. To wit, we're putting this
-      out there well before it's ready, or anywhere near as complete as
-      we'd like. There's a to-do list longer than
-      any current leaderboard (the tip of the iceberg is listed on <a
-        href="https://github.com/bernd-wechner/CoGs/issues">github</a>)
-      and it's not getting smaller in any hurry.
-      But it works, and is being used for the CoGS Hobart League, day to
-      day, so it's time it showed a public face, so that league members
-      can look up leaderboards and track results. </p>
+      important than ever! Not that this site has a particularly
+      aggressive market strategy or grand aspirations. It's a service to
+      one small community of gamers in the first instance with readiness
+      to grow if popularity rises and others want to join and help grow
+      it. To wit, we're putting this out there well before it's ready,
+      or anywhere near as complete as we'd like. There's a to-do list
+      longer than any current leaderboard (the tip of the iceberg is
+      listed on <a href="https://github.com/bernd-wechner/CoGs/issues">github</a>)
+      and it's not getting smaller in any hurry. <br>
+    </p>
+    <p> But the site works, and is being used for the CoGS Hobart
+      League, day to day, so it's time it showed a public face, so that
+      league members can look up leaderboards and track results.</p>
     <h2>What technology does this site use?</h2>
     Aside from TrueSkill, it's built using the <a
       href="https://www.djangoproject.com/">Django</a> web framework
     (written in <a href="https://www.python.org/">Python</a>) and
     running at present on a <a
       href="https://www.raspberrypi.org/products/raspberry-pi-2-model-b/">Raspberry
+
+
+
+
       Pi 2</a> in someone's basement. So if it's a little or a lot
     sluggish and up-time is not guaranteed, you know why.
-    <h2>Can I help improve the site?</h2>
-    <p>
-      You sure can! Please!<br>
-    </p>
-    <p>To date it's had one developer only who can give it the likes of
-      5 to 10 hours a month of effort. </p>
-    <p>Three others have offered to help, none yet actually contributed.
-    </p>
-    <p>The code base is all on <a
-        href="https://github.com/bernd-wechner/CoGs">github</a>.&nbsp;
-      Anyone can fork, and contribute. I hope there's enough in the <a
-href="https://github.com/bernd-wechner/CoGs/blob/master/README.md">ReadMe</a>
-      to help anyone with some comfort with Python to implement locally,
-      run, debug, and see open issues.
-    </p>
-    <p>The project is openly in need of contributors.</p>
     <h2>What is the history of the CoGs Leaderboard Space?</h2>
     <p>In 2004 a small group of tabletop gaming enthusiasts started to
       run the <a
 href="https://groups.yahoo.com/neo/groups/HoGS_Tasmania/conversations/messages/4">Hobart
+
+
+
+
+
+
+
         Winter Games nights</a> under the banner of <a
         href="https://groups.yahoo.com/neo/groups/HoGS_Tasmania/info">HoGS</a>,
       the Hobart Games Society. <br>
     </p>
-    <p>In 2012 the group was meeting in public halls weekly, was
-      flourishing so a focus group and event was tabled: HoGS Hardcore,
-      dedicated to competitve strategic gaming. <br>
+    <p>In 2012 the group was flourishing and a focus group and event was
+      tabled: HoGS Hardcore, dedicated to competitive strategic gaming.
+      <br>
     </p>
-    <p>HoGS Hardcore was an a response to two growing trends at HoGS
-      weekly games nights:<br>
+    <p>HoGS Hardcore was a response to two growing trends at HoGS weekly
+      games nights:<br>
     </p>
     <ol>
       <li>A struggle to bring hard core strategic games to the table for
-        head on competition. <br>
+        head-on competition. <br>
         With a steady influx of new gamers and a great diversity of
-        gamers, and games a slight bias towards more accessible games
-        that suited everyone at a given table emerged.</li>
+        gamers, a slight bias towards more accessible games emerged.</li>
       <li>A struggle to replay favourite games<br>
-        With an incredibly growth in the game publication industry and
+        With the incredible growth in the game publication industry and
         in the gaming community, more and more players were assembling
-        larger and larger collections with a never ending need to table
-        new games. Novelty was eclipsing experience.&nbsp;</li>
+        larger and larger collections&nbsp; of games, resulting in a
+        never ending need to table new games. Novelty was eclipsing
+        experience.&nbsp;</li>
     </ol>
     <p>HoGS Hardcore was surprising popular, but not to everyone's taste
-      and with some accusations of elitism so HoGS shelved the idea.</p>
-    <p>In 2014 then the Hardcore group reformed as the CoGs League, the
-      Competitive Gamers League running a complimentary monthly meet
-      focused now on competition and the idea of leaderboards.<br>
+      and with some suggestion that it could lead to elitism so HoGS
+      shelved the idea.</p>
+    <p>In 2014 the Hardcore group reformed as the CoGs League, running a
+      complimentary monthly meet focused on competition and the idea of
+      leaderboards.<br>
     </p>
     <p>CoGs started with a simple spreadsheet and scoring system to
       calculate ratings, but couldn't settle on something fair that
@@ -336,10 +362,30 @@ href="https://groups.yahoo.com/neo/groups/HoGS_Tasmania/conversations/messages/4
     <p>By late 2016 CoGs was managing leaderboards on its nascent web
       site (running internally).<br>
     </p>
-    <p>In late 2017 the website was deployed publicly to permit CoGs
-      Players to see leaderboards and play around with views and
+    <p>In early 2018 the website was deployed publicly to permit CoGs
+      players to see leaderboards and play around with views and
       filters.<br>
     </p>
-    <br>
+    <h2>Can I help improve the site?</h2>
+    <p> You sure can! Please!<br>
+    </p>
+    <p>To date it's had one developer only who can give it the likes of
+      5 to 10 hours a month of effort, so the project is openly in need
+      of contributors. </p>
+    The code base is all on <a
+      href="https://github.com/bernd-wechner/CoGs">github</a>.&nbsp;
+    Anyone can <a href="https://help.github.com/articles/fork-a-repo/">fork</a>,
+    and contribute. I hope there's enough in the <a
+      href="https://github.com/bernd-wechner/CoGs/blob/master/README.md">ReadMe</a>
+    to help anyone with some comfort with Python to implement locally,
+    run, debug, and see open issues.
+    <p>If you're interested in helping the gaming community and
+      especially those who view competition as an important part of the
+      game, we'd welcome your help with this site. To discuss what you
+      might contribute feel free to write to us at&nbsp; to: competitive
+      dot gamers dot hobart at gmail dot com (forgive the transparent
+      effort to hinder spam robots harvesting the email address - we're
+      hoping it works).<br>
+    </p>
   </body>
 </html>

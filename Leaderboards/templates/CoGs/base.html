@@ -25,7 +25,7 @@
 	        {% block branding %}
 	        <div id="branding">
 	        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
-				<h1 id="site-name"><a href="/">CoGs Scoreboard Server</a></h1>
+				<h1 id="site-name"><a href="/">CoGs Leaderboard Space</a></h1>
 	        </div>
 	        {% endblock %}
 	        
@@ -112,8 +112,8 @@
 	
 	    <!-- Content -->
 	    <div id="content" class="content">
-	        {% block content_title %}{% if title %}<h1>{% autoescape off %}{{ title }}{% endautoescape %}</h1>{% endif %}{% endblock %}
-	        {% block content_subtitle %}{% if subtitle %}<h2>{% autoescape off %}{{ subtitle }}{% endautoescape %}</h2>{% endif %}{% endblock %}
+	        {% block content_title %}<h1><div id='title'>{% autoescape off %}{{ title }}{% endautoescape %}</div></h1>{% endblock %}
+	        {% block content_subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endblock %}
 	        {% block content %}{% endblock %}
 	        {% block sidebar %}{% endblock %}
 	        <br class="clear" />
