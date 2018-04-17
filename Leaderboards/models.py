@@ -980,10 +980,10 @@ class Game(AdminModel):
             max: is the largest play count of any player
             average: is the average play count of all players who've played at least once
             players: is a count of players who played this game at least once
-            session: is a count of the number of sessions this game has been played
+            sessions: is a count of the number of sessions this game has been played
             
         Such a dictionary is returned for the specified league or as the value in a dictionary 
-        keyed on league if no leage is specified, with the reserved key ALL_LEAGUES containing 
+        keyed on league if no league is specified, with the reserved key ALL_LEAGUES containing 
         the global play counts.
         
         Optionally can provide the count of plays as at a given date time. 

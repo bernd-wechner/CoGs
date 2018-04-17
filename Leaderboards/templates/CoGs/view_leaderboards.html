@@ -3,16 +3,30 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
-<table class='options'>
+<table class=LeaderboardOptions>
 	<tr>
-		<td class='options' valign='top'>
-			<span style="font-size:125%; font-weight: bold;">Format</span><br>
-			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='visibility:hidden;'>
+		<td class='tight options'>
+			<b>Quick Views:</b>
 		</td>
-		<td class='options'>
-			these <b>{{ leaderboard_count }}</b> leaderboards 
+		<td class='tight options'>
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+			<input type="button" id="btnLatest" value="Latest Leaderboards" onclick="refetchLeaderboards(event);"> for
+			<input type="number" id="num_games" min="0" value='5' class="Number" style="width: 5ch;"> most popular games
 			
-			<label id='lblSnaps'></label>
+			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
+			of <input type="number" id="num_days" min="0" value='1' class="Number" style="width: 5ch"> days
+
+			<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_options();">&#9660;</a></b></span>
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' valign='top'>
+			<span style="font-size:125%; font-weight: bold;">Format</span>
+		</td>
+		<td class='options' style="line-height:200%; padding-top:0px">
+			these
+			<label id='lblTotalCount'></label> 
+			<label id='lblSnapCount'></label>
 			in
 			
 			<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
@@ -23,9 +37,9 @@
 			  <option>5</option>
 			  <option>6</option>
 			</select>
-			<label>columns</label>
+			<label>columns</label>,
 			
-			, use player 
+			<br>use player 
 			
 			<select id="selNames" onchange="refetchLeaderboards(event)">
 			  <option value="nick">nickname</option>
@@ -47,22 +61,22 @@
 			Show session details.
 		</td>
 	</tr>
-	<tr>
+	<tr class="toggle" style="visibility: collapse;">
 		<td class='options' valign='top'>
 			<button type="button" id='btnFilter' onclick="refetchLeaderboards(event);">Filter</button> 
 		</td>
 		<td class='options'>			
-			leaderboards as <i><a onclick="toggle_filters();">follows</a></i>:
+			leaderboards as follows</i>:
 		</td>
 	</tr>
-	<tr class='toggle' style="display:none;">
+	<tr class="toggle" style="visibility: collapse;">
 		<td class='options'/>
 		<td class='options' style="line-height:200%; padding-top:0px">
 			<label>Only games played by league: </label><select id='selLeague'></select><br>
 			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }} onchange="copy_if_empty('#from_date_time','#compare_back_to_date_time')"><br>
+			<input class="DateTimeField" id="changed_since" type="text" value={{ changed_since|safe }} onchange="copy_if_empty('#changed_since','#compare_back_to_date_time')"><br>
 			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
 			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
 			<label>Compare each leaderboard with</label>
@@ -73,7 +87,7 @@
 			<input class="DateTimeField" id="compare_till_date_time" type="text" value={{ compare_till|safe }}>
 		</td>
 	</tr>
-	<tr>
+	<tr class="toggle" style="visibility: collapse;">
 		<td class='options'>
 			<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> 
 		</td>
@@ -81,7 +95,7 @@
 			leaderboards to clipboard
 		</td>
 	</tr>
-	<tr>
+	<tr class="toggle" style="visibility: collapse;">
 		<td class='options'>
 			<button type="button" id='btnShowURL' onclick="show_url();">Show</button> 
 		</td>

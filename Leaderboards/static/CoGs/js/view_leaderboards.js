@@ -10,26 +10,34 @@
 //    or evolutions and so want one game per row, and one column per snapshot, so we
 //    can safely ignore cols, and use a table as wide as maxshots.   
 	
+var boardcount = 0;
 var maxshots = 0;
 var totalshots = 0;
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
-function getmaxtotal() {
-	for (var g=0; g<leaderboards.length; g++) {
-		snapshots = leaderboards[g][3].length;
+function get_and_report_metrics(LB) {
+	var snapshots = 0; 
+	boardcount = LB.length
+	totalshots = 0;
+	for (var g=0; g<boardcount; g++) {
+		snapshots = LB[g][3].length;
 		totalshots += snapshots;
 		if (snapshots > maxshots) maxshots = snapshots;
 	}	 
+
+	lblTotalCount = document.getElementById("lblTotalCount");
+	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
+	
+	if (totalshots > boardcount) {
+		lblSnapCount = document.getElementById("lblSnapCount");
+		lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
+	}
 }
 
 // But on first load we have leaderboards that were provided through context, so process those now 
-getmaxtotal();
+get_and_report_metrics(leaderboards);
 
 //Report the snapshot count
-if (totalshots > leaderboards.length) {
-	lblSnaps = document.getElementById("lblSnaps");
-	lblSnaps.innerHTML = "(" + totalshots + " snapshots)";
-}
 
 function InitControls() {
 	//Select the request cols
@@ -103,6 +111,14 @@ function InitControls() {
 	});	
 }
 
+function toggle_options() {
+	current = $(".toggle")[0].style.visibility;
+	if (current == "collapse") 
+		$(".toggle").css('visibility', 'visible'); 
+	else
+		$(".toggle").css('visibility', 'collapse');		
+}
+
 function toggle_filters() {
 	current = $(".toggle")[0].style.display;
 	if (current == "none")
@@ -124,13 +140,18 @@ function copy_if_empty(from, to) {
 
 function URLopts() {
 	opts = []
-
+	
 	// Get the page elements		
+	var srcElement = event.srcElement;
+
 	var selLeague = document.getElementById("selLeague");
 	var selPlayer = document.getElementById("selPlayer");
 	var selGame = document.getElementById("selGame");
 
-	var from_date_time = document.getElementById("from_date_time");
+	var num_games = document.getElementById("num_games");
+	var num_days = document.getElementById("num_days");
+	
+	var changed_since = document.getElementById("changed_since");
 	var as_at_date_time = document.getElementById("as_at_date_time");
 	var compare_till_date_time = document.getElementById("compare_till_date_time");
 	var compare_back_to_date_time = document.getElementById("compare_back_to_date_time");
@@ -141,23 +162,36 @@ function URLopts() {
 	var selCols = $("#selCols");
 	var selNames = $("#selNames");
 	var selLinks = $("#selLinks");
-
-	// Check their values
+	
+	// Options shared by all reload paths
 	if (selLeague.value != ALL_LEAGUES) opts.push("league="+selLeague.value);	
 	if (selPlayer.value != ALL_PLAYERS) opts.push("player="+selPlayer.value);	
-	if (selGame.value != ALL_GAMES) opts.push("game="+selGame.value);	
 
-	if (from_date_time.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
 	if (as_at_date_time.value != "") opts.push("as_at="+encodeURIComponent(as_at_date_time.value));
-	if (compare_till_date_time.value != "") opts.push("compare_till="+encodeURIComponent(compare_till_date_time.value));
-	if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
-	if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
+	
 	if (chkHighlightChanges.checked != Boolean(default_highlight)) opts.push("highlight="+encodeURIComponent(chkHighlightChanges.checked));
 	if (chkSessionDetails.checked != Boolean(default_details)) opts.push("details="+encodeURIComponent(chkSessionDetails.checked));
 
 	if (selCols.val() != default_cols) opts.push("cols="+selCols.val());
 	if (selNames.val() != default_names) opts.push("names="+selNames.val());	
 	if (selLinks.val() != default_links) opts.push("links="+selLinks.val());
+	
+	// Check the Quick Views first
+	if (srcElement.id == "btnLatest") {
+		opts.push("latest")
+		opts.push("num_games="+encodeURIComponent(num_games.value))
+	}
+	else if (srcElement.id == "btnImpact") {
+		opts.push("impact")
+		opts.push("num_days="+encodeURIComponent(num_days.value))
+	}
+	else if (srcElement.id == "btnFilter" || srcElement.id == "selNames") {
+		if (selGame.value != ALL_GAMES) opts.push("game="+selGame.value);	
+		if (changed_since.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
+		if (compare_till_date_time.value != "") opts.push("compare_till="+encodeURIComponent(compare_till_date_time.value));
+		if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
+		if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
+	}
 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
@@ -179,7 +213,7 @@ REQUEST.onreadystatechange = function () {
 		leaderboards = response[2];
 		
 		// Get the max and total for rendering
-		getmaxtotal()
+		get_and_report_metrics(leaderboards)
 
 		// redraw the leaderboards
 		DrawTables("tblLB");
