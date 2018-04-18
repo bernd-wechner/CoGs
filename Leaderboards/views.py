@@ -1,8 +1,9 @@
 import re
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import json
-import cProfile, pstats, io
 import pytz
+import sys
+import cProfile, pstats, io
 from datetime import datetime, date, timedelta
 
 #from collections import OrderedDict
@@ -376,6 +377,23 @@ class leaderboard_options:
     names = 'complete'      # Render player names like this
     links = 'CoGs'          # Link games and players to this target
     
+    @property
+    def as_dict(self):
+        me = sys._getframe().f_code.co_name
+        d = {}
+        for attr in [a for a in dir(self) if not a.startswith('__')]:
+            if attr != me:
+                val = getattr(self, attr)
+                if not isinstance(val, str):
+                    try:
+                        val = json.dumps(val)
+                    except TypeError:
+                        val = str(val)
+                
+                d[attr] = val
+                
+        return d
+    
 def get_leaderboard_options(request):
     lo = leaderboard_options()
     if 'league' in request.GET:
@@ -511,32 +529,13 @@ def view_Leaderboards(request):
             
     c = {'title': title,
          'subtitle': subtitle,
-         'now': timezone.now(),        
+         'options': lo.as_dict,
+         'defaults': default.as_dict,
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),
-         'league': json.dumps(lo.league),
-         'player': json.dumps(lo.player),
-         'game': json.dumps(lo.game),
-         'changed_since': json.dumps(str(lo.changed_since) if lo.changed_since != default.changed_since else ""),
-         'as_at': json.dumps(str(lo.as_at) if not lo.as_at is default.as_at else ""),
-         'compare_till': json.dumps(str(lo.compare_till) if lo.compare_till != default.compare_till else ""),
-         'compare_back_to': json.dumps(str(lo.compare_back_to) if not lo.compare_back_to is default.compare_back_to else ""),
-         'compare_with': json.dumps(lo.compare_with if not lo.compare_with is default.compare_with else ""),
-         'highlight': json.dumps(lo.highlight),
-         'details': json.dumps(lo.details),
-         'ALL_LEAGUES': json.dumps(ALL_LEAGUES), 
-         'ALL_PLAYERS': json.dumps(ALL_PLAYERS), 
-         'ALL_GAMES': json.dumps(ALL_GAMES), 
-         'cols': json.dumps(lo.cols),
-         'names': json.dumps(lo.names),
-         'links': json.dumps(lo.links),
-         'default_cols': default.cols,
-         'default_names': default.names,
-         'default_links': default.links,
-         'default_highlight': default.highlight,
-         'default_details': default.details,
+         'now': timezone.now(),        
          'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])         
          }
     
@@ -618,30 +617,25 @@ def ajax_Leaderboards(request, raw=False):
    
     (title, subtitle) = get_leaderboard_titles(lo)
       
-    if lo.game == ALL_GAMES:
-        # Start the query with an ordered list of all games (lazy, only the SQL created_     
-        games = Game.objects.all().annotate(session_count=Count('sessions',distinct=True)).annotate(play_count=Count('sessions__performances',distinct=True)).order_by('-play_count','-session_count')
-    
-        # Then build a filter on that sorted list
-        gfilter = Q()
-        if lo.league != ALL_LEAGUES:
-            gfilter &= Q(sessions__league__pk=lo.league)
-        if lo.player != ALL_PLAYERS:
-            gfilter &= Q(sessions__performances__player__pk=lo.player)
-        if lo.changed_since != NEVER:
-            gfilter &= Q(sessions__date_time__gte=lo.changed_since)
-            
-        games = games.filter(gfilter).distinct()
-    elif Game.objects.filter(pk=lo.game).exists():
-        games = [Game.objects.get(pk=lo.game)]
-    else:
-        games = []
+    # Start the query with an ordered list of all games (lazy, only the SQL created_     
+    games = Game.objects.all().annotate(session_count=Count('sessions',distinct=True)).annotate(play_count=Count('sessions__performances',distinct=True)).order_by('-play_count','-session_count')
 
+    # Then build a filter on that sorted list
+    gfilter = Q()
+    # TODO: Consider supporting multi-selects on all these and using __in set filters
+    if lo.league != ALL_LEAGUES:
+        gfilter &= Q(sessions__league__pk=lo.league)
+    if lo.player != ALL_PLAYERS:
+        gfilter &= Q(sessions__performances__player__pk=lo.player)
+    if lo.changed_since != NEVER:
+        gfilter &= Q(sessions__date_time__gte=lo.changed_since)
+    if lo.game != ALL_GAMES: 
+        gfilter &= Q(pk=lo.game)
+        
+    games = games.filter(gfilter).distinct()
     
     if lo.num_games > 0:
         games = games[:lo.num_games]
-    
-    print_debug(games.query)
     
     leaderboards = []
     for game in games:
@@ -722,7 +716,7 @@ def ajax_Leaderboards(request, raw=False):
             leaderboards.append(gameshot)
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
-    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, leaderboards)))
+    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict, leaderboards)))
 
 def ajax_Game_Properties(request, pk):
     '''

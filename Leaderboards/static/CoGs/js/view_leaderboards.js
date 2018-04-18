@@ -40,25 +40,21 @@ get_and_report_metrics(leaderboards);
 //Report the snapshot count
 
 function InitControls() {
-	//Select the request cols
-	selCols = $('#selCols');
-	selCols.val(value_cols);
-	
-	//Select the request name style
-	selNames = $('#selNames');
-	selNames.val(value_names);
-	
-	//Select the request link style
-	selLinks = $('#selLinks');
-	selLinks.val(value_links);
-	
-	//Set the requested highlight
-	var chkHighlightChanges = document.getElementById("chkHighlightChanges");
-	chkHighlightChanges.checked = value_highlight;
+	$('#num_games').val(options.num_games);
+	$('#num_days').val(options.num_days);
 
-	//Set the requested detail
-	var chkSessionDetails = document.getElementById("chkSessionDetails");
-	chkSessionDetails.checked = value_details;
+	$('#selCols').val(options.cols);
+	$('#selNames').val(options.names);	
+	$('#selLinks').val(options.links);
+	
+	$('#chkHighlightChanges').prop('checked', options.highlight)
+	$('#chkSessionDetails').prop('checked', options.details);
+
+	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
+	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
+	$('#compare_with').val(options.compare_with == defaults.compare_with ? '' : options.compare_with);
+	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
+	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
 	
 	//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
 	var datetime_format = value_date_format;
@@ -76,7 +72,7 @@ function InitControls() {
 	var league_choices = "";
 	for (var i = 0, len = leagues.length; i < len; i++) {
 		pair = leagues[i];
-		league_choices += '<option value=' + pair[0] + (pair[0] == league ? ' selected ' : '') + '>' + pair[1] + '</option>';
+		league_choices += '<option value=' + pair[0] + (pair[0] == options.league ? ' selected ' : '') + '>' + pair[1] + '</option>';
 	}	
 	select.append(league_choices);
 	
@@ -86,7 +82,7 @@ function InitControls() {
 	var player_choices = "";
 	for (var i = 0, len = players.length; i < len; i++) {
 		pair = players[i];
-		player_choices += '<option value=' + pair[0] + (pair[0] == player ? ' selected ' : '') + '>' + pair[1] + '</option>';
+		player_choices += '<option value=' + pair[0] + (pair[0] == options.player ? ' selected ' : '') + '>' + pair[1] + '</option>';
 	}	
 	select.append(player_choices);
 	
@@ -96,7 +92,7 @@ function InitControls() {
 	var game_choices = "";
 	for (var i = 0, len = games.length; i < len; i++) {
 		pair = games[i];
-		game_choices += '<option value=' + pair[0] + (pair[0] == game ? ' selected ' : '') + '>' + pair[1] + '</option>';
+		game_choices += '<option value=' + pair[0] + (pair[0] == options.game ? ' selected ' : '') + '>' + pair[1] + '</option>';
 	}	
 	select.append(game_choices);
 	
@@ -110,6 +106,42 @@ function InitControls() {
 		document.body.removeChild(clipboard_target);
 	});	
 }
+
+function URLopts(element) {
+	var opts = []
+	var val;
+
+	// Options shared by all reload paths
+	
+	val = $('#selCols').find(":selected").val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
+	val = $('#selNames').find(":selected").val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
+	val = $('#selLinks').find(":selected").val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+
+	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
+	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
+
+	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight)) opts.push("highlight="+encodeURIComponent(val));
+	val = $('#chkSessionDetails').is(":checked"); if (val != Boolean(defaults.details)) opts.push("details="+encodeURIComponent(val));
+
+	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
+
+	val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
+
+	if (element == "btnImpact") {
+		opts.push("impact")
+		opts.push("num_days="+encodeURIComponent($('#num_days').val()))
+	}
+	else {
+		val = $('#selGame').find(":selected").val(); if (val != defaults.game) opts.push("game="+encodeURIComponent(val));	
+		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
+		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
+		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
+		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
+	}
+
+	return (opts.length > 0) ? "?" + opts.join("&") : "";
+}
+
 
 function toggle_options() {
 	current = $(".toggle")[0].style.visibility;
@@ -138,66 +170,8 @@ function copy_if_empty(from, to) {
 	if ($(to).val() == '') $(to).val($(from).val());
 }
 
-function URLopts() {
-	opts = []
-	
-	// Get the page elements		
-	var srcElement = event.srcElement;
-
-	var selLeague = document.getElementById("selLeague");
-	var selPlayer = document.getElementById("selPlayer");
-	var selGame = document.getElementById("selGame");
-
-	var num_games = document.getElementById("num_games");
-	var num_days = document.getElementById("num_days");
-	
-	var changed_since = document.getElementById("changed_since");
-	var as_at_date_time = document.getElementById("as_at_date_time");
-	var compare_till_date_time = document.getElementById("compare_till_date_time");
-	var compare_back_to_date_time = document.getElementById("compare_back_to_date_time");
-	var compare_with = document.getElementById("compare_with");
-	var chkHighlightChanges = document.getElementById("chkHighlightChanges");
-	var chkSessionDetails = document.getElementById("chkSessionDetails");
-
-	var selCols = $("#selCols");
-	var selNames = $("#selNames");
-	var selLinks = $("#selLinks");
-	
-	// Options shared by all reload paths
-	if (selLeague.value != ALL_LEAGUES) opts.push("league="+selLeague.value);	
-	if (selPlayer.value != ALL_PLAYERS) opts.push("player="+selPlayer.value);	
-
-	if (as_at_date_time.value != "") opts.push("as_at="+encodeURIComponent(as_at_date_time.value));
-	
-	if (chkHighlightChanges.checked != Boolean(default_highlight)) opts.push("highlight="+encodeURIComponent(chkHighlightChanges.checked));
-	if (chkSessionDetails.checked != Boolean(default_details)) opts.push("details="+encodeURIComponent(chkSessionDetails.checked));
-
-	if (selCols.val() != default_cols) opts.push("cols="+selCols.val());
-	if (selNames.val() != default_names) opts.push("names="+selNames.val());	
-	if (selLinks.val() != default_links) opts.push("links="+selLinks.val());
-	
-	// Check the Quick Views first
-	if (srcElement.id == "btnLatest") {
-		opts.push("latest")
-		opts.push("num_games="+encodeURIComponent(num_games.value))
-	}
-	else if (srcElement.id == "btnImpact") {
-		opts.push("impact")
-		opts.push("num_days="+encodeURIComponent(num_days.value))
-	}
-	else if (srcElement.id == "btnFilter" || srcElement.id == "selNames") {
-		if (selGame.value != ALL_GAMES) opts.push("game="+selGame.value);	
-		if (changed_since.value != "") opts.push("changed_since="+encodeURIComponent(from_date_time.value));
-		if (compare_till_date_time.value != "") opts.push("compare_till="+encodeURIComponent(compare_till_date_time.value));
-		if (compare_back_to_date_time.value != "") opts.push("compare_back_to="+encodeURIComponent(compare_back_to_date_time.value));
-		if (compare_with.value != "" && compare_with.value != 0) opts.push("compare_with="+encodeURIComponent(compare_with.value));
-	}
-
-	return (opts.length > 0) ? "?" + opts.join("&") : "";
-}
-
 function show_url() {
-	var url = url_leaderboards + URLopts();
+	var url = url_leaderboards + URLopts(null);
 	window.history.pushState("","", url);
 }
 
@@ -210,7 +184,8 @@ REQUEST.onreadystatechange = function () {
 		// Capture response in leaderboards
 		$('#title').html(response[0]); 
 		$('#subtitle').html(response[1]); 
-		leaderboards = response[2];
+		opts =  response[2]
+		leaderboards = response[3];
 		
 		// Get the max and total for rendering
 		get_and_report_metrics(leaderboards)
@@ -223,8 +198,9 @@ REQUEST.onreadystatechange = function () {
 };
 
 function refetchLeaderboards(event) {
-	var url = url_json_leaderboards + URLopts();
+	var url = url_json_leaderboards + URLopts(event.srcElement.id);
 
+	alert(url);
 	$("#reloading_icon").css("visibility", "visible");
 
 	REQUEST.open("GET", url, true);
@@ -485,7 +461,7 @@ function LBtable(LB, snapshot, links) {
 				content.appendChild(text); 
 			}
 
-			if (j==2 && pkp==player) {
+			if (j==2 && pkp==options.player) {
 				content.style.fontWeight = 'bold';
 			}
 

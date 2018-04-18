@@ -3,32 +3,29 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
+<p><label id='lblTotalCount'></label><label id='lblSnapCount'></label></p>		
+
 <table class=LeaderboardOptions>
 	<tr>
 		<td class='tight options'>
-			<b>Quick Views:</b>
+			<b>View:</b>
 		</td>
 		<td class='tight options'>
 			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
-			<input type="button" id="btnLatest" value="Latest Leaderboards" onclick="refetchLeaderboards(event);"> for
-			<input type="number" id="num_games" min="0" value='5' class="Number" style="width: 5ch;"> most popular games
+			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);"> for
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;"> most popular games
 			
 			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
-			of <input type="number" id="num_days" min="0" value='1' class="Number" style="width: 5ch"> days
+			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch"> days
 
 			<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_options();">&#9660;</a></b></span>
 		</td>
 	</tr>
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' valign='top'>
-			<span style="font-size:125%; font-weight: bold;">Format</span>
-		</td>
-		<td class='options' style="line-height:200%; padding-top:0px">
-			these
-			<label id='lblTotalCount'></label> 
-			<label id='lblSnapCount'></label>
+	<tr>
+		<td class='options'>
 			in
-			
+		</td>
+		<td class='options'>
 			<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
 			  <option>1</option>
 			  <option>2</option>
@@ -38,35 +35,39 @@
 			  <option>6</option>
 			</select>
 			<label>columns</label>,
+
+			linking game and player names to
 			
-			<br>use player 
+			<select id="selLinks" onchange='DrawTables("tblLB");'>
+			  <option value="none">nowhere</option>
+			  <option value="CoGs">CoGs Leaderboard Space</option>
+			  <option value="BGG">boardgamegeek.com</option>
+			</select>
+		</td>
+	</tr>
+	<tr>
+		<td class='options'>
 			
-			<select id="selNames" onchange="refetchLeaderboards(event)">
+		</td>
+		<td class='options'>
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+			Show session details.
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
+			Highlight changes.
+		</td>
+	<tr>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' valign='top'>
+		
+		</td>
+		<td class='options' style="line-height:200%; padding-top:0px">
+			Using player 
+			<select id="selNames">
 			  <option value="nick">nickname</option>
 			  <option value="full">full name</option>
 			  <option  value="complete">full name (nickname)</option>
 			</select>
-			
-			and link
-			
-			<select id="selLinks" onchange='DrawTables("tblLB");'>
-			  <option value="none">nowhere</option>
-			  <option value="CoGs">internally</option>
-			  <option value="BGG">boardgamegeek.com</option>
-			</select>
-			.<br>			
-			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
-			Highlight changes.
-			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
-			Show session details.
-		</td>
-	</tr>
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' valign='top'>
-			<button type="button" id='btnFilter' onclick="refetchLeaderboards(event);">Filter</button> 
-		</td>
-		<td class='options'>			
-			leaderboards as follows</i>:
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
@@ -76,15 +77,15 @@
 			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="changed_since" type="text" value={{ changed_since|safe }} onchange="copy_if_empty('#changed_since','#compare_back_to_date_time')"><br>
+			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
 			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
-			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
+			<input class="DateTimeField" id="as_at" type="text" ><br>
 			<label>Compare each leaderboard with</label>
-			<input id="compare_with" size=3 type="text" value={{ compare_with|safe }}  onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
+			<input id="compare_with" size=3 type="text" onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
 			<label>prior leaderboards, or leaderboards back to</label>
-			<input class="DateTimeField" id="compare_back_to_date_time" type="text" value={{ compare_back_to|safe }}>
+			<input class="DateTimeField" id="compare_back_to" type="text">
 			<label>and/or up until</label>			
-			<input class="DateTimeField" id="compare_till_date_time" type="text" value={{ compare_till|safe }}>
+			<input class="DateTimeField" id="compare_till" type="text">
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
@@ -118,13 +119,30 @@
 <link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
 
 <script>
+	// Nab the options and their defaults from context
+	var options = {{ options|safe }};
+	var defaults = {{ defaults|safe }};
+		
+	//var league = {{ league|safe }};
+	//var player = {{ player|safe }};
+	//var game = {{ game|safe }};
+	//value_highlight = {{highlight}};
+	//value_details = {{details}};
+	//value_cols = {{ cols|safe }};
+	//value_names = {{ names|safe }};
+	//value_links = {{ links|safe }};
+	
+	// Note the default values of same controls
+	//default_cols = {{default_cols}};
+	//default_names = "{{default_names}}";
+	//default_highlight = JSON.parse("{{default_highlight}}".toLowerCase());
+	//default_details = JSON.parse("{{default_details}}".toLowerCase());
+	//default_links = "{{default_links}}";
+
 	// Nab the data from context
 	var leagues = {{ leagues|safe }};
-	var league = {{ league|safe }};
 	var players = {{ players|safe }};
-	var player = {{ player|safe }};
 	var games = {{ games|safe }};
-	var game = {{ game|safe }};
 	
 	// The big one! Leaderboards. This is a structure of lists within lists
 	// Games, Snapshots and Players in that order. 
@@ -149,25 +167,8 @@
 	// the code in the included .js file can see.  
 	
 	// Note the initial value of various controls on the view
-	value_cols = {{ cols|safe }};
-	value_names = {{ names|safe }};
-	value_links = {{ links|safe }};
-	value_highlight = {{highlight}};
-	value_details = {{details}};
 	value_date_format = "{{default_datetime_input_format}}";
-	
-	// Note the default values of same controls
-	default_cols = {{default_cols}};
-	default_names = "{{default_names}}";
-	default_highlight = JSON.parse("{{default_highlight}}".toLowerCase());
-	default_details = JSON.parse("{{default_details}}".toLowerCase());
-	default_links = "{{default_links}}";
-	
-	// And some catch all values
-	ALL_LEAGUES = {{ ALL_LEAGUES|safe }};
-	ALL_PLAYERS = {{ ALL_PLAYERS|safe }};
-	ALL_GAMES = {{ ALL_GAMES|safe }};
-	
+		
 	// And some URLs
 	url_leaderboards = "{% url 'leaderboards' %}";
 	url_json_leaderboards = "{% url 'json_leaderboards' %}"

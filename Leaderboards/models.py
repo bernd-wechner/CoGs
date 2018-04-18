@@ -1031,6 +1031,11 @@ class Game(AdminModel):
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
         specified league, or for all leagues if None is specified. As at a given date/time if such is specified,
         else, as at now (latest or current, leaderboard).
+        
+        :param league:    Show only players in this league if specified, else in any league
+        :param asat:      Show the leaderboard as it was at this time rather than now, if specified
+        :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options. 
+        :param indexed:   if True adds some ancillary player player info to each row returned (PK and BGGname of the player) 
         '''      
         if league is None:
             lb = {}
@@ -1045,6 +1050,8 @@ class Game(AdminModel):
             if league != ALL_LEAGUES:
                 lb_filter = lb_filter & Q(player__leagues=league)
                 
+            # These come pre-sorted by -eta (so in the right order for the leaderboard).
+            # (descending skill rating). The Rating model ensures this
             ratings = Rating.objects.filter(lb_filter)
         
             # Now build a leaderboard from all the ratings for players (in this league) at this game. 
@@ -1058,8 +1065,9 @@ class Game(AdminModel):
         else: # Build leaderboard as at a given time as specified
             # Can't use the Ratings model as that stores current ratings. Instead use the Performance
             # model which records ratings after every game session and the sessions have a date/time
-            # so the information can be extracted therefrom.
-            ratings = self.last_performance(league=league, asat=asat)            
+            # so the information can be extracted therefrom. These are returned in order -eta as well
+            # so in the right order for a leaderboard (descending skill rating)
+            ratings = self.last_performance(league=league, asat=asat) 
 
             # Now build a leaderboard from all the ratings for players (in this league) at this game ... 
             lb = []
@@ -1069,7 +1077,7 @@ class Game(AdminModel):
                 if indexed:
                     lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
                 lb.append(lb_entry)
-                
+                            
         return None if len(lb) == 0 else lb
 
     def rating(self, player, asat=None):
