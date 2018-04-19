@@ -3,8 +3,6 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
-<p><label id='lblTotalCount'></label><label id='lblSnapCount'></label></p>		
-
 <table class=LeaderboardOptions>
 	<tr>
 		<td class='tight options'>
@@ -12,13 +10,14 @@
 		</td>
 		<td class='tight options'>
 			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
-			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);"> for
+			
+			<input type="button" id="btnAllLeaderboards" value="All Leaderboards" onclick="refetchLeaderboards(event);">
+
+			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);" style="margin-left: 8ch;"> for
 			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;"> most popular games
 			
 			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
 			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch"> days
-
-			<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_options();">&#9660;</a></b></span>
 		</td>
 	</tr>
 	<tr>
@@ -46,22 +45,22 @@
 		</td>
 	</tr>
 	<tr>
-		<td class='options'>
-			
-		</td>
-		<td class='options'>
+		<td class='options' colspan = 2>
+			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
 			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
 			Show session details.
 			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
 			Highlight changes.
 		</td>
-	<tr>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' valign='top'>
-		
+		<td class='options' colspan=2>
+			Formatting:
 		</td>
-		<td class='options' style="line-height:200%; padding-top:0px">
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
 			Using player 
 			<select id="selNames">
 			  <option value="nick">nickname</option>
@@ -71,15 +70,40 @@
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options'/>
-		<td class='options' style="line-height:200%; padding-top:0px">
+		<td class='options' colspan=2>
+			Filtering:
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
 			<label>Only games played by league: </label><select id='selLeague'></select><br>
-			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
+			<label>Only games played by player: </label><select id='selPlayer'></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
 			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Perspective:
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
 			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
 			<input class="DateTimeField" id="as_at" type="text" ><br>
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Evolution:
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
 			<label>Compare each leaderboard with</label>
 			<input id="compare_with" size=3 type="text" onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
 			<label>prior leaderboards, or leaderboards back to</label>
@@ -106,6 +130,8 @@
 	</tr>
 </table>
 
+<h3><label id='lblTotalCount'></label><label id='lblSnapCount' style='margin-left:1ch'></label></h3>
+		
 <table id='tblLB'>
 </table>
 {% endblock %}
@@ -116,7 +142,7 @@
 <script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
 
 {# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/>
 
 <script>
 	// Nab the options and their defaults from context

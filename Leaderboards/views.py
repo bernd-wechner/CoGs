@@ -384,7 +384,9 @@ class leaderboard_options:
         for attr in [a for a in dir(self) if not a.startswith('__')]:
             if attr != me:
                 val = getattr(self, attr)
-                if not isinstance(val, str):
+                if isinstance(val, datetime):
+                    val = val.strftime(DATETIME_INPUT_FORMATS[0])
+                elif not isinstance(val, str):
                     try:
                         val = json.dumps(val)
                     except TypeError:
@@ -610,7 +612,7 @@ def ajax_Leaderboards(request, raw=False):
         latest_session = S[0] if S.count() > 0 else None
 
         if not latest_session is None:
-            date = latest_session.date_time.replace(hour=23, minute=59, second=59, microsecond=999)
+            date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
             lo.changed_since = date - timedelta(days=lo.num_days)
             lo.compare_back_to = lo.changed_since
             lo.num_games = 0
@@ -711,9 +713,9 @@ def ajax_Leaderboards(request, raw=False):
                     counts = game.play_counts(league=lo.league, asat=time)                    
                     snapshot = (localize(time), counts['total'], counts['sessions'], detail, lb)
                     snapshots.append(snapshot)
-                    
-            gameshot = (game.pk, game.BGGid, game.name, snapshots)
-            leaderboards.append(gameshot)
+
+            if len(snapshots) > 0:                    
+                leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict, leaderboards)))
