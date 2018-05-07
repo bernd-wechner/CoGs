@@ -35,7 +35,7 @@ SITE_ID = 1
 import platform
 HOSTNAME = platform.node()
 
-ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space"]
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
 if HOSTNAME == WEBSERVER:
     print("Django settings: Web Server")
     SECURE_CONTENT_TYPE_NOSNIFF = True
@@ -68,6 +68,7 @@ INSTALLED_APPS = (
 )
 
 MIDDLEWARE = (
+    'django_stats_middleware.StatsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

@@ -6,7 +6,6 @@ sudo tail -f /var/log/uwsgi/app/leaderboard.space.log
 
 loads of mono errrors with crashing wrokers cyclically, with no apparent harikiri ;-).
 
-
 sudo apt install libmono-corlib4.5-cil
 
 made it go away

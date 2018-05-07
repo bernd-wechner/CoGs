@@ -253,3 +253,7 @@ td.leaderboard.wrapper
     width: 100% !important;
 }
 
+/* DateTimeFields should be wide enough for the date_time formats in use */
+.DateTimeField {
+	width: 18ch;
+}

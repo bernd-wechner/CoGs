@@ -17,7 +17,8 @@ var totalshots = 0;
 // We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
 function get_and_report_metrics(LB) {
 	var snapshots = 0; 
-	boardcount = LB.length
+	boardcount = LB.length;
+	maxshots = 0;
 	totalshots = 0;
 	for (var g=0; g<boardcount; g++) {
 		snapshots = LB[g][3].length;
@@ -39,7 +40,7 @@ get_and_report_metrics(leaderboards);
 
 //Report the snapshot count
 
-function InitControls() {
+function InitControls(options) {
 	$('#num_games').val(options.num_games);
 	$('#num_days').val(options.num_days);
 
@@ -57,7 +58,7 @@ function InitControls() {
 	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
 	
 	//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
-	var datetime_format = value_date_format;
+	var datetime_format = options.date_format;
 	
 	$(function(){
 		$(".DateTimeField").datetimepicker({
@@ -113,32 +114,33 @@ function URLopts(element) {
 
 	// Options shared by all reload paths
 	
+	val = $('#selCols').find(":selected").val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
+	val = $('#selNames').find(":selected").val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
+	val = $('#selLinks').find(":selected").val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+
 	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
 	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
 	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight)) opts.push("highlight="+encodeURIComponent(val));
 	val = $('#chkSessionDetails').is(":checked"); if (val != Boolean(defaults.details)) opts.push("details="+encodeURIComponent(val));
 
-	val = $('#as_at').val(); if (val != defaults.as_at) opts.push("as_at="+encodeURIComponent(val));
-	
-	val = $('#selCols').find(":selected").val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-	val = $('#selNames').find(":selected").val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-	val = $('#selLinks').find(":selected").val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
 
-	if (element == "btnLatest") {
-		opts.push("latest")
-		opts.push("num_games="+encodeURIComponent($('#num_games').val()))
+	if (element == "btnImpact") {
+		opts.push("impact");
+		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
+		opts.push("num_games=0");
 	}
-	else if (element == "btnImpact") {
-		opts.push("impact")
-		opts.push("num_days="+encodeURIComponent($('#num_days').val()))
+	else if (element == "btnAllLeaderboards") {
+		opts.push("num_games=0");
 	}
 	else {
-		val = $('#selGame').find(":selected").val(); if (val != defaults.game) opts.push("player="+encodeURIComponent(val));	
-		val = $('#changed_since').val(); if (val != defaults.changed_since) opts.push("changed_since="+encodeURIComponent(val));
-		val = $('#compare_with').val(); if (val != defaults.compare_with) opts.push("compare_with="+encodeURIComponent(val));
-		val = $('#compare_back_to').val(); if (val != defaults.compare_back_to) opts.push("compare_back_to="+encodeURIComponent(val));
-		val = $('#compare_till').val(); if (val != defaults.compare_till) opts.push("compare_till="+encodeURIComponent(val));
+		val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
+		val = $('#selGame').find(":selected").val(); if (val != defaults.game) opts.push("game="+encodeURIComponent(val));	
+		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
+		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
+		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
+		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
 	}
 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
@@ -186,12 +188,15 @@ REQUEST.onreadystatechange = function () {
 		// Capture response in leaderboards
 		$('#title').html(response[0]); 
 		$('#subtitle').html(response[1]); 
-		opts =  response[2]
+		options =  response[2]
 		leaderboards = response[3];
 		
 		// Get the max and total for rendering
-		get_and_report_metrics(leaderboards)
+		get_and_report_metrics(leaderboards);
 
+		// Update options
+		InitControls(options);
+		
 		// redraw the leaderboards
 		DrawTables("tblLB");
 		
@@ -202,7 +207,6 @@ REQUEST.onreadystatechange = function () {
 function refetchLeaderboards(event) {
 	var url = url_json_leaderboards + URLopts(event.srcElement.id);
 
-	alert(url);
 	$("#reloading_icon").css("visibility", "visible");
 
 	REQUEST.open("GET", url, true);
@@ -301,31 +305,6 @@ function LBtable(LB, snapshot, links) {
 
 	// First Header Row
 
-	var details = document.getElementById("chkSessionDetails").checked;
-	
-	if (details) {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var td = document.createElement('TD');
-		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
-		td.colSpan = 5;
-		td.className = 'leaderboard normal'
-		tr.appendChild(td);
-	} else {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var th = document.createElement('TH');
-		var content = document.createTextNode("Results after " + date_time);
-		th.appendChild(content);
-		th.colSpan = 5;
-		th.className = 'leaderboard normal'
-		tr.appendChild(th);		
-	}	
-
-	// Second Header Row
-
 	var tr = document.createElement('TR');
 	tableHead.appendChild(tr);
 
@@ -364,6 +343,31 @@ function LBtable(LB, snapshot, links) {
 	th.className = 'leaderboard normal'
 		th.style.textAlign = 'center';
 	tr.appendChild(th);
+	
+	// Second (optional) Header Row
+
+	var details = document.getElementById("chkSessionDetails").checked;
+	
+	if (details) {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var td = document.createElement('TD');
+		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
+		td.colSpan = 5;
+		td.className = 'leaderboard normal'
+		tr.appendChild(td);
+	} else {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var th = document.createElement('TH');
+		var content = document.createTextNode("Results after " + date_time);
+		th.appendChild(content);
+		th.colSpan = 5;
+		th.className = 'leaderboard normal'
+		tr.appendChild(th);		
+	}	
 
 	// Third Header Row
 
@@ -477,11 +481,10 @@ function LBtable(LB, snapshot, links) {
 //Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
 	// Oddly $('#selLinks) and $('#selCols) fails here. Not sure why. 
-	var selLinks = document.getElementById("selLinks");
+	var selLinks = document.getElementById("selLinks");	
 	var selCols = document.getElementById("selCols");
 	var cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
-	// TODO: We need to respect links in the new detail header!
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
 	if (maxshots == 1) {
@@ -495,17 +498,17 @@ function DrawTables(target, links) {
 		table.innerHTML = "";
 		table.className = 'leaderboard wrapper'
 
-			for (var i = 0; i < rows; i++) {
-				var row = table.insertRow(i);
-				for (var j = 0; j < cols; j++) {
-					k = i*cols+j 
-					if (k < totalboards) {
-						var cell = row.insertCell(j);
-						cell.className = 'leaderboard wrapper'
-							cell.appendChild(LBtable(leaderboards[k], 0, links));
-					}
+		for (var i = 0; i < rows; i++) {
+			var row = table.insertRow(i);
+			for (var j = 0; j < cols; j++) {
+				k = i*cols+j 
+				if (k < totalboards) {
+					var cell = row.insertCell(j);
+					cell.className = 'leaderboard wrapper'
+					cell.appendChild(LBtable(leaderboards[k], 0, links));
 				}
 			}
+		}
 	} 
 //  This was a clever way to to support pairs that run across the screen.
 //  Have decided in interim that we won't support that. It's much nicer even with pairs
@@ -577,5 +580,5 @@ function DrawTables(target, links) {
 	}			 
 }
 
-InitControls();
+InitControls(options);
 DrawTables("tblLB");

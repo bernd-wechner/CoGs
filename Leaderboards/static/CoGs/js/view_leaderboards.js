@@ -305,31 +305,6 @@ function LBtable(LB, snapshot, links) {
 
 	// First Header Row
 
-	var details = document.getElementById("chkSessionDetails").checked;
-	
-	if (details) {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var td = document.createElement('TD');
-		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
-		td.colSpan = 5;
-		td.className = 'leaderboard normal'
-		tr.appendChild(td);
-	} else {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var th = document.createElement('TH');
-		var content = document.createTextNode("Results after " + date_time);
-		th.appendChild(content);
-		th.colSpan = 5;
-		th.className = 'leaderboard normal'
-		tr.appendChild(th);		
-	}	
-
-	// Second Header Row
-
 	var tr = document.createElement('TR');
 	tableHead.appendChild(tr);
 
@@ -368,6 +343,31 @@ function LBtable(LB, snapshot, links) {
 	th.className = 'leaderboard normal'
 		th.style.textAlign = 'center';
 	tr.appendChild(th);
+	
+	// Second (optional) Header Row
+
+	var details = document.getElementById("chkSessionDetails").checked;
+	
+	if (details) {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var td = document.createElement('TD');
+		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
+		td.colSpan = 5;
+		td.className = 'leaderboard normal'
+		tr.appendChild(td);
+	} else {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var th = document.createElement('TH');
+		var content = document.createTextNode("Results after " + date_time);
+		th.appendChild(content);
+		th.colSpan = 5;
+		th.className = 'leaderboard normal'
+		tr.appendChild(th);		
+	}	
 
 	// Third Header Row
 

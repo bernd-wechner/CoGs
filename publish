@@ -5,16 +5,29 @@
 # as we'll use sshfs to mount them if needed
 rsa_file=/home/bernd/.ssh/id_rsa
 
-server=Arachne
+# server_name=Arachne
 server_mount_dir=/home/bernd/Mounts/leaderboard.space
 server_account=weaver@arachne.lan
 server_dir=/mnt/passport/www/html/leaderboard.space
+
+# Settings for new server we're migrating to
+# server_name="Arachne Nova"
+# server_mount_dir=/home/bernd/Mounts/leaderboard.space
+# server_account=weaver@arachne-nova.lan
+# server_dir=/data/www/leaderboard.space
+
+# Unmount the server forcedly for now while migrating servers to ensure we don't accidentally copy to the wrong one
+mountpoint -q $server_mount_dir
+if [ $? == 0 ];then
+	echo "Unmounting $server_mount_dir (for safety) ..."
+	sudo umount $server_mount_dir
+fi
 
 # Ensure the server is properly mounted (or we can't publish to them)
 mountpoint -q $server_mount_dir
 if [ $? != 0 ];then
 	if [ ! -d $server_mount_dir ]; then
-		echo Creating $server_mount_dir ...
+		echo "Creating $server_mount_dir ..."
 	    mkdir -p $server_mount_dir
 	fi
 
@@ -38,8 +51,8 @@ source_dir=$(dirname $0)
 $source_dir/manage.py collectstatic  --verbosity 0 --noinput
 
 # Now publish the site
-echo Copying site to $server...
-site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware django_model_admin_fields django_model_privacy_mixin DumpData manage.py)
+echo "Copying site to $server_name..."
+site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin DumpData manage.py uwsgi.ini)
 for source in ${site[@]}; do
 	# If we're excluding static dirs, we still want to copy the static folder
 	if grep -q $source $exclusion_file; then
@@ -51,4 +64,4 @@ for source in ${site[@]}; do
 	rsync -r $exclude $source_dir/$source $server_mount_dir
 done
 
-echo Done.
+echo "Done."

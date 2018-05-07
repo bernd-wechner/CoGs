@@ -1194,7 +1194,7 @@ class Session(AdminModel):
     def num_competitors(self) -> int:
         '''
         Returns an integer count of the number of competitors in this game session,
-        i.e. number of player sin a single-player mode or number of teams in team player mode
+        i.e. number of players in a single-player mode or number of teams in team player mode
         '''
         if self.team_play:
             return len(self.teams)
@@ -1203,6 +1203,11 @@ class Session(AdminModel):
 
     @property
     def str_competitors(self) -> str:
+        '''
+        Returns a simple string to append to a number which represents the "competitors"
+        That is, "team", "teams", "player", or "players" as appropriate. A 1 player
+        game is a solo game clearly.
+        '''
         n = self.num_competitors
         if self.team_play:
             if n == 1:
@@ -1272,7 +1277,7 @@ class Session(AdminModel):
     @property
     def players(self) -> set:
         '''
-        Returns an unordered set of the players in the session, with no guranteed 
+        Returns an unordered set of the players in the session, with no guaranteed 
         order. Useful for traversing a list of all players in a session
         irrespective of the structure of teams or otherwise.
         '''
@@ -1465,6 +1470,33 @@ class Session(AdminModel):
     @property
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+#     @property
+#     def predicted_ranking(self) -> list:
+#         '''
+#         Returns a list of players in the predicted order
+#         '''
+#         # TODO: Implement
+#         pass
+#     
+#     @property
+#     def relationships(self) -> list:
+#         '''
+#         Returns a list of tuples containing player pairs representing 
+#         each relationship in the game.
+#         '''
+#         # TODO: Implement
+#         pass
+#             
+#     @property
+#     def prediction_quality(self) -> int:
+#         '''
+#         Returns a measure of the prediction quality that TrueSkill rankings
+#         provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
+#         it all right. 
+#         '''
+#         # TODO: Implement
+#         pass    
 
     def leaderboard_header(self, name_style):
         '''
