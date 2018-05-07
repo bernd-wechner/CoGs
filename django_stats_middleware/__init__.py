@@ -1,3 +1,33 @@
+'''
+Created on 7May.,2018
+
+Django Stats Middleware
+
+@author: Bernd Wechner, based on an old snippet here: https://code.djangoproject.com/wiki/PageStatsMiddleware
+@status: Beta - works and is in use on a dedicated project. Can't guarantee it works everywhere. Tested on Django 2.0 only with Python 3.6.
+
+Inserts some basic performance stats just prior to the </body> tag in the response of every page served.
+
+To use, add it to the MIDDLEWARE list in settings.py as follows:
+
+MIDDLEWARE = (
+    'django_stats_middleware.StatsMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'django.middleware.security.SecurityMiddleware'    
+)
+
+Can be easily tweaked below to deliver whatever stats you like. 
+
+This information cannot be delivered to pages through the template context because timing information is 
+collected until the whole template is already rendered. To wit, we patch it into the content just above 
+the </body> tag. If your page has no such tag, stats won't appear on it of course.
+'''
+
 # Python Imports
 from time import time
 from operator import add
@@ -16,9 +46,8 @@ class StatsMiddleware(object):
         # One-time configuration and initialization.
 
     def __call__(self, request):
-        # Uncomment the following if you want to get stats on DEBUG=True only
-#         if not settings.DEBUG:
-#             return self.get_response(request)
+        if not settings.DEBUG:
+            return self.get_response(request)
 
         # get number of db queries before we do anything
         n = len(connection.queries)
