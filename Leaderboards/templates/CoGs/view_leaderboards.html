@@ -3,17 +3,28 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
-<table class='leaderboard options'>
+<table class=LeaderboardOptions>
 	<tr>
-		<td class='leaderboard options' valign='top'>
-			<span style="font-size:125%; font-weight: bold;">Format</span>
+		<td class='tight options'>
+			<b>View:</b>
 		</td>
-		<td class='leaderboard options'>
-			these <b>{{ leaderboard_count }}</b> leaderboards 
+		<td class='tight options'>
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 			
-			<label id='lblSnaps'></label>
+			<input type="button" id="btnAllLeaderboards" value="All Leaderboards" onclick="refetchLeaderboards(event);">
+
+			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);" style="margin-left: 8ch;"> for
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;"> most popular games
+			
+			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
+			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch"> days
+		</td>
+	</tr>
+	<tr>
+		<td class='options'>
 			in
-			
+		</td>
+		<td class='options'>
 			<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
 			  <option>1</option>
 			  <option>2</option>
@@ -22,64 +33,107 @@
 			  <option>5</option>
 			  <option>6</option>
 			</select>
-			<label>columns</label>
+			<label>columns</label>,
+
+			linking game and player names to
 			
-			, use player 
-			
-			<select id="selNames" onchange="refetchLeaderboards(event)">
+			<select id="selLinks" onchange='DrawTables("tblLB");'>
+			  <option value="none">nowhere</option>
+			  <option value="CoGs">CoGs Leaderboard Space</option>
+			  <option value="BGG">boardgamegeek.com</option>
+			</select>
+		</td>
+	</tr>
+	<tr>
+		<td class='options' colspan = 2>
+			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+			Show session details.
+			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 
+			Highlight players.
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 
+			Highlight changes.
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Formatting:
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
+			Using player 
+			<select id="selNames">
 			  <option value="nick">nickname</option>
 			  <option value="full">full name</option>
 			  <option  value="complete">full name (nickname)</option>
 			</select>
-			
-			and link
-			
-			<select id="selLinks" onchange='DrawTables("tblLB");'>
-			  <option value="none">nowhere</option>
-			  <option value="CoGs">internally</option>
-			  <option value="BGG">boardgamegeek.com</option>
-			</select>
-			.			
-			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
-			Highlight changes.
 		</td>
 	</tr>
-	<tr>
-		<td class='leaderboard options' valign='top'>
-			<button type="button" id='btnFilter' onclick="get_new_view();">Filter</button> 
-		</td>
-		<td class='leaderboard options'>			
-			leaderboards as <i><a onclick="toggle_filters();">follows</a></i>:
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Filtering:
 		</td>
 	</tr>
-	<tr class='toggle' style="display:none;">
-		<td class='leaderboard options'/>
-		<td class='leaderboard options' style="line-height:200%; padding-top:0px">
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
 			<label>Only games played by league: </label><select id='selLeague'></select><br>
-			<label>Only games played by player: </label><select id='selPlayer'"></select><br>
+			<label>Only games played by player: </label><select id='selPlayer'></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="from_date_time" type="text" value={{ changed_since|safe }}><br>
-			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
-			<input class="DateTimeField" id="as_at_date_time" type="text" value={{ as_at|safe }}><br>
-			<label>Compare each leaderboard with</label>
-			<input id="compare_with" size=3 type="text" value={{ compare_with|safe }}  onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
-			<label>prior leaderboards, or leaderboards back to</label>
-			<input class="DateTimeField" id="compare_back_to_date_time" type="text" value={{ compare_back_to|safe }}>
-			<label>and/or up until</label>			
-			<input class="DateTimeField" id="compare_till_date_time" type="text" value={{ compare_till|safe }}>
+			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Perspective:
 		</td>
 	</tr>
-	<tr>
-		<td class='leaderboard options'>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
+			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
+			<input class="DateTimeField" id="as_at" type="text" ><br>
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options' colspan=2>
+			Evolution:
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight' style="line-height:2;">
+			<label>Compare each leaderboard with</label>
+			<input id="compare_with" size=3 type="text" onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
+			<label>prior leaderboards, or leaderboards back to</label>
+			<input class="DateTimeField" id="compare_back_to" type="text">
+			<label>and/or up until</label>			
+			<input class="DateTimeField" id="compare_till" type="text">
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options'>
 			<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> 
 		</td>
-		<td class='leaderboard options'>
+		<td class='options'>
 			leaderboards to clipboard
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options'>
+			<button type="button" id='btnShowURL' onclick="show_url();">Show</button> 
+		</td>
+		<td class='options'>
+			URL
 		</td>
 	</tr>
 </table>
 
+<h3><label id='lblTotalCount'></label><label id='lblSnapCount' style='margin-left:1ch'></label></h3>
+		
 <table id='tblLB'>
 </table>
 {% endblock %}
@@ -90,16 +144,17 @@
 <script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
 
 {# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
+<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/>
 
 <script>
+	// Nab the options and their defaults from context
+	var options = {{ options|safe }};
+	var defaults = {{ defaults|safe }};
+
 	// Nab the data from context
 	var leagues = {{ leagues|safe }};
-	var league = {{ league|safe }};
 	var players = {{ players|safe }};
-	var player = {{ player|safe }};
 	var games = {{ games|safe }};
-	var game = {{ game|safe }};
 	
 	// The big one! Leaderboards. This is a structure of lists within lists
 	// Games, Snapshots and Players in that order. 
@@ -119,54 +174,20 @@
 	
 	var leaderboards = {{leaderboards|safe}};
 	
-	// Layout is driven by snapshots.
-	// 
-	// If we have one snapshot per game all is normal and we can just layout 
-	//    one board per game using cols as requested.
-	// If we have two snapshots per game max, then we're comparing two points in time
-	//    and snaphots can be presented in pairs. We can sort of respect cols as requested 
-	//    but each col has a pair of snapshots side by side for comparison so we'll ensure it's 
-	//    even (round up) and halve it to get about the requested number of columns.    
-	// If we have more than 2 snapshots per game we are looking at leaderboard timelines 
-	//    or evolutions and so want one game per row, and one column per snapshot, so we
-	//    can safely ignore cols, and use a table as wide as maxshots.   
-	
-	var maxshots = 0;
-	var totalshots = 0;
-	for (var g=0; g<leaderboards.length; g++) {
-		snapshots = leaderboards[g][3].length;
-		totalshots += snapshots;
-		if (snapshots > maxshots) maxshots = snapshots;
-	}	 
-	
 	/// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that
 	// the code in the included .js file can see.  
 	
 	// Note the initial value of various controls on the view
-	value_cols = {{ cols|safe }};
-	value_names = {{ names|safe }};
-	value_links = {{ links|safe }};
-	value_highlight = {{highlight}};
 	value_date_format = "{{default_datetime_input_format}}";
-	
-	// Note the default values of same controls
-	default_cols = {{default_cols}};
-	default_names = "{{default_names}}";
-	default_highlight = "{{default_highlight}}";
-	default_links = "{{default_links}}";
-	
-	// And some catch all values
-	ALL_LEAGUES = {{ ALL_LEAGUES|safe }};
-	ALL_PLAYERS = {{ ALL_PLAYERS|safe }};
-	ALL_GAMES = {{ ALL_GAMES|safe }};
-	
+		
 	// And some URLs
 	url_leaderboards = "{% url 'leaderboards' %}";
 	url_json_leaderboards = "{% url 'json_leaderboards' %}"
 	
 	url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
 	url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
+	url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
 	url_list_Sessions = "{% url 'list' 'Session'%}";		
 </script>
 {% endblock %}

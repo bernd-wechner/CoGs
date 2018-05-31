@@ -18,13 +18,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 
-# TODO: Work static files out when deployed. They are working fine under runserver.
-#       but the following two directives might be important for deployment.
-#       https://docs.djangoproject.com/en/1.11/ref/contrib/staticfiles/
-#       
-# This is where manage.py collectstatic will look for static files. A tuple of dirs.
-STATICFILES_DIRS = (os.path.join(BASE_DIR, "Leaderboards/static/"),)
-
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
@@ -34,18 +27,24 @@ STATIC_URL = "/static/"
 # The name of the webserver this is running on (used to select deployment settings)
 WEBSERVER = "Arachne"
 
+# The Site ID for the django.contrib.sites app, 
+# which just a prerequisite for the django.contrib.flatpages app
+# which is used for serving the about page (and any other flat pages).
+SITE_ID = 1
+
 import platform
 HOSTNAME = platform.node()
 
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
+
 if HOSTNAME == WEBSERVER:
     print("Django settings: Web Server")
-    ALLOWED_HOSTS = ["127.0.0.1", "leaderboard.space"]
-    #SECURE_CONTENT_TYPE_NOSNIFF = True
-    #SECURE_BROWSER_XSS_FILTER = True
-    #SECURE_SSL_REDIRECT = True
-    #SESSION_COOKIE_SECURE = True
-    #CSRF_COOKIE_SECURE = True
-    #X_FRAME_OPTIONS = 'DENY'
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    SECURE_BROWSER_XSS_FILTER = True
+    SECURE_SSL_REDIRECT = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    X_FRAME_OPTIONS = 'DENY'
 else:
     print("Django settings: Development Server")
     from CoGs.settings_development import * 
@@ -55,27 +54,37 @@ else:
 INSTALLED_APPS = (
     'dal',
     'dal_select2',
+    'cuser',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
-    'django.contrib.staticfiles',    
+    'django.contrib.staticfiles',
+    'django.contrib.sites',
+    'django.contrib.flatpages',
     'django_extensions',
-    #'debug_toolbar',
-    'Leaderboards'   
+    'reset_migrations',
+    'Leaderboards'
 )
 
-MIDDLEWARE_CLASSES = (
+MIDDLEWARE = (
+    'django_stats_middleware.StatsMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.auth.middleware.SessionAuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'cuser.middleware.CuserMiddleware',
 )
+
+if HOSTNAME == WEBSERVER:
+    WSGI_APPLICATION = 'CoGs.wsgi.application'
+    from django_lighttpd_middleware import METHOD
+    if METHOD == "middleware":
+        MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
 
 ROOT_URLCONF = 'CoGs.urls'
 
@@ -94,8 +103,6 @@ TEMPLATES = [
         },
     },
 ]
-
-WSGI_APPLICATION = 'CoGs.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
@@ -132,6 +139,3 @@ DATETIME_FORMAT = 'r'
 STATIC_URL = '/static/'
 
 LOGIN_URL = '/login/'
-
-AUTH_PROFILE_MODULE =  'CoGs.Player'
-

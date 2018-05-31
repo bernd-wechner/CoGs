@@ -1,0 +1,167 @@
+Got a new webserver. Here's what I'm doing to install:
+
+Install Ubuntu 18.04 server edition
+sudo apt install ssh
+sudo apt install lighttpd
+sudo apt install uwsgi uwsgi-extra uwsgi-plugin-python3 python3-uwsgidecorators
+sudo apt install postgresql
+
+    Configure PostGreSQL:
+
+    1) edit /etc/postgresql/10/main/postgresql.conf
+    setting:
+    data_directory = '/data/postgresql/10/main'
+    listen_addresses = '*'
+
+    2) edit /etc/postgresql/10/main/pg_hba.conf.conf
+    append:
+    # LAN connections
+    host 	all 		all 		192.168.0.0/24 		md5
+
+    3) Create user for remote admin (so pgadmin can connect):
+    sudo -u postgres psql
+    \password postgres
+    \q
+
+    4) Check:
+    sudo pg_ctlcluster 10 main status
+    Tested a connection with pgadmin from the dev box.
+
+    5) Create a CoGs Role:
+    sudo -u postgres psql
+    CREATE ROLE "CoGs" WITH LOGIN ENCRYPTED PASSWORD 'ManyTeeth' VALID UNTIL 'infinity';
+    CREATE DATABASE "CoGs";
+    \q
+
+    6) Copied database from Arachne.
+    Backed up Database on Arachne
+    Restored onto Arachne_nova
+
+sudo apt install python3-django python3-django-extensions python3-psycopg2 python3-yaml python3-pip
+sudo -H pip3 install trueskill django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil django-reset-migrations
+
+    Confirmed I now have Python 3.6 and Django 1.11 as these are the minimal versions needed.
+
+    $ python3 --version
+    Python 3.6.5
+    $ django-admin --version
+    1.11.11
+
+Made web folders:
+
+    cd /data
+    sudo mkdir www
+    sudo chown weaver:www-data www
+    cd www
+    sudo mkdir leaderboard.space
+    sudo chown weaver:www-data leaderboard.space
+
+Published CoGs site to it:
+
+	doctored the publish script and ran it and checked. All OK
+
+Ran into problem with Djhango version. Forgot I need 2.0 for the Window functions! Doh! So:
+
+sudo -H pip3 install django==2.0
+    Collecting django==2.0
+    Requirement already satisfied: pytz in /usr/lib/python3/dist-packages (from django==2.0)
+    Installing collected packages: django
+      Found existing installation: Django 1.11.11
+        Not uninstalling django at /usr/lib/python3/dist-packages, outside environment /usr
+    Successfully installed django-2.0
+
+After which (in /data/www/leaderboard.space):
+
+./manage.py makemigrations Leaderboards
+    Django settings: Development Server
+    Migrations for 'Leaderboards':
+      Leaderboards/migrations/0001_initial.py
+        - Create model Backup_Rating
+        - Create model Game
+        - Create model League
+        - Create model Location
+        - Create model Performance
+        - Create model Player
+        - Create model Rank
+        - Create model Rating
+        - Create model Rebuild_Log
+        - Create model Session
+        - Create model Team
+        - Create model TrueskillSettings
+        - Add field session to rank
+        - Add field team to rank
+        - Add field teams to player
+        - Add field user to player
+        - Add field player to performance
+        - Add field session to performance
+        - Add field locations to league
+        - Add field manager to league
+        - Add field players to league
+        - Add field leagues to game
+        - Add field game to backup_rating
+        - Add field last_edited_by to backup_rating
+        - Add field player to backup_rating
+
+./manage.py migrate
+    Django settings: Development Server
+    Operations to perform:
+      Apply all migrations: Leaderboards, admin, auth, contenttypes, flatpages, sessions, sites
+    Running migrations:
+      No migrations to apply.
+
+Enable the UWSGI app:
+	sudo ln -s /data/www/leaderboard.space/uwsgi.ini /etc/uwsgi/apps-enabled/leaderboard.space.ini
+
+Add this to /etc/lighttpd/lighttpd.conf
+
+$HTTP["host"] =~ "(leaderboard.space|arachne.lan)" {
+		server.name             = "leaderboard.space"
+		server.document-root    = "/data/www/leaderboard.space"
+
+        # SSL is managed by the router not here, as the gateway currently running lighttpd cannot proxy SSL requests.
+        # This is what the handler configuration looks like mind.
+		#$SERVER["socket"] == ":443" {
+		#    ssl.engine              = "enable"
+		#    ssl.ca-file             = "/etc/letsencrypt/live/leaderboard.space/chain.pem"
+		#    ssl.pemfile             = "/etc/letsencrypt/live/leaderboard.space/combined.pem"
+		#    ssl.honor-cipher-order  = "enable"
+		#    ssl.use-sslv2           = "disable"
+		#    ssl.use-sslv3           = "disable"
+		#}
+
+        # Point /favicon.ico to the actual icon file
+        url.rewrite-once = ( "^/favicon\.ico$" => "/static/favicon.ico" )
+
+        # Serve static and .well-known as standard files and everything else pump through uwsgi
+		$HTTP["url"] !~ "^/static|.well-known/" {
+				scgi.protocol = "uwsgi"
+				scgi.server = ( "/" => (( "socket" => "/run/uwsgi/app/leaderboard.space/socket", "check-local" => "disable" )), )
+    }
+}
+
+Actually I copied all of the lighttpd.conf from old arachne and modified dirs as needed. This brought over a couple of other sites and so a test:
+
+    lighttpd -tt -f /etc/lighttpd/lighttpd.conf
+
+revealed a need for PHP so:
+
+    sudo apt install php-cgi
+
+
+
+
+Added weaver to www-data group (so he can read the logs):
+    sudo usermod -a -G www-data weaver
+
+Added my SSH key to weaver@arachne_nova.lan for password free login
+    ssh-copy-id -i ~/.ssh/id_rsa.pub weaver@arachne_nova.lan
+
+Logged out and in again for group ID to take
+Checked lighttpd logs: looked good
+
+
+
+Migrate SSL certificates from old server
+
+    sudo apt install certbot
+

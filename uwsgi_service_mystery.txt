@@ -1,0 +1,107 @@
+uwsgi service mystery
+
+/etc/init.d/uwsgi start
+
+    Defined the binary DAEMON="/usr/bin/uwsgi"
+    But I can't find where DAEMON is used
+    loads /lib/init/vars.sh
+    loads /etc/default/uwsgi
+    loads /lib/lsb/init-functions
+        loads /lib/lsb/init-functions.d/40-systemd
+            starts the service with: /bin/systemctl --no-pager start uwsgi.service
+    loads /usr/share/uwsgi/init/snippets
+    loads /usr/share/uwsgi/init/do_command
+        loads /usr/share/uwsgi/init/snippets
+        loads /usr/share/uwsgi/init/specific_daemon
+            Builds the command line with --daemonize (TODO: how does this end up being used?)
+            do_start_specific_daemon() is the function that does this
+            It is called from: /usr/share/uwsgi/init/do_command: do_with_given_specific_daemon()
+            That in turn is called from /usr/share/uwsgi/init/do_command: do_command()
+            That in turn is called from "/etc/init.d/uwsgi start"
+
+Mytsery solved:
+
+This is a bizarre construct in Linux balancing SysV init scripts with systemd services. Totally
+hard to identify but the secret lies in:
+
+    /lib/lsb/init-functions.d/40-systemd
+
+which when loaded makes a call as to whether to let the init script run uwsgi (with do_start_specific_daemon) or use systemctl to start it. The weirdness is that systemctl just runs the init script again (i.e recurses), this however, on the second pass, the call is made to let the init script run uwsgi (with do_start_specific_daemon). So, ultimately it is do_start_specific_daemon that loads the uwsgi daemon, there's just a weird way to get there.
+
+The decision is made as follows:
+
+    if Parent Process ID is not 1 (init) the use systemctl else continue with init script.
+
+in other words:
+
+    When a user runs the init script, then run systemctl, and use the init script.
+
+Still not clear what is happening here. At boot, we use the script (run a uwsgi daemon). Afterwards how do we get to the init side, as it's never run by init? Unless when using systemctl init.d thinks it's run by init!
+
+Probably that's it!
+
+Here is one way to try and trace things:
+
+    sudo strace service uwsgi restart
+
+
+dpkg-query -L uwsgi
+
+/run/systemd/generator.late/uwsgi.service
+
+
+
+
+Somehow it runs workers like this:
+
+Here's a classic pstree for the uwsgi service with 2 workers:
+
+pstree -p 28477
+uwsgi(28477)─┬─uwsgi(14360)─┬─{Finalizer}(14365)
+             │              └─{SGen worker}(14362)
+             └─uwsgi(14361)─┬─{Finalizer}(14366)
+                            └─{SGen worker}(14363)
+
+Where 28477 has this command line:
+
+/usr/bin/uwsgi --ini /usr/share/uwsgi/conf/default.ini --ini /etc/uwsgi/apps-enabled/leaderboard.space.ini --daemonize /var/log/uwsgi/app/leaderboard.space.log
+
+And 14260 has this command line:
+
+/usr/bin/uwsgi --ini /usr/share/uwsgi/conf/default.ini --ini /etc/uwsgi/apps-enabled/leaderboard.space.ini --daemonize /var/log/uwsgi/app/leaderboard.space.log
+
+(i.e. the same).
+
+Workers keep dying though, in cycles of this:
+
+Sun Oct  8 05:16:34 2017 - DAMN ! worker 1 (pid: 15005) died :( trying respawn ...
+Sun Oct  8 05:16:34 2017 - Respawned uWSGI worker 1 (new pid: 15011)
+Sun Oct  8 05:16:34 2017 - DAMN ! worker 2 (pid: 15006) died :( trying respawn ...
+Sun Oct  8 05:16:34 2017 - worker respawning too fast !!! i have to sleep a bit (2 seconds)...
+Sun Oct  8 05:16:34 2017 - Mono JIT initialized on worker 1 with version v4.0.30319
+Sun Oct  8 05:16:34 2017 - uwsgi.dll not found trying in global gac...
+Sun Oct  8 05:16:34 2017 - unable to load "uwsgi.dll" in the Mono domain
+
+
+
+echo "echo 12000 > /proc/sys/vm/dirty_writeback_centisecs" | sudo sh
+
+echo "PS4='+(${BASH_SOURCE}:${LINENO}): ${FUNCNAME[0]:+${FUNCNAME[0]}(): }' ./test" | bash
+
+
+
+
+
+PREPS for the uwsgi service to run:
+
+MUST mount the log folder:
+
+sudo mount -B /mnt/passport/log/uwsgi /var/log/uwsgi
+
+Else uwsgi may not run for lack of an app folder. I want logging off the SSD on the passport. There is a setting "logto" that might be the better way to do this.
+
+Also:
+
+chmod g+w /run/uwsgi/app/leaderboard.space/
+
+to ensure systemd uwsgi (www-data/www-data) can write to it (weaver/www-data)
