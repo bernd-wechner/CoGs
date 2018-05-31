@@ -361,21 +361,22 @@ class view_Detail(DetailViewExtended):
 # Define defaults for the view inputs 
 
 class leaderboard_options:
-    league = ALL_LEAGUES    # Restrict to games played by specified League
-    player = ALL_PLAYERS    # Restrict to games played by specified Player
-    game = ALL_GAMES        # Restrict to specified Game
-    num_games = 5           # List only this many games (most popular ones)
-    num_days = 1            # For impact Quick Views only, return impact of last session of this length in days
-    as_at = None            # Do everything as if it were this time now (pretend it is now as_at)
-    changed_since = NEVER   # Show only leaderboards that changed since this date 
-    compare_with = None     # Compare with this many historic leaderboards
-    compare_back_to = None  # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
-    compare_till = None     # Include comparisons only up to this date           
-    highlight = True        # Highlight changes between historic snapshots
-    details = False         # Show session details atop each boards (about the session that produced that board) 
-    cols = 4                # Display boards in this many columns (ignored when comparing with historic boards)
-    names = 'complete'      # Render player names like this
-    links = 'CoGs'          # Link games and players to this target
+    league = ALL_LEAGUES        # Restrict to games played by specified League
+    player = ALL_PLAYERS        # Restrict to games played by specified Player
+    game = ALL_GAMES            # Restrict to specified Game
+    num_games = 5               # List only this many games (most popular ones)
+    num_days = 1                # For impact Quick Views only, return impact of last session of this length in days
+    as_at = None                # Do everything as if it were this time now (pretend it is now as_at)
+    changed_since = NEVER       # Show only leaderboards that changed since this date 
+    compare_with = None         # Compare with this many historic leaderboards
+    compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
+    compare_till = None         # Include comparisons only up to this date           
+    details = False             # Show session details atop each boards (about the session that produced that board) 
+    highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
+    highlight_changes = True    # Highlight changes between historic snapshots
+    cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
+    names = 'complete'          # Render player names like this
+    links = 'CoGs'              # Link games and players to this target
     
     @property
     def as_dict(self):
@@ -428,11 +429,14 @@ def get_leaderboard_options(request):
     if 'compare_till' in request.GET:        
         lo.compare_till = fix_time_zone(parser.parse(request.GET['compare_till']))    
         
-    if 'highlight' in request.GET:
-        lo.highlight = json.loads(request.GET['highlight'].lower())
-         
     if 'details' in request.GET:
         lo.details = json.loads(request.GET['details'].lower())     
+
+    if 'highlight_players' in request.GET:
+        lo.highlight_players = json.loads(request.GET['highlight_players'].lower())
+         
+    if 'highlight_changes' in request.GET:
+        lo.highlight_changes = json.loads(request.GET['highlight_changes'].lower())
     
     if 'cols' in request.GET:
         lo.cols = request.GET['cols']
@@ -707,11 +711,12 @@ def ajax_Leaderboards(request, raw=False):
                 #       game.play_counts and game.session_list might run faster with one query rather 
                 #       than two.
                 time = board.date_time
-                detail = board.leaderboard_header(lo.names)            
+                players = [p.pk for p in board.players]            
+                detail = board.leaderboard_header(lo.names)
                 lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
                     counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(time), counts['total'], counts['sessions'], detail, lb)
+                    snapshot = (localize(time), counts['total'], counts['sessions'], players, detail, lb)
                     snapshots.append(snapshot)
 
             if len(snapshots) > 0:                    

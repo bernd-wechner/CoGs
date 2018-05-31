@@ -1185,8 +1185,7 @@ class Session(AdminModel):
     #     This is because ranks are associated with players in individual play mode but teams in Team play mode, 
     #     while performance is always tracked by player.
 
-    # TODO: consider if we can filter onj properties or specify annotations 
-    #       somehow to filter on
+    # TODO: consider if we can filter on properties or specify annotations somehow to filter on
     filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
     order_options = ['date_time', 'game', 'league']
 
@@ -1643,8 +1642,9 @@ class Session(AdminModel):
         if save is True, will initialise Performance objects for each player too.
     
          A RatingGroup is list of dictionaries, one dictionary for each team
-            keyed on the player name or ID containing a trueskill Rating object for that player
-         In single player mode we simply supply teams of 1, so each dictionary has only one member.
+            keyed on the team name or ID containing a trueskill Rating object for that team
+         In single player mode we simply supply teams of 1, so each dictionary has only one member 
+             and can be keyed on player name or ID.
          A trueskill Rating is just a trueskill mu and sigma pair (actually a Gaussian object with a mu and sigma).
          
         Weights is a dictionary, keyed on a player identifier with a weight as a value 
@@ -1652,7 +1652,7 @@ class Session(AdminModel):
             The player identifier is is a tuple which has two values (RatingsGroup index, Key into that RatingsGroup dictionary)
             
         Ranking list is a list of ranks (1, 2, 3 for first, second, third etc) that maps item
-            for item intok RatingGroup. Ties are indicated by repeating a given rank. 
+            for item into RatingGroup. Ties are indicated by repeating a given rank. 
          '''
         RGs = []
         Weights = {}

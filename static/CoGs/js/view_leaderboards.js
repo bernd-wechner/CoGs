@@ -48,7 +48,8 @@ function InitControls(options) {
 	$('#selNames').val(options.names);	
 	$('#selLinks').val(options.links);
 	
-	$('#chkHighlightChanges').prop('checked', options.highlight)
+	$('#chkHighlightPlayers').prop('checked', options.highlight_players)
+	$('#chkHighlightChanges').prop('checked', options.highlight_changes)
 	$('#chkSessionDetails').prop('checked', options.details);
 
 	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
@@ -121,8 +122,9 @@ function URLopts(element) {
 	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
 	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
-	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight)) opts.push("highlight="+encodeURIComponent(val));
 	val = $('#chkSessionDetails').is(":checked"); if (val != Boolean(defaults.details)) opts.push("details="+encodeURIComponent(val));
+	val = $('#chkHighlightPlayers').is(":checked"); if (val != Boolean(defaults.highlight_players)) opts.push("highlight_players="+encodeURIComponent(val));
+	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight_changes)) opts.push("highlight_changes="+encodeURIComponent(val));
 
 	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
 
@@ -163,11 +165,18 @@ function toggle_filters() {
 		$(".toggle").css('display', 'none');		
 }
 
-function toggle_highlights() {
-	if (document.getElementById("chkHighlightChanges").checked)
-		$(".leaderboard.highlight_off").removeClass().addClass('leaderboard highlight_on');
+function toggle_player_highlights() {
+	if (document.getElementById("chkHighlightPlayers").checked)
+		$(".leaderboard.emphasis_off").removeClass('emphasis_off').addClass('emphasis_on');
 	else
-		$(".leaderboard.highlight_on").removeClass().addClass('leaderboard highlight_off');
+		$(".leaderboard.emphasis_on").removeClass('emphasis_on').addClass('emphasis_off');
+}
+
+function toggle_change_highlights() {
+	if (document.getElementById("chkHighlightChanges").checked)
+		$(".leaderboard.highlight_off").removeClass('highlight_off').addClass('highlight_on');
+	else
+		$(".leaderboard.highlight_on").removeClass('highlight_on').addClass('highlight_off');
 }
 
 function copy_if_empty(from, to) {
@@ -205,7 +214,7 @@ REQUEST.onreadystatechange = function () {
 };
 
 function refetchLeaderboards(event) {
-	var url = url_json_leaderboards + URLopts(event.srcElement.id);
+	var url = url_json_leaderboards + URLopts(event.target.id);
 
 	$("#reloading_icon").css("visibility", "visible");
 
@@ -246,16 +255,11 @@ function LBtable(LB, snapshot, links) {
 	var date_time = LB[3][snapshot][0]
 	var play_count = LB[3][snapshot][1];
 	var session_count =LB[3][snapshot][2];
-	var session_details_html = LB[3][snapshot][3][0];
-	var session_details_data = LB[3][snapshot][3][1];
-	var player_list = LB[3][snapshot][4];
-
-	// Note the previous snapshots player list if there is one
-	// for the purposes of highlighting changes.   
-	var player_prev = null;
-	if (snapshot+1<LB[3].length) {
-		player_prev = LB[3][snapshot+1][4];	
-	}
+	var session_players =LB[3][snapshot][3];
+	var session_details_html = LB[3][snapshot][4][0];
+	var session_details_data = LB[3][snapshot][4][1];
+	var player_list = LB[3][snapshot][5];
+	var player_prev = (snapshot+1<LB[3].length) ? LB[3][snapshot+1][5] : null;  
 
 	// Create the Game link based on the requested link target
 	var linkGameCoGs = url_view_Game.replace('00',pkg);
@@ -344,7 +348,7 @@ function LBtable(LB, snapshot, links) {
 		th.style.textAlign = 'center';
 	tr.appendChild(th);
 	
-	// Second (optional) Header Row
+	// Second (optional) Header Row (session details if requested)
 
 	var details = document.getElementById("chkSessionDetails").checked;
 	
@@ -401,7 +405,8 @@ function LBtable(LB, snapshot, links) {
 
 	// Body
 
-	var highlight = document.getElementById("chkHighlightChanges").checked ? 'leaderboard highlight_on' : 'leaderboard highlight_off';
+	var highlight_players = document.getElementById("chkHighlightPlayers").checked;
+	var highlight_changes = document.getElementById("chkHighlightChanges").checked;
 
 	var tableBody = document.createElement('TBODY');
 	table.appendChild(tableBody);
@@ -411,11 +416,13 @@ function LBtable(LB, snapshot, links) {
 		tableBody.appendChild(tr);
 
 		td_class = 'leaderboard normal';
-		if (player_prev) {
-			var this_player = i<player_list.length ? player_list[i][0] : null; 
+		var this_player = i<player_list.length ? player_list[i][0] : null; 
+		if (highlight_players && session_players.indexOf(this_player) >= 0)
+			td_class += ' emphasis_on'; 
+		if (highlight_changes && player_prev) {
 			var prev_player = i<player_prev.length ? player_prev[i][0] : null;
 			if (this_player != prev_player)
-				td_class = highlight; 
+				td_class += ' highlight_on';
 		}
 
 		// The Rank column

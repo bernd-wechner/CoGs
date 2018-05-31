@@ -49,7 +49,9 @@
 			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
 			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
 			Show session details.
-			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights();'> 
+			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 
+			Highlight players.
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 
 			Highlight changes.
 		</td>
 	</tr>
@@ -148,22 +150,6 @@
 	// Nab the options and their defaults from context
 	var options = {{ options|safe }};
 	var defaults = {{ defaults|safe }};
-		
-	//var league = {{ league|safe }};
-	//var player = {{ player|safe }};
-	//var game = {{ game|safe }};
-	//value_highlight = {{highlight}};
-	//value_details = {{details}};
-	//value_cols = {{ cols|safe }};
-	//value_names = {{ names|safe }};
-	//value_links = {{ links|safe }};
-	
-	// Note the default values of same controls
-	//default_cols = {{default_cols}};
-	//default_names = "{{default_names}}";
-	//default_highlight = JSON.parse("{{default_highlight}}".toLowerCase());
-	//default_details = JSON.parse("{{default_details}}".toLowerCase());
-	//default_links = "{{default_links}}";
 
 	// Nab the data from context
 	var leagues = {{ leagues|safe }};

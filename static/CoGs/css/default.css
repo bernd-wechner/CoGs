@@ -215,14 +215,30 @@ td.leaderboard, th.leaderboard
 	white-space: nowrap;
 }
 
-td.leaderboard.normal, th.leaderboard.normal, td.leaderboard.highlight_off
+td.leaderboard.normal, th.leaderboard.normal
+{
+	background-color: #FFF7F0;
+	font-weight: normal;
+}
+
+td.leaderboard.highlight_off
 {
 	background-color: #FFF7F0;
 }
 
 td.leaderboard.highlight_on
 {
-	background-color: #FFE0E0;
+	background-color: #FFE0E0 !important;
+}
+
+leaderboard.emphasis_off
+{
+	font-weight: normal;
+}
+
+td.leaderboard.emphasis_on
+{
+	font-weight: bold !important;
 }
 
 table.leaderboard.wrapper 

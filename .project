@@ -3,6 +3,7 @@
 	<name>CoGs</name>
 	<comment></comment>
 	<projects>
+		<project>trueskill</project>
 	</projects>
 	<buildSpec>
 		<buildCommand>

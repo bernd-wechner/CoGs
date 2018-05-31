@@ -36,6 +36,7 @@ import platform
 HOSTNAME = platform.node()
 
 ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
+
 if HOSTNAME == WEBSERVER:
     print("Django settings: Web Server")
     SECURE_CONTENT_TYPE_NOSNIFF = True

@@ -5,23 +5,11 @@
 # as we'll use sshfs to mount them if needed
 rsa_file=/home/bernd/.ssh/id_rsa
 
-# server_name=Arachne
+# Web Server properties
+server_name=Arachne
 server_mount_dir=/home/bernd/Mounts/leaderboard.space
 server_account=weaver@arachne.lan
-server_dir=/mnt/passport/www/html/leaderboard.space
-
-# Settings for new server we're migrating to
-# server_name="Arachne Nova"
-# server_mount_dir=/home/bernd/Mounts/leaderboard.space
-# server_account=weaver@arachne-nova.lan
-# server_dir=/data/www/leaderboard.space
-
-# Unmount the server forcedly for now while migrating servers to ensure we don't accidentally copy to the wrong one
-mountpoint -q $server_mount_dir
-if [ $? == 0 ];then
-	echo "Unmounting $server_mount_dir (for safety) ..."
-	sudo umount $server_mount_dir
-fi
+server_dir=/data/www/leaderboard.space
 
 # Ensure the server is properly mounted (or we can't publish to them)
 mountpoint -q $server_mount_dir
