@@ -56,12 +56,13 @@ class PrivacyMixIn():
             '''
             Returns a list of attributes that are in request.user which represent User model extensions. That 
             is have a OneToOne relationship with User. 
-            '''
+            '''            
             ext = []
-            if user.is_authenticated:
-                for field in user._meta.get_fields():
-                    if field.one_to_one:
-                        ext.append(field.name)
+            if not user is None and hasattr(user, 'is_authenticated'):
+                if user.is_authenticated:
+                    for field in user._meta.get_fields():
+                        if field.one_to_one:
+                            ext.append(field.name)
             return ext
     
         def unique_object_id(obj):
@@ -147,7 +148,7 @@ class PrivacyMixIn():
                         hidden = True
                         
                         # Don't ever hide this field from an admin (superuser) or its owner, no tests needed
-                        if user.is_superuser or user == get_Owner(self): 
+                        if not user is None and ((hasattr(user, 'is_superuser') and user.is_superuser) or user == get_Owner(self)): 
                             hidden = False 
                         else:
                             rule_flags = getattr(self, rule_field.name)
