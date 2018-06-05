@@ -371,7 +371,9 @@ class leaderboard_options:
     compare_with = None         # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
     compare_till = None         # Include comparisons only up to this date           
-    details = False             # Show session details atop each boards (about the session that produced that board) 
+    details = False             # Show session details atop each boards (about the session that produced that board)
+    analysis_pre = False        # Show the TrueSkill Pre-session analysis 
+    analysis_post = False       # Show the TrueSkill Post-session analysis 
     highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
     highlight_changes = True    # Highlight changes between historic snapshots
     cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
@@ -431,6 +433,12 @@ def get_leaderboard_options(request):
         
     if 'details' in request.GET:
         lo.details = json.loads(request.GET['details'].lower())     
+
+    if 'analysis_pre' in request.GET:
+        lo.analysis_pre = json.loads(request.GET['analysis_pre'].lower())     
+
+    if 'analysis_post' in request.GET:
+        lo.analysis_post = json.loads(request.GET['analysis_post'].lower())     
 
     if 'highlight_players' in request.GET:
         lo.highlight_players = json.loads(request.GET['highlight_players'].lower())
@@ -713,10 +721,12 @@ def ajax_Leaderboards(request, raw=False):
                 time = board.date_time
                 players = [p.pk for p in board.players]            
                 detail = board.leaderboard_header(lo.names)
+                analysis = board.leaderboard_analysis(lo.names)
+                analysis_after = board.leaderboard_analysis_after(lo.names)
                 lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
                     counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(time), counts['total'], counts['sessions'], players, detail, lb)
+                    snapshot = (localize(time), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
                     snapshots.append(snapshot)
 
             if len(snapshots) > 0:                    

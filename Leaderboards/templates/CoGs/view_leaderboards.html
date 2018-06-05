@@ -47,12 +47,16 @@
 	<tr>
 		<td class='options' colspan = 2>
 			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
-			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
-			Show session details.
 			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 
 			Highlight players.
 			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 
 			Highlight changes.
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+			Show session details.
+			<input type="checkbox" id="chkSessionAnalysisPre" onchange='DrawTables("tblLB");'> 
+			Show TrueSkill Predictions.
+			<input type="checkbox" id="chkSessionAnalysisPost" onchange='DrawTables("tblLB");'> 
+			Show Post-Session TrueSkill Predictions.
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">

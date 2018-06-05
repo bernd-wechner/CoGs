@@ -17,6 +17,7 @@ from bitfield.forms import BitFieldCheckboxSelectMultiple
 
 from collections import OrderedDict
 from math import isclose
+from scipy.stats import norm
 from datetime import datetime, timedelta
 
 from django_model_admin_fields import AdminModel
@@ -25,6 +26,7 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url
 from django_generic_view_extensions.decorators import property_method
+from django.utils.safestring import mark_safe
 
 
 # CoGs Leaderboard Server Data Model
@@ -53,7 +55,8 @@ ALL_GAMES = "ALL"                           # A reserved key for leaderboard fil
 # The support models, that store all the play records that are needed to
 # calculate and maintain TruesKill ratings for players.
 #===============================================================================
-    
+
+# TODO: Beta needs to be game specific, in fact make them all game specific! ANd be done with it. This model can go.    
 class TrueskillSettings(models.Model):
     '''
     The site wide TrueSkill settings to use (i.e. not Game).
@@ -129,7 +132,7 @@ class RatingModel(AdminModel):
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
-    def __unicode__(self): return  u'{} - {} - {:f} teeth, from (µ={:f}, σ={:f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
+    def __unicode__(self): return  u'{} - {} - {:.1f} teeth, from (µ={:.1f}, σ={:.1f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
     def __str__(self): return self.__unicode__()
         
     class Meta:
@@ -431,7 +434,7 @@ class Rating(RatingModel):
             raise ValidationError("Duplicate ratings found for player: {} and game: {}".format(self.player, self.game))
         
         # Rating should match the last performance
-        # TODO: Wehn do we land here? And how do we sync with self.update? 
+        # TODO: When do we land here? And how do we sync with self.update? 
 
 class Backup_Rating(RatingModel):
     '''
@@ -455,7 +458,7 @@ class League(AdminModel):
     All Leagues share the same global and game Trueskill settings, so that a
     meaningful global leaderboard can be reported for any game across all leagues.
     '''
-    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved')])
+    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}$'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved', inverse_match=True)])
     manager = models.ForeignKey('Player', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
 
     locations = models.ManyToManyField('Location', blank=True, related_name='leagues_playing_here')
@@ -1279,6 +1282,8 @@ class Session(AdminModel):
         Returns an unordered set of the players in the session, with no guaranteed 
         order. Useful for traversing a list of all players in a session
         irrespective of the structure of teams or otherwise.
+        
+        # TODO: Fix so it works with team sesssion!
         '''
         players = set()
         ranks = Rank.objects.filter(session=self.id)
@@ -1470,33 +1475,192 @@ class Session(AdminModel):
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
-#     @property
-#     def predicted_ranking(self) -> list:
-#         '''
-#         Returns a list of players in the predicted order
-#         '''
-#         # TODO: Implement
-#         pass
-#     
-#     @property
-#     def relationships(self) -> list:
-#         '''
-#         Returns a list of tuples containing player pairs representing 
-#         each relationship in the game.
-#         '''
-#         # TODO: Implement
-#         pass
-#             
-#     @property
-#     def prediction_quality(self) -> int:
-#         '''
-#         Returns a measure of the prediction quality that TrueSkill rankings
-#         provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
-#         it all right. 
-#         '''
-#         # TODO: Implement
-#         pass    
+    @property
+    def actual_ranking(self) -> list:
+        '''
+        Returns a list of ranks in the order they ranked
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modelled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.rank)
+        return rankers
 
+    @property
+    def predicted_ranking(self) -> tuple:
+        '''
+        Returns a list of ranks in the predicted order
+        TODO: This should really be in the trueskill package
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modeled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
+        
+        # TODO: This should be in the trueskill package
+        # See my doc "Understanding Trueskill" for the math on this
+        prob = 1
+        for r in range(len(rankers)-1): 
+            perf1 = rankers[r].performance
+            perf2 = rankers[r+1].performance
+            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1]**2 + perf2[1]**2)**0.5
+            p = norm.cdf(x)
+            prob *= p            
+        
+        return (rankers, prob)
+
+    @property
+    def predicted_ranking_after(self) -> tuple:
+        '''
+        Returns a list of ranks in the order that would be predicted after the session 
+        TODO: This should really be in the trueskill package
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modeled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.performance_after[0], reverse=True)
+        
+        # TODO: This should be in the trueskill package
+        # See my doc "Understanding Trueskill" for the math on this
+        prob = 1
+        for r in range(len(rankers)-1):
+            perf1 = rankers[r].performance
+            perf2 = rankers[r+1].performance
+            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1]**2 + perf2[1]**2)**0.5
+            p = norm.cdf(x)
+            prob *= p            
+        
+        return (rankers, prob)
+                            
+    @property
+    def relationships(self) -> set:
+        '''
+        Returns a list of tuples containing player or team pairs representing 
+        each ranker (contestant) relationship in the game.
+        '''
+        ranks = self.ranks.all()
+        relationships = set()
+        # Not the most efficient walk but a single game has a comparatively small 
+        # number of rankers (players or teams ranking) and efficiency not a drama
+        # More efficient would be not rewalk walked ground (i.e second loop only has
+        # to go from outer loop index up to end.
+        for rank1 in ranks:
+            for rank2 in ranks:
+                if rank1 != rank2:
+                    relationship = (rank1.ranker, rank2.ranker) if rank1.rank < rank2.rank else (rank2.ranker, rank1.ranker)
+                    if not relationship in relationships:
+                        relationships.add(relationship)
+        
+        return relationships            
+             
+    def _prediction_quality(self, after=False) -> int:
+        '''
+        Returns a measure of the prediction quality that TrueSkill rankings
+        provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
+        it all right. 
+        '''
+        def dictify(ranked_list_of_performances):
+            rank_dict = {}
+            r = 1
+            for performance in ranked_list_of_performances:
+                rank_dict[performance.player] = r
+                r += 1
+            return rank_dict        
+        
+        actual = dictify(self.actual_ranking)
+        predicted = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
+        total = 0
+        right = 0
+        for relationship in self.relationships:
+            ranker1 = relationship[0]
+            ranker2 = relationship[1]
+            real_result = actual[ranker1] > actual[ranker2]
+            pred_result = predicted[ranker1] > predicted[ranker2]
+            total += 1
+            if pred_result == real_result:
+                right +=1
+                                                               
+        return right/total    
+
+    @property
+    def prediction_quality(self) -> int:
+        return self._prediction_quality()
+
+    @property
+    def prediction_quality_after(self) -> int:
+        return self._prediction_quality(True)
+
+    def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style=""):
+        '''
+        Internal OL factory for list of rankers on a session. 
+        
+        :param ordered_ranks:           Rank objects in order we'd like them listed. 
+        :param use_rank:                Use Rank.rank to permit ties, else use the row number
+        :param expected_performance:    Name of Rank method that returns a Predicted Performance summary
+        :param name_style:              The style in which to render names
+        :param ol_style:                A style to apply to the OL if any
+        '''
+                
+        data = []
+        if ol_style:
+            detail = u'<OL style="{}">'.format(ol_style)
+        else:
+            detail = u'<OL>'
+
+        rankers = OrderedDict()
+        row = 1
+        for r in ordered_ranks:
+            if self.team_play:
+                # Teams we can render with the default format
+                # TODO: Check this, they should also respect 
+                #     name_style for members and linking of 
+                #     members names when listed!  
+                ranker = field_render(r.team, flt.template)
+                data.append((r.team.pk, None))
+            else:
+                # Render the field first as a template which has:
+                # {Player.PK} in place of the players name
+                # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
+                ranker = field_render(r.player, flt.template, osf.template)
+                
+                # Replace the player name template item with the formatted name of the player
+                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
+                
+                # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view 
+                PK = r.player.pk
+                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname 
+                data.append((PK, BGG))
+            
+            # Add expected performance to the ranker string if requested                
+            eperf = ""
+            if not expected_performance is None:
+                perf = getattr(r, expected_performance, None) # (mu, sigma)
+                if not perf is None:
+                    eperf = perf[0] # mu
+                    
+            if eperf:
+                tip = "<span class='tooltiptext'>Expected performance (teeth)</span>"
+                ranker += " (<div class='tooltip'>{:.1f}{}</div>)".format(eperf, tip)                                    
+            
+            if use_rank:
+                if r.rank in rankers:
+                    rankers[r.rank].append(ranker)
+                else:
+                    rankers[r.rank] = [ranker]            
+            else:
+                rankers[row] = [ranker]
+                
+            row += 1
+        
+        row = 1
+        for rank in rankers:                
+            detail += u'<LI value={}>{}</LI>'.format(row, ", ".join(rankers[rank]))
+            row += 1
+            
+        detail += u'</OL>'
+        
+        return (detail, data)
+        
     def leaderboard_header(self, name_style):
         '''
         Returns a HTML header that can be used on leaderboards.
@@ -1509,44 +1673,83 @@ class Session(AdminModel):
         
         This permits a leaderboard view to render the template altering how 
         the template is rendered.  The ancillary data is for now just the
-        pk and BGG name of the ranker in that session. 
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires. 
         
         :param name_style: Must be supplied
         '''
-        data = []
-        
         detail = u"<b>" + localize(self.date_time) + u"</b><br><br>"
-        detail += u'<OL>'
-
-        rankers = OrderedDict()
-        for r in self.ranks.all():
-            if self.team_play:
-                # Teams we can render with the default format
-                ranker = field_render(r.team, flt.template)
-                data.append((r.team.pk, None))
-            else:
-                # Players should obey name_style which is one of the styles 
-                # that Player.name supports
-                ranker = field_render(r.player, flt.template, osf.template)
-                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
-                
-                # WE try to be careful about dud BBGnames here supplying None reliably for such. 
-                PK = r.player.pk
-                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname 
-                data.append((PK, BGG))
-            
-            if r.rank in rankers:
-                rankers[r.rank].append(ranker)
-            else:
-                rankers[r.rank] = [ranker]
-            
-        for rank in rankers:
-            detail += u'<LI value={}>{}</LI>'.format(rank, ", ".join(rankers[rank]))
-            
-        detail += u'</OL>'
+        
+        (ol, data) = self._html_rankers_ol(self.ranks.all(), True, None, name_style)
+        
+        detail += ol
         
         return (detail, data)         
+
+    def leaderboard_analysis(self, name_style):
+        '''
+        Returns a HTML header that can be used on leaderboards.
+
+        It includes an analysis of the session. 
+        
+        This comes in two parts, a templates, and ancillary data.
+        
+        The template is HTML with placeholders for the ancillary data.
+        
+        This permits a leaderboard view to render the template altering how 
+        the template is rendered.  The ancillary data is for now just the
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires.
+        
+        Format is as follows:
+        
+        1) An ordered list of players as a the prediction
+        # TODO 2) A confidence in the prediction (some measure of probability) 
+        3) A quality measure of that prediction
+                
+        :param name_style: Must be supplied
+        '''
+        (ordered_ranks, confidence) = self.predicted_ranking
+        
+        tip_sure = "<span class='tooltiptext'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        detail = u"Predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality, tip_accu)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
+        
+        detail += ol
+        
+        return (mark_safe(detail), data)
     
+    def leaderboard_analysis_after(self, name_style):
+        '''
+        Returns a HTML header that can be used on leaderboards.
+
+        It includes an analysis of the session updates. 
+        
+        This comes in two parts, a templates, and ancillary data.
+        
+        The template is HTML with placeholders for the ancillary data.
+        
+        This permits a leaderboard view to render the template altering how 
+        the template is rendered.  The ancillary data is for now just the
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires.
+        
+        Format is as follows:
+        
+        1) An ordered list of players as a the prediction
+        # TODO 2) A confidence in the prediction (some measure of probability) 
+        3) A quality measure of that prediction
+                
+        :param name_style: Must be supplied
+        '''
+        (ordered_ranks, confidence) = self.predicted_ranking_after        
+        detail = u"Post-session predicted ranking ({:.0%} sure, {:.0%} accurate): <br><br>".format(confidence, self.prediction_quality_after)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
+        detail += ol
+        
+        return (mark_safe(detail), data)                  
+   
     def previous_sessions(self, player):
         '''
         Returns all the previous sessions that the nominate player played this game in. 
@@ -2010,6 +2213,57 @@ class Rank(AdminModel):
     #    but there are some complexites they introduce that are rather unnatracive as well
     player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
     team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+
+    def _performance(self, after=False) -> tuple:        
+        '''
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkil specific theory to provide
+        a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
+        
+        :param after: if true returns predicted performance with ratings after the update. ELse before.
+        '''
+        # TODO: Much of this This should really be in the trueskill package not here
+        if self.session.team_play:
+            players = list(self.team.players)
+        else:
+            players = [self.player]
+            
+        mu = 0
+        var = 0
+        for player in players:
+            performance = self.session.performance(player)
+            w = performance.partial_play_weighting
+            mu += w * (performance.trueskill_mu_after if after else performance.trueskill_mu_before)
+            sigma = performance.trueskill_sigma_after if after else performance.trueskill_sigma_before
+            var += w**2*(sigma**2 + performance.trueskill_tau**2 + performance.trueskill_beta**2) 
+        return (mu, var**0.5)
+
+    @property
+    def performance(self):
+        '''
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkil specific theory to provide
+        a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.        
+        '''
+        return self._performance()
+    
+    @property
+    def performance_after(self):
+        '''
+        Returns a TrueSkill Performance for this ranking player or team using the ratings the received after this session update. 
+        Uses very TrueSkil specific theory to provide a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill 
+        Performance prediction.
+        '''
+        return self._performance(True)   
+
+    @property
+    def ranker(self) -> object:
+        '''
+        Returns either a Player or Team, as appropriate for the ranker,
+        that is the player or team ranking here   
+        '''
+        if self.session.team_play:
+            return self.team
+        else:
+            return self.player
 
     @property
     def players(self) -> list:
