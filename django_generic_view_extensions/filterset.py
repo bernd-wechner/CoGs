@@ -93,7 +93,7 @@ def format_filterset(filterset, as_text=False):
             
             # TODO: Consider whether the premise here holds true. We have assumed that
             #       spec.components contains a list of items the last of which is not only
-            #       a model fields but its pk. The almost certainly isn't always true, to 
+            #       a model fields but its pk. This almost certainly isn't always true, to 
             #       which for example if we filter in ranks__player=n we end up with 
             #       spec.components=['rank','player','id'].
             #

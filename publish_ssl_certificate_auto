@@ -1,6 +1,9 @@
 #!/bin/bash
-# Publish the CoGs Site SSL certifcates to the router (as I can't find a way ffor SSL certicate quiries to pass through the router to the web server)
-
+# Publish the CoGs Site SSL certifcates to the router 
+# (as I can't find a way for SSL certicate queries to pass through the router to the web server)
+#
+# Webserver Script: This is designed to run on the webserver with router remote and be run as a certbot post renewal hook.
+#
 # There are two files that are need on the web server:
 #
 #		ssl.ca-file             = "/etc/letsencrypt/live/leaderboard.space/chain.pem"

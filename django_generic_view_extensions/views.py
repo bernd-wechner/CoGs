@@ -75,7 +75,7 @@ class ListViewExtended(ListView):
         return fs
     
     def get_ordering(self):
-        # TODO: Get from self.request to override thge default
+        # TODO: Get from self.request to override the default
         return getattr(self.model.Meta, 'ordering', None)        
         
     # Add some model identifiers to the context (if 'model' is passed in via the URL)

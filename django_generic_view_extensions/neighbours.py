@@ -40,6 +40,10 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
             order_by.append(F(f[1:]).desc())
         else:
             order_by.append(F(f).asc())
+    
+    # A default order. We need an order or the window functions crash
+    if len(order_by) == 0:
+        order_by = ['pk']
 
     # Define the window functions for each neighbour    
     window_lag = Window(expression=Lag("pk"), order_by=order_by)
