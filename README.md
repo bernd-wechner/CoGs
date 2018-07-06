@@ -33,7 +33,7 @@ could improve below, and improve it!
 
     ```
     sudo apt-get install postgresql pgadmin3
-    sudo apt-get install python3 python3-django python3-django-extensions python3-psycopg2 python3-yaml 
+    sudo apt-get install python3 python3-pip python3-django python3-django-extensions python3-psycopg2 python3-yaml 
     sudo apt-get install git
     sudo -H pip3 install trueskill scipy django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil 
     ```

@@ -4,7 +4,7 @@ Created on 8Mar.,2018
 @author: Bernd Wechner
 @status: Alpha - works and is in use on a dedicated project. Is not complete, and needs testing for generalities.
 
-Provides on class, AdminModel which is an abstract Django model that a model cna derive from to inherit 
+Provides a class, AdminModel which is an abstract Django model that a model can derive from to inherit 
 some admin fields and a save override that keeps the up to date. Intended for recording some user and time 
 info against every record saved.
 
