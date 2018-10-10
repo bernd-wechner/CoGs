@@ -52,4 +52,8 @@ for source in ${site[@]}; do
 	rsync -r $exclude $source_dir/$source $server_mount_dir
 done
 
+# We need to restart the uwsgi service for changes to take effect
+echo "Restarting UWSGI service on $server_name ..."
+ssh -o IdentityFile=$rsa_file $server_account sudo /etc/init.d/uwsgi restart
+
 echo "Done."

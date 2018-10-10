@@ -631,7 +631,7 @@ def ajax_Leaderboards(request, raw=False):
    
     (title, subtitle) = get_leaderboard_titles(lo)
       
-    # Start the query with an ordered list of all games (lazy, only the SQL created_     
+    # Start the query with an ordered list of all games (lazy, only the SQL created)     
     games = Game.objects.all().annotate(session_count=Count('sessions',distinct=True)).annotate(play_count=Count('sessions__performances',distinct=True)).order_by('-play_count','-session_count')
 
     # Then build a filter on that sorted list
@@ -666,7 +666,7 @@ def ajax_Leaderboards(request, raw=False):
             S = Session.objects.filter(sfilter).order_by("-date_time")
             latest_session = S[0] if S.count() > 0 else None
                 
-            # Fetch the time of the last session in the window changed_since to as_at
+            # Fetch the time of the last session in the window (changed_since -to- as_at)
             # That will capture the leaderboard as at that time, but of course only if
             # it changed since the requested time, else not. 
             if latest_session:
@@ -674,7 +674,7 @@ def ajax_Leaderboards(request, raw=False):
                 if (lo.changed_since == default.changed_since or last_time > lo.changed_since) and (lo.as_at == default.as_at or last_time <= lo.as_at):
                     boards.append(latest_session)
             
-            # If we have a current leaderboard in the time window changed_since to as_at
+            # If we have a current leaderboard in the time window (changed_since -to- as_at)
             # then we may also want to include its history if requested by:
             #  compare_back_to, compare_til or compare_with
             if len(boards) > 0:

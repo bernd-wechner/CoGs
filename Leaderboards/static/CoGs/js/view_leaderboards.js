@@ -311,7 +311,7 @@ function LBtable(LB, snapshot, links) {
 		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
 	}
 
-	// A regex replacer which as as args first the matched string then each of the matched subgroups
+	// A regex replacer which has as args first the matched string then each of the matched subgroups
 	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text. 
 	function fix_template_link(match, klass, model, id, txt) {
 		if (linkRankerID[id] == null) 
@@ -323,11 +323,9 @@ function LBtable(LB, snapshot, links) {
 	}
 	
 	// Fix the HTML of the headers
-	if (links == "CoGs" || links == "BGG" ) {
-		session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-		session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-		session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-	}
+	session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+	session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+	session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
@@ -555,7 +553,7 @@ function LBtable(LB, snapshot, links) {
 
 //Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly $('#selLinks) and $('#selCols) fails here. Not sure why. 
+	// Oddly the jQuery forms $('#selLinks) and $('#selCols) fails here. Not sure why. 
 	var selLinks = document.getElementById("selLinks");	
 	var selCols = document.getElementById("selCols");
 	var cols = parseInt(selCols.options[selCols.selectedIndex].text);

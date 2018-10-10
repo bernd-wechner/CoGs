@@ -22,6 +22,7 @@ class PrivacyMixIn():
     methods in the model to implement this hiding where desired.
     '''
     HIDDEN = "<Hidden>"
+    HIDE_EMPTY_FIELD = False    # A flag that we cans et to enable or prevent replacing empty field values (None or empty string rep) with HIDDEN
     
     def fields_to_hide(self, user):
         '''
@@ -219,7 +220,9 @@ class PrivacyMixIn():
         if len(obj.hidden) > 0:
             obj.save = obj.safe_save
             for f in obj.hidden:
-                setattr(obj, f, cls.HIDDEN)
+                val = getattr(obj, f, None)
+                if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(obj, f, cls.HIDDEN)
         return obj
 
     @classmethod
@@ -234,7 +237,9 @@ class PrivacyMixIn():
         if len(obj.hidden) > 0:
             obj.save = obj.safe_save
             for f in obj.hidden:
-                setattr(obj, f, cls.HIDDEN)
+                val = getattr(obj, f, None)
+                if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(obj, f, cls.HIDDEN)
         return obj
 
     def refresh_from_db(self, using=None, fields=None, **kwargs):
@@ -248,7 +253,9 @@ class PrivacyMixIn():
         if len(self.hidden) > 0:
             self.save = self.safe_save
             for f in self.hidden:
-                setattr(self, f, self.HIDDEN)
+                val = getattr(self, f, None)
+                if self.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(self, f, self.HIDDEN)
         
     def safe_save(self, *args, **kwargs):
         '''

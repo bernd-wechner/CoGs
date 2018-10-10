@@ -1613,13 +1613,13 @@ class Session(AdminModel):
             if self.team_play:
                 # Teams we can render with the default format
                 # TODO: Check this, they should also respect 
-                #     name_style for members and linking of 
+                #  link   name_style for members and linking of 
                 #     members names when listed!  
                 ranker = field_render(r.team, flt.template)
                 data.append((r.team.pk, None))
             else:
                 # Render the field first as a template which has:
-                # {Player.PK} in place of the players name
+                # {Player.PK} in place of the players name, and a
                 # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
                 ranker = field_render(r.player, flt.template, osf.template)
                 
