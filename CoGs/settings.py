@@ -25,7 +25,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 STATIC_URL = "/static/"
     
 # The name of the webserver this is running on (used to select deployment settings)
-WEBSERVER = "Arachne"
+WEBSERVER = "Arachne".lower()
 
 # The Site ID for the django.contrib.sites app, 
 # which just a prerequisite for the django.contrib.flatpages app
@@ -33,7 +33,7 @@ WEBSERVER = "Arachne"
 SITE_ID = 1
 
 import platform
-HOSTNAME = platform.node()
+HOSTNAME = platform.node().lower()
 
 ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
 

@@ -312,7 +312,9 @@ function LBtable(LB, snapshot, links) {
 	}
 
 	// A regex replacer which has as args first the matched string then each of the matched subgroups
-	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text. 
+	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text.
+	// This is a function that the following replace() functions pass matched groups to and is tasked
+	// with returning a the replacement string. 
 	function fix_template_link(match, klass, model, id, txt) {
 		if (linkRankerID[id] == null) 
 			return txt;

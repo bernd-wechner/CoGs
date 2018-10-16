@@ -299,7 +299,7 @@ class CreateViewExtended(CreateView):
         return context
 
     def get_queryset(self, *args, **kwargs):
-        print_debug("Getting queryset")
+        print_debug("Getting queryset for {}: {} {}".format(self.kwargs['model'], args, kwargs))
         self.fields = '__all__'
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])

@@ -2666,7 +2666,7 @@ class Performance(AdminModel):
             when = self.session.date_time
             game = field_render(self.session.game, link)
         performer = field_render(self.player, link)
-        performance = "play number {}, {:+.1f} teeth".format(self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+        performance = "{:.0%} participation, play number {}, {:+.1f} teeth".format(self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
         return  u'{} - {:%d, %b %Y} - {}: {}'.format(game, when, performer, field_render(performance, link_target_url(self, link)))    
 
     def __detail_str__(self, link=None):
