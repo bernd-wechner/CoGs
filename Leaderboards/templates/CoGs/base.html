@@ -9,7 +9,7 @@
 	<meta charset="UTF-8" />
 	<script>
 		function check_for_leagues() {
-			if ("{{league_options|safe}}"=="") 
+			if ("{{league_options|escapejs}}"=="") 
 				document.getElementById("league_selector").style.display = 'none';
 		}
 	</script>

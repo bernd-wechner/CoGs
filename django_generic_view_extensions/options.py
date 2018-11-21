@@ -32,7 +32,8 @@ defaults = { 'object_summary_format': 'brief',
              'field_link_target': 'internal',
              'object_display_flags': 'TODO',
              'object_display_modes': 'as_table',
-             'index': False
+             'index': False, 
+             'key': False
             }
 
 # The URL parameters that select the defaults above
@@ -44,7 +45,8 @@ urldefaults = { 'object_summary_format': 'brief',
              'field_link_target': 'internal_links',
              'object_display_flags': 'TODO',
              'object_display_modes': 'as_table',
-             'index': 'noindex'
+             'index': 'noindex',
+             'key': 'nokey'
             }
 
 
@@ -272,6 +274,7 @@ class list_display_format():
     link = default(field_link_target)           # Whether to add links to the display and what kind
     menus = default(list_menu_format)           # Whether and how to display menus against each list item
     index = default('index')                    # A bool with request an index, counting 1, 2, 3, 4 down the list.
+    key = default('key')                        # A bool with request the object's primary key to displayed
 
 def get_list_display_format(request):
     '''
@@ -291,6 +294,13 @@ def get_list_display_format(request):
         LDF.index = False
     else:
         LDF.index = list_display_format().index
+
+    if 'key' in request:
+        LDF.key = True
+    elif 'nokey' in request:
+        LDF.key = False
+    else:
+        LDF.key = list_display_format().key
              
     return LDF
 

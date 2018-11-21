@@ -97,7 +97,7 @@ table.deflist {
     border-collapse: collapse;
 }
 
-th.deflist {
+th.deflist, td.deflist {
     padding: 5px;
     border-style: solid;
     border-width: 1px;
@@ -106,21 +106,7 @@ th.deflist {
     vertical-align: top;
 }
 
-td.deflist {
-    padding: 5px;
-    border-style: solid;
-    border-width: 1px;
-    border-color: black;
-    border-spacing: 0px;
-    vertical-align: top;
-}
-
-table.players {
-    margin-left: 50px;
-    width: 0%;
-}
-
-table.team {
+table.players, table.team {
     margin-left: 50px;
     width: 0%;
 }
@@ -128,6 +114,24 @@ table.team {
 table.teamplayers {
     margin-left: 100px;
     width: 0%;
+}
+
+span.trash {
+	display: none;	
+}
+
+table.trash {
+	display: none;
+
+	border-color: #600;
+	border-style: solid;
+	border-collapse: collapse;
+	border-spacing: 10px;
+	border-width: 1px 1px 1px 1px;
+}
+
+table.trash th, table.trash td {
+	background-color: #FFF7F0;	
 }
 
 table.options
@@ -205,7 +209,7 @@ table.leaderboard
 	border-spacing: 10px;
 }
 
-td.leaderboard, th.leaderboard
+th.leaderboard, td.leaderboard
 {
 	border-color: #600;
 	border-style: solid;
@@ -215,7 +219,7 @@ td.leaderboard, th.leaderboard
 	white-space: nowrap;
 }
 
-td.leaderboard.normal, th.leaderboard.normal
+th.leaderboard.normal, td.leaderboard.normal
 {
 	background-color: #FFF7F0;
 	font-weight: normal;
@@ -311,3 +315,10 @@ td.leaderboard.wrapper
     visibility: visible;
     opacity: 1;
 }
+
+div.inspector th,
+div.inspector td
+{ 
+	vertical-align: top;
+} 
+

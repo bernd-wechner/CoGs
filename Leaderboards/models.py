@@ -7,7 +7,7 @@ from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
 from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
 from django.urls import reverse_lazy
-from django.utils import formats, timezone
+from django.utils import timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.utils.formats import localize
@@ -27,6 +27,7 @@ from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url
 from django_generic_view_extensions.decorators import property_method
 from django.utils.safestring import mark_safe
+from builtins import str
 
 
 # CoGs Leaderboard Server Data Model
@@ -135,7 +136,7 @@ class RatingModel(AdminModel):
     def __unicode__(self): return  u'{} - {} - {:.1f} teeth, from (µ={:.1f}, σ={:.1f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
     def __str__(self): return self.__unicode__()
         
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['-trueskill_eta']
         abstract = True
     
@@ -516,7 +517,7 @@ class League(AdminModel):
         detail += "</UL>"
         return detail
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
         
 class Team(AdminModel):
@@ -810,7 +811,7 @@ class Player(PrivacyMixIn, AdminModel):
         return detail
 
     # TODO: clean() method to force test that player is in a league!
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name_nickname']
 
 @admin.register(Player)
@@ -830,8 +831,8 @@ class Game(AdminModel):
     min_players = models.PositiveIntegerField('Minimum number of players', default=2)
     max_players = models.PositiveIntegerField('Maximum number of players', default=4)
     
-    min_players_per_team = models.PositiveIntegerField('Minimum number of players in a team', default=0)
-    max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=0)
+    min_players_per_team = models.PositiveIntegerField('Minimum number of players in a team', default=2)
+    max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=4)
 
     # Which leagues play this game? A way to keep the game selector focussed on games a given league actually plays. 
     leagues = models.ManyToManyField(League, blank=True, related_name='games_played', through=League.games.through)
@@ -1133,7 +1134,7 @@ class Game(AdminModel):
                 
         return detail
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
 
 class Location(AdminModel):
@@ -1158,7 +1159,7 @@ class Location(AdminModel):
         leagues = list(map(lambda l: field_render(l, link), leagues))
         return u"{} (used by: {})".format(field_render(self, link), ", ".join(leagues))
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
 
 class Session(AdminModel):
@@ -1191,6 +1192,15 @@ class Session(AdminModel):
     # TODO: consider if we can filter on properties or specify annotations somehow to filter on
     filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
     order_options = ['date_time', 'game', 'league']
+
+    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
+    # Am testing the new simpler way now leaving it in place for a while to see if any issues arise.
+    #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects    
+    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
+    
+    # Specify which fields to inherit from entry to entry when creating a string of objects
+    inherit_fields = ["date_time", "league", "location", "game"]
+    inherit_time_delta = timedelta(minutes=90)
 
     @property
     def num_competitors(self) -> int:
@@ -1489,7 +1499,11 @@ class Session(AdminModel):
     @property
     def predicted_ranking(self) -> tuple:
         '''
-        Returns a list of ranks in the predicted order
+        Returns a list of ranks in the predicted order as the first
+        element in a tuple.
+        
+        The second is the probability associated with that prediction.
+        
         TODO: This should really be in the trueskill package
         '''
         # Ranks.performance returns a (mu, sigma) tuple for the rankers
@@ -1512,7 +1526,11 @@ class Session(AdminModel):
     @property
     def predicted_ranking_after(self) -> tuple:
         '''
-        Returns a list of ranks in the order that would be predicted after the session 
+        Returns a list of ranks in the predicted order after this session as the first
+        element in a tuple.
+        
+        The second is the probability associated with that prediction.
+        
         TODO: This should really be in the trueskill package
         '''
         # Ranks.performance returns a (mu, sigma) tuple for the rankers
@@ -1537,6 +1555,8 @@ class Session(AdminModel):
         '''
         Returns a list of tuples containing player or team pairs representing 
         each ranker (contestant) relationship in the game.
+        
+        Tuples always ordered (victor, loser) except on draws in which case arbitrary.       
         '''
         ranks = self.ranks.all()
         relationships = set()
@@ -1552,6 +1572,32 @@ class Session(AdminModel):
                         relationships.add(relationship)
         
         return relationships            
+
+    @property
+    def player_relationships(self) -> set:
+        '''
+        Returns a list of tuples containing player pairs representing each player relationship 
+        in the game. Sale as self.relationships() in individual play mode, differs onl in team 
+        mode in that it find all the player relationships and ignores team relationships.
+        
+        Tuples always ordered (victor, loser) except on draws in which case arbitrary.       
+        '''
+        performances = self.performances.all()
+        relationships = set()
+        # Not the most efficient walk but a single game has a comparatively small 
+        # number of rankers (players or teams ranking) and efficiency not a drama
+        # More efficient would be not rewalk walked ground (i.e second loop only has
+        # to go from outer loop index up to end.
+        for performance1 in performances:
+            for performance2 in performances:
+                # Only need relationships where 1 beats 2 or there's a draw
+                if performance1.rank <= performance2.rank and performance1.player != performance2.player:
+                    relationship = (performance1.player, performance2.player)
+                    back_relationship = (performance2.player, performance1.player)
+                    if not back_relationship in relationships:
+                        relationships.add(relationship)
+        
+        return relationships                    
              
     def _prediction_quality(self, after=False) -> int:
         '''
@@ -1559,28 +1605,33 @@ class Session(AdminModel):
         provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
         it all right. 
         '''
-        def dictify(ranked_list_of_performances):
+        def dictify(ordered_ranks):
+            '''
+            Give a list of ranks in any order will return a dictionary keyed on ranker with
+            a new nominal rank based on that order. Thus by ordering a list of ranke a new
+            ordering can be determined on basis of the list in that order.
+            '''
             rank_dict = {}
             r = 1
-            for performance in ranked_list_of_performances:
-                rank_dict[performance.player] = r
+            for rank in ordered_ranks:
+                rank_dict[rank.ranker] = r
                 r += 1
-            return rank_dict        
+            return rank_dict   
         
-        actual = dictify(self.actual_ranking)
-        predicted = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
+        actual_rank = dictify(self.actual_ranking)
+        predicted_rank = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
         total = 0
         right = 0
         for relationship in self.relationships:
             ranker1 = relationship[0]
             ranker2 = relationship[1]
-            real_result = actual[ranker1] > actual[ranker2]
-            pred_result = predicted[ranker1] > predicted[ranker2]
+            real_result = actual_rank[ranker1] < actual_rank[ranker2]
+            pred_result = predicted_rank[ranker1] < predicted_rank[ranker2]
             total += 1
             if pred_result == real_result:
                 right +=1
                                                                
-        return right/total    
+        return right/total if total > 0 else 0    
 
     @property
     def prediction_quality(self) -> int:
@@ -1589,6 +1640,98 @@ class Session(AdminModel):
     @property
     def prediction_quality_after(self) -> int:
         return self._prediction_quality(True)
+
+    @property
+    def inspector(self) -> str:
+        '''
+        Returns a safe HTML string reporting the structure of a session for prurposes
+        of rapid and easy debugging of any database integrity issues. Many other 
+        properties and methods make assumptions about session integrity and if these fail 
+        they bomb. The aim here is that this is robust and just reports the database 
+        objects related and their basic properties with PKs in a nice HTML div that
+        can be popped onto any page or on a spearate "inspector" page if desired.  
+        '''
+        # A TootlTip Format string
+        ttf = "<div class='tooltip'>{}<span class='tooltiptext'>{}</span></div>"
+        
+        html = "<div id='session_inspector' class='inspector'>"
+        html += "<table>"
+        html += "<tr><th>pk:</th><td>{}</td></tr>".format(self.pk)
+        html += "<tr><th>date_time:</th><td>{}</td></tr>".format(self.date_time)
+        html += "<tr><th>league:</th><td>{}</td></tr>".format(self.league.pk)
+        html += "<tr><th>location:</th><td>{}</td></tr>".format(self.location.pk)
+        html += "<tr><th>game:</th><td>{}</td></tr>".format(self.game.pk)
+        html += "<tr><th>team_play:</th><td>{}</td></tr>".format(self.team_play)
+        
+        pid = ttf.format("pid", "Performance ID - the primary key of a Performance object")
+        rid = ttf.format("rid", "Rank ID - the primary key of a Rank object")
+        tid = ttf.format("tid", "Ream ID - the primary key of a Team object")
+        html += "<tr><th>{}</th><td><table>".format(ttf.format("Integrity","Every player in the game must have an associated performance, rank and if relevant, team object"))
+        for performance in self.performances.all():
+            html += "<tr>"
+            html += "<th>player:</th><td>{}</td><td>{}</td>".format(performance.player.pk, performance.player.full_name)
+            html += "<th>{}:</th><td>{}</td>".format(pid, performance.pk)
+
+            rank = None
+            team = None
+            if self.team_play:
+                ranks = Rank.objects.filter(session=self)
+                for r in ranks:
+                    if not r.team is None:  # Play it safe in case of database integrity issue
+                        try:
+                            t = Team.objects.get(pk=r.team.pk)
+                        except Team.DoesNotExist:
+                            t = None
+                        
+                        players = t.players.all() if not t is None else []
+
+                        if performance.player in players:
+                            rank = r.pk
+                            team = t.pk
+            else:
+                try:
+                    rank = Rank.objects.get(session=self, player=performance.player).pk
+                except Rank.DoesNotExist:
+                    rank = None
+            
+            html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+            html += "<th>{}:</th><td>{}</td>".format(tid, team) if self.team_play else ""
+            html += "</tr>"
+        html += "</table></td></tr>"
+        
+        html += "<tr><th>ranks:</th><td><ol start=0>"
+        for rank in self.ranks.all():
+            html += "<li><table>"
+            html += "<tr><th>pk:</th><td>{}</td></tr>".format(rank.pk)
+            html += "<tr><th>rank:</th><td>{}</td></tr>".format(rank.rank)
+            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(rank.player.pk if rank.player else None, rank.player.full_name if rank.player else None)
+            html += "<tr><th>team:</th><td>{}</td><td>{}</td></tr>".format(rank.team.pk if rank.team else None, rank.team.name if rank.team else "")
+            if (rank.team):
+                for player in rank.team.players.all():
+                    html += "<tr><th></th><td>{}</td><td>{}</td></tr>".format(player.pk, player.full_name)                                
+            html += "</table></li>"
+        html += "</ol></td></tr>"
+            
+        html += "<tr><th>performances:</th><td><ol start=0>"
+        for performance in self.performances.all():
+            html += "<li><table>"
+            html += "<tr><th>pk:</th><td>{}</td></tr>".format(performance.pk)
+            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(performance.player.pk, performance.player.full_name)
+            html += "<tr><th>weight:</th><td>{}</td></tr>".format(performance.partial_play_weighting)
+            html += "<tr><th>play_number:</th><td>{}</td>".format(performance.play_number)
+            html += "<th>victory_count:</th><td>{}</td></tr>".format(performance.victory_count)
+            html += "<tr><th>mu_before:</th><td>{}</td>".format(performance.trueskill_mu_before)
+            html += "<th>mu_after:</th><td>{}</td></tr>".format(performance.trueskill_mu_after)
+            html += "<tr><th>sigma_before:</th><td>{}</td>".format(performance.trueskill_sigma_before)
+            html += "<th>sigma_after:</th><td>{}</td></tr>".format(performance.trueskill_sigma_after)
+            html += "<tr><th>eta_before:</th><td>{}</td>".format(performance.trueskill_eta_before)
+            html += "<th>eta_after:</th><td>{}</td></tr>".format(performance.trueskill_eta_after)            
+            html += "</table></li>"
+        html += "</ol></td></tr>"
+        html += "</table>"
+        html += "</div>"
+    
+        return html
 
     def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style=""):
         '''
@@ -1961,11 +2104,6 @@ class Session(AdminModel):
 
         return self.trueskill_impacts 
 
-    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
-    # Am testint the new simpler way now leaving it in place for a while to see if any issues arise.
-    #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
-    
-    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
         return u'{} - {}'.format(localize(self.date_time), self.game)
     
@@ -2194,7 +2332,7 @@ class Session(AdminModel):
                 raise ValidationError("Session {} has a gap in ranks (between {} and {})".format(self.id), last_rank_val, rank)
             last_rank_val = rank
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['-date_time']
 
 class Rank(AdminModel):
@@ -2214,16 +2352,18 @@ class Rank(AdminModel):
     player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
     team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
 
+    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
+
     def _performance(self, after=False) -> tuple:        
         '''
-        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkil specific theory to provide
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkill specific theory to provide
         a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
         
         :param after: if true returns predicted performance with ratings after the update. ELse before.
         '''
         # TODO: Much of this This should really be in the trueskill package not here
         if self.session.team_play:
-            players = list(self.team.players)
+            players = list(self.team.players.all())
         else:
             players = [self.player]
             
@@ -2279,7 +2419,7 @@ class Rank(AdminModel):
         session = Session.objects.get(id=self.session.id)
         if session.team_play:
             if self.team is None:
-                raise ValueError("Rank '{0}' is associated with a team play session but has no team.".format(self.id))
+                raise ValueError("Rank '{}' is associated with a team play session but has no team.".format(self.id))
             else:
                 # TODO: Test that this returns a clean list and not a QuerySet
                 players = list(self.team.players.all())
@@ -2307,6 +2447,10 @@ class Rank(AdminModel):
         return self.rank == 1
 
     @property
+    def is_team_rank(self):
+        return self.session.team_play
+
+    @property
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
@@ -2324,7 +2468,6 @@ class Rank(AdminModel):
         elif self.player is None:
             assert self.session.team_play, "Ingerity error: Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk)
         
-    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
     def __unicode__(self):
         return "{}".format(self.rank)
     def __str__(self): return self.__unicode__()
@@ -2381,7 +2524,7 @@ class Rank(AdminModel):
 #         elif self.player is None and not self.session.team_play:
 #             raise ValidationError("Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk))
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['rank']
 
 class Performance(AdminModel):
@@ -2462,7 +2605,7 @@ class Performance(AdminModel):
                     team = Team.objects.get(pk=rank.team.id)
                     players = team.players.all()
                     if self.player in players:
-                        return rank
+                        return rank.rank
         else:
             rank = Rank.objects.get(session=self.session.id, player=self.player.id).rank
             return rank
@@ -2690,7 +2833,7 @@ class Performance(AdminModel):
         detail += "</UL>"
         return detail    
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['session', 'player']
 
 #===============================================================================

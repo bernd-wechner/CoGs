@@ -13,6 +13,8 @@ jumps away. For nuanced browsing.
 from django.db.models import F, Window
 from django.db.models.functions import Lag, Lead, RowNumber
 
+# Package imports
+from .debug import print_debug
 
 def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     '''
@@ -27,7 +29,7 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     '''
     # If a filterset is provided ensure it's of the same model as specified (consistency).
     if filterset and not filterset.Meta.model == model:
-        return None    
+        return (None, None)
     
     # Get the ordering list for the model (a list of fields
     # See: https://docs.djangoproject.com/en/2.0/ref/models/options/#ordering
@@ -57,7 +59,7 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
         if filterset and filterset.filter:
             # We respect the filterset.
             # FIXME: Aaargh this won't work for injecting the current PK into the query! 
-            # Needs testing in both cases. I can't think of a way to do it alas. THis is
+            # Needs testing in both cases. I can't think of a way to do it alas. This is
             # frustrating me. Problem is across related object filters, or JOINS.
             # qs = filterset.filter() | (model.objects.filter(pk=pk).distinct() & filterset.filter())
             qs = filterset.filter()
@@ -71,16 +73,22 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
         return None
     
     # Finally we need some trickery alas to do a query on the queryset! We can't add this WHERE
-    # as a filter because the LAG and LEAD Window functions fail then, they are emoty because 
+    # as a filter because the LAG and LEAD Window functions fail then, they are empty because 
     # there is no lagger or leader on the one line result! So we have to run that query on the 
-    # whole table.then extract form the result the one line we want! Wish I could find a way to 
+    # whole table, then extract from the result the one line we want! Wish I could find a way to 
     # do this in the Django ORM not with a raw() call.    
-    ao = model.objects.raw("SELECT * FROM ({}) ao WHERE {}=%s".format(str(qs.query), model._meta.pk.name),[pk])
-    
-    if ao:
-        if len(list(ao)) == 1:
-            return (ao[0].neighbour_prior,ao[0].neighbour_next, ao[0].row_number, qs.count())
+    sql = "SELECT * FROM ({}) ao WHERE {}={}".format(str(qs.query), model._meta.pk.name, pk)
+    print_debug("Fetching Neighbours with: {}".format(sql))
+    ao = model.objects.raw(sql)
+
+    try:
+        if ao:
+            if len(list(ao)) == 1:
+                return (ao[0].neighbour_prior, ao[0].neighbour_next, ao[0].row_number, qs.count())
+            else:
+                raise ValueError("Query error: object appears more than once in neighbour hunt.")
         else:
-            raise ValueError("Query error: object appears more than once in neighbour hunt.")
-    else:
-        raise None   
+            return (None, None)  # Means the pk does not exist
+    finally:
+        return (None, None)
+        

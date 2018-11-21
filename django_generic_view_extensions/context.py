@@ -8,15 +8,14 @@ Functions that add to the context that templates see.
 # Django imports
 from django.utils.safestring import mark_safe
 from django.conf.global_settings import DATETIME_INPUT_FORMATS
-from django.core.serializers.json import DjangoJSONEncoder
 
 # Python imports
-import json
+#import json
 
 # Package imports
 from .util import safetitle, datetime_format_python_to_PHP
 from .model import add_related
-from .forms import get_related_forms, classify_widgets
+from .forms import get_related_forms, classify_widgets #, get_inherit_fields
 from .options import urldefaults, odf, odm
 from .widgets import FilterWidget, OrderingWidget
 from .filterset import format_filterset
@@ -37,6 +36,13 @@ def add_model_context(view, context, plural, title=False):
         context["operation"] = view.operation
         context["title"] = (title + ' ' if title else '') + (safetitle(context["model"]._meta.verbose_name_plural) if plural else safetitle(context["model"]._meta.verbose_name))
         context["default_datetime_input_format"] = datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])
+
+#       This was an experiment with saving session stored inheritance data in the context.
+#       Deprecated in favour of a databse fetch into 
+#         # If this session has inheritablke defaults load those
+#         inheritance = get_inherit_fields(view.request.session, context["view"].model)
+#         if inheritance:
+#             context["inheritance"] = inheritance            
         
         if len(view.request.GET) > 0:
             context["get_params"] = view.request.GET

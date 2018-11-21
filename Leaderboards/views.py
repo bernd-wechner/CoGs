@@ -121,63 +121,110 @@ def post_process_submitted_model(self):
     #        Silently enforcing this is better than requiring the user to. The form can support any integers that indicate order.
 
         session = self.object
-        
-        # TODO: Bug here?
-        # session.ranks for some reason is None
-        # even after a session.reload_from_db
-        # So can fetch the ranks explicitly. 
-        # But something with the Django field "ranks" is broken
-        # And not sure if it's a local issue or a bug in Django.
-        #
-        # If we sort them in the order that they were created then we have 
-        # a list that is the same order as the TeamPlayers list which we 
-        # we build below, because all are created in order of the submitted
-        # form fields.
-        #
-        # We can sort on pk or creeated_on for the same expected result.
-        ranks = Rank.objects.filter(session=session.pk).order_by('created_on')
-        
-        # TODO: Sort Ranks, and map onto a list of 1, 2, 3, 4 ... 
-        
+               
         team_play = session.team_play
+        
+        # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
+        # Some empircal testing notes here:
+        #
+        # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
+        #    This must have have happened when we saved the related forms by passing in an instance to the formset.save 
+        #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day. 
+        #    Empirclaly seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #
+        #    performances    RelatedManager: Leaderboards.Performance.None
+        #    ranks    RelatedManager: Leaderboards.Rank.None    
+        #    teams    OrderedDict: OrderedDict()    
+        #
+        # 2) team play mode submission: Oddly the session object here has no performance or sessions and odd teams:
+        #    performances    RelatedManager: Leaderboards.Performance.None    
+        #    ranks    RelatedManager: Leaderboards.Rank.None    
+        #    teams    OrderedDict: OrderedDict([('1', None), ('2', None)])    
+        #
 
         if team_play:
+            # Check if a team ID was submitted, then we have a place to start.
             # Get the player list for submitted teams and the name.
-            # Find a team with those players
-            # If the name is not blank or Team n then update the team name
-            # If it doesn't exist, create a team and give it the specified name or null of Team n
+            # If the player list submitted doesn't match that recorded, ignore the team ID
+            #    and look for a new one thathas those players!
+            # If we can't find one, create new team with those players
+            # If the name is not blank then update the team name. 
+            #    As a safety ignore inadvertently submittted "Team n" names.
 
-            # Work out the total number of players and initialize a TeamPlayers and teamRank records
+            # Work out the total number of players and initialise a TeamPlayers list (with one list per team)
             num_teams = int(self.request.POST["num_teams"])
             num_players = 0
             TeamPlayers = []
             for t in range(num_teams):
-                num_team_players = int(self.request.POST["Team-%d-num_players" % t])
+                num_team_players = int(self.request.POST["Team-{:d}-num_players".format(t)])
                 num_players += num_team_players
                 TeamPlayers.append([])
 
             # Populate the TeamPlayers record (i.e. work out which players are on the same team)
             for p in range(num_players):
-                player = int(self.request.POST["Performance-%d-player" % p])
-                team_num = int(self.request.POST["Performance-%d-team_num" % p])
+                player = int(self.request.POST["Performance-{:d}-player".format(p)])
+                team_num = int(self.request.POST["Performance-{:d}-team_num".format(p)])
                 TeamPlayers[team_num].append(player)
 
             # For each team now, find it, create it , fix it as needed and associate it with the appropriate Rank just created
             for t in range(num_teams):
-                # Rank objects were saved in the database in the order of the 
-                # TeamRanks list. The TeamPlayers list has a matching list of  
-                # player Ids. t is stepping through these lists. So the rank object 
-                # we want to attach this team to is simply: 
-                rank = ranks[t]
+                # Get the submitted Team ID if any and if it is supplied 
+                # fetch the team so we can provisionally use that (renaming it 
+                # if a new name is specified).
+                team_id = self.request.POST["Team-{:d}-id".format(t)]
+                team = None
+                team_players_db = []
+                
+                if (team_id):                                
+                    try:
+                        team = Team.objects.get(pk=team_id)
+                        team_players_db = team.players.all().values_list('id', flat=True)         
+                    except Team.DoesNotExist:
+                        team = None                                
+                        team_players_db = []                    
 
-                # Similarly the team players list is in the same order
-                team_players = TeamPlayers[t]
+                # The Team players for each we already extracted from the POST
+                team_players_post = TeamPlayers[t]
+                
+                # Check that they are the same, if not, we'll have to create find or 
+                # create a new team, i.e. ignore the submitted team (it could have no 
+                # refrences left if that happens but we won't delete them simply because 
+                # of that (an admin tool for finding and deleting unreferenced objects
+                # is a better approach, be they teams or other objects).  
+                team_players = []
+                if (team):
+                    if set(team_players_post) == set(team_players_db):
+                        team_players = team_players_post
+                    else:
+                        team = None                   
+                
+                # Get the submitted Rank ID if any and if it is supplied the rank object
+                rank_id = self.request.POST["Rank-{:d}-id".format(t)]
+                rank = None
+
+                if (rank_id):
+                    try:
+                        rank = Rank.objects.get(pk=rank_id)
+                    except Rank.DoesNotExist:
+                        rank = None
+                        
+                if (rank is None):
+                    # This is probably a create form and the ranks were saved 
+                    # already by the related forms save, but aren't linked to 
+                    # this session. We need to find them and link them to this 
+                    # session.
+                    # TODO!
+                    pass      
+
 
                 # The name submitted for this team 
-                new_name = self.request.POST["Team-%d-name" % t]
+                new_name = self.request.POST["Team-{:d}-name".format(t)]
 
                 # Find the team object that has these specific players.
                 # Filter by count first and filter by players one by one.
+                # recall: these filters are lazy, we construct them here 
+                # but the do not do anything, are just recorded, and when 
+                # needed converted to SQL and executed. 
                 teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players))
                 for player in team_players:
                     teams = teams.filter(players=player)
@@ -216,6 +263,10 @@ def post_process_submitted_model(self):
                     raise ValueError("Database error: More than one team with same players in database.")
 
         # TODO: Ensure each player in game is unique.
+        
+        # TODO: Before we calculate TrueSkillImpacts we need to hgve a completely validated session!
+        #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
+        #       We need to clean these up.
         
         # Calculate and save the TrueSkill rating impacts to the Performance records
         session.calculate_trueskill_impacts()
@@ -268,6 +319,9 @@ def extra_context_provider(self):
     
     Clearly altering the game should trigger a reload of this metadata for the newly selected game.
     See ajax_Game_Properties below for that. 
+    
+    Note: self.initial has been populated by the fields specfied in the models inherit_fields 
+    attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
     '''
     context = {}
     model = getattr(self, "model", None)
@@ -275,8 +329,12 @@ def extra_context_provider(self):
      
     context['league_options'] = html_league_options()
     
-    if model_name == 'session' and hasattr(self, "object"):
-        Default = Game()
+    if model_name == 'session':
+        if "game" in getattr(self, 'initial', {}):
+            Default = self.initial["game"]
+        else:
+            Default = Game()
+        
         context['game_individual_play'] = json.dumps(Default.individual_play)
         context['game_team_play'] = json.dumps(Default.team_play)
         context['game_min_players'] = Default.min_players
@@ -284,17 +342,19 @@ def extra_context_provider(self):
         context['game_min_players_per_team'] = Default.min_players_per_team
         context['game_max_players_per_team'] = Default.max_players_per_team
         
-        session = self.object
-                
-        if session:
-            game = session.game
-            if game:
-                context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
-                context['game_team_play'] = json.dumps(game.team_play)
-                context['game_min_players'] = game.min_players
-                context['game_max_players'] = game.max_players
-                context['game_min_players_per_team'] = game.min_players_per_team
-                context['game_max_players_per_team'] = game.max_players_per_team
+        # Object overrides the defaults above 
+        if hasattr(self, "object"):
+            session = self.object
+                    
+            if session:
+                game = session.game
+                if game:
+                    context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
+                    context['game_team_play'] = json.dumps(game.team_play)
+                    context['game_min_players'] = game.min_players
+                    context['game_max_players'] = game.max_players
+                    context['game_min_players_per_team'] = game.min_players_per_team
+                    context['game_max_players_per_team'] = game.max_players_per_team
     
     return context
 
@@ -305,7 +365,7 @@ def extra_context_provider(self):
 
 class view_Home(TemplateViewExtended):
     template_name = 'CoGs/view_home.html'
-    extra_context_provider = extra_context_provider
+    extra_context_provider = extra_context_provider    
 
 class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
@@ -803,15 +863,28 @@ def ajax_Detail(request, model, pk):
      
     return HttpResponse(json.dumps(response))
 
-#===============================================================================
-# Special sneaky fixerupper and diagnostic view for testing code snippets
-#===============================================================================
-
 def view_About(request):
     '''
     Displays the About page (static HTML wrapped in our base template
     '''
     return
+
+#===============================================================================
+# Special sneaky fixerupper and diagnostic views for testing code snippets
+#===============================================================================
+
+def view_Inspect(request, model, pk): 
+    '''
+    A special debugging view which simply displays the inspector property of a given model 
+    object if it's implemented. Intended as a hook into quick inspection of rich objects 
+    that implement a neat HTML inspector property.
+    '''
+    m = class_from_string('Leaderboards', model)
+    o = m.objects.get(pk=pk)
+    
+    result = getattr(o, "inspector", "{} has no 'inspector' property implemented.".format(model))   
+    c = {"title": "{} Inspector".format(model), "inspector": result}
+    return render(request, 'CoGs/view_inspector.html', context=c)
 
 def view_CheckIntegrity(request):
     '''

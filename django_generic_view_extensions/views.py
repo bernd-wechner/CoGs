@@ -20,13 +20,18 @@ These Extensions aim at providing primarily two things:
 
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
+#Python imports
+import datetime
+import re
+
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.db.models.query import QuerySet
-from django.http.response import JsonResponse, HttpResponseRedirect
+from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 from django.forms.models import fields_for_model
+from django.core.exceptions import ObjectDoesNotExist
 
 # 3rd Party package imports (dependencies)
 from url_filter.filtersets import ModelFilterSet
@@ -38,7 +43,7 @@ from .html import list_html_output, object_html_output, object_as_html, object_a
 from .context import add_model_context, add_format_context, add_filter_context, add_ordering_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
-from .model import collect_rich_object_fields
+from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
 from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
 
@@ -287,9 +292,32 @@ class CreateViewExtended(CreateView):
 
     # TODO: the form needs to use combo boxes for list select values like Players in a Session. You have to be able to type and find a player with a pattern match so to speak. The list can get very very long you see. 
 
+    def get_initial(self):
+        initial = super().get_initial()
+        
+        try:
+            # TODO: Consider geting the last object created by the logged in user instead of the last object created
+            last = self.model.objects.latest()
+        except ObjectDoesNotExist:
+            last = None
+            
+        for field_name in inherit_fields(self.model):
+            field_value = getattr(last, field_name)
+            if (isinstance(field_value, datetime.datetime)):
+                initial[field_name] = field_value + getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
+            else:
+                initial[field_name] = field_value
+        
+        # Set the view property so context handlers (below) can see it
+        self.initial = initial
+            
+        return initial 
+
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
         print_debug("Getting contex data")
+        # Note that the super.get_context_data initialises the form with get_initial
+        # So after calling this we have ...
         context = super().get_context_data(*args, **kwargs)
         print_debug("Adding model context")
         add_model_context(self, context, plural=False, title='New')
@@ -352,14 +380,19 @@ class CreateViewExtended(CreateView):
         # Not saved yet?
         # EXPERIMENT, not passing in object but passing in request and follwoing through code
         validation_errors = {}
+        
+        # If requesting tod ebug the post data, don't do any validation
+        if self.request.POST.get("debug_post_data", "off") == "on":
+            return True
 
         # self.model.clean() has been called by Django before we get here
         # This calls clean() on all the related models (as defined by add_related properties)
-        related_forms = get_related_forms(self.model, self.request.POST)
+        print_debug("Is_valid? Get related forms for {}".format(self.model))
+        #related_forms = get_related_forms(self.model, self.request.POST)
         
-        # Now build a rich_object from the collected instances for submission to
-        # rich_clean. 
-        rich_object = get_rich_object_from_forms(self.object, related_forms)
+        # Now build a rich_object from the collected instances for submission to rich_clean. 
+        print_debug("Is_valid? Get rich object for {}".format(self.object))
+        #rich_object = get_rich_object_from_forms(self.object, related_forms)
         
         # Now we need to clean the relations. related_forms has objects built by
         # get_related_forms but we need to pass these somehow to self.model.clean_relations()
@@ -372,37 +405,44 @@ class CreateViewExtended(CreateView):
     def form_valid(self, form):
         # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
         #       If there's a bail then don't save anything, i.e don't save partial data.
-        
-        # TODO: Act on submitted timezone info
-        # Arrives at present as self.requst.POST["TZname"] and self.requst.POST["TZoffset"]
-        TZname = self.request.POST["TZname"] if "TZname" in self.request.POST else None  
-        TZoffset = self.request.POST["TZoffset"] if "TZoffset" in self.request.POST else None  
-        
-        # TODO: Consider if we should save the master first then related objects 
-        # or the other way round or if it should be configurable or if it even matters.
-        
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
 
-        # Save this form
-        self.object = form.save()
-        self.kwargs['pk'] = self.object.pk
-        self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-        
-        # Save related forms
-        errors = save_related_forms(self)
-        
-        # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
-        # TODO: Tidy this. Render the errors in the message box on the original form somehow.
-        # Basically bounce back to where we were with error messages.
-        # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
-        if errors:
-            return JsonResponse(errors)            
-                    
-        # Hook for post-processing data (after it's all saved) 
-        if callable(getattr(self, 'post_processor', None)): self.post_processor()
-        
-        return HttpResponseRedirect(self.get_success_url())
+        if self.request.POST.get("debug_post_data", "off") == "on":
+            html = "<table>"   
+            for key in sorted(self.request.POST):
+                html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
+            html += "</table>"         
+            return HttpResponse(html)
+        else:        
+            # TODO: Act on submitted timezone info
+            # Arrives at present as self.requst.POST["TZname"] and self.requst.POST["TZoffset"]
+            TZname = self.request.POST["TZname"] if "TZname" in self.request.POST else None  
+            TZoffset = self.request.POST["TZoffset"] if "TZoffset" in self.request.POST else None  
+            
+            # TODO: Consider if we should save the master first then related objects 
+            # or the other way round or if it should be configurable or if it even matters.
+            
+            # Hook for pre-processing the form (before the data is saved)
+            if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+    
+            # Save this form
+            self.object = form.save()
+            self.kwargs['pk'] = self.object.pk
+            self.success_url = reverse_lazy('view', kwargs=self.kwargs)
+            
+            # Save related forms
+            errors = save_related_forms(self)
+            
+            # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
+            # TODO: Tidy this. Render the errors in the message box on the original form somehow.
+            # Basically bounce back to where we were with error messages.
+            # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
+            if errors:
+                return JsonResponse(errors)            
+                        
+            # Hook for post-processing data (after it's all saved) 
+            if callable(getattr(self, 'post_processor', None)): self.post_processor()
+            
+            return HttpResponseRedirect(self.get_success_url())
 
 #     def post(self, request, *args, **kwargs):
 #         response = super().post(request, *args, **kwargs)
@@ -423,10 +463,14 @@ class UpdateViewExtended(UpdateView):
     # FIXME: If I edit a sessions date/time, the leaderboards are corrupted (extra session is added).
 
     def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
+        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''       
+        print_debug("Getting contex data")
         context = super().get_context_data(*args, **kwargs)
+        print_debug("Adding model context")
         add_model_context(self, context, plural=False, title='Edit')
+        print_debug("Adding extra context")
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        print_debug("Got context data")
         return context
 
     def get_object(self, *args, **kwargs):
@@ -463,28 +507,35 @@ class UpdateViewExtended(UpdateView):
         # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
         #       If there's a bail then don't save anything, i.e don't save partial data. 
         
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+        if self.request.POST.get("debug_post_data", "off") == "on":
+            html = "<table>"   
+            for key in sorted(self.request.POST):
+                html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
+            html += "</table>"         
+            return HttpResponse(html)
+        else:
+            # Hook for pre-processing the form (before the data is saved)
+            if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
 
-        # Save this form
-        self.object = form.save()
-        self.kwargs['pk'] = self.object.pk
-        self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-        
-        # Save related forms
-        errors = save_related_forms(self)
-        
-        # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
-        # TODO: Tidy this. Render the errors in the message box on the original form somehow.
-        # Basically bounce back to where we were with error messages.
-        # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
-        if errors:
-            return JsonResponse(errors)            
-                    
-        # Hook for post-processing data (after it's all saved) 
-        if callable(getattr(self, 'post_processor')): self.post_processor()
+            # Save this form
+            self.object = form.save()
+            self.kwargs['pk'] = self.object.pk
+            self.success_url = reverse_lazy('view', kwargs=self.kwargs)            
+                        
+            # Save related forms
+            errors = save_related_forms(self)
+            
+            # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
+            # TODO: Tidy this. Render the errors in the message box on the original form somehow.
+            # Basically bounce back to where we were with error messages.
+            # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
+            if errors:
+                return JsonResponse(errors)            
+                        
+            # Hook for post-processing data (after it's all saved) 
+            if callable(getattr(self, 'post_processor')): self.post_processor()
 
-        return HttpResponseRedirect(self.get_success_url())
+            return HttpResponseRedirect(self.get_success_url())
          
 #         try:
 #             with transaction.atomic():

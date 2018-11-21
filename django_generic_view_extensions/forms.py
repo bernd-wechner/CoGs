@@ -20,15 +20,19 @@ See .model for a definition of add_related.
 '''
 # Python imports
 import collections
+import pickle
+import codecs
 from types import SimpleNamespace
 
 # Django imports
 from django.core.exceptions import ValidationError
 from django.forms.models import fields_for_model, modelformset_factory, inlineformset_factory 
+from django.conf import settings
 
 # Package imports
 from .model import add_related, apply_sort_by
 from .debug import print_debug
+
 
 def classify_widget(field):
     '''
@@ -396,7 +400,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             # PKs if the field is a _to_many relation (a relation pointing to many objects in another model).  
             #
             # This is a proxy for a related_formset in a way. The related_form is an empty_form, a pro
-            # form a for one form in the formset and field_data contains for each field in the related model a 
+            # forma for one form in the formset and field_data contains for each field in the related model a 
             # list of values, one for each form in the formset from which a web page can, in javascript, create
             # the individual forms in the formset with populated values. 
             #
@@ -473,6 +477,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
 
                 # If no form data was found try and find it in the db_object
                 if not found_form_data and not db_object is None:                    
+                    print_debug("{}Getting formset from: {} using relation {}.".format(debug_prefix, db_object, relation))
                     related_formset = get_formset_from_object(Related_Formset, db_object, relation)
 
                 # If no management form is present this will fail with a ValidationError
@@ -546,12 +551,15 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
                 else:
                     i = len(pk_list)-1
                     fields = {}
+                    print_debug("{}{} PK={}. Checking field_data : {}".format(debug_prefix, rm._meta.object_name, ph, related_forms[rf].field_data.items()))                    
                     for field, values in related_forms[rf].field_data.items():
                         f = rm._meta.get_field(field)
+                        print_debug("{}{} PK={}. Checking field: {}, i: {}, values[i]: {}, f: {}, f.is_relation: {}".format(debug_prefix, rm._meta.object_name, ph, field, i, values[i], f, f.is_relation))                    
                         if values[i] is None:
                             val = None
                         elif f.is_relation:
                             m = f.related_model
+                            print_debug("{}{} PK={}. related_model: {}, one_to_one: {}, many_to_one: {}, one_to_many: {}, many_to_many: {}".format(debug_prefix, rm._meta.object_name, ph, m, f.one_to_one, f.many_to_one, f.one_to_many, f.many_to_many))                    
                             if f.one_to_one or f.many_to_one:
                                 val = m.objects.get(pk=values[i])
                             elif f.one_to_many or f.many_to_many:
@@ -559,9 +567,15 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
                                 val = m.objects.filter(pk__in=values[i]) 
                         else:
                             val = values[i]
-                            
-                        fields[field] = val
                         
+                        # I know this bombs when a many_to_many field with val None is added to fields
+                        # TODO: Check this works for many_to_many fields when val is not None! 
+                        # To do this edit a team play session and put a break here on save. Should land
+                        # here with a many to many with a val.   
+                        if not ((f.one_to_many or f.many_to_many) and val is None):    
+                            fields[field] = val
+                        
+                    print_debug("{}{} PK={}. Building object from field_data : {}".format(debug_prefix, rm._meta.object_name, ph, fields))                    
                     o = rm(**fields)
                     print_debug("{}{} PK={}. Built object from field_data : {}".format(debug_prefix, rm._meta.object_name, ph, o))
                 
@@ -597,7 +611,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
     return related_forms            
 
 def save_related_forms(self):
-    #TODO: Implement this! 
+    # TODO: Implement and test this - a work in progress 
     # Docs state: If your formset contains a ManyToManyField, you’ll also need to call formset.save_m2m() to ensure the many-to-many relationships are saved properly.
     #        What does that mean?
     #
@@ -616,12 +630,20 @@ def save_related_forms(self):
     # Case 2 and 3 uncertain at present. Think about it.
     
     # This code saves properly and can be used in interim.
-    # TODO: Review how it fits in with cleaning
+    # TODO: Review how this fits in with cleaning
     
     # Fetch all the related forms. 
     related_forms = get_related_forms(self.model, db_object=self.object)
     
     print_debug("Saving {} Related Forms: {}".format(len(related_forms), [name for (name, form) in related_forms.items()]))
+    
+    print_debug("Requesting IP is: {}".format(self.request.META['REMOTE_ADDR']))
+    
+    print_debug("From:")
+    for (key, val) in sorted(self.request.POST.items()):
+        print_debug("\t{}: {}".format(key, val))
+    for (key, file) in self.request.FILES.items():
+        print_debug("\t{}: {}".format(key, file.name))    
     
     # We won't want to save all of them. To save a related form we need:
     # 
@@ -649,24 +671,65 @@ def save_related_forms(self):
         field_name = form.field_name                    # Get the field name in self.model that this relation relates to  
         relation = getattr(model, field_name, None)     # Get the field itself (which is a relation)
 
-        print_debug("Saving {}->{}".format(model._meta.object_name, related_model._meta.object_name))
-        print_debug("From:")
-        for (key, val) in self.request.POST.items():
-            print_debug("\t{}: {}".format(key, val))
-        for (key, file) in self.request.FILES.items():
-            print_debug("\t{}: {}".format(key, file.name))
+        mon = model._meta.object_name                   # Model Object Name
+        rmon = related_model._meta.object_name          # Related Model Object Name
+        
+        print_debug("Saving {}->{}".format(mon, rmon))
                 
         if relation.field.editable and (len(self.request.POST) > 0 or len(self.request.FILES) > 0):
             assert field_name in add_related(model), "Progamming Error: field_name is not in add_related yet we're trying to save it!"
             
-            Related_Formset = inlineformset_factory(model, related_model, can_delete=False, extra=0, fields=('__all__'))
+            Related_Formset = inlineformset_factory(model, related_model, can_delete=True, extra=0, fields=('__all__'))
             related_formset = Related_Formset(self.request.POST, self.request.FILES, instance=obj, prefix=name)
             
             if related_formset.is_valid():
-                related_formset.save()
+                ran = relation.rel.related_name         # Related Attribute Name
+                rfn = relation.field.name               # Related model field name
+
+                print_debug("\t{}->{} is valid. Used prefix={} and instance={} {}".format(mon, rmon, name, mon, obj.pk))
+                if (settings.DEBUG):
+                    robjs_before = len(getattr(obj, ran).all())
+                    print_debug("\t\t{} {}: checking parent before save {}={}".format(mon, obj.pk, ran, robjs_before))
+                
+                instances = related_formset.save()  # returns the instances saved but we don't need them here
+                
+                # Debugging output
+                if (settings.DEBUG):
+                    robjs_after = len(getattr(obj, ran).all())
+                    print_debug("\t\t{} {}: checking parent after save {}={}".format(mon, obj.pk, ran, robjs_after))                    
+                    for instance in instances:
+                        parent = getattr(instance, relation.field.name, None)
+                        if (not parent is None):                    
+                            print_debug("\t\t{} {}: saved {}={}. It has {}={}".format(mon, obj.pk, rmon, instance, rfn, parent.pk))
+                            print_debug("\t\t{} {}: checking parent {}={}".format(mon, obj.pk, ran, getattr(parent, ran).all()))
+                    
+                    if (len(instances) == 0):
+                            print_debug("\t\t{} {}: did not save any {}s".format(mon, obj.pk, rmon))
+                            
+                    if (robjs_after<robjs_before):
+                            print_debug("\t\t{} {}: deleted {} {}s".format(mon, obj.pk, robjs_before-robjs_after, rmon))
             else:
                 # TODO: Report errors cleanly on new edit form
                 # Errors are in related_formset.errors
                 raise ValueError("Invalid Data")    
     
     return False # Return no errors
+
+# This was an experiment to save object data to the session for inherit_fields. 
+# Abandoned. But the learning is good and should move this to session.py and keep
+# it on hand as a generic session data saver and loader (modifed a little to be more generic).
+# 
+# def save_inherit_fields(session, model_instance):
+#     for field_name in inherit_fields(model_instance._meta.model):
+#         attr = getattr(model_instance, field_name)
+#         session["last_saved__"+field_name] = codecs.encode(pickle.dumps(attr), "base64").decode() 
+#     
+# def get_inherit_fields(session, model):
+#     inheritance = {}
+#     for field_name in inherit_fields(model):
+#         field_value = session.get("last_saved__"+field_name)
+#         if not field_value is None:
+#             attr = pickle.loads(codecs.decode(field_value.encode(), "base64"))
+#             inheritance[field_name] = attr
+#             
+#     return inheritance if len(inheritance) > 0 else None 

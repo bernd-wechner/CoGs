@@ -98,6 +98,35 @@ def add_related(model):
     if isinstance(model.add_related, list):
         return model.add_related
      
+    return []
+
+def inherit_fields(model):
+    '''
+    Provides a safe way of testing a given model's inherit_fields attribute by ensuring always 
+    a list is provided.
+     
+    If a model has an attribute named inherit_fields and it is a string that names
+    
+    1) a field in this model, or
+    2) a field in another model in the format model.field
+    
+    or a list of such strings, then we take this as an instruction to inherit
+    the values of those fields form form to form during one login session.
+    
+    The attribute may be missing, None, or invalid as well, and so to make testing
+    easier throughout the generic form processors this function always returns a list,
+    empty if no valid add_related is found.
+    '''
+    
+    if not hasattr(model, "inherit_fields"):
+        return []
+    
+    if isinstance(model.inherit_fields, str):
+        return [model.inherit_fields]
+
+    if isinstance(model.inherit_fields, list):
+        return model.inherit_fields
+     
     return [] 
 
 def apply_sort_by(queryset):

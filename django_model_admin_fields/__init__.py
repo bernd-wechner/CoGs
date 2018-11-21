@@ -53,4 +53,5 @@ class AdminModel(models.Model):
         super().save(*args, **kwargs)
                 
     class Meta:
+        get_latest_by = "created_on"
         abstract = True

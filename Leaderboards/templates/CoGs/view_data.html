@@ -14,7 +14,7 @@
 			
 			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
 			
-			// It's awkward how we can to come via the template/context on load and via the ajax response on browsing. 
+			// It's awkward how we can to land here via the template/context on load and via the ajax response on browsing. 
 			// So this kind of info has to pass into the page from two directions. 
 			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse) 
 			{% if view.object_browser.0 %}

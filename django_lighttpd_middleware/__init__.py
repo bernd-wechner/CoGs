@@ -84,7 +84,21 @@ from django.urls import set_script_prefix, get_script_prefix
 class LighttpdMiddleware(object):
     '''
     A Django MIDDLEWARE class which basically fixes request.path_info after lightttpd munged it ;-)
-    Tidies up relevant request.environ and request.META elements as well. 
+    Tidies up relevant request.environ and request.META elements as well.
+    
+    Note:
+    
+    SCRIPT_NAME
+       The initial portion of the request URL's "path" that corresponds
+       to the application object, so that the application knows its virtual
+       "location". This may be an empty string, if the application
+       corresponds to the "root" of the server.
+
+    PATH_INFO
+       The remainder of the request URL's "path", designating the virtual
+       "location" of the request's target within the application. This may
+       be an empty string, if the request URL targets the application root
+       and does not have a trailing slash.
     '''
     def __init__(self, get_response):
         self.get_response = get_response
@@ -112,9 +126,9 @@ class LighttpdMiddleware(object):
         request.META['SCRIPT_NAME'] = ''
 
         # While I think fixing this in middleware is the appropriate thing to do it is not
-        # quite as easy as fixing the wsgi interface because middle is called a little later 
-        # in the cycle, in fact after the WSGIRequest object that is provided hee as request, 
-        # is built, and in its construction Django squirrels away the SCRIP_NAME already in an
+        # quite as easy as fixing the wsgi interface because middleware is called a little later 
+        # in the cycle, in fact after the WSGIRequest object that is provided here as request, 
+        # is built, and in its construction Django squirrels away the SCRIPT_NAME already in an
         # internal buffer that it later uses to build urls. Grrrr. So we have to ask it to set
         # that internal buffered value as well. 
         set_script_prefix(request.script_name)

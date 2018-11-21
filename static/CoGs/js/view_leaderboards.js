@@ -14,6 +14,18 @@ var boardcount = 0;
 var maxshots = 0;
 var totalshots = 0;
 
+// A converter of strings to booleans
+String.prototype.boolean = function() {
+    switch (this.toLowerCase()) {
+      case true.toString():
+        return true;
+      case false.toString() :
+        return false;
+      default:
+        throw new Error ("Boolean.parse: Cannot convert string to boolean.");
+    }
+  };
+
 // We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
 function get_and_report_metrics(LB) {
 	var snapshots = 0; 
@@ -48,9 +60,11 @@ function InitControls(options) {
 	$('#selNames').val(options.names);	
 	$('#selLinks').val(options.links);
 	
-	$('#chkHighlightPlayers').prop('checked', options.highlight_players)
-	$('#chkHighlightChanges').prop('checked', options.highlight_changes)
-	$('#chkSessionDetails').prop('checked', options.details);
+	$('#chkHighlightPlayers').prop('checked', options.highlight_players.boolean())
+	$('#chkHighlightChanges').prop('checked', options.highlight_changes.boolean())
+	$('#chkSessionDetails').prop('checked', options.details.boolean());
+	$('#chkSessionAnalysisPre').prop('checked', options.analysis_pre.boolean());
+	$('#chkSessionAnalysisPost').prop('checked', options.analysis_post.boolean());
 
 	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
 	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
@@ -101,7 +115,8 @@ function InitControls(options) {
 	//Configure the Copy Button
 	var copybutton = document.getElementById("btnCopy");
 	var clipboard = new Clipboard(copybutton);
-
+	
+	//What to do when the copy button is clicked 
 	clipboard.on('success', function(e) {
 		e.clearSelection();
 		var clipboard_target = document.getElementById("divLB_naked");
@@ -123,6 +138,8 @@ function URLopts(element) {
 	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
 	val = $('#chkSessionDetails').is(":checked"); if (val != Boolean(defaults.details)) opts.push("details="+encodeURIComponent(val));
+	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != Boolean(defaults.analysis_pre)) opts.push("analysis_pre="+encodeURIComponent(val));
+	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != Boolean(defaults.analysis_post)) opts.push("analysis_post="+encodeURIComponent(val));
 	val = $('#chkHighlightPlayers').is(":checked"); if (val != Boolean(defaults.highlight_players)) opts.push("highlight_players="+encodeURIComponent(val));
 	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight_changes)) opts.push("highlight_changes="+encodeURIComponent(val));
 
@@ -231,9 +248,9 @@ function prepare_target()  {
 	copy_div.style.position = 'absolute';
 	copy_div.style.left = '-99999px';
 	
-	// Alas the Div gets swallowed by the clipboards code somewhow, 
+	// Alas the Div gets swallowed by the clipboards code somehow, 
 	// as does any div I wrap the table in. Meaning I can't find a way 
-	// to copy with an overflow:auto div. I spemt ages experimenting with 
+	// to copy with an overflow:auto div. I spent ages experimenting with 
 	// no success,
 	copy_div.appendChild(copy_table);		// Put the table in the wrapping div
 	document.body.appendChild(copy_div);	// Put the copy div into the document
@@ -252,21 +269,29 @@ function LBtable(LB, snapshot, links) {
 	var BGGid = LB[1];
 	var game = LB[2];
 
+	// This MUST align with the way ajax_Leaderboards() bundles up leaderboards
+	// Rather a complex structure that may benefit from some naming (rather than
+	// being a list of lists of lists of lists look at named object properties.
 	var date_time = LB[3][snapshot][0]
 	var play_count = LB[3][snapshot][1];
 	var session_count =LB[3][snapshot][2];
-	var session_players =LB[3][snapshot][3];
+	var session_players = LB[3][snapshot][3];
 	var session_details_html = LB[3][snapshot][4][0];
 	var session_details_data = LB[3][snapshot][4][1];
-	var player_list = LB[3][snapshot][5];
-	var player_prev = (snapshot+1<LB[3].length) ? LB[3][snapshot+1][5] : null;  
+	var session_analysis_pre_html = LB[3][snapshot][5][0];
+	var session_analysis_pre_data = LB[3][snapshot][5][1];
+	var session_analysis_post_html = LB[3][snapshot][6][0];
+	var session_analysis_post_data = LB[3][snapshot][6][1];
+	var player_list = LB[3][snapshot][7];
+	var player_prev = (snapshot+1<LB[3].length) ? LB[3][snapshot+1][7] : null; 
 
+	
 	// Create the Game link based on the requested link target
 	var linkGameCoGs = url_view_Game.replace('00',pkg);
 	var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
 	var linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 
-	// Fix the session detail header which was provided with templated links
+	// Fix the session detail and analysis headers which were provided with templated links
 	var linkPlayerCoGs = url_view_Player.replace('00','{ID}');
 	var linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
 	var linkTeamCoGs = url_view_Team.replace('00','{ID}');
@@ -275,6 +300,9 @@ function LBtable(LB, snapshot, links) {
 	linkRanker["Player"] = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
 	linkRanker["Team"] = links == "CoGs" ? linkTeamCoGs : links == "BGG" ?  null : null;
 
+	// Build a map of PK to BGGid for all rankers
+	// Note, session_details_data, session_analysis_pre_data and session_analysis_post_data perforce
+	// contain the same map (albeit in a different order) so we can use just one of them to build the map. 
 	var linkRankerID = {}
 	for (var r = 0; r < session_details_data.length; r++) {
 		var PK = session_details_data[r][0];
@@ -283,7 +311,11 @@ function LBtable(LB, snapshot, links) {
 		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
 	}
 
-	function fix_session_detail_link(match, klass, model, id, txt) {
+	// A regex replacer which has as args first the matched string then each of the matched subgroups
+	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text.
+	// This is a function that the following replace() functions pass matched groups to and is tasked
+	// with returning a the replacement string. 
+	function fix_template_link(match, klass, model, id, txt) {
 		if (linkRankerID[id] == null) 
 			return txt;
 		else {
@@ -292,17 +324,21 @@ function LBtable(LB, snapshot, links) {
 		}
 	}
 	
-	if (links == "CoGs" || links == "BGG" )
-		session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_session_detail_link);
+	// Fix the HTML of the headers
+	session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+	session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+	session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
 	table.style.width = '100%';
 
-	// Three header rows as folows:
-	// One fullwidth containing the date the leaderboard was set (of lasts ession played that contributed to it)
-	// A second with the game name (2 cols) and play/session summary (3 cols)
-	// A third with 5 column headers (rank, player, rating, plays, victories)
+	// Five header rows as follows:
+	// A full-width session detail block, or the date the leaderboard was set (of last session played that contributed to it)
+	// A full-width pre session analysis
+	// A full-width post session analysis
+	// A game header with the name of the game (2 cols) and play/session summary (3 cols)
+	// A final header with 5 column headers (rank, player, rating, plays, victories)
 
 	var tableHead = document.createElement('THEAD');
 	table.appendChild(tableHead);	    
@@ -316,7 +352,7 @@ function LBtable(LB, snapshot, links) {
 	var content;
 	if (linkGame) {
 		content = document.createElement('a');
-		content.setAttribute("style", "text-decoration: none; color: inherit;");
+		content.setAttribute("style", "text-decoration: none; color: inherit; font-weight: bold; font-size: 120%;");
 		content.href = linkGame;
 		content.innerHTML = game;
 	} else {
@@ -357,10 +393,12 @@ function LBtable(LB, snapshot, links) {
 		tableHead.appendChild(tr);
 
 		var td = document.createElement('TD');
-		td.innerHTML = "<div style='float: left; margin-right: 2ch;'><b>Results after:</b></div><div style='float: left;'>" + session_details_html + "</div>";
+		td.innerHTML = "<div style='float: left; margin-right: 2ch; font-weight: bold;'>Results after:</div><div style='float: left;'>" + session_details_html + "</div>";
 		td.colSpan = 5;
 		td.className = 'leaderboard normal'
 		tr.appendChild(td);
+	
+	// If no details displayed at least display the date-time of the session that produced this leaderboard snapshot
 	} else {
 		var tr = document.createElement('TR');
 		tableHead.appendChild(tr);
@@ -371,9 +409,39 @@ function LBtable(LB, snapshot, links) {
 		th.colSpan = 5;
 		th.className = 'leaderboard normal'
 		tr.appendChild(th);		
-	}	
+	}
 
 	// Third Header Row
+
+	var analysis_pre = document.getElementById("chkSessionAnalysisPre").checked;
+
+	if (analysis_pre) {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var td = document.createElement('TD');
+		td.innerHTML = session_analysis_pre_html;
+		td.colSpan = 5;
+		td.className = 'leaderboard normal'
+		tr.appendChild(td);
+	}
+
+	// Fourth Header Row
+
+	var analysis_post = document.getElementById("chkSessionAnalysisPost").checked;
+
+	if (analysis_post) {
+		var tr = document.createElement('TR');
+		tableHead.appendChild(tr);
+
+		var td = document.createElement('TD');
+		td.innerHTML = session_analysis_post_html;
+		td.colSpan = 5;
+		td.className = 'leaderboard normal'
+		tr.appendChild(td);
+	}
+
+	// Fifth Header Row
 
 	var tr = document.createElement('TR');
 	tableHead.appendChild(tr);
@@ -487,7 +555,7 @@ function LBtable(LB, snapshot, links) {
 
 //Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly $('#selLinks) and $('#selCols) fails here. Not sure why. 
+	// Oddly the jQuery forms $('#selLinks) and $('#selCols) fails here. Not sure why. 
 	var selLinks = document.getElementById("selLinks");	
 	var selCols = document.getElementById("selCols");
 	var cols = parseInt(selCols.options[selCols.selectedIndex].text);

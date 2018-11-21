@@ -35,9 +35,11 @@ SITE_ID = 1
 import platform
 HOSTNAME = platform.node().lower()
 
+LIVE_SITE = HOSTNAME == WEBSERVER
+
 ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
 
-if HOSTNAME == WEBSERVER:
+if LIVE_SITE:
     print("Django settings: Web Server")
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -48,6 +50,7 @@ if HOSTNAME == WEBSERVER:
 else:
     print("Django settings: Development Server")
     from CoGs.settings_development import * 
+    INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
 
 # Application definition
 
@@ -65,7 +68,7 @@ INSTALLED_APPS = (
     'django.contrib.flatpages',
     'django_extensions',
     'reset_migrations',
-    'Leaderboards'
+    'Leaderboards',
 )
 
 MIDDLEWARE = (
@@ -80,11 +83,14 @@ MIDDLEWARE = (
     'cuser.middleware.CuserMiddleware',
 )
 
-if HOSTNAME == WEBSERVER:
+if LIVE_SITE:
     WSGI_APPLICATION = 'CoGs.wsgi.application'
     from django_lighttpd_middleware import METHOD
     if METHOD == "middleware":
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
+# else:
+#     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', ) 
+#     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)    
 
 ROOT_URLCONF = 'CoGs.urls'
 
@@ -139,3 +145,4 @@ DATETIME_FORMAT = 'r'
 STATIC_URL = '/static/'
 
 LOGIN_URL = '/login/'
+

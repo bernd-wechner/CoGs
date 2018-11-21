@@ -24,6 +24,7 @@
 	var default_link = "{{format_default.field_link_target}}";
 	var default_menus = "{{format_default.list_menu_format}}";
 	var default_index = "{{format_default.index}}";
+	var default_key = "{{format_default.key}}";
 	var default_ordering = "{{ordering_default}}";
 
 	function toggle_filters() {
@@ -47,6 +48,7 @@
 		link = $('input[type=radio][name=opt_link]:checked').attr('value');
 		menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
 		index = $('#opt_index').is(':checked') ? "index" : "noindex";
+		key = $('#opt_key').is(':checked') ? "key" : "nokey";
 		
 		filter_opts = filter_url_opts();
 		ordering_opts = ordering_url_opts();
@@ -62,6 +64,7 @@
 		if (link != default_link) opts.push(link);
 		if (menus != default_menus) opts.push(menus);
 		if (index != default_index) opts.push(index);	
+		if (key != default_key) opts.push(key);	
 				
 		if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
 		if (ordering_opts.length > 0) opts.push(ordering_opts.join("&"));
@@ -178,9 +181,9 @@
 
 <table id="ListViewOptions" class="tight">
 	<tr>
-		<td class='tight options'>
-			<b>Quick Views:</b>
-		</td>
+		<th class='tight options'>
+			Quick Views:
+		</th>
 		<td class='tight options'>
 			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 			<input type="button" id="opt_brief" value="Brief" onclick="check_button('brief'); reload(event);">
@@ -191,10 +194,10 @@
 		</td>
 	</tr>
 	<tr id="opt_summary_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
+		<th class='tight options'>
 			<br/>
 			<input type="button" id="opt_specified" value="Show:" onclick="reload(event);">
-		</td>
+		</th>
 		<td class='tight options'>
 			<br/>
 			<input type="radio" name="opt_elements" id="opt_elements_brief" value="brief" {{format.elements|checked:1}}>Brief
@@ -205,20 +208,20 @@
 		</td>
 	</tr>
 	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>In:</b>
-		</td>
+		<th class='tight options'>
+			In:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_complete" id="opt_complete_as_table" value="as_table" {{format.complete|checked:1}}>a table
 			<input type="radio" name="opt_complete" id="opt_complete_as_ul" value="as_ul" {{format.complete|checked:2}}>a bulleted list
 			<input type="radio" name="opt_complete" id="opt_complete_as_p" value="as_p" {{format.complete|checked:3}}>paragaphs
-			<input type="radio" name="opt_complete" id="opt_complete_as_br" value="as_br" {{format.complete|checked:4}}>a pargraph
+			<input type="radio" name="opt_complete" id="opt_complete_as_br" value="as_br" {{format.complete|checked:4}}>a paragraph
 		</td>
 	</tr>		
 	<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>links:</b>
-		</td>
+		<th class='tight options'>
+			Links:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_link" id="opt_link_none" value="no_links" {{format.link|checked:0}}>None
 			<input type="radio" name="opt_link" id="opt_link_internal" value="internal_links" {{format.link|checked:1}}>CoGs
@@ -226,9 +229,9 @@
 		</td>
 	</tr>		
 	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Menus:</b>
-		</td>
+		<th class='tight options'>
+			Menus:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_menus" id="opt_menus_none" value="no_menus" {{format.menus|checked:0}}>None
 			<input type="radio" name="opt_menus" id="opt_menus_text" value="text_menus" {{format.menus|checked:1}}>Text
@@ -236,27 +239,30 @@
 		</td>
 	</tr>		
 	<tr id="opt_index_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Index:</b>
-		</td>
+		<th class='tight options'>
+			Rows:
+		</th>
 		<td class='tight options'>
 			<input type="checkbox" id="opt_index" {{format.index|checked}}>
+			<label for="opt_index">Index</label>		
+			<input type="checkbox" id="opt_key" {{format.key|checked}}>
+			<label for="opt_key">Key</label>		
 		</td>
 	</tr>		
 {#	Removed the toggle class from these two rows so they remain hidden.#}
 {#	In development and not ready yet.#}
 	<tr id="opt_filters" class='tight options' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Filter on:</b>
-		</td>
+		<th class='tight options'>
+			Filter on:
+		</th>
 		<td class='tight options'>
 			{{ widget_filters }}		
 		</td>
 	</tr>
 	<tr id="opt_ordering" class='tight options' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Order by:</b>
-		</td>
+		<th class='tight options'>
+			Order by:
+		</th>
 		<td class='tight options'>
 			{{ widget_ordering }}		
 		</td>

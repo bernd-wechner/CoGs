@@ -110,4 +110,4 @@ def indentVAL(string, indent=odm.indent):
         tag_end = r"</SPAN>"
         return tag_start + string + tag_end
     else:
-        return "<br>"+string  # The block style SPAN with 0 margin would be equivalent to a simple BR
+        return string

@@ -183,16 +183,17 @@ def list_html_output(self, LDF=None):
         
     LMF = self.format.menus
     LIF = self.format.index
+    LKF = self.format.key
 
     # Define the standard HTML strings for supported formats    
     if LDF == odm.as_table:
-        normal_row = "<tr>{menu:s}{index:s}<td class='list_item'>{value:s}</td></tr>"
+        normal_row = "<tr>{menu:s}{index:s}{key:s}<td class='list_item'>{value:s}</td></tr>"
     elif LDF == odm.as_ul:
-        normal_row = "<li class='list_item'>{menu:s}{index:s}{value:s}</li>"
+        normal_row = "<li class='list_item'>{menu:s}{index:s}{key:s}{value:s}</li>"
     elif LDF == odm.as_p:
-        normal_row = "<p class='list_item'>{menu:s}{index:s}{value:s}</p>"
+        normal_row = "<p class='list_item'>{menu:s}{index:s}{key:s}{value:s}</p>"
     elif LDF == odm.as_br:
-        normal_row = '{menu:s}{index:s}{value:s}<br>'
+        normal_row = '{menu:s}{index:s}{key:s}{value:s}<br>'
     else:
         raise ValueError("Internal Error: format must always contain one of the object layout modes.")                
 
@@ -226,6 +227,14 @@ def list_html_output(self, LDF=None):
     else:
         index = ""
 
+    # Key support is for one index running down page
+    if LKF:
+        key = "<span class='list_key_text'>{key}</span>"
+        if LDF == odm.as_table:
+            key = "<td class='list_key_cell'>{}</td>".format(key)
+    else:
+        key = ""
+
     # Collect output lines in a list
     output = []
 
@@ -249,9 +258,11 @@ def list_html_output(self, LDF=None):
             
         html_index = index.format(index=i)
         i += 1
+
+        html_key = key.format(key=o.pk)
         
         html_value = six.text_type(odm_str(o, self.format))
-        row = normal_row.format(menu=html_menu, index=html_index, value=html_value)
+        row = normal_row.format(menu=html_menu, index=html_index, key=html_key, value=html_value)
         output.append(row)
 
     return mark_safe('\n'.join(output))
@@ -356,7 +367,7 @@ def object_html_output(self, ODM=None):
                 label = conditional_escape(force_text(field.label))
             else:
                 label = ''
-
+                
             # self.format specifies how we'll render the field, i.e. build our row.
             #
             # normal_row has been specified above in accord with the as_ format specified.
