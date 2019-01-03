@@ -19,10 +19,10 @@ from Leaderboards import views
 
 urlpatterns = [
     path(r'', views.view_Home.as_view(), name='home'),
-    path(r'about', flat_views.flatpage, {'url': '/about/'}, name='about'),
-    path(r'admin', admin.site.urls, name='admin'),
-    path(r'login', auth_views.LoginView.as_view(), name='login'),
-    path('logout', auth_views.LogoutView.as_view(), name='logout'),    
+    path(r'about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
+    path(r'admin/', admin.site.urls, name='admin'),
+    path(r'login/', auth_views.LoginView.as_view(), name='login'),
+    path(r'logout/', auth_views.LogoutView.as_view(), name='logout'),    
     
     # CoGs Generic Views 
     # These expect to receive the following in kwargs 

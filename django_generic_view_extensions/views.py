@@ -22,7 +22,7 @@ In the process it also supports Field Privacy and Admin fields though these were
 '''
 #Python imports
 import datetime
-import re
+#import re
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView

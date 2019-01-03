@@ -1666,7 +1666,7 @@ class Session(AdminModel):
         pid = ttf.format("pid", "Performance ID - the primary key of a Performance object")
         rid = ttf.format("rid", "Rank ID - the primary key of a Rank object")
         tid = ttf.format("tid", "Ream ID - the primary key of a Team object")
-        html += "<tr><th>{}</th><td><table>".format(ttf.format("Integrity","Every player in the game must have an associated performance, rank and if relevant, team object"))
+        html += "<tr><th>{}</th><td><table>".format(ttf.format("Integrity:","Every player in the game must have an associated performance, rank and if relevant, team object"))
         for performance in self.performances.all():
             html += "<tr>"
             html += "<th>player:</th><td>{}</td><td>{}</td>".format(performance.player.pk, performance.player.full_name)
@@ -1960,7 +1960,7 @@ class Session(AdminModel):
         '''
         assert player != None, "Coding error: Cannot fetch the performance of 'no player'."
         performances = self.performances.filter(player=player)
-        assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={}".format(len(performances), self.pk, player.pk)
+        assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={} sql={}".format(len(performances), self.pk, player.pk, performances.query)
         return performances[0]
 
     def previous_performance(self, player):
@@ -2208,15 +2208,16 @@ class Session(AdminModel):
                 assert rank.team.players, "Session Integrity error (id: {}): Rank {} (id:{}) has a team (id:) with no players.".format(self.id, rank.rank, rank.id, rank.team.id)
                 
                 # Check that the number of players is allowed by the game
-                assert rank.team.players.count() >= self.game.min_players, "Session Integrity error (id: {}): Too few players in team (game: {}, team{}, players{}).".format(self.id, self.game.id, rank.team.id, len(players))
-                assert rank.team.players.count() <= self.game.max_players, "Session Integrity error (id: {}): Too many players in team (game: {}, team{}, players{}).".format(self.id, self.game.id, rank.team.id, len(players))
+                num_players = len(rank.team.players.all())
+                assert num_players >= self.game.min_players_per_team, "Session Integrity error (id: {}): Too few players in team (game: {}, team: {}, players: {}, min: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.min_players_per_team)
+                assert num_players <= self.game.max_players_per_team, "Session Integrity error (id: {}): Too many players in team (game: {}, team: {}, players: {}, max: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.max_players_per_team)
                 
-                for player in rank.team.players:
-                    assert player, "Session Integrity error (id: {}): Rank {} (id:{}) has a team (id:) with an invalid player.".format(self.id, rank.rank, rank.id, rank.team.id)
+                for player in rank.team.players.all():
+                    assert player, "Session Integrity error (id: {}): Rank {} (id: {}) has a team (id: {}) with an invalid player.".format(self.id, rank.rank, rank.id, rank.team.id)
                     players.add(player)
         else:
             for rank in self.ranks.all():
-                assert rank.player, "Session Integrity error (id: {}): Rank {} (id:{}) has no player.".format(self.id, rank.rank, rank.id)
+                assert rank.player, "Session Integrity error (id: {}): Rank {} (id: {}) has no player.".format(self.id, rank.rank, rank.id)
                 players.add(rank.player)
         
         # Check that the number of players is allowed by the game
@@ -2514,8 +2515,17 @@ class Rank(AdminModel):
             # we have to pass this condition always for now. 
             #raise ValidationError("No team or player specified in rank {}".format(self.pk))
             pass
+        # When editing Rank objects and changing the team_play setting in the associated setting,
+        # It can easily be that a team is added and a player remains. Clean up any duplicity on 
+        # submission. 
         if not self.team is None and not self.player is None:
-            raise ValidationError("Both team and player specified in rank {}".format(self.pk))
+            if not hasattr(self.session,"team_play"):
+                raise ValidationError("Both team and player specified in rank {} but it has no associated session so we can't clean it.".format(self.pk))
+
+            if self.session.team_play:
+                self.player = None
+            else:
+                self.team = None                
         
         # Require that self.team/self.player reflects self.session.team_play
 # TODO: House this elsewhere, can't clean relations here as related objects don't exist yet. This clean can only be internal to this model 

@@ -77,11 +77,19 @@ window.addEventListener('load', OnLoad, true);
 window.addEventListener('submit', OnSubmit, true);
 
 function OnLoad(event) {
+	// Bind a listener to the team switch (so the form can adapt to the selected play mode)
 	const team_switch = $$(id_team_switch);
 	team_switch.addEventListener('click', switchMode)
 	
+	// Add a listener to the game selector (so that the form can adapt to the properties of the newly selected game)
 	const game_selector = $$(id_prefix+"game");
 	game_selector.addEventListener('change', switchGame)
+	
+	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form 
+	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
+	// what's going on if something isn't working.
+	const prepare_submission = $$("prepare_submission");
+	if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit) 
 	
 	if (operation === "edit") {		
 		if (is_team_play) {
@@ -172,8 +180,20 @@ function OnSubmit(event) {
 		let P = 0;
 		
 		// Process players (performances) in two passes, capturing all those with IDs first and then those without
-		// Django expects INITIAL_FORMS and TOTAL_FORMS and the first INITIAL_FORMS items it needs IDs for and the 
-		// rest it will create IDs for.
+		// Django expects INITIAL_FORMS and TOTAL_FORMS and the first INITIAL_FORMS items need IDs and the 
+		// rest need blank IDs and Django will create IDs for them after submission.
+		//
+		// So pass 0 collect Performances with IDs
+		//    pass 1 collect those without them
+		//
+		// So we can build forms numbered 0 to INITIAL_FORMS-1 with IDs and then INITIAL_FORMS to TOTAL_FORMS-1 with blank IDs
+		//
+		// Performances are hidden under the Ranked teams though, so we walk the teams and look inside them
+		// at each player to extract the performances.
+		//
+		// We manage Ranks in the same loop on the first pass only, walking through the teams and splitting out
+		// any amalgamated IDs (which happen when a session is converted from individual play mode to team play mode
+		// and players with individual ranks are merged into one team.
 		for (let pass = 0; pass < 2; pass++)
 			for (let t = 0; t < num_teams; t++) {
 	            const box_num_players = findChildByName(tbl_teams, name_num_team_players.replace(form_number,t));
@@ -190,31 +210,33 @@ function OnSubmit(event) {
 						// If we're editing, we had Rank IDs and now we may have some folded Ranks IDs 
 						// after a conversion from individual play to team play. These we have to unfold, 
 						// which means we keep the first one and request the remaining rank objects be deleted.
-						const rids = rid.value.split("&");
-						if (rids.length > 1) {
-							rid.value = rids[0];						
-							for (let r=1; r<rids.length; r++) {
+						const joined_rids = rid.value.split("&");
+						if (joined_rids.length > 1) {
+							rid.value = joined_rids[0];						
+							for (let r=1; r<joined_rids.length; r++) {
 								// Add a hidden pair of elements that convey the rank ID and the -DELETE request.
 								// We need to use form numbers above those used by actual forms, so starting with
 								// num_teams. That is forms 0, 1, 2 ... num_teams-1 will all have a rank for a team.
-								// And forms num_teams,num_teams+1, num_teams+2 ... Are ones we can add delete 
+								// And forms num_teams, num_teams+1, num_teams+2 ... Are ones we can add delete 
 								// requests for. But we need to keep track of how many we've deleted.
 								const fn = Number(num_teams)+Number(deleted_ranks);
 								
-								// TODO: reconsider the need for this, lost some in indiv mode as id was already there
+								// We need to add an ID field to identify the Rank 
 				                const rank_id = document.createElement("input");
 				                rank_id.type 	= "hidden";
-				                rank_id.value 	= rids[r];
+				                rank_id.value 	= joined_rids[r];
 				                rank_id.id 		= id_rid.replace(form_number, fn)
 				                rank_id.name	= name_rid.replace(form_number, fn)
 				                rid.parentNode.appendChild(rank_id);
 	
-				                // TODO: Make this a hidden checkbox like in indiv mode
+								// And a -DELETE checkbox to request its deletion 
 				                const rank_del = document.createElement("input");
-				                rank_del.type 	= "hidden";
-				                rank_del.value 	= "on";
-				                rank_del.id 	= rank_id.id.replace("-id", "-DELETE");
-				                rank_del.name 	= rank_id.name.replace("-id", "-DELETE");
+				                rank_del.type 	 = "checkbox";
+				                rank_del.value 	 = "on";
+				                rank_del.checked = true;
+				                rank_del.id 	 = rank_id.id.replace("-id", "-DELETE");
+				                rank_del.name 	 = rank_id.name.replace("-id", "-DELETE");
+					            rank_del.style.display = 'none';
 				                rid.parentNode.appendChild(rank_del);
 	
 				                deleted_ranks++;
@@ -223,18 +245,22 @@ function OnSubmit(event) {
 					}
 	            }
 
-	            // Now on both passes we look at all players, but on pass one we build up P = 0, 1,2 ,3 ... n
-	            // until we've used all the PIDs, then on the second we'll continue with P = n, n+1, n+2 ... m
+	            // Now on both passes we look at all players, but on pass 0 we build up P = 0, 1, 2, 3 ... n
+	            // until we've used all the PIDs, then on pass 1 we'll continue with P = n, n+1, n+2 ... m
 	    		for (let p = 0; p < num_players; p++) {
-	    			// pid is found on first pass, but then if it has value was renamed 
-	    			// so that on second pass only those without value are left
+	    			// pid is found on first pass, but then if it has a value is renamed 
+	    			// so that on the second pass only those without value are left. The 
+	    			// original names have a form number in the format team.player (e.g. 1.2)  
+	    			// as this is how they've been managed in the form. We rename to 0, 1, 2, etc.
+	    			// so on the second pass those without a value remai and still have the 
+	    			// compound form number so are easy to find.   
 	    			const cfn = t + "." + p;							// Compound Form Number
 	    			const pid = getWidget(tbl_teams, name_pid, cfn);
 
 	    			// On first pass do those which have a pid are grouped as form numbers 0, 1, 2, ... n
 	    			// On the second pass those that are left get form numbers n+1, n+2, n+3 ...
 	    			// 
-	    			// On the first pass we rename the pid widget from a t.p form_number to p
+	    			// On the first pass we rename the pid widget from a t.p form_number to P
 	    			// On the second pass those pids renamed on first pass are no longer found and pid is undefined
 	    			// It is only pids that have no value that remain defined on the second pass.
 	    			if ((pass == 0 && pid.value) || (pass == 1 && pid)) {
@@ -244,9 +270,10 @@ function OnSubmit(event) {
 		    			const weight = fixWidget(tbl_teams, name_weight, cfn, P);
 		    			P++;
 
-		                // Add a hidden element that submits the team index number for this Performance set
-		                // so that the server can later (when submitted) associate the player with other players 
-		    			// on the same team. That is how we define teams, as a collection of players.
+		                // Add a hidden element that submits the team index number for this Performance. 
+		                // It is set so that the server can later (when submitted) associate the player 
+		    			// with other players on the same team. That is how we define teams, as a collection 
+		    			// of players.
 		                const team_num  = document.createElement("input");
 		                team_num.type 	= "hidden";
 		                team_num.value 	= t;
@@ -277,7 +304,7 @@ function OnSubmit(event) {
 			            
 			            // In the trash the pid is in an element with id = name_pid, but
 			            // that contains an unknown form number, so we'll search for it with the
-			            // prefix and suffix, expect one result and use that to the value 
+			            // prefix and suffix, expect one result and use that to get the value 
 			            const pid = row.querySelectorAll("[id^=['"+id_prefix+performance_prefix+"'][id$='-id']")[0];
 			            
 						// Add a hidden pair of elements that convey the rank ID and the -DELETE request.
@@ -285,19 +312,21 @@ function OnSubmit(event) {
 						// num_teams. That is forms 0, 1, 2 ... num_teams-1 will all have a rank for a team.
 						// And forms num_teams,num_teams+1, num_teams+2 ... Are ones we can add delete 
 						// requests for. But we need to keep track of how many we've deleted.
-		                const perf_id = document.createElement("input");
-		                perf_id.type 	= "hidden";
-		                perf_id.value 	= pid.value;
-		                perf_id.id 		= id_pid.replace(form_number, P)
-		                perf_id.name	= name_pid.replace(form_number, P)
-		                table.appendChild(perf_id);
 
-		                const perf_del = document.createElement("input");
-		                perf_del.type 	= "hidden";
-		                perf_del.value 	= "on";
-		                perf_del.id 	= perf_id.id.replace("-id", "-DELETE");
-		                perf_del.name	= perf_id.name.replace("-id", "-DELETE");
-		                table.appendChild(perf_del);
+						// Fix the pid element's name and id so that the form number is not in the t.p format
+			            // but a plain P format.
+		                pid.id 	 = id_pid.replace(form_number, P);
+		                pid.name = name_pid.replace(form_number, P);
+
+		                // Then add a -DELETE request in the form of a checkbox as Django expects.
+		                const perf_del   = document.createElement("input");
+		                perf_del.type 	 = "checkbox";
+		                perf_del.value 	 = "on";
+		                perf_del.checked = true;
+		                perf_del.id 	 = pid.id.replace("-id", "-DELETE");
+		                perf_del.name	 = pid.name.replace("-id", "-DELETE");
+			            perf_del.style.display = 'none';
+		                insertAfter(perf_del, pid);
 		                
 		                P++; deleted_perfs++;
 					}											    			
@@ -321,54 +350,64 @@ function OnSubmit(event) {
 	            // that contains an unknown form number, so we'll search for it with the
 	            // prefix and suffix, expect one result and use that to the value 
 	            const rid = row.querySelectorAll("[id^=['"+id_prefix+rank_prefix+"'][id$='-id']")[0];
-			
-				// Add a hidden pair of elements that convey the rank ID and the -DELETE request.
-				// We need to use form numbers above those used by actual forms, so starting with
-				// num_teams. That is forms 0, 1, 2 ... num_teams-1 will all have a rank for a team.
-				// And forms num_teams,num_teams+1, num_teams+2 ... Are ones we can add delete 
-				// requests for. But we need to keep track of how many we've deleted.
-	            const rank_id = document.createElement("input");
-	            rank_id.type 	= "hidden";
-	            rank_id.value 	= rid.value;
-	            rank_id.id 		= id_rid.replace(form_number, num_teams+deleted_ranks)
-	            rank_id.name	= name_rid.replace(form_number, num_teams+deleted_ranks)
-	            table.appendChild(rank_id);
-	
-	            const rank_del = document.createElement("input");
-	            rank_del.type 	= "hidden";
-	            rank_del.value 	= "on";
-	            rank_del.id 	= rank_id.id.replace("-id", "-DELETE");
-	            rank_del.name	= rank_id.name.replace("-id", "-DELETE");
-	            table.appendChild(rank_del);
+
+	            if (rid.value) {
+					// Fix the rid element's name and id so that the form number is properly in sequence
+		            let R = num_teams+deleted_ranks;
+	                rid.id 	 = id_pid.replace(form_number, R);
+	                rid.name = name_pid.replace(form_number, R);
+		            	            
+	                // Then add a -DELETE request in the form of a checkbox as Django expects.
+		            const rank_del = document.createElement("input");
+		            rank_del.type 	 = "checkbox";
+		            rank_del.value 	 = "on";
+		            rank_del.checked = true;
+		            rank_del.id 	 = rid.id.replace("-id", "-DELETE");
+		            rank_del.name	 = rid.name.replace("-id", "-DELETE");
+		            rank_del.style.display = 'none';
+	                insertAfter(rank_del, rid);
+	                
+	                deleted_ranks++; 
+	            } else {
+	            	rid.remove();
+	            }
 
 	            // Same deal for team IDs
 	            const tid = row.querySelectorAll("[id^=['"+team_prefix+"'][id$='-id']")[0];
-			
-				// Add a hidden pair of elements that convey the team ID and the -DELETE request.
-	            const team_id = document.createElement("input");
-	            team_id.type 	= "hidden";
-	            team_id.value 	= tid.value;
-	            team_id.id 		= id_tid.replace(form_number, num_teams+deleted_ranks)
-	            team_id.name	= name_tid.replace(form_number, num_teams+deleted_ranks)
-	            table.appendChild(team_id);
-	
-	            const team_del = document.createElement("input");
-	            team_del.type 	= "hidden";
-	            team_del.value 	= "on";
-	            team_del.id 	= team_id.id.replace("-id", "-DELETE");
-	            team_del.name 	= team_id.name.replace("-id", "-DELETE");
-	            table.appendChild(team_del);
-	            	            
-	            deleted_ranks++; deleted_teams++;
+
+	            // tid values may just be a placeholder of id_n if this was loaded as an individual
+	            // play mode session and then switched to team mode, then teams are created and given
+	            // these mock IDs so that we can manage the form. But Django doesn't know about them
+	            // and so doesn't need to and can't delete them.
+	            if (tid.value && !/^id_\d+$/.test(team_id.value)) {
+					// Fix the tid element's name and id so that the form number is properly in sequence
+		            let T = num_teams+deleted_teams;
+	                tid.id 	 = id_pid.replace(form_number, T);
+	                tid.name = name_pid.replace(form_number, T);
+		            	            
+	                // Then add a -DELETE request in the form of a checkbox as Django expects.
+		            const team_del = document.createElement("input");
+		            team_del.type 	 = "checkbox";
+		            team_del.value 	 = "on";
+		            team_del.checked = true;
+		            team_del.id 	 = tid.id.replace("-id", "-DELETE");
+		            team_del.name 	 = tid.name.replace("-id", "-DELETE");
+	                insertAfter(team_del, tid);
+	                
+	                deleted_teams++;
+	            } else {
+	            	tid.remove();	            	
+	            }	            	            	            
 			}
 			
 			// Finally if submitting teams tidy up the submission a tad. may have 
-			// some mock IDs and names in place auto filled from either a conversion
-			// from individual play (in the case of Team IDs) or simply a form creation 
-			// (in the the case of Team Name). Neither should be submitted in that form
+			// some mock IDs and names (placeholders) in place auto filled from either 
+			// a conversion from individual play (in the case of Team IDs) or simply a 
+			// form creation (in the the case of Team Name). Neither should be submitted 
+			// in that form
 			for (let t=0; t<num_teams; t++) {
-				const team_id 		= getWidget(tbl_teams, name_tid, t);
-				const team_name  	= getWidget(tbl_teams, name_team_name, t);
+				const team_id 	= getWidget(tbl_teams, name_tid, t);
+				const team_name = getWidget(tbl_teams, name_team_name, t);
 				
 				team_id.value 	= /^id_\d+$/.test(team_id.value) 		? "" : team_id.value;
 				team_name.value = /^Team \d+$/.test(team_name.value) 	? "" : team_name.value; 
@@ -418,7 +457,7 @@ function OnSubmit(event) {
 				// be they in the teams table or the teams trash table are no longer needed and can
 				// be marked for deletion in the server submission.
 				const id_template = "templateTeamsTable";
-				const id_table = id_template.replace("template", "tbl") + t;
+				const id_table = id_template.replace("template", "tbl");
 				const id_trash = id_table.replace("tbl", "trash");
 				const table = $$(id_table);
 				const trash = $$(id_trash);
@@ -427,7 +466,7 @@ function OnSubmit(event) {
 				
 				let T = 0;
 				for (let tbl of [table, trash]) {
-					for (row of tbl.rows) {
+					for (let row of tbl.rows) {
 						// There's a hidden element holding the Team ID with an id in the format:
 						// 		id_Team-n-id
 						// which is generalsied to the pattern:
@@ -439,24 +478,25 @@ function OnSubmit(event) {
 
 			            // If the TID element has no value then we have no team to delete, but if it does ...
 			            // the TID element has no value on add froms and on teams that were added on an edit form
-			            // by increasing the number of teams.
-			            if (tid.value) {
+			            // by increasing the number of teams. Also tid will be undefined on the table header row.
+			            if (tid && tid.value) {
 				            // Add a hidden pair of elements (that convey the team ID and the -DELETE request)
 				            // to the submitted division (individual play mode session). These will identify
 				            // the team and request its deletion and must be in the submitted division
 				            // (only one of $$(id_indiv_div) or $$(id_team_div) will be submitted.
 			                const team_id = document.createElement("input");
-			                team_id.type 	= "hidden";
-			                team_id.value 	= tid.value;
-			                team_id.id 		= id_tid.replace(form_number, T)
-			                team_id.name	= name_tid.replace(form_number, T)
+			                team_id.type  = "hidden";
+			                team_id.value = tid.value;
+			                team_id.id 	  = id_tid.replace(form_number, T)
+			                team_id.name  = name_tid.replace(form_number, T)
 			                div_players.appendChild(team_id);
 	
-			                const team_del = document.createElement("input");
-			                team_del.type 	= "checkbox";
-			                team_del.value 	= "on";
-			                team_del.id 	= team_id.id.replace("-id", "-DELETE");
-			                team_del.name	= team_id.name.replace("-id", "-DELETE");
+			                const team_del   = document.createElement("input");
+			                team_del.type 	 = "checkbox";
+			                team_del.value 	 = "on";
+			                team_del.checked = true;
+			                team_del.id 	 = team_id.id.replace("-id", "-DELETE");
+			                team_del.name	 = team_id.name.replace("-id", "-DELETE");
 				            team_del.style.display = 'none';
 			                div_players.appendChild(team_del);
 			                
@@ -547,6 +587,11 @@ function configureGame() {
 	// game_individual_play is true if the game supports individual play mode
 	// game_team_play is true if the game supports team play mode
 	// These are game properties.
+	
+	// TODO: When adding a new seession with FlexiGame as default bot players and team counts are displayed. 
+	// Need to decide on one or the other. Meaning for games that suppor tboth we need a fallback. And that
+	// would be the exisitng chocie if tehre is one (if the form is in one mode or the other, or fall back on
+	// individual for FlexiGame say.
 	
 	// If the game supports only one mode, force that mode. 
 	if (game_individual_play && !game_team_play) {
@@ -955,28 +1000,39 @@ function updateManagementForms(div) {
 	// and so we must add their count to the number declared in $$(id_num_players)
     const rdels = div.querySelectorAll("[id^='"+id_prefix+rank_prefix+"'][id$='-DELETE']").length;
     const pdels = div.querySelectorAll("[id^='"+id_prefix+performance_prefix+"'][id$='-DELETE']").length;
-    const tdels = div.querySelectorAll("[id^='"+id_prefix+team_prefix+"'][id$='-id']").length;	
+    const tdels = div.querySelectorAll("[id^='"+id_prefix+team_prefix+"'][id$='-DELETE']").length;	
 	
     if (div.id === id_indiv_div) {
     	const num_players = Number($$(id_num_players).value);
     	rtotal.value = num_players + rdels;
     	ptotal.value = num_players + pdels;
-    } else if (div.id === id_teams_div) {
-    	
+    } else if (div.id === id_teams_div) {    	
     	
     	const num_teams = Number($$(id_num_teams).value);
     	rtotal.value = num_teams + rdels;
 
-    	let p = 0;
+    	let P = 0;
+    	let T = 0;
 		for (let t = 0; t < num_teams; t++) {
 	    	const id_table = 'tblTeamsBody' + t;
 	    	const table = $$(id_table);
             const box_num_players = findChildByName(table, name_num_team_players.replace(form_number,t));
-    		p += Number(box_num_players.value);
+    		P += Number(box_num_players.value);
+    		
+	    	const real_name_tid = name_tid.replace(form_number,t);
+	    	const tid = findChildByName(table, real_name_tid);
+	    	if (tid.value) T++;
         }
-		ptotal.value = p + pdels;
+		ptotal.value = P + pdels;
 		
     	ttotal.value = num_teams + tdels;
+    	
+    	// tinit is special, because it should be the number of teams that have Team IDs
+    	// which is from 0 to num_teams really because if we were editing a individual play 
+    	// mode session and converted to team mode they won't have IDs and if we're editing
+    	// a team play session but add some teams those too won't have IDs. And tinit should 
+    	// be the number of teams that have IDs.
+    	tinit.value = T;
     }
 }
 
@@ -1368,6 +1424,11 @@ function getPart(part, of) {
 function getFormNumber(of) {
     var matches = of.match(/^(.*?)\-(\d*)\-(.*?)$/);
     return matches === null ? "" : matches[2];
+}
+
+// Insert a node just after a reference node (Javascript has a native insertBefore, but not insertAfter) 
+function insertAfter(newNode, referenceNode) {
+    referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
 }
 
 function $$(id) {

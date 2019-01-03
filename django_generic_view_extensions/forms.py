@@ -711,7 +711,7 @@ def save_related_forms(self):
             else:
                 # TODO: Report errors cleanly on new edit form
                 # Errors are in related_formset.errors
-                raise ValueError("Invalid Data")    
+                raise ValueError("Form errors: {} in form {}".format(related_formset.errors, related_formset))    
     
     return False # Return no errors
 

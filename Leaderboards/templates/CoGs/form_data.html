@@ -13,6 +13,7 @@
 	<table>
 		{% csrf_token %}
 	    {{ form.as_table }}
+	    
 		{% if debug and model_name == 'Session' %}
 			<tr>
 				<th>Show trash:</th>
@@ -141,9 +142,9 @@
 	{% endif %}
 
 	<input type="submit" value="Submit" style="margin-top:20px;"/>
-
 	{% if debug %}	
 		<input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
+		<input type="button" value="Prepare Submission" id="prepare_submission"/>
 	{% endif %}	
 </form>
 

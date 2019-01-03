@@ -5,6 +5,7 @@ import pytz
 import sys
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
+from cuser.middleware import CuserMiddleware
 
 #from collections import OrderedDict
 
@@ -34,6 +35,8 @@ from django.utils.timezone import is_aware, make_aware
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
 from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
 from django.utils.formats import localize
+from sqlalchemy.sql.expression import false
+from numpy import rank
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
@@ -117,11 +120,8 @@ def post_process_submitted_model(self):
     #       all the participating players were in that were played after the edited session.
     #    A general are you sure? system for edits is worth implementing.
     
-    # TODO: When saving a session sort ranks numerically and substitute by 1, 2, 3, 4 ... to ensure victors are always identifes by rank 1 and rank is the ordinal.
-    #        Silently enforcing this is better than requiring the user to. The form can support any integers that indicate order.
-
         session = self.object
-               
+                      
         team_play = session.team_play
         
         # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
@@ -131,17 +131,24 @@ def post_process_submitted_model(self):
         #    This must have have happened when we saved the related forms by passing in an instance to the formset.save 
         #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day. 
         #    Empirclaly seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #    For example:
         #
-        #    performances    RelatedManager: Leaderboards.Performance.None
-        #    ranks    RelatedManager: Leaderboards.Rank.None    
-        #    teams    OrderedDict: OrderedDict()    
+        #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>]>
+        #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>    
+        #    session.teams                 OrderedDict: OrderedDict() 
         #
-        # 2) team play mode submission: Oddly the session object here has no performance or sessions and odd teams:
-        #    performances    RelatedManager: Leaderboards.Performance.None    
-        #    ranks    RelatedManager: Leaderboards.Rank.None    
-        #    teams    OrderedDict: OrderedDict([('1', None), ('2', None)])    
-        #
+        # 2) team play mode submission: See similar results exemplified by:
+        #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>, <Performance: Ben>, <Performance: Benjamin>]>
+        #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>    
+        #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)]) 
 
+        # TODO: Was in middle of testing saves with Book/Author test model. Where was I up to?
+
+        # TODO: Consider and test under which circumstances Django has saved teams befor geettng here!
+        #       And do we want to do anything special in the pre processor? And/or validator?
+                     
+        # manage teams properly, as we handl teams in a special way creating them
+        # on the fly as needed and reusing where player sets match.
         if team_play:
             # Check if a team ID was submitted, then we have a place to start.
             # Get the player list for submitted teams and the name.
@@ -161,8 +168,13 @@ def post_process_submitted_model(self):
                 TeamPlayers.append([])
 
             # Populate the TeamPlayers record (i.e. work out which players are on the same team)
+            player_pool = set()
             for p in range(num_players):
                 player = int(self.request.POST["Performance-{:d}-player".format(p)])
+                
+                assert not player in player_pool, "Error: Players in session must be unique"
+                player_pool.add(player)                
+                
                 team_num = int(self.request.POST["Performance-{:d}-team_num".format(p)])
                 TeamPlayers[team_num].append(player)
 
@@ -171,77 +183,72 @@ def post_process_submitted_model(self):
                 # Get the submitted Team ID if any and if it is supplied 
                 # fetch the team so we can provisionally use that (renaming it 
                 # if a new name is specified).
-                team_id = self.request.POST["Team-{:d}-id".format(t)]
+                team_id = self.request.POST.get("Team-{:d}-id".format(t), None)
                 team = None
-                team_players_db = []
                 
+                # Get Team players that we already extracted from the POST
+                team_players_post = TeamPlayers[t]
+
+                # Get the team players according to the database (if we have a team_id!
+                team_players_db = []
                 if (team_id):                                
                     try:
                         team = Team.objects.get(pk=team_id)
-                        team_players_db = team.players.all().values_list('id', flat=True)         
-                    except Team.DoesNotExist:
-                        team = None                                
-                        team_players_db = []                    
+                        team_players_db = team.players.all().values_list('id', flat=True)
+                    # If team_id arrives as non-int or the nominated team does not exist, 
+                    # either way we have no team and team_id should have been None.
+                    except (Team.DoesNotExist or ValueError):
+                        team_id = None
 
-                # The Team players for each we already extracted from the POST
-                team_players_post = TeamPlayers[t]
-                
                 # Check that they are the same, if not, we'll have to create find or 
                 # create a new team, i.e. ignore the submitted team (it could have no 
                 # refrences left if that happens but we won't delete them simply because 
                 # of that (an admin tool for finding and deleting unreferenced objects
                 # is a better approach, be they teams or other objects).  
-                team_players = []
-                if (team):
-                    if set(team_players_post) == set(team_players_db):
-                        team_players = team_players_post
-                    else:
-                        team = None                   
+                force_new_team = len(team_players_db) > 0 and set(team_players_post) != set(team_players_db)
                 
-                # Get the submitted Rank ID if any and if it is supplied the rank object
-                rank_id = self.request.POST["Rank-{:d}-id".format(t)]
-                rank = None
+                # Get the approriate rank object for this team
+                rank_id = self.request.POST.get("Rank-{:d}-id".format(t), None)
+                rank_rank = self.request.POST.get("Rank-{:d}-rank".format(t), None)
+                rank = session.ranks.get(rank=rank_rank)
 
-                if (rank_id):
-                    try:
-                        rank = Rank.objects.get(pk=rank_id)
-                    except Rank.DoesNotExist:
-                        rank = None
-                        
-                if (rank is None):
-                    # This is probably a create form and the ranks were saved 
-                    # already by the related forms save, but aren't linked to 
-                    # this session. We need to find them and link them to this 
-                    # session.
-                    # TODO!
-                    pass      
+                # A rank must have been saved before we got here, either with the POST
+                # specified rank_id (for edit forms) or a ew ID (for add forms) 
+                assert rank, "Save error: No Rank was saved with the rank {}".format(rank_rank)                                            
 
+                # If a rank_id is specified in the POST it must match that saved by
+                # django_generic_view_extensions.forms.save_related_forms
+                # before we got here using that POST specified ID. 
+                if (not rank_id is None):
+                    assert int(rank_id)==rank.pk, "Save error: Saved Rank has different ID to submitted form Rank ID!"                                            
 
                 # The name submitted for this team 
-                new_name = self.request.POST["Team-{:d}-name".format(t)]
+                new_name = self.request.POST.get("Team-{:d}-name".format(t), None)
 
                 # Find the team object that has these specific players.
                 # Filter by count first and filter by players one by one.
                 # recall: these filters are lazy, we construct them here 
                 # but the do not do anything, are just recorded, and when 
                 # needed converted to SQL and executed. 
-                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players))
-                for player in team_players:
+                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players_post))
+                for player in team_players_post:
                     teams = teams.filter(players=player)
 
+                print_debug("Team Check: {} teams that have these players".format(len(teams)))
+
                 # If not found, then create a team object with those players and 
-                # link it to the rank object
-                if len(teams) == 0:
+                # link it to the rank object and save that.
+                if len(teams) == 0 or force_new_team:
                     team = Team.objects.create()
 
-                    for player_id in team_players:
+                    for player_id in team_players_post:
                         player = Player.objects.get(id=player_id)
                         team.players.add(player)
 
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
                         team.name = new_name
-                        team.save()
 
+                    team.save()
                     rank.team=team
                     rank.save()
 
@@ -250,23 +257,72 @@ def post_process_submitted_model(self):
                 elif len(teams) == 1:
                     team = teams[0]
 
+                    # If the name changed and is not a placeholder of form "Team n" save it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name :
                         team.name = new_name
                         team.save()
 
+                    # If the team is not linked to the rigth rank, fix the rank and save it. 
                     if (rank.team != team):
-                        rank.team=team
+                        rank.team = team
                         rank.save()
 
                 # Weirdness, we can't legally have more than one team with the same set of players in the database
                 else:
                     raise ValueError("Database error: More than one team with same players in database.")
-
-        # TODO: Ensure each player in game is unique.
+                
+        # Individual play
+        else:
+            # Check that all the players are unique, and double up is going to cause issues and isn't 
+            # really sesnible (same player coming in two different postions may well be allowe din some 
+            # very odd game scenarios but we're not gonig to support that, can of worms and TrueSkill sure
+            # as heck doesn't provide a meaningful result for such odd scenarios.
         
+            player_pool = set()
+            for player in session.players:
+                assert not player in player_pool, "Error: Players in session must be unique"
+                player_pool.add(player)
+                
+        # Enforce clean ranking. The MUST happed after Teams are processed above because
+        # Team processing fetches ranks based on the POST submitted rank for the tea. After 
+        # we clean them that relatioonshop is lost. So we should clean the ranks as last 
+        # thing just before calculating TrueSkill impacts.
+        
+        # First collect all the supplied ranks
+        ranks = []
+        for rank in session.ranks.all():
+            ranks.append(rank.rank)
+        # Then sort them by rank
+        ranks = sorted(ranks)
+        # Now check that they start at 1 and are contiguous
+        ranks_good = ranks[0] == 1
+        rank_previous = ranks[0]
+        for rank in ranks:
+            if rank - rank_previous > 1:
+                ranks_good = false
+            rank_previous = rank
+            
+        # if the ranks need fixing, fix them (to ensure they start at 1 and are contiguous):
+        if not ranks_good:
+            if rank[0] != 1:
+                rank_obj = session.ranks.get(rank=rank)
+                rank_obj.rank = 1
+                rank_obj.save()
+            
+            rank_previous = 1
+            for rank in ranks:
+                if rank - rank_previous > 1:
+                    rank_obj = session.ranks.get(rank=rank)
+                    rank_obj.rank = rank_previous + 1
+                    rank_obj.save()
+                    rank_previous = rank_obj.rank                    
+                else:
+                    rank_previous = rank                         
+       
         # TODO: Before we calculate TrueSkillImpacts we need to hgve a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
-        #       We need to clean these up.
+        #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
+        #       impacts but also all subsequent ones involving any of these players if it's an edit!
         
         # Calculate and save the TrueSkill rating impacts to the Performance records
         session.calculate_trueskill_impacts()
@@ -879,6 +935,8 @@ def view_Inspect(request, model, pk):
     object if it's implemented. Intended as a hook into quick inspection of rich objects 
     that implement a neat HTML inspector property.
     '''
+    CuserMiddleware.set_user(request.user)
+
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
     
@@ -897,6 +955,7 @@ def view_CheckIntegrity(request):
     
     All needs some serious tidy up for a productions site.    
     '''
+    CuserMiddleware.set_user(request.user)
     
     print("Checking all Performances for internal integrity.", flush=True)
     for P in Performance.objects.all():
@@ -921,6 +980,7 @@ def view_CheckIntegrity(request):
     return HttpResponse("Passed All Integrity Tests")
 
 def view_RebuildRatings(request):
+    CuserMiddleware.set_user(request.user)
     html = rebuild_ratings()
     return HttpResponse(html)
 
@@ -929,6 +989,7 @@ def view_UnwindToday(request):
     A simple view that deletes all sessions (and associated ranks and performances) created today. Used when testing. 
     Dangerous if run on a live database on same day as data was entered clearly. Testing view only.
     '''
+    CuserMiddleware.set_user(request.user)
     
     unwind_to = date.today() # - timedelta(days=1)
     
@@ -983,6 +1044,8 @@ def view_Fix(request):
     return HttpResponse(html)
 
 def view_Kill(request, model, pk):
+    CuserMiddleware.set_user(request.user)
+
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
     o.delete()

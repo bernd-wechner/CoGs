@@ -146,3 +146,8 @@ STATIC_URL = '/static/'
 
 LOGIN_URL = '/login/'
 
+# The default page to redirect to on login. Generally we returns you to the page you
+# were on when you tried to log in, using teh next= URL parameter. Thiis the fallback 
+# if one isn't present.
+LOGIN_REDIRECT_URL = '/leaderboards/'
+
