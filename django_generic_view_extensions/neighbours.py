@@ -55,10 +55,11 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     # Get a queryset annotated with neighbours. If annotated attrs clash with existing attrs an exception 
     # will be raised: https://code.djangoproject.com/ticket/11256    
     try:
-        # If a non-empty filterset is supplied, respect that
-        if filterset and filterset.filter:
+        # If a filterset is supplied, respect that
+        if not filterset is None:
             # We respect the filterset.
-            # FIXME: Aaargh this won't work for injecting the current PK into the query! 
+            # FIXME: Aaargh this won't work for injecting the current PK into the query!
+            # My desire is to make sure that the query results include the provided pk. 
             # Needs testing in both cases. I can't think of a way to do it alas. This is
             # frustrating me. Problem is across related object filters, or JOINS.
             # qs = filterset.filter() | (model.objects.filter(pk=pk).distinct() & filterset.filter())
@@ -89,6 +90,6 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
                 raise ValueError("Query error: object appears more than once in neighbour hunt.")
         else:
             return (None, None)  # Means the pk does not exist
-    finally:
+    except:
         return (None, None)
         

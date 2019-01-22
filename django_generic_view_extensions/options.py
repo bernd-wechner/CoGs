@@ -33,7 +33,8 @@ defaults = { 'object_summary_format': 'brief',
              'object_display_flags': 'TODO',
              'object_display_modes': 'as_table',
              'index': False, 
-             'key': False
+             'key': False,
+             'ordering': ''
             }
 
 # The URL parameters that select the defaults above
@@ -275,6 +276,7 @@ class list_display_format():
     menus = default(list_menu_format)           # Whether and how to display menus against each list item
     index = default('index')                    # A bool with request an index, counting 1, 2, 3, 4 down the list.
     key = default('key')                        # A bool with request the object's primary key to displayed
+    ordering = default('ordering')              # The list of fields ot order by if any
 
 def get_list_display_format(request):
     '''
@@ -301,6 +303,9 @@ def get_list_display_format(request):
         LDF.key = False
     else:
         LDF.key = list_display_format().key
+
+    if 'ordering' in request:
+        LDF.ordering = request['ordering']
              
     return LDF
 
@@ -311,6 +316,7 @@ class object_display_format():
 
     flags = object_display_flags._normal
     mode = object_display_modes()
+    ordering = default('ordering')           # The list of fields the associated list is ordered by (for the browser)
 
 def get_object_display_format(request):
     '''
@@ -425,7 +431,10 @@ def get_object_display_format(request):
 
     if 'linewidth' in request:
         ODF.mode.line_width = int(request['linewidth']) 
-         
+
+    if 'ordering' in request:
+        ODF.ordering = request['ordering']
+                     
     return ODF
 
 #===============================================================================

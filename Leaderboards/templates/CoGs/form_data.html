@@ -144,7 +144,10 @@
 	<input type="submit" value="Submit" style="margin-top:20px;"/>
 	{% if debug %}	
 		<input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
-		<input type="button" value="Prepare Submission" id="prepare_submission"/>
+		<div class='tooltip'>
+			<input type="button" value="Prepare Submission" id="prepare_submission"/>
+			<span class='tooltiptext'>Runs the OnSubmit event handler without submitting. So the page can be inspected in its state just prior to submission.</span>
+		</div>
 	{% endif %}	
 </form>
 

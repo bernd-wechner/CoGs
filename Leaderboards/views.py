@@ -35,7 +35,6 @@ from django.utils.timezone import is_aware, make_aware
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
 from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
 from django.utils.formats import localize
-from sqlalchemy.sql.expression import false
 from numpy import rank
 
 #TODO: Add account security, and test it
@@ -299,7 +298,7 @@ def post_process_submitted_model(self):
         rank_previous = ranks[0]
         for rank in ranks:
             if rank - rank_previous > 1:
-                ranks_good = false
+                ranks_good = False
             rank_previous = rank
             
         # if the ranks need fixing, fix them (to ensure they start at 1 and are contiguous):

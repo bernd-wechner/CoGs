@@ -165,7 +165,6 @@ function URLopts(element) {
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
 
-
 function toggle_options() {
 	current = $(".toggle")[0].style.visibility;
 	if (current == "collapse") 

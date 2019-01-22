@@ -93,17 +93,17 @@ def format_filterset(filterset, as_text=False):
             
             # TODO: Consider whether the premise here holds true. We have assumed that
             #       spec.components contains a list of items the last of which is not only
-            #       a model fields but its pk. This almost certainly isn't always true, to 
+            #       a model field but its pk. This almost certainly isn't always true, to 
             #       which for example if we filter in ranks__player=n we end up with 
             #       spec.components=['rank','player','id'].
             #
-            #       Things is a filter on ranks__player__nickname is probably legal and will
+            #       Thing is a filter on ranks__player__nickname is probably legal and will
             #       probably produce spec.components=['rank','player','name_nickname']
-            #       in which case vield_name assignments below break down, on both cases
+            #       in which case field_name assignments below break down, in both cases
             #       as_text and not.
             #
             #       For now I have parked this as I have to get the whole filter/ordering
-            #       selection no list and detail views working first. Then can come back to
+            #       selection on list and detail views working first. Then can come back to
             #       look at this. 
             if as_text:
                 field_name = field.model._meta.object_name

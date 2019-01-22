@@ -46,6 +46,7 @@ from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
 from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
+from .filterset import format_filterset
 
 class TemplateViewExtended(TemplateView):
     '''
@@ -76,12 +77,20 @@ class ListViewExtended(ListView):
                 })
         })
         
-        fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())
-        return fs
+        fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())        
+        fs.fields = format_filterset(fs)
+        fs.text = format_filterset(fs, as_text=True)
+        
+        if len(fs.fields) > 0:                    
+            return fs
+        else:
+            return None
     
     def get_ordering(self):
-        # TODO: Get from self.request to override the default
-        return getattr(self.model.Meta, 'ordering', None)        
+        if (self.format.ordering):
+            return self.format.ordering.split(',')              
+        else:
+            return getattr(self.model._meta, 'ordering', None)
         
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
@@ -106,19 +115,22 @@ class ListViewExtended(ListView):
         # will contain a dictionary of name: value pairs that FilterSet uses 
         # construct a new filtered queryset. 
         self.filterset = None
+        self.format = get_list_display_format(self.request.GET)
         self.ordering = self.get_ordering()
+        
+        self.queryset = self.model.objects.all()
         if len(self.request.GET) > 0:
             fs = self.get_filterset()
-            self.filterset = fs
-            # self.ordering # FIXME: Default but use URL provided ordering if provided
             
-            self.queryset = fs.filter()
-        else:
-            self.queryset = self.model.objects.all()
+            # If there is a filter specified in the URL
+            if not fs is None:
+                self.filterset = fs
+                self.queryset = fs.filter()
+            
+        if (self.ordering): 
+            self.queryset = self.queryset.order_by(*self.ordering)
             
         self.count = len(self.queryset)
-
-        self.format = get_list_display_format(self.request.GET)
         
         return self.queryset
 
@@ -160,21 +172,24 @@ class DetailViewExtended(DetailView):
         if 'pk' in get:
             del get['pk']
         
-        fs = FilterSet(data=get, queryset=self.model.objects.all())
+        fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())        
+        fs.fields = format_filterset(fs)
+        fs.text = format_filterset(fs, as_text=True)
         
-        return fs
+        if len(fs.fields) > 0:                    
+            return fs
+        else:
+            return None
 
     def get_ordering(self):
-        # TODO: Get from self.request to override thge default
-        return getattr(self.model.Meta, 'ordering', None)        
+        if (self.format.ordering):
+            return self.format.ordering.split(',')              
+        else:
+            return getattr(self.model._meta, 'ordering', None)
     
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
-
-        if not hasattr(self, 'filterset'):        
-            self.filterset = self.get_filterset()
-            self.ordering = self.get_ordering()
 
         add_model_context(self, context, plural=False)
         add_format_context(self, context)
@@ -199,13 +214,6 @@ class DetailViewExtended(DetailView):
         # Add this information to the view (so it's available in the context).
         self.object_browser = neighbours        
 
-        # TODO: Put these into context somehow, and on detail view list them
-        #       like "Item n or m" Probably next to the browse arrows, or 
-        #       between them, maybe providing a browse widget in the context
-        #       which has the two arrows and the counts in between.
-        #       could late some time have fast arrows to how 10 forward? Or 
-        #       such.
-        
         # Support for incoming next/prior requests via a GET
         if 'next' in self.request.GET or 'prior' in self.request.GET:
             self.ref = get_object_or_404(self.model, pk=self.pk)
