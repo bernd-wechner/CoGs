@@ -200,15 +200,16 @@ class object_display_flags():
     related = 1 << 4        # fields in other models that point here
     properties = 1 << 5     # properties calculated in the model
     methods = 1 << 6        # property_methods calculated in the model
+    summaries = 1 << 7      # the __*str__ methods 
     
     # Some general formatting flags
-    separated = 1 << 7       # Separate the buckets above
-    header = 1 << 8          # Put a header on the separators
-    line = 1 << 9            # Draw a line separating buckets
+    separated = 1 << 8      # Separate the buckets above
+    header = 1 << 9         # Put a header on the separators
+    line = 1 << 10          # Draw a line separating buckets
 
     # Some shorthand formats
     _normal = separated | header | line | flat | model
-    _all_model = _normal | list | internal | properties
+    _all_model = _normal | list | internal | properties | methods | summaries
     _all = _all_model | related
     
 # A shorthand for the display format options
@@ -355,6 +356,8 @@ def get_object_display_format(request):
         ODF.flags &= ~odf.properties    
     if 'nomethods' in request:
         ODF.flags &= ~odf.methods
+    if 'nosummaries' in request:
+        ODF.flags &= ~odf.summaries
 
     # And individual turn ons        
     if 'flat' in request:
@@ -371,6 +374,8 @@ def get_object_display_format(request):
         ODF.flags |= odf.properties
     if 'methods' in request:
         ODF.flags |= odf.methods
+    if 'summaries' in request:
+        ODF.flags |= odf.summaries
 
     # Separations and headers
     if 'noseparated' in request:

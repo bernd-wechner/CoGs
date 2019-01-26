@@ -167,7 +167,7 @@ def add_filter_context(view, context, filterset):
     
     if hasattr(view, 'filterset') and not view.filterset is None:
         context["txt_filters"] = mark_safe(format_filterset(view.filterset, as_text=True))        
-        context["filters"] = mark_safe(format_filterset(view.filterset, as_text=False))
+        context["filters"] = format_filterset(view.filterset, as_text=False)
         print(context["filters"])        
 
 def add_ordering_context(view, context, ordering):

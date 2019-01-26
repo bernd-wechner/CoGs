@@ -68,8 +68,8 @@ from .util import isListType, isListValue, isDictionary, safetitle
 from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str
-from django_generic_view_extensions.options import field_link_target
 
+summary_methods = ["__str__", "__verbose_str__", "__rich_str__", "__detail_str__"] 
 
 def add_related(model):
     '''
@@ -354,6 +354,13 @@ def collect_rich_object_fields(self):
                 else:
                     property_methods.append(name)
 
+    # List summaries (these are always flat) 
+    summaries = []
+    if ODF & odf.summaries:
+        for summary in summary_methods:
+            if hasattr(self.model, summary) and callable(getattr(self.model, summary)):
+                summaries.append(summary)
+
     # Define some (empty) buckets for all the fields so we can group them on 
     # display (by model, internal, related, property, scalars and lists)
     if ODF & odf.flat:
@@ -369,6 +376,8 @@ def collect_rich_object_fields(self):
             self.fields_flat[odf.properties] = collections.OrderedDict()
         if ODF & odf.methods:
             self.fields_flat[odf.methods] = collections.OrderedDict()
+        if ODF & odf.summaries:
+            self.fields_flat[odf.summaries] = collections.OrderedDict()
 
     if ODF & odf.list:
         self.fields_list = {}                                       # Fields that are list items (have multiple values)
@@ -383,6 +392,8 @@ def collect_rich_object_fields(self):
             self.fields_list[odf.properties] = collections.OrderedDict()
         if ODF & odf.methods:
             self.fields_list[odf.methods] = collections.OrderedDict()
+        if ODF & odf.summaries:
+            self.fields_list[odf.summaries] = collections.OrderedDict()
 
     # For all fields we've collected set the value and label properly
     # Problem is that relationship fields are by default listed by primary keys (pk)
@@ -459,22 +470,27 @@ def collect_rich_object_fields(self):
                         
                     self.fields_flat[bucket][field.name] = field
 
-    # Capture all the property and property_method values
-    if ODF & odf.properties or ODF & odf.methods:
+    # Capture all the property, property_method and summary values as needed (these are not fields)
+    if ODF & odf.properties or ODF & odf.methods or ODF & odf.summaries:
         names = []
         if ODF & odf.properties:
             names += properties
         if ODF & odf.methods:
             names += property_methods
+        if ODF & odf.summaries:
+            names += summaries
             
         for name in names:
             label = safetitle(name.replace('_', ' '))
             
-            # property_methods are functions, and properties are attributes
+            # property_methods and summaries are functions, and properties are attributes
             # so we have to fetch their values appropriately 
             if name in property_methods:
                 value = getattr(self.obj, name)()
                 bucket = odf.methods
+            elif name in summaries:
+                value = getattr(self.obj, name)()
+                bucket = odf.summaries
             else:
                 value = getattr(self.obj, name)
                 bucket = odf.properties
@@ -500,7 +516,7 @@ def collect_rich_object_fields(self):
             else:
                 if ODF & odf.flat:
                     p.is_list = False
-                    p.value = odm_str(value, self.format.mode) 
+                    p.value = odm_str(value, self.format.mode, True) 
                     self.fields_flat[bucket][name] = p
         
     # Some more buckets to put the fields in so we can separate lists of fields on display
@@ -508,6 +524,9 @@ def collect_rich_object_fields(self):
     self.fields_bucketed = collections.OrderedDict()
 
     buckets = []    
+    if ODF & odf.summaries: # Put Summaries at top if they are requested
+        self.fields_bucketed[odf.summaries] = collections.OrderedDict()
+        buckets += [odf.summaries]
     if ODF & odf.model:
         self.fields_bucketed[odf.model] = collections.OrderedDict()
         buckets += [odf.model]

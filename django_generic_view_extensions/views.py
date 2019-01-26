@@ -81,7 +81,7 @@ class ListViewExtended(ListView):
         fs.fields = format_filterset(fs)
         fs.text = format_filterset(fs, as_text=True)
         
-        if len(fs.fields) > 0:                    
+        if len(fs.fields) > 0:
             return fs
         else:
             return None
@@ -100,6 +100,7 @@ class ListViewExtended(ListView):
         add_format_context(self, context)
         add_filter_context(self, context, self.filterset)
         add_ordering_context(self, context, self.ordering)
+        context["total"] =  self.model.objects.all().count        
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 

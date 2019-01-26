@@ -175,7 +175,7 @@
 	}
 </script>     
 
-<p>{{model_name_plural | title}}: {{ object_list | length }}</p>
+<p>Displaying {{ object_list | length }} {{model_name_plural }} of {{ total }}. </p>
 
 {#{% if get_params %}#}
 {#<p>{{get_params}}</p>#}

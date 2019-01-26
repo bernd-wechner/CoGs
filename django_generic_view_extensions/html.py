@@ -26,7 +26,7 @@ from .options import list_display_format, object_display_format, object_display_
 from .filterset import format_filterset
 
 
-def fmt_str(obj):
+def fmt_str(obj, safe=False):
     '''
     A simple enhancement of str() which formats list values a little more nicely IMO.
     
@@ -84,12 +84,12 @@ def fmt_str(obj):
         
     # Not object should land here with HTML embedded really, bar PRE strings. So
     # mark PRE strings as safe, and escape the rest. 
-    if isPRE(text):
+    if safe or isPRE(text):
         return mark_safe(text)    
     else:            
         return html.escape(text)    
 
-def odm_str(obj, fmt):
+def odm_str(obj, fmt, safe=False):
     '''
     Return an object's representative string respecting the ODM (sum_format and link) and privacy configurations. 
 
@@ -117,7 +117,7 @@ def odm_str(obj, fmt):
         LT = fmt.link
 
     # Rich and Detail views on an object are responsible for their own linking.
-    # They should do that vial field_render().
+    # They should do that via field_render().
     # Verbose and Brief views don't so we apply a link wrapper if requested.   
     Awrapper = "{}"
     if not (OSF == osf.detail or OSF == osf.rich):
@@ -136,7 +136,7 @@ def odm_str(obj, fmt):
         elif callable(getattr(obj, '__verbose_str__', None)):
             strobj = html.escape(obj.__verbose_str__())
         else: 
-            strobj = fmt_str(obj)
+            strobj = fmt_str(obj, safe)
     elif OSF == osf.rich:
         if callable(getattr(obj, '__rich_str__', None)):
             strobj = obj.__rich_str__(LT)
@@ -148,9 +148,9 @@ def odm_str(obj, fmt):
         if callable(getattr(obj, '__verbose_str__', None)):
             strobj = html.escape(obj.__verbose_str__())
         else: 
-            strobj = fmt_str(obj)
+            strobj = fmt_str(obj, safe)
     else:
-        strobj = fmt_str(obj)
+        strobj = fmt_str(obj, safe)
     
     return Awrapper.format(strobj) 
 
@@ -326,6 +326,7 @@ def object_html_output(self, ODM=None):
             else 'Related fields' if bucket == odf.related
             else 'Properties' if bucket == odf.properties
             else 'Methods' if bucket == odf.methods
+            else 'Summaries' if bucket == odf.summaries
             else 'Standard fields' if bucket == odf.model and ODF.flags & odf.header
             else None if bucket == odf.model
             else 'Unknown ... [internal error]')

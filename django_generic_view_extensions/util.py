@@ -12,6 +12,7 @@ from titlecase import titlecase
 
 # Django imports
 from django.apps import apps
+from django.db import connection
 from django.db.models.query import QuerySet
 
 # Package imports
@@ -73,6 +74,7 @@ def isListValue(obj):
     '''Given an object returns True if it is a known list type, False if not.'''
     return (isinstance(obj, list) or 
             isinstance(obj, set) or
+            isinstance(obj, tuple) or
             isinstance(obj, dict) or 
             isinstance(obj, QuerySet))
 
@@ -80,6 +82,7 @@ def isListType(typ):
     '''Given a type returns True if it is a known list type, False if not.'''
     return (typ is list or 
             typ is set or
+            typ is tuple or
             typ is dict or 
             typ is QuerySet)
 
@@ -111,3 +114,26 @@ def indentVAL(string, indent=odm.indent):
         return tag_start + string + tag_end
     else:
         return string
+    
+def get_SQL(query):
+    '''
+    A workaround for a bug in Django which is reported here (several times):
+        https://code.djangoproject.com/ticket/30132
+        https://code.djangoproject.com/ticket/25705
+        https://code.djangoproject.com/ticket/25092
+        https://code.djangoproject.com/ticket/24991
+        https://code.djangoproject.com/ticket/17741
+        
+    that should be documented here:
+        https://docs.djangoproject.com/en/2.1/faq/models/#how-can-i-see-the-raw-sql-queries-django-is-running
+    but isn't.
+    
+    The work around was published by Zach Borboa here:
+        https://code.djangoproject.com/ticket/17741#comment:4
+        
+    :param query:
+    '''
+    sql, params = query.sql_with_params()
+    cursor = connection.cursor()
+    cursor.execute('EXPLAIN ' + sql, params)
+    return cursor.db.ops.last_executed_query(cursor, sql, params).replace("EXPLAIN ", "", 1)        

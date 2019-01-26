@@ -14,6 +14,7 @@ from django.db.models import F, Window
 from django.db.models.functions import Lag, Lead, RowNumber
 
 # Package imports
+from .util import get_SQL
 from .debug import print_debug
 
 def get_neighbour_pks(model, pk, filterset=None, ordering=None):
@@ -64,6 +65,10 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
             # frustrating me. Problem is across related object filters, or JOINS.
             # qs = filterset.filter() | (model.objects.filter(pk=pk).distinct() & filterset.filter())
             qs = filterset.filter()
+            
+            # DEBUG: We want to force the query to run so we can step into it and see what happens
+            # see: https://docs.djangoproject.com/en/dev/ref/models/querysets/#when-querysets-are-evaluated
+            bool(qs)
         # Else we just use all objects
         else:
             qs = model.objects
@@ -78,7 +83,8 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     # there is no lagger or leader on the one line result! So we have to run that query on the 
     # whole table, then extract from the result the one line we want! Wish I could find a way to 
     # do this in the Django ORM not with a raw() call.    
-    sql = "SELECT * FROM ({}) ao WHERE {}={}".format(str(qs.query), model._meta.pk.name, pk)
+    sql = get_SQL(qs.query) 
+    sql = "SELECT * FROM ({}) ao WHERE {}={}".format(sql, model._meta.pk.name, pk)
     print_debug("Fetching Neighbours with: {}".format(sql))
     ao = model.objects.raw(sql)
 

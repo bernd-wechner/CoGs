@@ -32,17 +32,17 @@ operation_text = {
     "lt" : " < ",
     "lte" : " <= ",
     # Date modifiers, probably not relevant in filters? If so may need some special handling.
-#         "date" : "__date",
-#         "year" : "__year",
-#         "quarter" : "__quarter",
-#         "month" : "__month",
-#         "day" : "__day",
-#         "week" : "__week",
-#         "week_day" : "__weekday",
-#         "time" : "__time",
-#         "hour" : "__hour",
-#         "minute" : "__minute",
-#         "second" : "__second",
+    #         "date" : "__date",
+    #         "year" : "__year",
+    #         "quarter" : "__quarter",
+    #         "month" : "__month",
+    #         "day" : "__day",
+    #         "week" : "__week",
+    #         "week_day" : "__weekday",
+    #         "time" : "__time",
+    #         "hour" : "__hour",
+    #         "minute" : "__minute",
+    #         "second" : "__second",
     }    
 
 def format_filterset(filterset, as_text=False):
@@ -55,6 +55,12 @@ def format_filterset(filterset, as_text=False):
     '''
         
     def get_field(components, component, model):
+        '''
+        Gets a field give the components of a filterset sepcification.  
+        :param components: A list of components
+        :param component:  An index into that list identifying the component to consider
+        :param model:      The model in which the identified component is expected to be a field 
+        '''
         def model_field(model, field_name):
             for field in model._meta.fields:
                 if field.attname == field_name:
@@ -81,50 +87,49 @@ def format_filterset(filterset, as_text=False):
         
         return field
     
-    specs = filterset.get_specs()
-    
     result = []
-    
-    for spec in specs:
-        field = get_field(spec.components, 0, filterset.queryset.model)
-        if len(spec.components) > 1 and spec.lookup == "exact":
-            Os = field.model.objects.filter(**{"{}__{}".format(field.attname, spec.lookup):spec.value})
-            O = Os[0] if Os.count() > 0 else None
-            
-            # TODO: Consider whether the premise here holds true. We have assumed that
-            #       spec.components contains a list of items the last of which is not only
-            #       a model field but its pk. This almost certainly isn't always true, to 
-            #       which for example if we filter in ranks__player=n we end up with 
-            #       spec.components=['rank','player','id'].
-            #
-            #       Thing is a filter on ranks__player__nickname is probably legal and will
-            #       probably produce spec.components=['rank','player','name_nickname']
-            #       in which case field_name assignments below break down, in both cases
-            #       as_text and not.
-            #
-            #       For now I have parked this as I have to get the whole filter/ordering
-            #       selection on list and detail views working first. Then can come back to
-            #       look at this. 
-            if as_text:
-                field_name = field.model._meta.object_name
-                field_value = str(O)
+
+    try:
+        # get_specs raises an Empty exception if there are no specs, and a ValidationError if a value is illegal  
+        specs = filterset.get_specs()
+        
+        for spec in specs:
+            field = get_field(spec.components, 0, filterset.queryset.model)
+            if len(spec.components) > 1 and spec.lookup == "exact":
+                Os = field.model.objects.filter(**{"{}__{}".format(field.attname, spec.lookup):spec.value})
+                O = Os[0] if Os.count() > 0 else None
+                
+                if as_text:
+                    if field.primary_key:
+                        field_name = field.model._meta.object_name
+                        field_value = str(O)
+                    else:
+                        field_name = "{} {}".format(field.model._meta.object_name, spec.components[-1])
+                        field_value = spec.value
+                else:
+                    if field.primary_key:
+                        field_name = "__".join(spec.components[:-1])
+                        field_value = O.pk
+                    else:
+                        field_name = "__".join(spec.components)
+                        field_value = spec.value
             else:
-                field_name = "__".join(spec.components[:-1])
-                field_value = O.pk
-        else:
-            field_name = field.verbose_name
-            field_value = spec.value
+                field_name = field.verbose_name
+                field_value = spec.value
+            
+            if as_text and spec.lookup in operation_text:
+                op = operation_text[spec.lookup]
+            elif spec.lookup != "exact":
+                op = "__{}=".format(spec.lookup)
+            else:
+                op = "="
+            
+            result += ["{}{}{}".format(field_name, op, field_value)]
+
+        if as_text:
+            result = mark_safe(" <b>and</b> ".join(result))
+            
+        return result
+    except:
+        return "" if as_text else []
         
-        if as_text and spec.lookup in operation_text:
-            op = operation_text[spec.lookup]
-        elif spec.lookup != "exact":
-            op = "__{}=".format(spec.lookup)
-        else:
-            op = "="
-        
-        result += ["{}{}{}".format(field_name, op, field_value)]
-        
-    if as_text:
-        result = mark_safe(" <b>and</b> ".join(result))
-    
-    return result
