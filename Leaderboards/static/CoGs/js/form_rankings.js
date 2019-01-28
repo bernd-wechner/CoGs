@@ -167,7 +167,7 @@ function OnSubmit(event) {
 
 	// Remove and elements flagged as NoSubmit by class
 	const killthem = document.getElementsByClassName("NoSubmit");
-	for (var i = 0; i < killthem.length; i++) killthem[i].disabled = true;
+	for (let i = 0; i < killthem.length; i++) killthem[i].disabled = true;
 
 	// Tidy up the submission to meet Django formset expectations (to simplify processing when submitted)
 	const team_switch = $$(id_team_switch);
@@ -495,7 +495,7 @@ function OnSubmit(event) {
 	    	const id_table = 'tblPlayersTable'
 	    	const table = $$(id_table);
 
-			for (var p = 0; p < num_players; p++) {
+			for (let p = 0; p < num_players; p++) {
 				const rid = getWidget(table, name_rid, p);
 				const pid = getWidget(table, name_pid, p);
 
@@ -696,7 +696,7 @@ function configureGame() {
 	
 
 	// Decide which mode (individual play or team play to display)
-	var show_team_play = false;
+	let show_team_play = false;
 	
 	// If the game supports both modes, the Team play selector will have been delivered
 	// by Django with a default value and we respect that
@@ -765,16 +765,16 @@ function configureGame() {
 
 // Event handler for a new game selection
 function switchGame(event) {
-	var selector = event.target;
-	var game_pk = selector.value;
-	var url = game_props_url.replace(/\d+$/, game_pk); // Replace the dummy Game PK with the selected one
+	const selector = event.target;
+	const game_pk = selector.value;
+	const url = game_props_url.replace(/\d+$/, game_pk); // Replace the dummy Game PK with the selected one
 	
-	var REQUEST = new XMLHttpRequest();
+	let REQUEST = new XMLHttpRequest();
 	
 	REQUEST.onreadystatechange = function () {
 	    if (this.readyState === 4 && this.status === 200){
 	        // the request is complete, parse data 
-	        var response = JSON.parse(this.responseText);
+	        const response = JSON.parse(this.responseText);
 	        
 	        // and save in the global game properties
 	        game_individual_play 	  = response.individual_play;
@@ -1032,8 +1032,8 @@ function OnRowcountChange(event) {
 
 	// TODO: Diagnose - This fails. Want to add 2 players to newly added teams. How?
 	if (event.target.id === id_num_teams) {
-		for (var i = 0; i < event.target.value; i++) {
-		    var boxNum = findChildByName(Table.parentNode, name_num_team_players.replace(form_number,i)); 	// This is the number of players in the team. Used only in form processing.
+		for (let i = 0; i < event.target.value; i++) {
+		    let boxNum = findChildByName(Table.parentNode, name_num_team_players.replace(form_number,i)); 	// This is the number of players in the team. Used only in form processing.
 
 		    adjustTable(boxNum);
 		}
@@ -1325,8 +1325,8 @@ function RenderTable(template, entries, placein, entry_number, session) {
     //			one for the team rank, name, and number of players (in the team) 
     //			one for the details (player list).
     // In both cases we need a header row!.
-    var rowsNeeded = (table_type == TableType.Teams ? 2*entries : entries) + 1;
-    var rowsPresent = table.rows.length;
+    const rowsNeeded = (table_type == TableType.Teams ? 2*entries : entries) + 1;
+    const rowsPresent = table.rows.length;
     
     // If there are rows in the table already, and we have session data, we 
     // should really check all present rows for conformance with the provided
@@ -1563,7 +1563,7 @@ function enableChildren(of, enable) {
     of.disabled = (enable === undefined) ? true : !enable;
 
     const children = of.children;
-    for (var i = 0; i < children.length; i++)
+    for (let i = 0; i < children.length; i++)
     	enableChildren(children[i], enable);
 }
 

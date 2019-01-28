@@ -13,6 +13,11 @@
 <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
 <script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
+	"use strict";
+	
+	let URL_ajax;
+	let URL_page;
+	
 	// Save the URL when we load for later use
 	function saveURL() {
 		URL_ajax = "{% url 'get_list_html' model=model_name %}";
@@ -20,17 +25,17 @@
 	}
 	window.onload = saveURL;
 
-	var filters	= {{filters}};
-	var default_elements = "{{format_default.object_summary_format}}";
-	var default_complete = "{{format_default.object_display_modes}}";
-	var default_link = "{{format_default.field_link_target}}";
-	var default_menus = "{{format_default.list_menu_format}}";
-	var default_index = "{{format_default.index}}";
-	var default_key = "{{format_default.key}}";
-	var default_ordering = "{{ordering_default}}";
+	const filters	= {{filters|safe}};
+	const default_elements = "{{format_default.object_summary_format}}";
+	const default_complete = "{{format_default.object_display_modes}}";
+	const default_link = "{{format_default.field_link_target}}";
+	const default_menus = "{{format_default.list_menu_format}}";
+	const default_index = "{{format_default.index}}";
+	const default_key = "{{format_default.key}}";
+	const default_ordering = "{{ordering_default}}";
 
 	function toggle_filters() {
-		current = $(".toggle")[0].style.visibility;
+		const current = $(".toggle")[0].style.visibility;
 		if (current == "collapse") 
 			$(".toggle").css('visibility', 'visible'); 
 		else
@@ -42,24 +47,25 @@
 	}
 	
 	function URLopts() {
-		var opts = []
+		let opts = []
 	
 		// The basic formatting and layout options
-		elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
-		complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
-		link = $('input[type=radio][name=opt_link]:checked').attr('value');
-		menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
-		index = $('#opt_index').is(':checked') ? "index" : "noindex";
-		key = $('#opt_key').is(':checked') ? "key" : "nokey";
+		const elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
+		const complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
+		const link = $('input[type=radio][name=opt_link]:checked').attr('value');
+		const menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
+		const index = $('#opt_index').is(':checked') ? "index" : "noindex";
+		const key = $('#opt_key').is(':checked') ? "key" : "nokey";
 		
-		filter_opts = filter_url_opts();
-		ordering_opts = ordering_url_opts();
-		
+		let filter_opts = filter_url_opts();
 		// The filter if specified on the URL may contain condition the filter widget doesn't support
 		// So if  URL supplied filter is not in the widget provided filter opts, include it
-		for (f in filters)
+		for (let f in filters)
 			if (filter_opts.indexOf(filters[f]) < 0) 
-				opts.push(filters[f]);
+				filter_opts.push(filters[f]);
+		Object.freeze(filter_opts);
+
+		const ordering_opts = ordering_url_opts();	
 
 		if (elements != default_elements) opts.push(elements);
 		if (complete != default_complete) opts.push(complete);
@@ -71,20 +77,20 @@
 		if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
 		if (ordering_opts.length > 0) opts.push(ordering_opts.join("&"));
 		
-		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
+		let url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 		
 		// Add the global league filter to URL opts used in GET requests 
-		$league_id = $("#id_league_view").val();
-		url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
+		const league_id = $("#id_league_view").val();
+		url_opts += (league_id == 0) ? "" : "&league=" + league_id;
 
 		return url_opts;
 	}
 	
-	var REQUEST = new XMLHttpRequest();
+	let REQUEST = new XMLHttpRequest();
 	REQUEST.onreadystatechange = function () {
 	    // Process the returned JSON
 		if (this.readyState === 4 && this.status === 200){
-			var response = JSON.parse(this.responseText);
+			const response = JSON.parse(this.responseText);
 			$("#data").html(response.HTML);
 			URL_ajax = response.json_URL 
  			window.history.pushState("","", response.view_URL);
@@ -104,7 +110,7 @@
 		$("#opt_rich").prop('disabled', true);
 		$("#opt_detail").prop('disabled', true);
 		$("#opt_specified").prop('disabled', true);
-		var url = URL_ajax + URLopts();
+		const url = URL_ajax + URLopts();
 		REQUEST.open("GET", url, true);
 		REQUEST.send(null);		
 	}
@@ -118,12 +124,12 @@
 	// TODO: ignore options who have no value! Don't add them to fopts.
 	// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
   	function CollectFilterField(index, value) {
-  		var field = $(value);
+  		const field = $(value);
   		console.log("CollectFilterField: " + field);
   		
-  		var opt = field.prop('name');
+  		const opt = field.prop('name');
   		
-  		var val = null;
+  		let val = null;
   		if (field.is("input"))
   			val = field.val();
   		else if (field.is("select"))
@@ -134,11 +140,10 @@
   	}
 	
  	function filter_url_opts() {
-		fopts = [];
-		var widgetid = "session_filtering_widget";
-  		console.log("filter_url_opts: " + widgetid);
+		const widgetid = "session_filtering_widget";
+		let fopts = [];
 		$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
-		return fopts;	
+		return fopts;
  	}
   	
 	// Ordering widget code seems in order and tested. Need to move this into widget def.	 
@@ -153,13 +158,13 @@
 	}
 
  	function ordering_url_opts() {
-		var widgetid = "session_ordering_widget";  	
-		fields = [];  dirs = [];
+		const widgetid = "session_ordering_widget";  	
+		let fields = [];  let dirs = [];
 		$("#"+widgetid).find("span[id^='ordering_field']").each(CollectOrderingField);
 		$("#"+widgetid).find("span[id^='ordering_dir']").each(CollectOrderingDir);
 		
-		var opts = [];
-		for (i = 0; i < fields.length; i++) {
+		let opts = [];
+		for (let i = 0; i < fields.length; i++) {
 			pfx = get_ordering_dir(dirs[i]);
 			if (pfx != null) { 
 				opts.push(pfx+fields[i]);
@@ -170,12 +175,12 @@
 	}
 	
 	function show_url() {
-		var url = URL_page + URLopts();
+		const url = URL_page + URLopts();
 		window.history.pushState("","", url);
 	}
 </script>     
 
-<p>Displaying {{ object_list | length }} {{model_name_plural }} of {{ total }}. </p>
+<p>Displaying {{ object_list | length }} {{model_name_plural }} of <A href="{% url 'list' model_name %}">{{ total }}</A>. </p>
 
 {#{% if get_params %}#}
 {#<p>{{get_params}}</p>#}

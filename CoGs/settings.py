@@ -51,6 +51,8 @@ else:
     print("Django settings: Development Server")
     from CoGs.settings_development import * 
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
+    import sys
+    print("USING PATH: {}".format(sys.path))    
 
 # Application definition
 

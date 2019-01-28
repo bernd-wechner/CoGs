@@ -114,7 +114,11 @@ def format_filterset(filterset, as_text=False):
                         field_name = "__".join(spec.components)
                         field_value = spec.value
             else:
-                field_name = field.verbose_name
+                if as_text:
+                    field_name = field.verbose_name
+                else:
+                    field_name = "__".join(spec.components)
+                    
                 field_value = spec.value
             
             if as_text and spec.lookup in operation_text:

@@ -10,8 +10,9 @@ Possible extension might be to allow n-hops away neighbours, so neighbours eithe
 jumps away. For nuanced browsing. 
 '''
 # Django imports
-from django.db.models import F, Window
+from django.db.models import F, Window, Subquery
 from django.db.models.functions import Lag, Lead, RowNumber
+from django.db import connection
 
 # Package imports
 from .util import get_SQL
@@ -56,38 +57,56 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     # Get a queryset annotated with neighbours. If annotated attrs clash with existing attrs an exception 
     # will be raised: https://code.djangoproject.com/ticket/11256    
     try:
-        # If a filterset is supplied, respect that
+        # Start with all objects
+        qs = model.objects.all()
+
+        # Now apply a filterset if we have one
         if not filterset is None:
-            # We respect the filterset.
+            # We respect the filterset. BUT we need to wrap it inside a sub query, so that
+            # we can apply a DISTNCT ON Pk to avoid duplicate tuples that the window 
+            # functions can introduce when we are matching multiple remote objects.
+            # Alas that's what they do. So we have to constrain it to one tuple per
+            # PK. 
+            # 
             # FIXME: Aaargh this won't work for injecting the current PK into the query!
             # My desire is to make sure that the query results include the provided pk. 
             # Needs testing in both cases. I can't think of a way to do it alas. This is
             # frustrating me. Problem is across related object filters, or JOINS.
             # qs = filterset.filter() | (model.objects.filter(pk=pk).distinct() & filterset.filter())
-            qs = filterset.filter()
-            
-            # DEBUG: We want to force the query to run so we can step into it and see what happens
-            # see: https://docs.djangoproject.com/en/dev/ref/models/querysets/#when-querysets-are-evaluated
-            bool(qs)
-        # Else we just use all objects
-        else:
-            qs = model.objects
+            qs = qs.filter(pk__in=Subquery(filterset.filter().distinct('pk').order_by('pk').values('pk')))    
+
+        # Now order the objects properly
+        qs = qs.order_by(*order_by)
             
         # Now annotate the queryset with the prior and next PKs
-        qs = qs.annotate(neighbour_prior=window_lag, neighbour_next=window_lead, row_number=window_rownnum)
+        qs = qs.annotate(neighbour_prior=window_lag, neighbour_next=window_lead, row_number=window_rownnum)               
     except:
         return None
-    
+
     # Finally we need some trickery alas to do a query on the queryset! We can't add this WHERE
     # as a filter because the LAG and LEAD Window functions fail then, they are empty because 
     # there is no lagger or leader on the one line result! So we have to run that query on the 
     # whole table, then extract from the result the one line we want! Wish I could find a way to 
     # do this in the Django ORM not with a raw() call.    
-    sql = get_SQL(qs.query) 
-    sql = "SELECT * FROM ({}) ao WHERE {}={}".format(sql, model._meta.pk.name, pk)
-    print_debug("Fetching Neighbours with: {}".format(sql))
-    ao = model.objects.raw(sql)
 
+    # First we need the SQL from the existing query. Many on-line sources seem tor eocmmend 
+    # str(qs.query) but this does not return reliable SQL! A bug in Django amd ,uch discussed:
+    #    https://code.djangoproject.com/ticket/30132
+    #    https://code.djangoproject.com/ticket/25705
+    #    https://code.djangoproject.com/ticket/25092
+    #    https://code.djangoproject.com/ticket/24991
+    #    https://code.djangoproject.com/ticket/17741
+    #
+    # But this, it seems is the reliable method which involves dipping into Djangos 
+    # inards a litte (the SQL compiler)    
+    sql, params = qs.query.get_compiler(using=qs.db).as_sql()
+    
+    # Now we wrap the SQL    
+    sql = "SELECT * FROM ({}) ao WHERE {}={}".format(sql, model._meta.pk.name, pk)
+    
+    # And create a new QuerySet
+    ao = model.objects.raw(sql, params)
+    
     try:
         if ao:
             if len(list(ao)) == 1:

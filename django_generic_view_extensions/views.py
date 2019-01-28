@@ -28,6 +28,7 @@ import datetime
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
+from django.db.models import Subquery
 from django.db.models.query import QuerySet
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 from django.forms.models import fields_for_model
@@ -47,6 +48,29 @@ from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
 from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
 from .filterset import format_filterset
+
+def get_filterset(self):
+    FilterSet = type("FilterSet", (ModelFilterSet,), { 
+        'Meta': type("Meta", (object,), { 
+            'model': self.model 
+            })
+    })
+    
+    qs = self.model.objects.all()
+    fs = FilterSet(data=self.request.GET, queryset=qs)  
+    
+    if len(fs.get_specs()) > 0:
+        fs.fields = format_filterset(fs)
+        fs.text = format_filterset(fs, as_text=True)
+        return fs
+    else:
+        return None
+
+def get_ordering(self):
+    if (self.format.ordering):
+        return self.format.ordering.split(',')              
+    else:
+        return getattr(self.model._meta, 'ordering', None)
 
 class TemplateViewExtended(TemplateView):
     '''
@@ -69,29 +93,7 @@ class ListViewExtended(ListView):
     as_p = object_as_p
     as_br = object_as_br
     as_html = object_as_html # Chooses one of the first three based on request parameters
-
-    def get_filterset(self):
-        FilterSet = type("FilterSet", (ModelFilterSet,), { 
-            'Meta': type("Meta", (object,), { 
-                'model': self.model 
-                })
-        })
-        
-        fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())        
-        fs.fields = format_filterset(fs)
-        fs.text = format_filterset(fs, as_text=True)
-        
-        if len(fs.fields) > 0:
-            return fs
-        else:
-            return None
-    
-    def get_ordering(self):
-        if (self.format.ordering):
-            return self.format.ordering.split(',')              
-        else:
-            return getattr(self.model._meta, 'ordering', None)
-        
+       
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
@@ -117,11 +119,11 @@ class ListViewExtended(ListView):
         # construct a new filtered queryset. 
         self.filterset = None
         self.format = get_list_display_format(self.request.GET)
-        self.ordering = self.get_ordering()
+        self.ordering = get_ordering(self)
         
         self.queryset = self.model.objects.all()
         if len(self.request.GET) > 0:
-            fs = self.get_filterset()
+            fs = get_filterset(self)
             
             # If there is a filter specified in the URL
             if not fs is None:
@@ -156,38 +158,6 @@ class DetailViewExtended(DetailView):
         if ('operation' in kwargs):
             self.operation = kwargs['operation']
 
-    def get_filterset(self):
-        # Build the filterset in use if one is specified in the request
-        FilterSet = type("FilterSet", (ModelFilterSet,), { 
-            'Meta': type("Meta", (object,), { 
-                'model': self.model 
-                })
-        })
-
-        # Create a mutable copy of the GET params to base a filter on (so we can tweak it)
-        get = self.request.GET.copy()
-        
-        # If pk or id come in via GET, ignore them, use the pk from kwargs above as our reference
-        if 'id' in get:
-            del get['id']
-        if 'pk' in get:
-            del get['pk']
-        
-        fs = FilterSet(data=self.request.GET, queryset=self.model.objects.all())        
-        fs.fields = format_filterset(fs)
-        fs.text = format_filterset(fs, as_text=True)
-        
-        if len(fs.fields) > 0:                    
-            return fs
-        else:
-            return None
-
-    def get_ordering(self):
-        if (self.format.ordering):
-            return self.format.ordering.split(',')              
-        else:
-            return getattr(self.model._meta, 'ordering', None)
-    
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
@@ -207,9 +177,13 @@ class DetailViewExtended(DetailView):
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
         CuserMiddleware.set_user(self.request.user)
 
+        # Get the ordering
+        self.ordering = get_ordering(self)
+
         # Get Neighbour info for the object browser
-        self.filterset = self.get_filterset()
-        self.ordering = self.get_ordering()
+        self.filterset = get_filterset(self)       
+        qs = self.filterset.filter()
+        
         neighbours = get_neighbour_pks(self.model, self.pk, filterset=self.filterset, ordering=self.ordering)            
 
         # Add this information to the view (so it's available in the context).

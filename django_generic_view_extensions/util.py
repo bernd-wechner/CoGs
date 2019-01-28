@@ -136,4 +136,4 @@ def get_SQL(query):
     sql, params = query.sql_with_params()
     cursor = connection.cursor()
     cursor.execute('EXPLAIN ' + sql, params)
-    return cursor.db.ops.last_executed_query(cursor, sql, params).replace("EXPLAIN ", "", 1)        
+    return cursor.db.ops.last_executed_query(cursor, sql, params).replace("EXPLAIN ", "", 1)    

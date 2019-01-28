@@ -18,7 +18,7 @@ from django.conf import settings
 debug_time_first = None
 debug_time_last = None
 
-RE = re.compile(r'^(?P<newlines1>\n*)(?P<message>.*?)(?P<newlines2>\n*)$', ref.MULTILINE)
+RE = re.compile(r'^(?P<newlines1>\n*)(?P<message>.*?)(?P<newlines2>\n*)$', ref.DOTALL)
 
 def print_debug(msg):
     '''
