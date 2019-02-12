@@ -59,8 +59,9 @@ TODO: Add __table_str__ which returns a TR, and if an arg is specified or if it'
 import html, collections, inspect
 
 # Django imports
-from django.utils.safestring import mark_safe
 from django.db import models
+from django.utils.safestring import mark_safe
+from django.utils.timezone import get_current_timezone
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
@@ -557,3 +558,28 @@ def collect_rich_object_fields(self):
             for name, value in field_list.items():
                 self.fields_bucketed[bucket][name] = value
                 self.fields[name] = value
+
+class TimeZoneMixIn(models.Model):
+    '''
+    An abstract model that ensures timezone data is saved with all DateTimeField's that have 
+    a CharField of same name with _tz appended by placing the currentlya ctive Django timezone
+    name into that field.
+    '''
+    
+    def update_timezone_fields(self):
+        '''
+        Update the timezone fields that accompany any DateTimeFields 
+        '''
+    
+        for field in self._meta.concrete_fields:
+            if isinstance(field, models.DateTimeField):
+                tzfieldname = f"{field.name}_tz"
+                if hasattr(self, tzfieldname):
+                    setattr(self, tzfieldname, str(get_current_timezone()))
+                
+    def save(self, *args, **kwargs):
+        self.update_timezone_fields()
+        super().save(*args, **kwargs)
+                
+    class Meta:
+        abstract = True

@@ -17,8 +17,8 @@ from cuser.middleware import CuserMiddleware
 
 class PrivacyMixIn():
     '''
-    A MixIn that adds database load overrides which populate the "hidden" attribute of
-    an object with the names of fields that should be hidden. It is us to the other
+    A MixIn that adds database load overrides which populates the "hidden" attribute of
+    an object with the names of fields that should be hidden. It is up to the other
     methods in the model to implement this hiding where desired.
     '''
     HIDDEN = "<Hidden>"
@@ -259,8 +259,7 @@ class PrivacyMixIn():
         
     def safe_save(self, *args, **kwargs):
         '''
-        A disabled save method. If needing to disable save() we assign this method to self.save, 
-        replacing the django save method. This one just throws an exception.
+        A hamstrung save method that will respects the hidden fields (not saving them!)
         '''
         
         # self.hidden was initialised when data was loaded. 
@@ -275,7 +274,7 @@ class PrivacyMixIn():
                 field_names = set()
                 for field in self._meta.concrete_fields:
                     if not field.primary_key and not hasattr(field, 'through'):
-                        field_names.add(field.attname)                
+                        field_names.add(field.name)                
                 
             for f in self.hidden:
                 field_names.remove(f)

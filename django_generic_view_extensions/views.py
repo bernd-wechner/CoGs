@@ -431,7 +431,7 @@ class CreateViewExtended(CreateView):
             
             # Hook for pre-processing the form (before the data is saved)
             if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
-    
+
             # Save this form
             self.object = form.save()
             self.kwargs['pk'] = self.object.pk

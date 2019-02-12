@@ -21,6 +21,7 @@ from django.utils import timezone
 from django.utils.formats import localize
 from django.utils.timezone import localtime
 from django.utils.safestring import mark_safe
+from django.conf import settings
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
@@ -29,7 +30,7 @@ from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
 
 from django_generic_view_extensions.options import flt, osf
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
 from django_generic_view_extensions.util import time_str
 
@@ -88,7 +89,7 @@ class TrueskillSettings(models.Model):
 # The Ratings model(s) where TrueSkill ratings are stored
 #===============================================================================
 
-class RatingModel(AdminModel):
+class RatingModel(TimeZoneMixIn, AdminModel):
     '''
     A Trueskill rating for a given Player at a give Game.
 
@@ -104,14 +105,16 @@ class RatingModel(AdminModel):
     
     The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
     '''
-    player = models.ForeignKey('Player', related_name='%(class)ss', on_delete=models.CASCADE)
-    game = models.ForeignKey('Game', related_name='%(class)ss', on_delete=models.CASCADE)
+    player = models.ForeignKey('Player', verbose_name='Player', related_name='%(class)ss', on_delete=models.CASCADE)
+    game = models.ForeignKey('Game', verbose_name='Game', related_name='%(class)ss', on_delete=models.CASCADE)
 
     plays = models.PositiveIntegerField('Play Count', default=0)
     victories = models.PositiveIntegerField('Victory Count', default=0)
     
-    last_play = models.DateTimeField(default=NEVER)
-    last_victory = models.DateTimeField(default=NEVER)
+    last_play = models.DateTimeField('Time of Last Play', default=NEVER)
+    last_play_tz = models.CharField('Time of Last Play, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    last_victory = models.DateTimeField('Time of Last Victory', default=NEVER)
+    last_victory_tz = models.CharField('Time of Last Victory, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
     
     # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
     # To protect ourselves against changes to those global settings, or simply to detect them if it should happen, we capture their value at time of rating update in the Eta.
@@ -463,11 +466,12 @@ class League(AdminModel):
     meaningful global leaderboard can be reported for any game across all leagues.
     '''
     name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}$'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved', inverse_match=True)])
-    manager = models.ForeignKey('Player', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
+    
+    manager = models.ForeignKey('Player', verbose_name='Manager', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
 
-    locations = models.ManyToManyField('Location', blank=True, related_name='leagues_playing_here')
-    players = models.ManyToManyField('Player', blank=True, related_name='member_of_leagues')
-    games = models.ManyToManyField('Game', blank=True, related_name='played_by_leagues')
+    locations = models.ManyToManyField('Location', verbose_name='Locations', blank=True, related_name='leagues_playing_here')
+    players = models.ManyToManyField('Player', verbose_name='Players', blank=True, related_name='member_of_leagues')
+    games = models.ManyToManyField('Game', verbose_name='Games', blank=True, related_name='played_by_leagues')
 
     # TODO: Use @cached_property (everywhere)
     @property
@@ -531,7 +535,7 @@ class Team(AdminModel):
     Teams may have names but don't need them.
     '''
     name = models.CharField('Name of the Team (optional)', max_length=MAX_NAME_LENGTH, null=True)
-    players = models.ManyToManyField('Player', blank=True, editable=False, related_name='member_of_teams')
+    players = models.ManyToManyField('Player', verbose_name='Players', blank=True, editable=False, related_name='member_of_teams')
 
     @property
     def games_played(self) -> list:
@@ -609,14 +613,14 @@ class Player(PrivacyMixIn, AdminModel):
     is_staff = models.BooleanField('Authorised to access the admin site?', default=False)
 
     # Membership fields
-    teams = models.ManyToManyField('Team', editable=False, through=Team.players.through, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
-    leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
+    teams = models.ManyToManyField('Team', through=Team.players.through, verbose_name='Teams', editable=False, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
+    leagues = models.ManyToManyField('League', through=League.players.through, verbose_name='Leagues', blank=True, related_name='players_in_league')
 
     # A default or preferred league for each player. Optional. Can be used to customise views.
-    league = models.ForeignKey('League', verbose_name="Preferred League", related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
+    league = models.ForeignKey(League, verbose_name='Preferred League', related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     # account
-    user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
+    user = models.OneToOneField(User, verbose_name='Username', related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     # Privacy control (interfaces with django_model_privacy_mixin)
     visibility = (
@@ -626,12 +630,12 @@ class Player(PrivacyMixIn, AdminModel):
         ('all_is_registrar', 'Registrars'), 
         ('all_is_staff', 'Staff'), 
     )
-    
-    visibility_name_nickname = BitField(verbose_name='Nickname Visibility', flags=visibility, default=0, blank=True)
-    visibility_name_personal = BitField(verbose_name='Personal Name Visibility', flags=visibility, default=0, blank=True)
-    visibility_name_family = BitField(verbose_name='Family Name Visibility', flags=visibility, default=0, blank=True)
-    visibility_email_address = BitField(verbose_name='Email Address Visibility', flags=visibility, default=0, blank=True)
-    visibility_BGGname = BitField(verbose_name='BoardGameGeek Name Visibility', flags=visibility, default=0, blank=True)
+   
+    visibility_name_nickname = BitField(visibility, verbose_name='Nickname Visibility', default=('all',), blank=True)
+    visibility_name_personal = BitField(visibility, verbose_name='Personal Name Visibility', default=('all',), blank=True)
+    visibility_name_family = BitField(visibility, verbose_name='Family Name Visibility', default=('share_leagues',), blank=True)
+    visibility_email_address = BitField(visibility, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
+    visibility_BGGname = BitField(visibility, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
 
     @property
     def owner(self) -> User:
@@ -827,8 +831,8 @@ class Game(AdminModel):
     BGGid = models.PositiveIntegerField('BoardGameGeek ID')  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
 
     # Which play modes the game supports. This will decide the formats the session submission form supports
-    individual_play = models.BooleanField(default=True)
-    team_play = models.BooleanField(default=False)
+    individual_play = models.BooleanField('Supports individual play', default=True)
+    team_play = models.BooleanField('Supports team play',default=False)
 
     # Player counts, also inform the session logging form how to render
     min_players = models.PositiveIntegerField('Minimum number of players', default=2)
@@ -838,7 +842,7 @@ class Game(AdminModel):
     max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=4)
 
     # Which leagues play this game? A way to keep the game selector focussed on games a given league actually plays. 
-    leagues = models.ManyToManyField(League, blank=True, related_name='games_played', through=League.games.through)
+    leagues = models.ManyToManyField('League', verbose_name='Leagues', blank=True, related_name='games_played', through=League.games.through)
 
     # Game specific TrueSkill settings
     # tau: 0- describes the luck element in a game. 
@@ -1144,9 +1148,9 @@ class Location(AdminModel):
     '''
     A location that a game session can take place at.
     '''
-    name = models.CharField('name of the location', max_length=MAX_NAME_LENGTH)
-
-    leagues = models.ManyToManyField(League, blank=True, related_name='Locations_used', through=League.locations.through)
+    name = models.CharField('Name of the Location', max_length=MAX_NAME_LENGTH)    
+    timezone = models.CharField('Timezone of the Location', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE)
+    leagues = models.ManyToManyField(League, verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
 
     @property
     def link_internal(self) -> str:
@@ -1165,20 +1169,22 @@ class Location(AdminModel):
     class Meta(AdminModel.Meta):
         ordering = ['name']
 
-class Session(AdminModel):
+class Session(TimeZoneMixIn, AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
     date_time = models.DateTimeField('Time', default=timezone.now)                                          # When the game session was played
-    league = models.ForeignKey(League, related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
-    location = models.ForeignKey(Location, related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
-    game = models.ForeignKey(Game, related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
+    date_time_tz = models.CharField('Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    
+    league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
+    location = models.ForeignKey(Location, verbose_name='Session', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
+    game = models.ForeignKey(Game, verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
     
     # The game must support team play if this is true, 
     # and conversely, it must support individual play if this false.
     # TODO: Enforce this constraint
     # TODO: Let the session form know the modes supported so it can enable/disable the entry modes
-    team_play = models.BooleanField(default=False)  # By default games are played by individuals, if true, this session was played by teams
+    team_play = models.BooleanField('Team Play', default=False)  # By default games are played by individuals, if true, this session was played by teams
     
     # A note on session player records:
     #  Players are stored in two distinct places/contexts:
@@ -2346,15 +2352,15 @@ class Rank(AdminModel):
     Either a player or team is specified, neither or both is a data error.
     Which one, is specified in the Session model where a record is kept of whether this was a Team play session or not (i.e. Individual play)
     '''
-    session = models.ForeignKey(Session, related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
-    rank = models.PositiveIntegerField()  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
+    rank = models.PositiveIntegerField('Rank')  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
 
     # One or the other of these has a value the other should be null (enforce in integrity checks)
     # We coudlof course opt to use a single GenericForeignKey here: 
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
     #    but there are some complexites they introduce that are rather unnatracive as well
-    player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
-    team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+    player = models.ForeignKey(Player, verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
+    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
 
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
@@ -2553,8 +2559,8 @@ class Performance(AdminModel):
     '''
     TS = TrueskillSettings()
 
-    session = models.ForeignKey(Session, related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
-    player = models.ForeignKey(Player, related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
+    player = models.ForeignKey(Player, verbose_name='Player', related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
 
@@ -2853,7 +2859,7 @@ class Performance(AdminModel):
 # Administrative models
 #===============================================================================
 
-class Rebuild_Log(models.Model):
+class Rebuild_Log(TimeZoneMixIn, models.Model):
     '''
     A log of rating rebuilds.
     
@@ -2862,8 +2868,9 @@ class Rebuild_Log(models.Model):
     1) Performance measure. Rebuild can be slow and we'd like to know how slow. 
     2) Security. To see who rebuilt when
     '''
-    date_time = models.DateTimeField(default=timezone.now)
-    ratings = models.PositiveIntegerField()
-    duration = models.DurationField()
-    rebuilt_by = models.ForeignKey(User, related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
-    reason = models.TextField('Reason')    
+    date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
+    date_time_tz = models.CharField('Time of Ratings Rebuild, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    ratings = models.PositiveIntegerField('Number of Ratings Built')
+    duration = models.DurationField('Duration of Rebuild')
+    rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
+    reason = models.TextField('Reason for Rebuild')    
