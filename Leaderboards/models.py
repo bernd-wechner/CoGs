@@ -76,11 +76,10 @@ class TrueskillSettings(models.Model):
     # but store each version with a date. That in can of course then support staged ratings histories, so not a bad idea.
     mu0 = models.FloatField('TrueSkill Initial Mean (µ0)', default=trueskill.MU)
     sigma0 = models.FloatField('TrueSkill Initial Standard Deviation (σ0)', default=trueskill.SIGMA)
-    beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
 
     add_related = None
-    def __unicode__(self): return u'µ0={} σ0={} ß={} δ={}'.format(self.mu0, self.sigma0, self.beta, self.delta)
+    def __unicode__(self): return u'µ0={} σ0={} ß={} δ={}'.format(self.mu0, self.sigma0, self.delta)
     def __str__(self): return self.__unicode__()
 
     class Meta:
@@ -124,19 +123,19 @@ class RatingModel(TimeZoneMixIn, AdminModel):
     trueskill_sigma = models.FloatField('Trueskill Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
     trueskill_eta = models.FloatField('Trueskill Rating (η)', default=trueskill.SIGMA, editable=False)
     
-    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each rating as an integrity measure.
+    # Record the global TrueskillSettings mu0, sigma0 and delta with each rating as an integrity measure.
     # They can be compared against the global settings and and difference can trigger an update request.
     # That is, flag a warning and if they are consistent across all stored ratings suggest TrueskillSettings
     # should be restored (and offer to do so?) or if inconsistent (which is an integrity error) suggest that
     # ratings be globally recalculated
     trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
     trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
     
-    # Record the game specific Trueskill settings tau and p with rating as an integrity measure.
+    # Record the game specific Trueskill settings beta, tau and p with rating as an integrity measure.
     # Again for a given game these must be consistent among all ratings and the history of each rating. 
     # And change while managing leaderboards should trigger an update request for ratings relating to this game.  
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
@@ -251,7 +250,7 @@ class Rating(RatingModel):
                     trueskill_eta=trueskill_mu - TS.mu0 / TS.sigma0 * trueskill_sigma,  # µ − (µ0 ÷ σ0) × σ
                     trueskill_mu0=TS.mu0,
                     trueskill_sigma0=TS.sigma0,
-                    trueskill_beta=TS.beta,
+                    trueskill_beta=game.trueskill_beta,
                     trueskill_delta=TS.delta,
                     trueskill_tau=game.trueskill_tau,
                     trueskill_p=game.trueskill_p
@@ -275,12 +274,12 @@ class Rating(RatingModel):
         
         if not (isclose(r.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE)  
          and isclose(r.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_beta, game.trueskill_beta, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_tau, game.trueskill_tau, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_p, game.trueskill_p, abs_tol=FLOAT_TOLERANCE)):
-            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_beta, r.trueskill_delta, r.trueskill_tau, r.trueskill_p)
-            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.beta, TS.delta, game.trueskill_tau, game.trueskill_p)
+            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_delta, r.trueskill_beta, r.trueskill_tau, r.trueskill_p)
+            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.delta, game.trueskill_beta, game.trueskill_tau, game.trueskill_p)
             raise DataError("Data error: A trueskill setting has changed since the last rating was saved. They were ({}) and now are ({})".format(SettingsWere, SettingsAre))
             # TODO: Issue warning to the registrar more cleanly than this
             # Email admins with notification and suggested action (fixing settings or rebuilding ratings).
@@ -324,8 +323,8 @@ class Rating(RatingModel):
                 # Record the TruesSkill settings used to get them                     
                 r.trueskill_mu0 = TS.mu0
                 r.trueskill_sigma0 = TS.sigma0
-                r.trueskill_beta = TS.beta
                 r.trueskill_delta = TS.delta
+                r.trueskill_beta = session.game.trueskill_beta
                 r.trueskill_tau = session.game.trueskill_tau
                 r.trueskill_p = session.game.trueskill_p
                 
@@ -413,13 +412,12 @@ class Rating(RatingModel):
         assert isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
         assert isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
 
-        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
-        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
-        assert isclose(self.trueskill_beta, last_play.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu0, last_play.trueskill_mu0_after)
+        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma0, last_play.trueskill_sigma0_after)
+        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Rating has {} Last Play has {}".format(self.trueskill_delta, last_play.trueskill_delta_after)
 
-        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Rating has {} Last Play has {}".format(self.trueskill_tau, last_play.trueskill_tau_after)
+        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Rating has {} Last Play has {}".format(self.trueskill_p, last_play.trueskill_p_after)
 
         # Check that the play and victory counts reflect what Performance says
         assert self.plays == last_play.play_number, "Integrity error: Play count mismatch. Rating has {} Last play has {}.".format(self.plays, last_play.play_number)
@@ -853,6 +851,7 @@ class Game(AdminModel):
     #        each other when a draw is recorded after each rating.
     #      0 means lots
     #      1 means not at all
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
@@ -1428,8 +1427,8 @@ class Session(TimeZoneMixIn, AdminModel):
         code.append("import trueskill")
         code.append("mu0 = {}".format(TSS.mu0))
         code.append("sigma0 = {}".format(TSS.sigma0))
-        code.append("beta = {}".format(TSS.beta))
         code.append("delta = {}".format(TSS.delta))
+        code.append("beta = {}".format(self.game.trueskill_beta))
         code.append("tau = {}".format(self.game.trueskill_tau))
         code.append("p = {}".format(self.game.trueskill_p))
         code.append("TS = trueskill.TrueSkill(mu=mu0, sigma=sigma0, beta=beta, tau=tau, draw_probability=p)")
@@ -2045,7 +2044,7 @@ class Session(TimeZoneMixIn, AdminModel):
         Does not update ratings in the database.
         '''
         TSS = TrueskillSettings()
-        TS = trueskill.TrueSkill(mu=TSS.mu0, sigma=TSS.sigma0, beta=TSS.beta, tau=self.game.trueskill_tau, draw_probability=self.game.trueskill_p)
+        TS = trueskill.TrueSkill(mu=TSS.mu0, sigma=TSS.sigma0, beta=self.game.trueskill_beta, tau=self.game.trueskill_tau, draw_probability=self.game.trueskill_p)
 
         def RecordPerformance(rating_groups):
             '''
@@ -2249,9 +2248,11 @@ class Session(TimeZoneMixIn, AdminModel):
             if previous is None:
                 TS = TrueskillSettings()
                 
+                trueskill_eta = TS.mu0 - TS.mu0 / TS.sigma0 * TS.sigma0
+                
                 assert isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
                 assert isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-                assert isclose(performance.trueskill_eta_before, 0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, 0)
+                assert isclose(performance.trueskill_eta_before, trueskill_eta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, trueskill_eta)
             else:
                 assert isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
                 assert isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
@@ -2579,19 +2580,19 @@ class Performance(AdminModel):
     trueskill_sigma_after = models.FloatField('Trueskill Standard Deviation (σ) after the session.', default=TS.sigma0, editable=False)
     trueskill_eta_after = models.FloatField('Trueskill Rating (η) after the session.', default=0, editable=False)
 
-    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each performance
+    # Record the global TrueskillSettings mu0, sigma0 and delta with each performance
     # This will allow us to reset ratings to the state they were at after this performance
     # It is an integrity measure as well against changes in these settings while a leaderboard
     # is running, which has significant consequences (suggesting a rebuild of all ratings is in 
     # order)  
     trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
     trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA, editable=False)
     trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA, editable=False)
     
-    # Record the game specific Trueskill settings tau and p with each performance.
+    # Record the game specific Trueskill settings beta, tau and p with each performance.
     # Again for a given game these must be consistent among all ratings and the history of each rating. 
     # Any change while managing leaderboards should trigger an update request for ratings relating to this game.  
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA, editable=False)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU, editable=False)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY, editable=False)
 
@@ -2701,8 +2702,8 @@ class Performance(AdminModel):
         TS = TrueskillSettings()
         self.trueskill_mu0 = TS.mu0 
         self.trueskill_sigma0 = TS.sigma0 
-        self.trueskill_beta = TS.beta 
         self.trueskill_delta = TS.delta
+        self.trueskill_beta = self.session.game.trueskill_beta 
         self.trueskill_tau = self.session.game.trueskill_tau 
         self.trueskill_p = self.session.game.trueskill_p 
         
@@ -2732,15 +2733,16 @@ class Performance(AdminModel):
         if previous is None:
             TS = TrueskillSettings()
             
-            assert isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
-            assert isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-            assert isclose(performance.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.beta)
-            assert isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.delta)
+            assert isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu0_before, None, TS.mu0)
+            assert isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma0_before, None, TS.sigma0)
+            assert isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, None, TS.delta)
         else:
-            assert isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
-            assert isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
-            assert isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.beta)
-            assert isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.delta)
+            assert isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu0_after)
+            assert isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma0_after)
+            assert isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, previous.session.date_time, previous.trueskill_delta_after)
+            assert isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_beta_before, previous.session.date_time, previous.trueskill_beta_after)
+            assert isclose(performance.trueskill_tau, previous.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_tau_before, previous.session.date_time, previous.trueskill_tau_after)
+            assert isclose(performance.trueskill_p, previous.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_p_before, previous.session.date_time, previous.trueskill_p_after)
         
         # Check that there is an associate Rank
         assert not self.rank is None, "Integrity error: Apparently no rank avalaible for a Performance (id: {})".format(self.id)  
