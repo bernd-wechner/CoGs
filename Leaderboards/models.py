@@ -25,6 +25,7 @@ from django.conf import settings
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
+from timezone_field import TimeZoneField
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
@@ -112,9 +113,9 @@ class RatingModel(TimeZoneMixIn, AdminModel):
     victories = models.PositiveIntegerField('Victory Count', default=0)
     
     last_play = models.DateTimeField('Time of Last Play', default=NEVER)
-    last_play_tz = models.CharField('Time of Last Play, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    last_play_tz = TimeZoneField('Time of Last Play, Timezone', default=settings.TIME_ZONE, editable=False)
     last_victory = models.DateTimeField('Time of Last Victory', default=NEVER)
-    last_victory_tz = models.CharField('Time of Last Victory, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    last_victory_tz = TimeZoneField('Time of Last Victory, Timezone', default=settings.TIME_ZONE, editable=False)
     
     # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
     # To protect ourselves against changes to those global settings, or simply to detect them if it should happen, we capture their value at time of rating update in the Eta.
@@ -1149,7 +1150,7 @@ class Location(AdminModel):
     A location that a game session can take place at.
     '''
     name = models.CharField('Name of the Location', max_length=MAX_NAME_LENGTH)    
-    timezone = models.CharField('Timezone of the Location', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE)
+    timezone = TimeZoneField('Timezone of the Location', default=settings.TIME_ZONE)
     leagues = models.ManyToManyField(League, verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
 
     @property
@@ -1174,7 +1175,7 @@ class Session(TimeZoneMixIn, AdminModel):
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
     date_time = models.DateTimeField('Time', default=timezone.now)                                          # When the game session was played
-    date_time_tz = models.CharField('Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
     
     league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
     location = models.ForeignKey(Location, verbose_name='Session', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
@@ -2869,7 +2870,7 @@ class Rebuild_Log(TimeZoneMixIn, models.Model):
     2) Security. To see who rebuilt when
     '''
     date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
-    date_time_tz = models.CharField('Time of Ratings Rebuild, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    date_time_tz = TimeZoneField('Time of Ratings Rebuild, Timezone', default=settings.TIME_ZONE, editable=False)
     ratings = models.PositiveIntegerField('Number of Ratings Built')
     duration = models.DurationField('Duration of Rebuild')
     rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)

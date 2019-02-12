@@ -10,6 +10,8 @@ info against every record saved.
 '''
 
 from cuser.middleware import CuserMiddleware
+from timezone_field import TimeZoneField
+
 from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -24,11 +26,11 @@ class AdminModel(models.Model):
     # Simple history and administrative fields
     created_by = models.ForeignKey(User, verbose_name='Created By', related_name='%(class)ss_created', editable=False, null=True, on_delete=models.SET_NULL)
     created_on = models.DateTimeField('Time of Creation', editable=False, null=True)
-    created_on_tz = models.CharField('Time of Creation, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    created_on_tz = TimeZoneField('Time of Creation, Timezone', default=settings.TIME_ZONE, editable=False)
 
     last_edited_by = models.ForeignKey(User, verbose_name='Last Edited By', related_name='%(class)ss_last_edited', editable=False, null=True, on_delete=models.SET_NULL)
     last_edited_on = models.DateTimeField('Time of Last Edit', editable=False, null=True)
-    last_edited_on_tz = models.CharField('Time of Last Edit, Timezone', max_length=settings.TIME_ZONE_NAME_MAXLEN, default=settings.TIME_ZONE, editable=False)
+    last_edited_on_tz = TimeZoneField('Time of Last Edit, Timezone', default=settings.TIME_ZONE, editable=False)
     
     def update_admin_fields(self):
         '''

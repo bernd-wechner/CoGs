@@ -62,6 +62,7 @@ INSTALLED_APPS = (
     'dal',
     'dal_select2',
     'cuser',
+    'timezone_field',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -150,13 +151,6 @@ USE_TZ = True
 # as it's what we'll use before a user logs in and submits their local timezone
 # via the login form.
 TIME_ZONE = str(get_localzone()) 
-
-# A custom setting to inform models storing TZ names how long the CharField should be.
-# Discussion of this can be found at:
-#    https://stackoverflow.com/questions/3477347/php-tz-setting-length
-#    https://stackoverflow.com/questions/12546312/max-length-of-tzname-field-timezone-identifier-name
-# Note that chaning this will require a Django database migration (change to the schema). 
-TIME_ZONE_NAME_MAXLEN = 64
 
 DATETIME_FORMAT = 'D, j M Y H:i'
 
