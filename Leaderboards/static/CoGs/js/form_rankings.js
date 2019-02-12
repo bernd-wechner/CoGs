@@ -1325,8 +1325,8 @@ function RenderTable(template, entries, placein, entry_number, session) {
     //			one for the team rank, name, and number of players (in the team) 
     //			one for the details (player list).
     // In both cases we need a header row!.
-    const rowsNeeded = (table_type == TableType.Teams ? 2*entries : entries) + 1;
-    const rowsPresent = table.rows.length;
+    let rowsNeeded = (table_type == TableType.Teams ? 2*entries : entries) + 1;
+    let rowsPresent = table.rows.length;
     
     // If there are rows in the table already, and we have session data, we 
     // should really check all present rows for conformance with the provided

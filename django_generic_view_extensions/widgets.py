@@ -160,7 +160,7 @@ class OrderingWidget(SelectMultiple):
         if self.model:
             # Get the model fields with their widgets
             # TODO: if an option follows a relation we'll need to get the fields/widgets from the related model!
-            fields = fields_for_model(self.model)
+            fields = {f.name: f for f in self.model._meta.get_fields()}
             
             # The choices are essentially as defined by the models 'order_option' but reflecting self.initial_values.
             #
@@ -194,13 +194,13 @@ class OrderingWidget(SelectMultiple):
             choices = []
             if len(requested) > 0:
                 for fieldname, option in requested.items():
-                    choices.append((option, fields[fieldname].label))
+                    choices.append((option, fields[fieldname].verbose_name))
                     if fieldname in defaults:
                         del defaults[fieldname]
 
             if len(defaults) > 0:
                 for fieldname, option in defaults.items():
-                    choices.append(("~"+fieldname, fields[fieldname].label)) # By default, disabled with ~ prefix
+                    choices.append(("~"+fieldname, fields[fieldname].verbose_name)) # By default, disabled with ~ prefix
 
             kwargs["choices"] = choices
                                         

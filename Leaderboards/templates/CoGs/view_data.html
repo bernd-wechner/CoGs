@@ -40,7 +40,8 @@
 			$("#browser_prior").css("visibility", pk_prior == null ? "hidden" : "visible");
 			$("#browser_next").css("visibility", pk_next == null ? "hidden" : "visible");
 			
-			url = "{% url 'list' model_name %}?{{ filters|join:"&" }}";
+			url = "{% url 'list' model_name %}"
+			if ({{filters|length}}>0) url += "?{{filters|join:'&'}}";
 			html = "{{model_name}} " + object_browser[2] + " of <a href='" + url + "'>" + object_browser[3] + "</a>";
 			
 			$("#browser_position").html(html);

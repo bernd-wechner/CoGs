@@ -25,15 +25,14 @@ from django.urls import reverse #, resolve
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
-from django.utils.timezone import is_aware, make_aware
+from django.conf import settings
 
 # TODO: Fix timezone handling. By default in Django we use UTC but we want to enter sessons in local time and see results in local time.
 #        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
 #        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
 #        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
-from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
+from django.utils.timezone import get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, localtime, is_aware, make_aware, make_naive, activate
 from django.utils.formats import localize
 from numpy import rank
 
@@ -503,7 +502,7 @@ class leaderboard_options:
             if attr != me:
                 val = getattr(self, attr)
                 if isinstance(val, datetime):
-                    val = val.strftime(DATETIME_INPUT_FORMATS[0])
+                    val = val.strftime(settings.DATETIME_INPUT_FORMATS[0])
                 elif not isinstance(val, str):
                     try:
                         val = json.dumps(val)
@@ -609,19 +608,19 @@ def get_leaderboard_titles(lo):
     
     subtitle = []
     if lo.as_at != default.as_at:
-        subtitle.append("as at {}".format(localize(lo.as_at)))
+        subtitle.append("as at {}".format(localize(localtime(lo.as_at))))
 
     if lo.changed_since != default.changed_since:
-        subtitle.append("changed after {}".format(localize(lo.changed_since)))
+        subtitle.append("changed after {}".format(localize(localtime(lo.changed_since))))
 
     if lo.compare_back_to != default.compare_back_to:
-        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(lo.compare_back_to)
+        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(localtime(lo.compare_back_to))
         subtitle.append("compared back to the leaderboard as at {}".format(time))
     elif lo.compare_with != default.compare_with:
         subtitle.append("compared up to with {} prior leaderboards".format(lo.compare_with))
 
     if lo.compare_till != default.compare_till:
-        subtitle.append("compared up to the leaderboard as at {}".format(localize(lo.compare_till)))
+        subtitle.append("compared up to the leaderboard as at {}".format(localize(localtime(lo.compare_till))))
         
     return (title, "<BR>".join(subtitle))
 
@@ -665,7 +664,7 @@ def view_Leaderboards(request):
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),
          'now': timezone.now(),        
-         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])         
+         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])         
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
@@ -841,7 +840,7 @@ def ajax_Leaderboards(request, raw=False):
                 lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
                     counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(time), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
+                    snapshot = (localize(localtime(time)), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
                     snapshots.append(snapshot)
 
             if len(snapshots) > 0:                    
@@ -1013,6 +1012,7 @@ def view_UnwindToday(request):
     
     return HttpResponse(html)
 
+from django.apps import apps
 def view_Fix(request):
 
 # DONE: Used this to create Performance objects for existing Rank objects
@@ -1037,6 +1037,66 @@ def view_Fix(request):
     #html = rebuild_ratings()
     #html = import_sessions()
     
+    #=============================================================================
+    # Datetime fix up
+    # We want to walk through every Session and fix the datetime so it's right
+    # Subsequent to this we want to walk through every model and fix the Created and Modified datetime as well
+    
+    # Session times
+    sessions = Session.objects.all()
+    
+    activate('Australia/Hobart')
+
+    # Did this on dev database. Seems to have worked a charm.
+    for session in sessions:
+        dt_raw = session.date_time
+        dt_local = localtime(dt_raw)
+        error = dt_local.tzinfo._utcoffset
+        dt_new = dt_raw - error
+        dt_new_local = localtime(dt_new)
+        print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+        session.date_time = dt_new_local
+        session.save()
+        
+    # The rating model has two DateTimeFields that are wrong in the same way, but thee can be fixed by rebuilding ratings.
+    pass  
+        
+    # Now for every model that we have that derives from AdminModel we need to updated we have two fields:
+    #     created_on
+    #     last_edited_on
+    # That we need to tweak the same way.
+    
+    # We can do this by looping all our models and checking for those fields.  
+    models = apps.get_app_config('Leaderboards').get_models()
+    for model in models:
+        if hasattr(model, 'created_on') or hasattr(model, 'last_edited_on'):
+            for obj in model.objects.all():
+                if hasattr(obj, 'created_on'): 
+                    dt_raw = obj.created_on
+                    dt_local = localtime(dt_raw)
+                    error = dt_local.tzinfo._utcoffset
+                    dt_new = dt_raw - error
+                    dt_new_local = localtime(dt_new)
+                    print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+                    obj.created_on = dt_new_local 
+
+                if hasattr(obj, 'last_edited_on'): 
+                    dt_raw = obj.last_edited_on
+                    dt_local = localtime(dt_raw)
+                    error = dt_local.tzinfo._utcoffset
+                    dt_new = dt_raw - error
+                    dt_new_local = localtime(dt_new)
+                    print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+                    obj.last_edited_on = dt_new_local
+                
+                obj.save()
+        
+#     for session in sessions:
+#         dt_raw = session.date_time
+#         dt_local = localtime(dt_raw)
+#         dt_naive = make_naive(dt_local)
+#         ctz = get_current_timezone()
+#         print_debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
     
     html = "Success"
     
@@ -1152,6 +1212,8 @@ def import_sessions():
     return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
 
 def rebuild_ratings():
+    activate(settings.TIME_ZONE)
+
     title = "Rebuild of all ratings"
     pr = cProfile.Profile()
     pr.enable()

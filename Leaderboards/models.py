@@ -1,24 +1,29 @@
+# Python packages
 import trueskill
 import html
 import re
+import pytz
+from collections import OrderedDict
+from math import isclose
+from scipy.stats import norm
+from datetime import datetime, timedelta
+from builtins import str
 
+# Django packages
 from django.db import models, DataError, IntegrityError #, connection, 
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
 from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
 from django.urls import reverse_lazy
-from django.utils import timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.utils import timezone
 from django.utils.formats import localize
+from django.utils.timezone import localtime
+from django.utils.safestring import mark_safe
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
-
-from collections import OrderedDict
-from math import isclose
-from scipy.stats import norm
-from datetime import datetime, timedelta
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
@@ -26,9 +31,7 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url
 from django_generic_view_extensions.decorators import property_method
-from django.utils.safestring import mark_safe
-from builtins import str
-
+from django_generic_view_extensions.util import time_str
 
 # CoGs Leaderboard Server Data Model
 #
@@ -45,7 +48,7 @@ from builtins import str
 
 MAX_NAME_LENGTH = 200                       # The maximum length of a name in the database, i.e. the char fields for player, game, team names and so on.
 FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
-NEVER = timezone.make_aware(datetime.min)   # Used for times to indicat if there is no last play or victory that has a time 
+NEVER = pytz.utc.localize(datetime.min)     # Used for times to indicat if there is no last play or victory that has a time
 
 # Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
 ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
@@ -107,7 +110,7 @@ class RatingModel(AdminModel):
     plays = models.PositiveIntegerField('Play Count', default=0)
     victories = models.PositiveIntegerField('Victory Count', default=0)
     
-    last_play = models.DateTimeField(default=timezone.now)
+    last_play = models.DateTimeField(default=NEVER)
     last_victory = models.DateTimeField(default=NEVER)
     
     # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
@@ -1821,7 +1824,7 @@ class Session(AdminModel):
         
         :param name_style: Must be supplied
         '''
-        detail = u"<b>" + localize(self.date_time) + u"</b><br><br>"
+        detail = u"<b>" + time_str(self.date_time) + u"</b><br><br>"
         
         (ol, data) = self._html_rankers_ol(self.ranks.all(), True, None, name_style)
         
@@ -2105,13 +2108,13 @@ class Session(AdminModel):
         return self.trueskill_impacts 
 
     def __unicode__(self): 
-        return u'{} - {}'.format(localize(self.date_time), self.game)
+        return u'{} - {}'.format(time_str(self.date_time), self.game)
     
     def __str__(self): return self.__unicode__()
     
     def __verbose_str__(self):
         return u'{} - {} - {} - {}'.format(
-            localize(self.date_time), 
+            time_str(self.date_time), 
             self.league, 
             self.location, 
             self.game)
@@ -2129,7 +2132,7 @@ class Session(AdminModel):
             
         try:
             return u'{} - {} - {} - {} - {} {} ({} won)'.format(
-                localize(self.date_time), 
+                time_str(self.date_time), 
                 field_render(self.league, link), 
                 field_render(self.location, link), 
                 field_render(self.game, link), 
@@ -2140,7 +2143,7 @@ class Session(AdminModel):
             pass
     
     def __detail_str__(self, link=None):
-        detail = localize(self.date_time) + "<br>"
+        detail = time_str(self.date_time) + "<br>"
         detail += field_render(self.game, link) + "<br>"
         detail += u'<OL>'
 
@@ -2834,7 +2837,7 @@ class Performance(AdminModel):
             
         performer = field_render(self.player, link)
         
-        detail = u'{} - {:%d, %b %Y} - {}:<UL>'.format(game, when, performer)
+        detail = u'{} - {:%a, %-d %b %Y} - {}:<UL>'.format(game, when, performer)
         detail += "<LI>Players: {}</LI>".format(players)
         detail += "<LI>Play number: {}</LI>".format(self.play_number)
         detail += "<LI>Play Weighting: {:.0%}</LI>".format(self.partial_play_weighting)

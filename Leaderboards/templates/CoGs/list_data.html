@@ -180,7 +180,13 @@
 	}
 </script>     
 
-<p>Displaying {{ object_list | length }} {{model_name_plural }} of <A href="{% url 'list' model_name %}">{{ total }}</A>. </p>
+<p>Displaying 
+{% if object_list|length == total %}
+	all {{ total }} {{model_name_plural}}.
+{% else %}
+	{{ object_list|length }} {{model_name_plural }} of <A href="{% url 'list' model_name %}">{{ total }}</A>. 
+{% endif %}
+</p>
 
 {#{% if get_params %}#}
 {#<p>{{get_params}}</p>#}

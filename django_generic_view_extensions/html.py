@@ -9,7 +9,8 @@ but also supporting numerous options that can be passed in through a request (vi
 # Python imports
 import html
 import re
-from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
+from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE.
+from datetime import datetime 
 
 # Django imports
 from django.conf import settings
@@ -21,7 +22,7 @@ from django.utils.safestring import mark_safe
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE 
-from .util import isListValue, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth
+from .util import isListValue, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth, time_str
 from .options import list_display_format, object_display_format, object_display_modes, flt, osf, odm, odf, lmf
 from .filterset import format_filterset
 
@@ -79,6 +80,8 @@ def fmt_str(obj, safe=False):
             text = braces[0] + nl_delim.join(lines) + braces[1]
         else:
             text = braces[0] + csv_delim.join(lines) + braces[1]
+    elif isinstance(obj, datetime):
+        text = force_text(time_str(obj))
     else:
         text = force_text(str(obj))
         

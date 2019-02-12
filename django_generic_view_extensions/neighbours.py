@@ -12,11 +12,10 @@ jumps away. For nuanced browsing.
 # Django imports
 from django.db.models import F, Window, Subquery
 from django.db.models.functions import Lag, Lead, RowNumber
-from django.db import connection
 
 # Package imports
-from .util import get_SQL
-from .debug import print_debug
+#from .util import get_SQL
+#from .debug import print_debug
 
 def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     '''
@@ -89,8 +88,8 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     # whole table, then extract from the result the one line we want! Wish I could find a way to 
     # do this in the Django ORM not with a raw() call.    
 
-    # First we need the SQL from the existing query. Many on-line sources seem tor eocmmend 
-    # str(qs.query) but this does not return reliable SQL! A bug in Django amd ,uch discussed:
+    # First we need the SQL from the existing query. Many on-line sources seem to recommend 
+    # str(qs.query) but this does not return reliable SQL! A bug in Django and much discussed:
     #    https://code.djangoproject.com/ticket/30132
     #    https://code.djangoproject.com/ticket/25705
     #    https://code.djangoproject.com/ticket/25092

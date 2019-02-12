@@ -151,26 +151,4 @@
 	{% endif %}	
 </form>
 
-{#We want to submit the local timezone info as best we can with the form so submitted times can be saved in UTC properly. #}
-<script src="{% static 'CoGs/js/jstz.min.js'%}"></script>
-<script>
-	var tz = jstz.determine();
-	var offset = new Date().getTimezoneOffset()/60;
-	
-	var form = document.getElementById("formData");
-	
-	var hiddenTZ = document.createElement("input");
-	hiddenTZ.setAttribute("type", "hidden");
-	hiddenTZ.setAttribute("name", "TZname");
-	hiddenTZ.setAttribute("value", tz.name());	
-
-	var hiddenOffset = document.createElement("input");
-	hiddenOffset.setAttribute("type", "hidden");
-	hiddenOffset.setAttribute("name", "TZoffset");
-	hiddenOffset.setAttribute("value", offset);
-	
-	form.appendChild(hiddenTZ);
-	form.appendChild(hiddenOffset);
-</script>
-
 {% endblock %}

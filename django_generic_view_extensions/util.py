@@ -6,14 +6,18 @@ Utils
 A general collection of useful functions used across the package or provided for use outside.  
 '''
 # Python imports
+import pytz
 import re
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 from titlecase import titlecase
+from datetime import datetime, timedelta
 
 # Django imports
 from django.apps import apps
 from django.db import connection
 from django.db.models.query import QuerySet
+from django.utils.formats import localize
+from django.utils.timezone import make_naive, localtime
 
 # Package imports
 from .options import odm
@@ -51,6 +55,12 @@ def datetime_format_python_to_PHP(python_format_string):
         php_format_string = php_format_string.replace(py, php)
 
     return php_format_string
+
+def is_dst(zonename):
+    '''Given the name of Timezone will attempt determine if that timezone is in Daylight Saving TIMe now (DST)'''
+    tz = pytz.timezone(zonename)
+    now = pytz.utc.localize(datetime.utcnow())
+    return now.astimezone(tz).dst() != timedelta(0)
 
 def getApproximateArialStringWidth(st):
     '''
@@ -114,7 +124,21 @@ def indentVAL(string, indent=odm.indent):
         return tag_start + string + tag_end
     else:
         return string
+
+def time_str(date_time):
+    '''
+    A very simple one liner to return a formatted local naive date time from a database time.
     
+    As this is done in many places, to format date_times, it is captured here.
+        
+    localtime() - converts date_time from the database stored UTC time, to local time as defined by Django's activate()
+    make_naive() - just strips the timezone info so the default str() representation doesn't have the timezone data
+    localize() - produces the string format defined in Django settings, typically by DATETIME_FORMAT
+    '''
+    # FIXME: the RFC5322 format introduces a bizarre TZ artifact. Grrr. 
+    #        Try the DATETIME_FORMAT 'D,  j M Y H:i'
+    return localize(make_naive(localtime(date_time)))
+
 def get_SQL(query):
     '''
     A workaround for a bug in Django which is reported here (several times):

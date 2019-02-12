@@ -35,5 +35,5 @@ def print_debug(msg):
         
         matches = RE.match(msg).groupdict()
         
-        print("{}{:10.4f}, {:10.4f} - {}{}".format(matches["newlines1"], now-debug_time_first, now-debug_time_last, matches["message"], matches["newlines2"]))
+        print("f{matches['newlines1']}{now-debug_time_first:10.4f}, {now-debug_time_last:10.4f} - {matches['message']}{matches['newlines2']}")
         debug_time_last = now    

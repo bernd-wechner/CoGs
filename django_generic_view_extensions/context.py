@@ -7,9 +7,12 @@ Functions that add to the context that templates see.
 '''
 # Django imports
 from django.utils.safestring import mark_safe
-from django.conf.global_settings import DATETIME_INPUT_FORMATS
+from django.conf import settings 
+from django.utils.timezone import get_current_timezone, make_naive
 
 # Python imports
+import pytz
+from datetime import datetime
 #import json
 
 # Package imports
@@ -35,10 +38,10 @@ def add_model_context(view, context, plural, title=False):
         context["model_name_plural"] = context["view"].model._meta.verbose_name_plural
         context["operation"] = view.operation
         context["title"] = (title + ' ' if title else '') + (safetitle(context["model"]._meta.verbose_name_plural) if plural else safetitle(context["model"]._meta.verbose_name))
-        context["default_datetime_input_format"] = datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])
+        context["default_datetime_input_format"] = datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
 
 #       This was an experiment with saving session stored inheritance data in the context.
-#       Deprecated in favour of a databse fetch into 
+#       Deprecated in favour of a database fetch into 
 #         # If this session has inheritablke defaults load those
 #         inheritance = get_inherit_fields(view.request.session, context["view"].model)
 #         if inheritance:
@@ -71,6 +74,40 @@ def add_model_context(view, context, plural, title=False):
         raise ValueError("Internal Error: Views must be provided at least 'model' in kwargs and an 'operation' argument. One or the other was missing. This is a site design error relating to defined urlpatterns which failed to provide on or the other.")
 
     return context
+
+def add_timezone_context(view, context):
+    '''
+    Add some useful timezone information to the context. Timezone can be determined at login,
+    is stored as a session variable and passed by views into context using this function.
+    '''
+    context['timezones'] = pytz.common_timezones
+    
+    #naive_now = make_naive(datetime.now(get_localzone()))
+    naive_now = datetime.now()
+
+    dt = naive_now
+    context['naive_datetime'] = str(dt)
+    context['naive_timezone'] = None
+    context['naive_utcoffset'] = None
+
+    tz = pytz.timezone(view.request.session.get("django_timezone", "UTC"))
+    dt = tz.localize(naive_now)
+    context['session_datetime'] = str(dt)
+    context['session_timezone'] = str(dt.tzinfo)
+    context['session_utcoffset'] = dt.tzinfo._utcoffset
+    
+    active_tz = get_current_timezone()
+    active_dt = active_tz.localize(naive_now)
+    context['active_datetime'] = str(active_dt)
+    context['active_timezone'] = str(active_dt.tzinfo)
+    context['active_utcoffset'] = active_dt.tzinfo._utcoffset
+    
+    django_tz = pytz.timezone(settings.TIME_ZONE)
+    django_dt = django_tz.localize(naive_now)
+    context['django_datetime'] = str(django_dt)
+    context['django_timezone'] = str(django_dt.tzinfo)
+    context['django_utcoffset'] = django_dt.tzinfo._utcoffset
+    
 
 def add_format_context(view, context):
     '''
@@ -168,7 +205,6 @@ def add_filter_context(view, context, filterset):
     if hasattr(view, 'filterset') and not view.filterset is None:
         context["txt_filters"] = mark_safe(format_filterset(view.filterset, as_text=True))        
         context["filters"] = format_filterset(view.filterset, as_text=False)
-        print(context["filters"])        
 
 def add_ordering_context(view, context, ordering):
     '''

@@ -50,7 +50,6 @@ urldefaults = { 'object_summary_format': 'brief',
              'key': 'nokey'
             }
 
-
 def default(obj):
     '''
     A shorthand method for getting the default value of one of the option classes
@@ -90,7 +89,7 @@ class object_summary_format():
     # TODO: implement a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
     # table = 5     # Uses __table_str__ if available else __detail_str__
     # TODO: implement a json format that asks a model to summarise itself in JSON format.
-    # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    
+    # json = 6      # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    
     template = 7    # Render the objects value as "{model.pk}" 
     
     #default = brief # The default to use

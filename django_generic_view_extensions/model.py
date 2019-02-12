@@ -64,7 +64,7 @@ from django.db import models
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
-from .util import isListType, isListValue, isDictionary, safetitle
+from .util import isListType, isListValue, isDictionary, safetitle, time_str
 from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str
@@ -198,7 +198,7 @@ def field_render(field, link_target=None, sum_format=None):
     tgt = None
     
     if link_target == flt.mailto:
-        tgt = "mailto:{}".format(field) 
+        tgt = f"mailto:{field}" 
     elif isinstance(link_target, str) and link_target:
         tgt = link_target
     elif link_target == flt.internal and hasattr(field, "link_internal"):
@@ -232,11 +232,14 @@ def field_render(field, link_target=None, sum_format=None):
         if callable(getattr(field, '__str__', None)):
             txt = html.escape(field.__str__())
         else:
-            txt = str(field)
+            if isinstance(field, models.DateTimeField):
+                txt = time_str(field)
+            else:
+                txt = str(field)
 
     if fmt == osf.template:
         if hasattr(field, 'pk'):
-            txt = "{{{}.{}}}".format(field._meta.model.__name__, field.pk)
+            txt = f"{{{field._meta.model.__name__}.{field.pk}}}"
         else:
             txt = "{field_value}"            
             raise ValueError("Internal error, template format not supported for field.")

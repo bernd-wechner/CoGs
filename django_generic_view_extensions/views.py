@@ -22,10 +22,14 @@ In the process it also supports Field Privacy and Admin fields though these were
 '''
 #Python imports
 import datetime
+import pytz
 #import re
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
+from django.contrib.auth.views import LoginView
+from django.conf import settings
+
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.db.models import Subquery
@@ -39,15 +43,16 @@ from url_filter.filtersets import ModelFilterSet
 from cuser.middleware import CuserMiddleware
 
 # Package imports
-from .util import app_from_object, class_from_string
+from .util import app_from_object, class_from_string, is_dst
 from .html import list_html_output, object_html_output, object_as_html, object_as_table, object_as_ul, object_as_p, object_as_br
-from .context import add_model_context, add_format_context, add_filter_context, add_ordering_context
+from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
 from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
 from .filterset import format_filterset
+from django.utils.timezone import activate, get_current_timezone 
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -59,7 +64,13 @@ def get_filterset(self):
     qs = self.model.objects.all()
     fs = FilterSet(data=self.request.GET, queryset=qs)  
     
-    if len(fs.get_specs()) > 0:
+    # get_specs raises an Empty exception if there are no specs, and a ValidationError if a value is illegal  
+    try:
+        specs = fs.get_specs()
+    except:
+        specs = []
+    
+    if len(specs) > 0:
         fs.fields = format_filterset(fs)
         fs.text = format_filterset(fs, as_text=True)
         return fs
@@ -71,6 +82,17 @@ def get_ordering(self):
         return self.format.ordering.split(',')              
     else:
         return getattr(self.model._meta, 'ordering', None)
+
+class LoginViewExtended(LoginView):
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+        add_timezone_context(self, context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
+
+    def form_valid(self, form):
+        form.request.session['django_timezone'] = form.request.POST['timezone']
+        return super().form_valid(form)        
 
 class TemplateViewExtended(TemplateView):
     '''
@@ -93,12 +115,13 @@ class ListViewExtended(ListView):
     as_p = object_as_p
     as_br = object_as_br
     as_html = object_as_html # Chooses one of the first three based on request parameters
-       
+
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
 
         add_model_context(self, context, plural=True)
+        add_timezone_context(self, context)
         add_format_context(self, context)
         add_filter_context(self, context, self.filterset)
         add_ordering_context(self, context, self.ordering)
@@ -159,16 +182,7 @@ class DetailViewExtended(DetailView):
             self.operation = kwargs['operation']
 
     # Add some model identifiers to the context (if 'model' is passed in via the URL)
-    def get_context_data(self, *args, **kwargs):
-        context = super().get_context_data(*args, **kwargs)
-
-        add_model_context(self, context, plural=False)
-        add_format_context(self, context)
-        add_filter_context(self, context, self.filterset)
-        add_ordering_context(self, context, self.ordering)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        return context  
-    
+        
     # Fetch the URL specified object, needs the URL parameters "model" and "pk"
     def get_object(self, *args, **kwargs):
         self.model = class_from_string(self, self.kwargs['model'])
@@ -181,14 +195,10 @@ class DetailViewExtended(DetailView):
         self.ordering = get_ordering(self)
 
         # Get Neighbour info for the object browser
-        self.filterset = get_filterset(self)       
-        qs = self.filterset.filter()
+        self.filterset = get_filterset(self)
         
         neighbours = get_neighbour_pks(self.model, self.pk, filterset=self.filterset, ordering=self.ordering)            
-
-        # Add this information to the view (so it's available in the context).
-        self.object_browser = neighbours        
-
+    
         # Support for incoming next/prior requests via a GET
         if 'next' in self.request.GET or 'prior' in self.request.GET:
             self.ref = get_object_or_404(self.model, pk=self.pk)
@@ -205,16 +215,31 @@ class DetailViewExtended(DetailView):
                     self.pk = self.object_browser[0]
                                     
             self.obj = get_object_or_404(self.model, pk=self.pk)
-            self.kwargs["pk"] = self.pk
-                             
+            self.kwargs["pk"] = self.pk                             
         else:
             self.obj = get_object_or_404(self.model, pk=self.pk)
+
+        
+        # Add this information to the view (so it's available in the context).
+        self.object_browser = neighbours        
+
         
         self.format = get_object_display_format(self.request.GET)
         
         collect_rich_object_fields(self)
         
         return self.obj
+
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        add_model_context(self, context, plural=False)
+        add_timezone_context(self, context)
+        add_format_context(self, context)
+        add_filter_context(self, context, self.filterset)
+        add_ordering_context(self, context, self.ordering)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context  
 
 class DeleteViewExtended(DeleteView):
     '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
@@ -253,6 +278,7 @@ class DeleteViewExtended(DeleteView):
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_model_context(self, context, plural=False, title='Delete')
+        add_timezone_context(self, context)
         add_format_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
@@ -296,22 +322,10 @@ class CreateViewExtended(CreateView):
             
         return initial 
 
-    def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
-        print_debug("Getting contex data")
-        # Note that the super.get_context_data initialises the form with get_initial
-        # So after calling this we have ...
-        context = super().get_context_data(*args, **kwargs)
-        print_debug("Adding model context")
-        add_model_context(self, context, plural=False, title='New')
-        print_debug("Adding extra context")
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        print_debug("Got context data")
-        return context
-
     def get_queryset(self, *args, **kwargs):
         print_debug("Getting queryset for {}: {} {}".format(self.kwargs['model'], args, kwargs))
         self.fields = '__all__'
+
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
         self.queryset = QuerySet(model=self.model)
@@ -322,6 +336,21 @@ class CreateViewExtended(CreateView):
         print_debug("Got queryset")
         return self.queryset
 
+    def get_context_data(self, *args, **kwargs):
+        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
+        print_debug("Getting contex data")
+        # Note that the super.get_context_data initialises the form with get_initial
+        # So after calling this we have ...
+        context = super().get_context_data(*args, **kwargs)
+        print_debug("Adding model context")
+        add_model_context(self, context, plural=False, title='New')
+        print_debug("Adding timezone context")
+        add_timezone_context(self, context)
+        print_debug("Adding extra context")
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        print_debug("Got context data")
+        return context
+
     def post(self, request, *args, **kwargs):
         form = self.get_form()
         self.form = form
@@ -329,8 +358,8 @@ class CreateViewExtended(CreateView):
         
         # NOTE: At this point form.data has the submitted POST fields.
         # But form.instance seems to be a default instance of the object. form.data not applied,
-        # Theory, form.full_clenan() does the mapping somehow? It calls model.clean() which sees populated attribs anyow.
-        # full_clean() is initiated by form.add_error ro for.is_valid. 
+        # Theory, form.full_clean() does the mapping somehow? It calls model.clean() which sees 
+        # populated attribs anyow. full_clean() is initiated by form.add_error or form.is_valid. 
         
         # FIXME: Check if these forms have instances attached that can be used for validation.
         # DONE: There is an instance but not populated yet with data from form.
@@ -341,6 +370,7 @@ class CreateViewExtended(CreateView):
         # FIXME:
         # Form errors can be injected here and they appear on the rendered form
         # At this point form.instance has an instance of the model (related forms too?)
+        
         # TODO: Work out how it get that and ask "Can I create instances of all related models?"         
         if form.is_valid() and self.is_valid():
             return self.form_valid(form)
@@ -396,11 +426,6 @@ class CreateViewExtended(CreateView):
             html += "</table>"         
             return HttpResponse(html)
         else:        
-            # TODO: Act on submitted timezone info
-            # Arrives at present as self.requst.POST["TZname"] and self.requst.POST["TZoffset"]
-            TZname = self.request.POST["TZname"] if "TZname" in self.request.POST else None  
-            TZoffset = self.request.POST["TZoffset"] if "TZoffset" in self.request.POST else None  
-            
             # TODO: Consider if we should save the master first then related objects 
             # or the other way round or if it should be configurable or if it even matters.
             
@@ -451,6 +476,8 @@ class UpdateViewExtended(UpdateView):
         context = super().get_context_data(*args, **kwargs)
         print_debug("Adding model context")
         add_model_context(self, context, plural=False, title='Edit')
+        print_debug("Adding timezone context")
+        add_timezone_context(self, context)
         print_debug("Adding extra context")
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         print_debug("Got context data")
@@ -462,6 +489,7 @@ class UpdateViewExtended(UpdateView):
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
+        
         if callable(getattr(self.obj, 'fields_for_model', None)): 
             self.fields = self.obj.fields_for_model()
         else:           
@@ -519,7 +547,7 @@ class UpdateViewExtended(UpdateView):
             if callable(getattr(self, 'post_processor')): self.post_processor()
 
             return HttpResponseRedirect(self.get_success_url())
-         
+        
 #         try:
 #             with transaction.atomic():
 #                 self.object = form.save()

@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/1.8/ref/settings/
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
+from tzlocal import get_localzone
+from django.conf import global_settings
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -82,6 +84,7 @@ MIDDLEWARE = (
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
+    'django_generic_view_extensions.middleware.TimezoneMiddleware',
     'cuser.middleware.CuserMiddleware',
 )
 
@@ -90,6 +93,7 @@ if LIVE_SITE:
     from django_lighttpd_middleware import METHOD
     if METHOD == "middleware":
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
+# enable the debug toolbar when needed (it slows things down enormously)
 # else:
 #     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', ) 
 #     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)    
@@ -131,15 +135,25 @@ DATABASES = {
 
 LANGUAGE_CODE = 'en-us'
 
-TIME_ZONE = 'UTC'
-
 USE_I18N = False
 
 USE_L10N = False
 
 USE_TZ = True
 
-DATETIME_FORMAT = 'r'
+# For some bizarre reason Django has a default TIME_ZONE of America/Chicago
+# Also Python makes it very hard to get the system timezone it seems
+# The tzlocal package was written by smeone to fix that glaring hole!
+# This then is the timezone the webserver thinks it's in!
+#
+# TIME_ZONE of course should be the time zone the primary audience is in,
+# as it's what we'll use before a user logs in and submits their local timezone
+# via the login form.
+TIME_ZONE = str(get_localzone()) 
+
+DATETIME_FORMAT = 'D, j M Y H:i'
+
+DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S%z'] + global_settings.DATETIME_INPUT_FORMATS 
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.8/howto/static-files/

@@ -22,7 +22,7 @@ String.prototype.boolean = function() {
       case false.toString() :
         return false;
       default:
-        throw new Error ("Boolean.parse: Cannot convert string to boolean.");
+        throw new Error ("string.boolean(): Cannot convert string to boolean.");
     }
   };
 
@@ -114,13 +114,13 @@ function InitControls(options) {
 	
 	//Configure the Copy Button
 	var copybutton = document.getElementById("btnCopy");
-	var clipboard = new Clipboard(copybutton);
+	var clipboard = new ClipboardJS(copybutton);
 	
 	//What to do when the copy button is clicked 
 	clipboard.on('success', function(e) {
+		const copy_div = document.getElementById('tblLB_naked');
 		e.clearSelection();
-		var clipboard_target = document.getElementById("divLB_naked");
-		document.body.removeChild(clipboard_target);
+		copy_div.parentNode.removeChild(copy_div);
 	});	
 }
 
@@ -137,11 +137,11 @@ function URLopts(element) {
 	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
 	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
-	val = $('#chkSessionDetails').is(":checked"); if (val != Boolean(defaults.details)) opts.push("details="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != Boolean(defaults.analysis_pre)) opts.push("analysis_pre="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != Boolean(defaults.analysis_post)) opts.push("analysis_post="+encodeURIComponent(val));
-	val = $('#chkHighlightPlayers').is(":checked"); if (val != Boolean(defaults.highlight_players)) opts.push("highlight_players="+encodeURIComponent(val));
-	val = $('#chkHighlightChanges').is(":checked"); if (val != Boolean(defaults.highlight_changes)) opts.push("highlight_changes="+encodeURIComponent(val));
+	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
+	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
+	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
+	val = $('#chkHighlightPlayers').is(":checked"); if (val != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(val));
+	val = $('#chkHighlightChanges').is(":checked"); if (val != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(val));
 
 	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
 
@@ -239,10 +239,10 @@ function refetchLeaderboards(event) {
 }
 
 function prepare_target()  {
-	var copy_table = document.createElement('TABLE');
+	const copy_table = document.createElement('TABLE');
 	copy_table.id = "tblLB_naked";
 
-	var copy_div = document.createElement('DIV');
+	const copy_div = document.createElement('DIV');
 	copy_div.id = 'divLB_naked'
 	copy_div.style.position = 'absolute';
 	copy_div.style.left = '-99999px';
@@ -251,6 +251,13 @@ function prepare_target()  {
 	// as does any div I wrap the table in. Meaning I can't find a way 
 	// to copy with an overflow:auto div. I spent ages experimenting with 
 	// no success,
+	
+	// Some tests:
+	// Chromium: Just copies the table
+	// Firefox: copies the div
+	// Arora: copies nothing (low end browser)
+	// Web: copies only the table
+	
 	copy_div.appendChild(copy_table);		// Put the table in the wrapping div
 	document.body.appendChild(copy_div);	// Put the copy div into the document
 	

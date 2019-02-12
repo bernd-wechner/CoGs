@@ -10,7 +10,13 @@ django-url-filter is a great package that parses GET parameters into Django filt
 Alas it does not have a nice way to pretty print the filter for reporting it on views, 
 nor for extracting the filter options cleanly for reconstructing a URL or QuerySet.
 '''
+# Python imports
+import urllib.parse
+import datetime
+import re
+
 # Django imports
+from django.utils.formats import localize
 from django.utils.safestring import mark_safe
 
 operation_text = {
@@ -44,6 +50,26 @@ operation_text = {
     #         "minute" : "__minute",
     #         "second" : "__second",
     }    
+
+def fix(obj):
+    '''
+    There's a sad known round trip problem with date_times in Python 3.6 and earlier.
+    The str() value fo a datetime for timezone aware datet_times produces a timezone 
+    format of ±[hh]:[mm] but the django DateTimeField when it validates inputs does not
+    recognize this format (because it uses datetime.strptime() and this is a known round
+    trip bug discussed for years here:
+    
+        https://bugs.python.org/issue15873
+        
+    fix() is like str() except for datetime objects only it removes that offending colon
+    so the datetime can be parsed with a strptime format of '%Y-%m-%d %H:%M:%S%z' (which
+    must be added to Django's DATETIME_INPUT_FORMATS of it's going to support round 
+    tripping on DateTimeFields.    
+    '''
+    if isinstance(obj, datetime.datetime):
+        return re.sub(r'(\+|\-)(\d\d):(\d\d)$',r'\1\2\3',str(obj))
+    else: 
+        return str(obj)
 
 def format_filterset(filterset, as_text=False):
     '''
@@ -118,8 +144,11 @@ def format_filterset(filterset, as_text=False):
                     field_name = field.verbose_name
                 else:
                     field_name = "__".join(spec.components)
-                    
-                field_value = spec.value
+
+                # DateTimeFields are a tad special.
+                # In as_tex mode, localize them. In normal mode fix the str representation.
+                # One for convenience and nicety, the other to get around a round-trip bug in Python!                
+                field_value = (localize(spec.value) if isinstance(spec.value, datetime.datetime) else str(spec.value)) if as_text else urllib.parse.quote_plus(fix(spec.value))
             
             if as_text and spec.lookup in operation_text:
                 op = operation_text[spec.lookup]

@@ -5,6 +5,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
 from django.contrib.flatpages import views as flat_views
+from django_generic_view_extensions.views import LoginViewExtended
 
 # from django.contrib.staticfiles.storage import staticfiles_storage
 # from django.views.generic.base import RedirectView
@@ -21,7 +22,7 @@ urlpatterns = [
     path(r'', views.view_Home.as_view(), name='home'),
     path(r'about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
     path(r'admin/', admin.site.urls, name='admin'),
-    path(r'login/', auth_views.LoginView.as_view(), name='login'),
+    path(r'login/', LoginViewExtended.as_view(), name='login'),
     path(r'logout/', auth_views.LogoutView.as_view(), name='logout'),    
     
     # CoGs Generic Views 
