@@ -58,6 +58,8 @@ urlpatterns = [
     # General patterns next
     path('json/<model>', views.ajax_List, name='get_list_html'),
     path('json/<model>/<pk>', views.ajax_Detail, name='get_detail_html'),
+
+    path('post/clientinfo', views.receive_ClientInfo, name='post_client_info'),
     
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

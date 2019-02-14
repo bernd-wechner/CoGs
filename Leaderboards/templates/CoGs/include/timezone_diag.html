@@ -1,0 +1,58 @@
+{# A simple template that presnets a table full of timezone diagnostics.#}
+
+{% load tz %}	
+
+<script>
+	const debug_tz = jstz.determine();
+	const debug_offset = minsToHHMMSS(-1 * (new Date().getTimezoneOffset()));
+	const debug_today = new Date();
+	const debug_date_time = strftime('%Y-%m-%d %H:%M:%S', debug_today);			
+</script>
+
+<div id="times" style="margin-top:1ex">				    	    
+	<table><tr>
+        <th rowspan=0 valign=top><b>TIMES:</b></th>
+		<th>Context</th>
+		<th>Timezone</th>
+		<th>UTC Offset</th>
+		<th>Time</th>
+    </tr><tr>
+        <td nowrap>Javascript</td>
+        <td nowrap><script>document.write(debug_tz.name());</script></td>
+        <td nowrap><script>document.write(debug_offset);</script></td>
+        <td nowrap><script>document.write(debug_date_time);</script></td>           
+    </tr><tr>
+        <td nowrap>Django Naive</td>
+        <td nowrap>{{naive_timezone}}</td>
+        <td nowrap>{{naive_utcoffset}}</td>
+        <td nowrap>{{naive_datetime}}</td>
+    </tr><tr>
+        <td nowrap>Session Store</td>
+        <td nowrap>{{session_timezone}}</td>
+        <td nowrap>{{session_utcoffset}}</td>
+        <td nowrap>{{session_datetime}}</td>
+    </tr><tr>
+        <td nowrap>Django Active</td> 
+        <td nowrap>{{active_timezone}}</td>
+        <td nowrap>{{active_utcoffset}}</td>
+        <td nowrap>{{active_datetime}}</td>
+    </tr><tr>
+        <td nowrap>Django Settings</td> 
+        <td nowrap>{{django_timezone}}</td>
+        <td nowrap>{{django_utcoffset}}</td>
+        <td nowrap>{{django_datetime}}</td>
+    </tr><tr>
+    </tr><tr>
+        <td nowrap>Template</td>
+        <td nowrap colspan=2 align=right>localtime on:</td>
+        <td nowrap>{% localtime on %}{% now "DATETIME_FORMAT" %}{% endlocaltime %}</td>
+    </tr><tr>
+        <td nowrap>Template</td>
+        <td nowrap colspan=2 align=right>localtime off:</td>
+        <td nowrap>{% localtime off %}{% now "DATETIME_FORMAT" %}{% endlocaltime %}</td>
+    </tr><tr>
+        <td nowrap>Template</td>
+        <td nowrap colspan=2 align=right>timezone None:</td>
+        <td nowrap>{% timezone None %}{% now "DATETIME_FORMAT" %}{% endtimezone %}</td>
+    </tr></table>
+</div>	    

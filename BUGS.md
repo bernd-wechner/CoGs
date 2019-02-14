@@ -2,15 +2,11 @@
 
 1) Timezone handling
 
-We're getting close here. activate() works, getting timezones from client works.
-Javascript knows the time users (client) timezone, and selects a session timezone automatically based
-on that. 
+Almost done here!
 
-Smart rendering needs more data tham the date_time field alas. We need also to store the timezone name
-beside each date_time. That is on sessions and on all the creatd and changed timestamps.
-New databasae fields and need to write them whenever a date_time is written.
+Just want to add smart rendering now.
 
-This reveals the timezone that was active when it was saved. 
+The new databasae fields reveal the timezone that was active when the datetime was saved. 
 And thus support smart rendering, namely when the active timezone during display is same as
 the timezone active when saved, don't show timezone information in printed date_times.
 But if it differs, consider including it, but perhaps as a TZ name, not as a UTC offset. 

@@ -580,6 +580,7 @@ class TimeZoneMixIn(models.Model):
     def save(self, *args, **kwargs):
         self.update_timezone_fields()
         super().save(*args, **kwargs)
-                
+
     class Meta:
         abstract = True
+                

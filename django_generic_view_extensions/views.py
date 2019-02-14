@@ -22,17 +22,13 @@ In the process it also supports Field Privacy and Admin fields though these were
 '''
 #Python imports
 import datetime
-import pytz
-#import re
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
 from django.contrib.auth.views import LoginView
-from django.conf import settings
 
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
-from django.db.models import Subquery
 from django.db.models.query import QuerySet
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 from django.forms.models import fields_for_model
@@ -43,16 +39,15 @@ from url_filter.filtersets import ModelFilterSet
 from cuser.middleware import CuserMiddleware
 
 # Package imports
-from .util import app_from_object, class_from_string, is_dst
+from .util import app_from_object, class_from_string
 from .html import list_html_output, object_html_output, object_as_html, object_as_table, object_as_ul, object_as_p, object_as_br
 from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
-from .forms import get_related_forms, get_rich_object_from_forms, save_related_forms
-from .filterset import format_filterset
-from django.utils.timezone import activate, get_current_timezone 
+from .forms import save_related_forms
+from .filterset import format_filterset 
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -101,6 +96,7 @@ class TemplateViewExtended(TemplateView):
     '''
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
+        add_timezone_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 

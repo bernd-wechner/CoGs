@@ -673,6 +673,39 @@ def view_Leaderboards(request):
 # AJAX providers
 #===============================================================================
 
+def receive_ClientInfo(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving client 
+    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
+    pages which asynchonously and silently in the background on a page load, posts
+    the client information here.
+    
+    The main aim and r'aison d'etre for this whole scheme is to diving the users 
+    timezone as quickly and easily as we can, when they first surf in, to whatever
+    URL. Of course that first page load will take place with an unknown timezone,
+    but subsequent to it we'll know their timezone.
+    
+    Implemented as well, just for the heck of it are acceptors for UTC offset, and
+    geolocation, that HTML5 makes available, which can be used in logging site visits.
+    '''
+    if (request.POST):
+        # Check for the timezone
+        if "timezone" in request.POST:
+            print_debug(f"Timezone = {request.POST['timezone']}")
+            request.session['django_timezone'] = request.POST['timezone']
+            activate(request.POST['timezone'])
+
+        if "utcoffset" in request.POST:
+            print_debug(f"UTC offset = {request.POST['utcoffset']}")
+            request.session['django_utcoffset'] = request.POST['utcoffset']
+
+        if "location" in request.POST :
+            print_debug(f"location = {request.POST['location']}")
+            request.session['django_location'] = request.POST['location']
+            
+    return HttpResponse()
+
 def ajax_Leaderboards(request, raw=False):
     '''
     A view that returns a JSON string representing requested leaderboards.

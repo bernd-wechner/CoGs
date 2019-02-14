@@ -1,0 +1,11 @@
+<div id="session" style="margin-top: 1ex">
+	<table><tr>
+        <th rowspan=0 valign=top><b>SESSION:</b></th>
+		<th>Key</th>
+		<th>Value</th>
+    </tr>
+		{% for key, val in request.session.items %}
+			<tr><td>{{ key }}</td><td>{{ val }}</td></tr>
+		{% endfor %}
+	</table>
+</div>

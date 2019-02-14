@@ -21,7 +21,7 @@ class TimezoneMiddleware(object):
         # One-time configuration and initialization.
 
     def __call__(self, request):
-        if request.user.is_authenticated:
+        if "django_timezone" in request.session:
             timezone.activate(request.session.get('django_timezone', settings.TIME_ZONE))
         else:        
             timezone.activate(settings.TIME_ZONE) 

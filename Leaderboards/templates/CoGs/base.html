@@ -2,13 +2,22 @@
 <html>
 <head>
 	{% load staticfiles %}
-	{% load tz %}	
 	<title>{% block title %}{% endblock %}</title>
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/default.css' %}" />
 	<link rel="icon" href="{% static 'favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
+
+	<script src="{% static 'CoGs/js/jstz.min.js' %}"></script>
+	<script src="{% static 'CoGs/js/datetime_functions.js' %}"></script>
+
 	<script>
+		const CSRF_field 	= '{% csrf_token %}';
+		const POST_RECEIVER = "{% url 'post_client_info' %}";
+	</script>
+	<script src="{% static 'CoGs/js/submit_info.js' %}"></script>
+
+	<script>	
 		function check_for_leagues() {
 			if ("{{league_options|escapejs}}"=="") 
 				document.getElementById("league_selector").style.display = 'none';
@@ -22,7 +31,7 @@
 	<div id="container">
 	
 	    <!-- Header -->
-	    <div id="header">
+	    <div id="header">	    	
 	        {% block branding %}
 	        <div id="branding">
 	        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
@@ -124,167 +133,8 @@
 	    {% block footer %}
 	    
 	    {% if True %}
-		<script src="{% static 'CoGs/js/jstz.min.js'%}"></script>
-		<script>
-			 function minsToHHMMSS (mins) {
-			    let hours   = Math.floor(Math.abs(mins) / 60);
-			    let minutes = Math.floor((Math.abs(mins) - ((hours * 3600)) / 60));
-			    let seconds = Math.floor((Math.abs(mins) * 60) - (hours * 3600) - (minutes * 60));
-			    let sign = mins<0 ? "-" : "";
-			
-			    // Prepend 0 when unit is less than 10
-			    if (hours   < 10) {hours   = "0"+hours;}
-			    if (minutes < 10) {minutes = "0"+minutes;}
-			    if (seconds < 10) {seconds = "0"+seconds;}
-			    return sign+hours+':'+minutes+':'+seconds;
-			}
-			
-			/* Port of strftime(). Compatibility notes:
-			 *
-			 * %c - formatted string is slightly different
-			 * %D - not implemented (use "%m/%d/%y" or "%d/%m/%y")
-			 * %e - space is not added
-			 * %E - not implemented
-			 * %h - not implemented (use "%b")
-			 * %k - space is not added
-			 * %n - not implemented (use "\n")
-			 * %O - not implemented
-			 * %r - not implemented (use "%I:%M:%S %p")
-			 * %R - not implemented (use "%H:%M")
-			 * %t - not implemented (use "\t")
-			 * %T - not implemented (use "%H:%M:%S")
-			 * %U - not implemented
-			 * %W - not implemented
-			 * %+ - not implemented
-			 * %% - not implemented (use "%")
-			 *
-			 * strftime() reference:
-			 * http://man7.org/linux/man-pages/man3/strftime.3.html
-			 *
-			 * Day of year (%j) code based on Joe Orost's answer:
-			 * http://stackoverflow.com/questions/8619879/javascript-calculate-the-day-of-the-year-1-366
-			 *
-			 * Week number (%V) code based on Taco van den Broek's prototype:
-			 * http://techblog.procurios.nl/k/news/view/33796/14863/calculate-iso-8601-week-and-year-in-javascript.html
-			 */
-			function strftime(sFormat, date) {
-			  if (!(date instanceof Date)) date = new Date();
-			  var nDay = date.getDay(),
-			    nDate = date.getDate(),
-			    nMonth = date.getMonth(),
-			    nYear = date.getFullYear(),
-			    nHour = date.getHours(),
-			    aDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
-			    aMonths = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
-			    aDayCount = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334],
-			    isLeapYear = function() {
-			      return (nYear%4===0 && nYear%100!==0) || nYear%400===0;
-			    },
-			    getThursday = function() {
-			      var target = new Date(date);
-			      target.setDate(nDate - ((nDay+6)%7) + 3);
-			      return target;
-			    },
-			    zeroPad = function(nNum, nPad) {
-			      return ('' + (Math.pow(10, nPad) + nNum)).slice(1);
-			    };
-			  return sFormat.replace(/%[a-z]/gi, function(sMatch) {
-			    return {
-			      '%a': aDays[nDay].slice(0,3),
-			      '%A': aDays[nDay],
-			      '%b': aMonths[nMonth].slice(0,3),
-			      '%B': aMonths[nMonth],
-			      '%c': date.toUTCString(),
-			      '%C': Math.floor(nYear/100),
-			      '%d': zeroPad(nDate, 2),
-			      '%e': nDate,
-			      '%F': date.toISOString().slice(0,10),
-			      '%G': getThursday().getFullYear(),
-			      '%g': ('' + getThursday().getFullYear()).slice(2),
-			      '%H': zeroPad(nHour, 2),
-			      '%I': zeroPad((nHour+11)%12 + 1, 2),
-			      '%j': zeroPad(aDayCount[nMonth] + nDate + ((nMonth>1 && isLeapYear()) ? 1 : 0), 3),
-			      '%k': '' + nHour,
-			      '%l': (nHour+11)%12 + 1,
-			      '%m': zeroPad(nMonth + 1, 2),
-			      '%M': zeroPad(date.getMinutes(), 2),
-			      '%p': (nHour<12) ? 'AM' : 'PM',
-			      '%P': (nHour<12) ? 'am' : 'pm',
-			      '%s': Math.round(date.getTime()/1000),
-			      '%S': zeroPad(date.getSeconds(), 2),
-			      '%u': nDay || 7,
-			      '%V': (function() {
-			              var target = getThursday(),
-			                n1stThu = target.valueOf();
-			              target.setMonth(0, 1);
-			              var nJan1 = target.getDay();
-			              if (nJan1!==4) target.setMonth(0, 1 + ((4-nJan1)+7)%7);
-			              return zeroPad(1 + Math.ceil((n1stThu-target)/604800000), 2);
-			            })(),
-			      '%w': '' + nDay,
-			      '%x': date.toLocaleDateString(),
-			      '%X': date.toLocaleTimeString(),
-			      '%y': ('' + nYear).slice(2),
-			      '%Y': nYear,
-			      '%z': date.toTimeString().replace(/.+GMT([+-]\d+).+/, '$1'),
-			      '%Z': date.toTimeString().replace(/.+\((.+?)\)$/, '$1')
-			    }[sMatch] || sMatch;
-			  });
-			}	
-		
-			const debug_tz = jstz.determine();
-			const debug_offset = minsToHHMMSS(-1 * (new Date().getTimezoneOffset()));
-			const debug_today = new Date();
-			const debug_date_time = strftime('%Y-%m-%d %H:%M:%S', debug_today);			
-	    </script>
-	    
-	    <div id="times">				    	    
-			<table><tr>
-	            <th rowspan = 10><b>TIMES:</b></th>
-				<th>Context</th>
-				<th>Timezone</th>
-				<th>UTC Offset</th>
-				<th>Time</th>
-            </tr><tr>
-	            <td nowrap>Javascript</td>
-	            <td nowrap><script>document.write(debug_tz.name());</script></td>
-	            <td nowrap><script>document.write(debug_offset);</script></td>
-	            <td nowrap><script>document.write(debug_date_time);</script></td>           
-            </tr><tr>
-	            <td nowrap>Django Naive</td>
-	            <td nowrap>{{naive_timezone}}</td>
-	            <td nowrap>{{naive_utcoffset}}</td>
-	            <td nowrap>{{naive_datetime}}</td>
-            </tr><tr>
-	            <td nowrap>Session Store</td>
-	            <td nowrap>{{session_timezone}}</td>
-	            <td nowrap>{{session_utcoffset}}</td>
-	            <td nowrap>{{session_datetime}}</td>
-            </tr><tr>
-	            <td nowrap>Django Active</td> 
-	            <td nowrap>{{active_timezone}}</td>
-	            <td nowrap>{{active_utcoffset}}</td>
-	            <td nowrap>{{active_datetime}}</td>
-            </tr><tr>
-	            <td nowrap>Django Settings</td> 
-	            <td nowrap>{{django_timezone}}</td>
-	            <td nowrap>{{django_utcoffset}}</td>
-	            <td nowrap>{{django_datetime}}</td>
-            </tr><tr>
-            </tr><tr>
-	            <td nowrap>Template</td>
-	            <td nowrap colspan=2 align=right>localtime on:</td>
-	            <td nowrap>{% localtime on %}{% now "DATETIME_FORMAT" %}{% endlocaltime %}</td>
-            </tr><tr>
-	            <td nowrap>Template</td>
-	            <td nowrap colspan=2 align=right>localtime off:</td>
-	            <td nowrap>{% localtime off %}{% now "DATETIME_FORMAT" %}{% endlocaltime %}</td>
-            </tr><tr>
-	            <td nowrap>Template</td>
-	            <td nowrap colspan=2 align=right>timezone None:</td>
-	            <td nowrap>{% timezone None %}{% now "DATETIME_FORMAT" %}{% endtimezone %}</td>
-            </tr></table>
-        </div>	    
+			{% include "CoGs/include/timezone_diag.html" %}
+			{% include "CoGs/include/session_spy.html" %}
         {% endif %}
         
 	    <div id="footer">{{footer}}</div>{% endblock %}
