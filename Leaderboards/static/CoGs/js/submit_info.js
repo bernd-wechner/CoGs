@@ -5,7 +5,7 @@
 // utcoffset	- Positive being East of Greenwich
 // location 	- in form "City, Country"
 //
-// They are submitted to a URL defined below whichhas the name 'post_client_info'
+// They are submitted to a URL defined below which has the name 'post_client_info'
 // which must be defined in urls.py of course and be backed by a small view which 
 // receives and does something with the submission.
 //
@@ -13,6 +13,13 @@
 // the second slower and less reliable (may not be available).
 //
 // We expect CSRF_field and POST_RECEIVER to be set in the including template!
+//
+// ALso the 3 items are only submitted if they are changed from references that are
+// supplied in:
+//
+// SESSION_timezone
+// SESSION_utcoffset
+// SESSION_location
 
 // GET_ variables used for getting the location of the client
 // We will use the GeoNames free service: http://www.geonames.org/export/web-services.html#findNearby
@@ -43,29 +50,34 @@ function GetInfoFromGeoNames(position) {
 	        const response = JSON.parse(this.responseText);
 	        const city = response.geonames[0].name;
 	        const country = response.geonames[0].countryName;
-	        const location = CSRF_uri + "&location=" + encodeURI(city + ", " + country);
+	        const location = city + ", " + country;
+	        const info = CSRF_uri + "&location=" + encodeURI(location);
 
-			// Send the location to the server
-			POST_INFO.open("POST", POST_RECEIVER, true);
-			POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
-			POST_INFO.send(location);			
+			// Send the location to the server (only if it's changed)
+	        if (location != SESSION_location) {
+				POST_INFO.open("POST", POST_RECEIVER, true);
+				POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
+				POST_INFO.send(info);
+	        }
 	    }
 	};
 	
 	GET_INFO.send(null);
 }		
 	
-// A functon bound to the DOMContentLoaded event to fire as soon as possible after a page
+// A function bound to the DOMContentLoaded event to fire as soon as possible after a page
 // oad to submit the timezone info to the serner and the location if we find it.
 function SendInfoToServer() {
 	const tz = jstz.determine().name();
 	const utcoffset = -1 * (new Date().getTimezoneOffset());
 	const info =  CSRF_uri + "&timezone=" + encodeURI(tz) + "&utcoffset=" + encodeURI(utcoffset);
 
-	// Send the timezone info to the server
-	POST_INFO.open("POST", POST_RECEIVER, true);
-	POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
-	POST_INFO.send(info);
+	// Send the timezone info to the server (only if it's changed)
+    if (tz != SESSION_timezone || utcoffset != SESSION_utcoffset) {
+		POST_INFO.open("POST", POST_RECEIVER, true);
+		POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
+		POST_INFO.send(info);
+    }
 	
 	// Geolocation can exhibit some latency in collection so HTML5 implements it with a callback
 	// We'll post the location when it arrives. Also it means if ti fails for some reason to get

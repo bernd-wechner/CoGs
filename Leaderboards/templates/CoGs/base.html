@@ -12,8 +12,12 @@
 	<script src="{% static 'CoGs/js/datetime_functions.js' %}"></script>
 
 	<script>
+		// Template provided variables that submit_info.js expects.
 		const CSRF_field 	= '{% csrf_token %}';
 		const POST_RECEIVER = "{% url 'post_client_info' %}";
+		const SESSION_timezone = "{{ request.session.django_timezone }}";
+		const SESSION_utcoffset = "{{ request.session.django_utcoffset }}";
+		const SESSION_location = "{{ request.session.django_location }}";
 	</script>
 	<script src="{% static 'CoGs/js/submit_info.js' %}"></script>
 
