@@ -1,18 +1,21 @@
 // Basic Javascript to include in any page for it to submit to Django some client info. Specifically
 // 3 items are sent to Django:
 //
-// timezone		- The TZ database timezone name
-// utcoffset	- Positive being East of Greenwich
-// location 	- in form "City, Country"
+// timezone     - The TZ database timezone name
+// utcoffset    - Positive being East of Greenwich
+// location     - in form "City, Country"
 //
-// They are submitted to a URL defined below which has the name 'post_client_info'
-// which must be defined in urls.py of course and be backed by a small view which 
-// receives and does something with the submission.
+// They are submitted to a URL provided in the variable POST_RECEIVER,
+// which must be defined in urls.py of course and be backed by a small 
+// view which receives and does something with the submission.
 //
-// The timezone data and location data are posted separately, as the first is fast and reliable,
-// the second slower and less reliable (may not be available).
+// The timezone data and location data are posted separately, as the first 
+// is fast and reliable, the second slower and less reliable (may not be available).
 //
 // We expect CSRF_field and POST_RECEIVER to be set in the including template!
+// as we need both the URL to post to (POST_RECEIVER) and the CSRF (Cross-Site
+// Request Forgery prvention) token that Django supplies and insists on hearing
+// back in a PSOT request or it will not accept it (CSRF_feld).
 //
 // Also the 3 items are only submitted if they are changed from references that are
 // supplied in:
@@ -26,6 +29,11 @@
 // such time as the session_id cookie is lost - that is, the session is attached ot one browser 
 // on one machine by a session_id cookie, and it has lifespan as long as that cookie - which is 
 // until it's removed. 
+//
+// If a change is detected - typically only on the very first surf into the sute given the 
+// lifespan of Django sessions - then the page is reloaded so that it renders with timezone
+// awareness. It the rendering view is smart enough to tell us it is timezone insensitive by
+// providing a variable TIMEZONE_insensitive, we won't reload the page.
 
 // GET_ variables used for getting the location of the client
 // We will use the GeoNames free service: http://www.geonames.org/export/web-services.html#findNearby
@@ -81,7 +89,10 @@ function SendInfoToServer() {
 	// Send the timezone info to the server (only if it's changed) - and reload the page once Django knows the timezone!
     if (tz != SESSION_timezone || utcoffset != SESSION_utcoffset) {
 		POST_INFO.open("POST", POST_RECEIVER, true);
-		POST_INFO.onreadystatechange = function () { if (this.readyState === 4 && this.status === 200) document.location.reload(); }
+		
+		const reload = typeof TIMEZONE_insensitive === 'undefined' || !TIMEZONE_insensitive;
+		if (reload) POST_INFO.onreadystatechange = function () { if (this.readyState === 4 && this.status === 200) document.location.reload(); }
+		
 		POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
 		POST_INFO.send(info);
     }

@@ -79,7 +79,7 @@ class TrueskillSettings(models.Model):
     delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
 
     add_related = None
-    def __unicode__(self): return u'µ0={} σ0={} ß={} δ={}'.format(self.mu0, self.sigma0, self.delta)
+    def __unicode__(self): return u'µ0={} σ0={} δ={}'.format(self.mu0, self.sigma0, self.delta)
     def __str__(self): return self.__unicode__()
 
     class Meta:
@@ -1117,7 +1117,13 @@ class Game(AdminModel):
         return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
 
     def __rich_str__(self, link=None): 
-        return u'{} (plays {}-{}), Luck factor: {:0.2f}, Draw probability: {:d}%'.format(field_render(self.name, link_target_url(self, link)), self.min_players, self.max_players, self.trueskill_tau*100, int(self.trueskill_p*100))    
+        name = field_render(self.name, link_target_url(self, link))
+        pmin = self.min_players
+        pmax = self.max_players
+        beta = self.trueskill_beta
+        tau = self.trueskill_tau*100
+        p = int(self.trueskill_p*100)
+        return u'{} (plays {}-{}), Skill factor: {:0.2f}, Draw probability: {:d}%, Skill dynamics factor: {:0.2f}'.format(name, pmin, pmax, beta, p, tau)
 
     def __detail_str__(self,  link=None):
         detail = self.__rich_str__(link)
