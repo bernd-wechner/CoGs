@@ -93,4 +93,8 @@ function SendInfoToServer() {
 	    navigator.geolocation.getCurrentPosition(GetInfoFromGeoNames);
 }
 
-document.addEventListener("DOMContentLoaded", SendInfoToServer);		
+// Send the info right way before the DOM is finished loading!
+SendInfoToServer();
+
+// We could wait till the DOM was loaded, but why bother waiting? This is how we'd fire up when the DOM was loaded.
+//document.addEventListener("DOMContentLoaded", SendInfoToServer);		

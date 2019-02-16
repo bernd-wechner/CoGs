@@ -7,7 +7,7 @@
 			<form  action="{% url 'post_client_info' %}" method="post">
 				{% csrf_token %}
 				<input type="hidden" name="clear_session" value="1">				
-				<button type="submit" title="and reload the page">Clear Session</button>
+				<button type="submit">Clear Session</button>
 			</form>
 		</th>
     </tr>

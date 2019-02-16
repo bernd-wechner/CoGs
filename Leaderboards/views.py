@@ -696,8 +696,7 @@ def receive_ClientInfo(request):
             session_keys = list(request.session.keys())
             for key in session_keys:
                 del request.session[key]
-            #return HttpResponse()
-            return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+            return HttpResponse("<script>window.history.pushState('', '', '/session_cleared');</script>")
 
         # Check for the timezone
         if "timezone" in request.POST:
