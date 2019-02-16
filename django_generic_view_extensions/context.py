@@ -90,7 +90,7 @@ def add_timezone_context(view, context):
     context['naive_timezone'] = None
     context['naive_utcoffset'] = None
 
-    tz = pytz.timezone(view.request.session.get("django_timezone", "UTC"))
+    tz = pytz.timezone(view.request.session.get("timezone", "UTC"))
     dt = tz.localize(naive_now)
     context['session_datetime'] = str(dt)
     context['session_timezone'] = str(dt.tzinfo)

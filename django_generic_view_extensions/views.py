@@ -86,7 +86,7 @@ class LoginViewExtended(LoginView):
         return context
 
     def form_valid(self, form):
-        form.request.session['django_timezone'] = form.request.POST['timezone']
+        form.request.session['timezone'] = form.request.POST['timezone']
         return super().form_valid(form)        
 
 class TemplateViewExtended(TemplateView):
@@ -381,16 +381,19 @@ class CreateViewExtended(CreateView):
         # created. We should save them only in form_valid.
         #
         # IDEA: Is_valid triggers clean on the form, but not
-        # on related forms. So we need to an explicit full_clean 
+        # on related forms. So we need an explicit full_clean 
         # or clean on the related forms to get an aggregegate 
         # is_valid. 
         #
         # BUT if that's the case what objects are the cleans seeing?
         # Not saved yet?
-        # EXPERIMENT, not passing in object but passing in request and follwoing through code
+        #
+        # EXPERIMENT, not passing in object but passing in request 
+        # and follwoing through code
         validation_errors = {}
         
-        # If requesting tod ebug the post data, don't do any validation
+        # If requesting to debug the post data, don't do any validation
+        # form_valid will simply return the POST data as a response for debugging it.
         if self.request.POST.get("debug_post_data", "off") == "on":
             return True
 
@@ -412,9 +415,6 @@ class CreateViewExtended(CreateView):
         return True       
 
     def form_valid(self, form):
-        # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
-        #       If there's a bail then don't save anything, i.e don't save partial data.
-
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
             for key in sorted(self.request.POST):
@@ -457,14 +457,12 @@ class CreateViewExtended(CreateView):
         If the form is invalid, re-render the context data with the
         data-filled form and errors.
         """
-        context = self.get_context_data(form=form)
-        
+        context = self.get_context_data(form=form)        
         response = self.render_to_response(context)
         return response
 
 class UpdateViewExtended(UpdateView):
     '''An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
-    # FIXME: If I edit a sessions date/time, the leaderboards are corrupted (extra session is added).
 
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''       
@@ -497,23 +495,7 @@ class UpdateViewExtended(UpdateView):
         
         return self.obj
 
-#     def get_form(self, form_class):
-#         '''Augments the standard generated form by adding widget attributes specified in the model'''
-#         form = super().get_form(form_class)   # Jumps to FormMixinBase.get_form_with_form_class
-#         # Line above instantiates a form from the form_class which lands in BaseModelForm.__init__
-#         # That in turn lands in BaseForm.__init__ which is where the instance gains the "fields" attribute
-#         # "forms" here has tjhe "fields" attribute for Session which it gained in line above somewhere.
-#         if hasattr(self.model,'widget_attrs'):
-#             for field,attr in self.model.widget_attrs.items():
-#                 for attr_name,attr_value in attr.items():
-#                     form.fields[field].widget.attrs.update({attr_name:attr_value})
-#         return form
-
-    #@transaction.atomic
     def form_valid(self, form):
-        # TODO: Make this atomic (and test). All related models need to be saved as a unit with integrity. 
-        #       If there's a bail then don't save anything, i.e don't save partial data. 
-        
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
             for key in sorted(self.request.POST):
@@ -543,18 +525,18 @@ class UpdateViewExtended(UpdateView):
             if callable(getattr(self, 'post_processor')): self.post_processor()
 
             return HttpResponseRedirect(self.get_success_url())
-        
-#         try:
-#             with transaction.atomic():
-#                 self.object = form.save()
-#                 self.kwargs['pk'] = self.object.pk
-#                 self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-#                 if hasattr(self, 'pre_processor') and callable(self.pre_processor): self.pre_processor()
-#                 save_related_forms(self)
-#                 if hasattr(self, 'post_processor') and callable(self.post_processor): self.post_processor()
-#                 return HttpResponseRedirect(self.get_success_url())
-#         except IntegrityError:
-#             return HttpResponseRedirect(self.get_success_url())                        
+
+#     def get_form(self, form_class):
+#         '''Augments the standard generated form by adding widget attributes specified in the model'''
+#         form = super().get_form(form_class)   # Jumps to FormMixinBase.get_form_with_form_class
+#         # Line above instantiates a form from the form_class which lands in BaseModelForm.__init__
+#         # That in turn lands in BaseForm.__init__ which is where the instance gains the "fields" attribute
+#         # "forms" here has tjhe "fields" attribute for Session which it gained in line above somewhere.
+#         if hasattr(self.model,'widget_attrs'):
+#             for field,attr in self.model.widget_attrs.items():
+#                 for attr_name,attr_value in attr.items():
+#                     form.fields[field].widget.attrs.update({attr_name:attr_value})
+#         return form
 
 #     def post(self, request, *args, **kwargs):
 #         response = super().post(request, *args, **kwargs)

@@ -14,12 +14,18 @@
 //
 // We expect CSRF_field and POST_RECEIVER to be set in the including template!
 //
-// ALso the 3 items are only submitted if they are changed from references that are
+// Also the 3 items are only submitted if they are changed from references that are
 // supplied in:
 //
 // SESSION_timezone
 // SESSION_utcoffset
 // SESSION_location
+//
+// If these three values are stored in the Djnago Session, they have the lifespan of Django
+// Session which is essentially  from the first page load indefinitely into the future (until
+// such time as the session_id cookie is lost - that is, the session is attached ot one browser 
+// on one machine by a session_id cookie, and it has lifespan as long as that cookie - which is 
+// until it's removed. 
 
 // GET_ variables used for getting the location of the client
 // We will use the GeoNames free service: http://www.geonames.org/export/web-services.html#findNearby
@@ -72,9 +78,10 @@ function SendInfoToServer() {
 	const utcoffset = -1 * (new Date().getTimezoneOffset());
 	const info =  CSRF_uri + "&timezone=" + encodeURI(tz) + "&utcoffset=" + encodeURI(utcoffset);
 
-	// Send the timezone info to the server (only if it's changed)
+	// Send the timezone info to the server (only if it's changed) - and reload the page once Django knows the timezone!
     if (tz != SESSION_timezone || utcoffset != SESSION_utcoffset) {
 		POST_INFO.open("POST", POST_RECEIVER, true);
+		POST_INFO.onreadystatechange = function () { if (this.readyState === 4 && this.status === 200) document.location.reload(); }
 		POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
 		POST_INFO.send(info);
     }

@@ -267,14 +267,14 @@ def object_in_list_format(obj, context):
     
     return field_render(obj, flt, fmt)
 
-def collect_rich_object_fields(self):
+def collect_rich_object_fields(view):
     '''
     Passed a view instance (a detail view or delete view is expected, but any view could call this) 
-    which has an object already (self.obj) (so after or in get_object), will define self.fields with 
+    which has an object already (view.obj) (so after or in get_object), will define view.fields with 
     a dictionary of fields that a renderer can walk through later.
     
-    Additionally self.fields_bucketed is a copy of self.fields in the buckets specified in object_display_format
-    and self.fields_flat and self.fields_list also contain all the self.fields split into the scalar (flat) values
+    Additionally view.fields_bucketed is a copy of view.fields in the buckets specified in object_display_format
+    and view.fields_flat and view.fields_list also contain all the view.fields split into the scalar (flat) values
     and the list values respectively (which are ToMany relations to other models).
     
     Expects ManyToMany relationships to be set up bi-directionally, in both involved models, 
@@ -282,7 +282,7 @@ def collect_rich_object_fields(self):
     bi-directionally may miss the indirect, or reverse relationship).
     
     Converts foreign keys to the string representation of that related object using the level of
-    detail specified self.format and respecting privacy settings where applicable (values are 
+    detail specified view.format and respecting privacy settings where applicable (values are 
     obtained through odm_str where privacy constraints are checked. 
     '''
     # Build the list of fields 
@@ -292,20 +292,20 @@ def collect_rich_object_fields(self):
     #    flat or list  
     #    model, internal, related or properties
     #
-    # By default we will populate self.fields only with flat model fields.
+    # By default we will populate view.fields only with flat model fields.
     
     def is_list(field):
         return hasattr(field,'is_relation') and field.is_relation and (field.one_to_many or field.many_to_many)
     
     def is_property(name):
-        return isinstance(getattr(self.model, name), property)
+        return isinstance(getattr(view.model, name), property)
     
     def is_bitfield(field):
         return type(field).__name__=="BitField"
 
-    ODF = self.format.flags
+    ODF = view.format.flags
 
-    all_fields = self.obj._meta.get_fields()                    # All fields
+    all_fields = view.obj._meta.get_fields()                    # All fields
 
     model_fields = collections.OrderedDict()                    # Editable fields in the model
     internal_fields = collections.OrderedDict()                 # Non-editable fields in the model
@@ -326,14 +326,14 @@ def collect_rich_object_fields(self):
     # List properties, but respect the format request (list and flat selectors)  
     properties = []
     if ODF & odf.properties:
-        for name in dir(self.model):
+        for name in dir(view.model):
             if is_property(name):
                 # Function annotations appear in Python 3.6. In 3.5 and earlier they aren't present.
                 # Use the annotations provided on model properties to classify properties and include 
                 # them based on the classification. The classification is for list and flat respecting 
                 # the object_display_flags selected. That is all we need here.
-                if hasattr(getattr(self.model,name).fget, "__annotations__"):
-                    annotations = getattr(self.model,name).fget.__annotations__
+                if hasattr(getattr(view.model,name).fget, "__annotations__"):
+                    annotations = getattr(view.model,name).fget.__annotations__
                     if "return" in annotations:
                         return_type = annotations["return"]
                         if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
@@ -347,10 +347,10 @@ def collect_rich_object_fields(self):
     # Look for property_methods (those decorated with property_method and having defaults for all parameters)
     property_methods = []
     if ODF & odf.methods:
-        for method in inspect.getmembers(self.obj, predicate=is_property_method):
+        for method in inspect.getmembers(view.obj, predicate=is_property_method):
             name = method[0]
-            if hasattr(getattr(self.model,name), "__annotations__"):
-                annotations = getattr(self.model,name).__annotations__
+            if hasattr(getattr(view.model,name), "__annotations__"):
+                annotations = getattr(view.model,name).__annotations__
                 if "return" in annotations:
                     return_type = annotations["return"]
                     if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
@@ -362,42 +362,42 @@ def collect_rich_object_fields(self):
     summaries = []
     if ODF & odf.summaries:
         for summary in summary_methods:
-            if hasattr(self.model, summary) and callable(getattr(self.model, summary)):
+            if hasattr(view.model, summary) and callable(getattr(view.model, summary)):
                 summaries.append(summary)
 
     # Define some (empty) buckets for all the fields so we can group them on 
     # display (by model, internal, related, property, scalars and lists)
     if ODF & odf.flat:
-        self.fields_flat = {}                                       # Fields that have scalar values
-        self.all_fields_flat = collections.OrderedDict()
+        view.fields_flat = {}                                       # Fields that have scalar values
+        view.all_fields_flat = collections.OrderedDict()
         if ODF & odf.model:
-            self.fields_flat[odf.model] = collections.OrderedDict()
+            view.fields_flat[odf.model] = collections.OrderedDict()
         if ODF & odf.internal:
-            self.fields_flat[odf.internal] = collections.OrderedDict()
+            view.fields_flat[odf.internal] = collections.OrderedDict()
         if ODF & odf.related:
-            self.fields_flat[odf.related] = collections.OrderedDict()
+            view.fields_flat[odf.related] = collections.OrderedDict()
         if ODF & odf.properties:
-            self.fields_flat[odf.properties] = collections.OrderedDict()
+            view.fields_flat[odf.properties] = collections.OrderedDict()
         if ODF & odf.methods:
-            self.fields_flat[odf.methods] = collections.OrderedDict()
+            view.fields_flat[odf.methods] = collections.OrderedDict()
         if ODF & odf.summaries:
-            self.fields_flat[odf.summaries] = collections.OrderedDict()
+            view.fields_flat[odf.summaries] = collections.OrderedDict()
 
     if ODF & odf.list:
-        self.fields_list = {}                                       # Fields that are list items (have multiple values)
-        self.all_fields_list = collections.OrderedDict()
+        view.fields_list = {}                                       # Fields that are list items (have multiple values)
+        view.all_fields_list = collections.OrderedDict()
         if ODF & odf.model:
-            self.fields_list[odf.model] = collections.OrderedDict()
+            view.fields_list[odf.model] = collections.OrderedDict()
         if ODF & odf.internal:
-            self.fields_list[odf.internal] = collections.OrderedDict()
+            view.fields_list[odf.internal] = collections.OrderedDict()
         if ODF & odf.related:
-            self.fields_list[odf.related] = collections.OrderedDict()
+            view.fields_list[odf.related] = collections.OrderedDict()
         if ODF & odf.properties:
-            self.fields_list[odf.properties] = collections.OrderedDict()
+            view.fields_list[odf.properties] = collections.OrderedDict()
         if ODF & odf.methods:
-            self.fields_list[odf.methods] = collections.OrderedDict()
+            view.fields_list[odf.methods] = collections.OrderedDict()
         if ODF & odf.summaries:
-            self.fields_list[odf.summaries] = collections.OrderedDict()
+            view.fields_list[odf.summaries] = collections.OrderedDict()
 
     # For all fields we've collected set the value and label properly
     # Problem is that relationship fields are by default listed by primary keys (pk)
@@ -439,40 +439,40 @@ def collect_rich_object_fields(self):
                     field.is_list = True
                     field.label = safetitle(attname.replace('_', ' '))
         
-                    ros = apply_sort_by(getattr(self.obj, attname).all())
+                    ros = apply_sort_by(getattr(view.obj, attname).all())
         
                     if len(ros) > 0:
-                        field.value = [odm_str(item, self.format.mode) for item in ros]
+                        field.value = [odm_str(item, view.format.mode) for item in ros]
                     else:
                         field.value = NONE
         
-                    self.fields_list[bucket][field.name] = field
+                    view.fields_list[bucket][field.name] = field
             elif is_bitfield(field):
                 if ODF & odf.flat:
                     flags = []
                     for f in field.flags:
-                        bit = getattr(getattr(self.obj, field.name), f)
+                        bit = getattr(getattr(view.obj, field.name), f)
                         if bit.is_set:
-                            flags.append(getattr(self.obj, field.name).get_label(f))
+                            flags.append(getattr(view.obj, field.name).get_label(f))
                     field.is_list = False
                     field.label = safetitle(field.verbose_name)
                     
                     if len(flags) > 0:
-                        field.value = odm_str(", ".join(flags), self.format.mode)
+                        field.value = odm_str(", ".join(flags), view.format.mode)
                     else:
                         field.value = NONE
                                     
-                    self.fields_flat[bucket][field.name] = field
+                    view.fields_flat[bucket][field.name] = field
             else:
                 if ODF & odf.flat:
                     field.is_list = False
                     field.label = safetitle(field.verbose_name)
                     
-                    field.value = odm_str(getattr(self.obj, field.name), self.format.mode)
+                    field.value = odm_str(getattr(view.obj, field.name), view.format.mode)
                     if not str(field.value):
                         field.value = NOT_SPECIFIED
                         
-                    self.fields_flat[bucket][field.name] = field
+                    view.fields_flat[bucket][field.name] = field
 
     # Capture all the property, property_method and summary values as needed (these are not fields)
     if ODF & odf.properties or ODF & odf.methods or ODF & odf.summaries:
@@ -490,13 +490,13 @@ def collect_rich_object_fields(self):
             # property_methods and summaries are functions, and properties are attributes
             # so we have to fetch their values appropriately 
             if name in property_methods:
-                value = getattr(self.obj, name)()
+                value = getattr(view.obj, name)()
                 bucket = odf.methods
             elif name in summaries:
-                value = getattr(self.obj, name)()
+                value = getattr(view.obj, name)()
                 bucket = odf.summaries
             else:
-                value = getattr(self.obj, name)
+                value = getattr(view.obj, name)
                 bucket = odf.properties
                 
             if not str(value):
@@ -513,38 +513,38 @@ def collect_rich_object_fields(self):
                         p.value = NONE
                     elif isDictionary(value):
                         # Value becomes Key: Value
-                        p.value = ["{}: {}".format(odm_str(k, self.format.mode), odm_str(v, self.format.mode)) for k, v in dict.items(value)] 
+                        p.value = ["{}: {}".format(odm_str(k, view.format.mode), odm_str(v, view.format.mode)) for k, v in dict.items(value)] 
                     else:
-                        p.value = [odm_str(val, self.format.mode) for val in list(value)] 
-                    self.fields_list[bucket][name] = p
+                        p.value = [odm_str(val, view.format.mode) for val in list(value)] 
+                    view.fields_list[bucket][name] = p
             else:
                 if ODF & odf.flat:
                     p.is_list = False
-                    p.value = odm_str(value, self.format.mode, True) 
-                    self.fields_flat[bucket][name] = p
+                    p.value = odm_str(value, view.format.mode, True) 
+                    view.fields_flat[bucket][name] = p
         
     # Some more buckets to put the fields in so we can separate lists of fields on display
-    self.fields = collections.OrderedDict()               # All fields
-    self.fields_bucketed = collections.OrderedDict()
+    view.fields = collections.OrderedDict()               # All fields
+    view.fields_bucketed = collections.OrderedDict()
 
     buckets = []    
     if ODF & odf.summaries: # Put Summaries at top if they are requested
-        self.fields_bucketed[odf.summaries] = collections.OrderedDict()
+        view.fields_bucketed[odf.summaries] = collections.OrderedDict()
         buckets += [odf.summaries]
     if ODF & odf.model:
-        self.fields_bucketed[odf.model] = collections.OrderedDict()
+        view.fields_bucketed[odf.model] = collections.OrderedDict()
         buckets += [odf.model]
     if ODF & odf.internal:
-        self.fields_bucketed[odf.internal] = collections.OrderedDict()
+        view.fields_bucketed[odf.internal] = collections.OrderedDict()
         buckets += [odf.internal]
     if ODF & odf.related:
-        self.fields_bucketed[odf.related] = collections.OrderedDict()
+        view.fields_bucketed[odf.related] = collections.OrderedDict()
         buckets += [odf.related]
     if ODF & odf.properties:
-        self.fields_bucketed[odf.properties] = collections.OrderedDict()
+        view.fields_bucketed[odf.properties] = collections.OrderedDict()
         buckets += [odf.properties]
     if ODF & odf.methods:
-        self.fields_bucketed[odf.methods] = collections.OrderedDict()
+        view.fields_bucketed[odf.methods] = collections.OrderedDict()
         buckets += [odf.methods]
 
     for bucket in buckets:
@@ -554,10 +554,10 @@ def collect_rich_object_fields(self):
         if ODF & odf.list:
             passes += [False]
         for Pass in passes:
-            field_list = self.fields_flat[bucket] if Pass else self.fields_list[bucket]
+            field_list = view.fields_flat[bucket] if Pass else view.fields_list[bucket]
             for name, value in field_list.items():
-                self.fields_bucketed[bucket][name] = value
-                self.fields[name] = value
+                view.fields_bucketed[bucket][name] = value
+                view.fields[name] = value
 
 class TimeZoneMixIn(models.Model):
     '''

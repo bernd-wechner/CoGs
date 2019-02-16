@@ -612,8 +612,9 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
 
 def save_related_forms(self):
     # TODO: Implement and test this - a work in progress 
-    # Docs state: If your formset contains a ManyToManyField, you’ll also need to call formset.save_m2m() to ensure the many-to-many relationships are saved properly.
-    #        What does that mean?
+    # Docs state: If your formset contains a ManyToManyField, you’ll also need to call 
+    #                formset.save_m2m() to ensure the many-to-many relationships are saved properly.
+    #                What does that mean?
     #
     # Very helpful page:
     #   https://docs.djangoproject.com/en/dev/topics/forms/modelforms/#id1
@@ -626,7 +627,8 @@ def save_related_forms(self):
     #
     # In each case how are the table links saved properly?
     #
-    # In case 1: the related formset is instantiation with the original object passed as an istance. That is how Django knows which object the related formset relates to.
+    # In case 1: the related formset is an instantiation with the original object passed as an instance. 
+    # That is how Django knows which object the related formset relates to.
     # Case 2 and 3 uncertain at present. Think about it.
     
     # This code saves properly and can be used in interim.
@@ -690,9 +692,28 @@ def save_related_forms(self):
                 if (settings.DEBUG):
                     robjs_before = len(getattr(obj, ran).all())
                     print_debug("\t\t{} {}: checking parent before save {}={}".format(mon, obj.pk, ran, robjs_before))
+
+                # This is interesting:
+                # https://stackoverflow.com/questions/12486734/how-to-save-m2m-field-in-a-formset-when-commit-false
+                #
+                # Apparently we can do this:
+                
+#                 for form in related_formset:                
+#                     if form.has_changed(): 
+#                         form.save()
+
+                # And he also notes this fascinating pattern
+                
+#                 deal = fm.save(commit=False)
+#                 ...
+#                 deal.save()
+
+                # Implying we can save our session with commit=False and get an object with a PK!
+                # So we can then look the related forms and save them!
+                # This looks cool.
                 
                 instances = related_formset.save()  # returns the instances saved but we don't need them here
-                
+
                 # Debugging output
                 if (settings.DEBUG):
                     robjs_after = len(getattr(obj, ran).all())

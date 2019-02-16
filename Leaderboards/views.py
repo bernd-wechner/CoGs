@@ -21,6 +21,7 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
+from django.http.response import HttpResponseRedirect
 from django.urls import reverse #, resolve
 from django.contrib.auth.models import Group
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -690,19 +691,27 @@ def receive_ClientInfo(request):
     geolocation, that HTML5 makes available, which can be used in logging site visits.
     '''
     if (request.POST):
+        if "clear_session" in request.POST:
+            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            session_keys = list(request.session.keys())
+            for key in session_keys:
+                del request.session[key]
+            #return HttpResponse()
+            return HttpResponseRedirect(request.META.get('HTTP_REFERER'))
+
         # Check for the timezone
         if "timezone" in request.POST:
             print_debug(f"Timezone = {request.POST['timezone']}")
-            request.session['django_timezone'] = request.POST['timezone']
+            request.session['timezone'] = request.POST['timezone']
             activate(request.POST['timezone'])
 
         if "utcoffset" in request.POST:
             print_debug(f"UTC offset = {request.POST['utcoffset']}")
-            request.session['django_utcoffset'] = request.POST['utcoffset']
+            request.session['utcoffset'] = request.POST['utcoffset']
 
         if "location" in request.POST :
             print_debug(f"location = {request.POST['location']}")
-            request.session['django_location'] = request.POST['location']
+            request.session['location'] = request.POST['location']
             
     return HttpResponse()
 
