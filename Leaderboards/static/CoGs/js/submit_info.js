@@ -38,7 +38,7 @@
 // GET_ variables used for getting the location of the client
 // We will use the GeoNames free service: http://www.geonames.org/export/web-services.html#findNearby
 const GET_INFO = new XMLHttpRequest();
-const GET_URL = 'http://api.geonames.org/findNearbyJSON?username=CoGs&cities=cities15000&lat={lat}&lng={lon}';
+const GET_URL = 'https://secure.geonames.org/findNearbyJSON?username=CoGs&cities=cities15000&lat={lat}&lng={lon}';
 
 // POST_ variables used for posting the timezone and location info to the server
 const POST_INFO = new XMLHttpRequest();
@@ -52,6 +52,9 @@ const POST_TYPE = "application/x-www-form-urlencoded";
 const CSRF_name = CSRF_field.match( /name="(.*?)"/ )[1];
 const CSRF_value = CSRF_field.match( /value="(.*?)"/ )[1];
 const CSRF_uri = CSRF_name + "="  + encodeURI(CSRF_value);
+
+// Maintain a global variable to communicate to rest of page if a Reload was requested
+let TZ_RELOAD_FORCED = false;
 
 // A function that is called when navigator.geolocation.getCurrentPosition returns (i.e. it's callback)
 function GetInfoFromGeoNames(position) {
@@ -90,8 +93,8 @@ function SendInfoToServer() {
     if (tz != SESSION_timezone || utcoffset != SESSION_utcoffset) {
 		POST_INFO.open("POST", POST_RECEIVER, true);
 		
-		const reload = typeof TIMEZONE_insensitive === 'undefined' || !TIMEZONE_insensitive;
-		if (reload) POST_INFO.onreadystatechange = function () { if (this.readyState === 4 && this.status === 200) document.location.reload(); }
+		const TZ_RELOAD_FORCED = (tz !==  DJANGO_timezone) && (typeof TIMEZONE_insensitive === 'undefined' || !TIMEZONE_insensitive);
+		if (TZ_RELOAD_FORCED) POST_INFO.onreadystatechange = function () { if (this.readyState === 4 && this.status === 200) document.location.reload(); }		
 		
 		POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
 		POST_INFO.send(info);

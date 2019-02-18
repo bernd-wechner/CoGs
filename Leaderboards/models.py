@@ -62,7 +62,6 @@ ALL_GAMES = "ALL"                           # A reserved key for leaderboard fil
 # calculate and maintain TruesKill ratings for players.
 #===============================================================================
 
-# TODO: Beta needs to be game specific, in fact make them all game specific! ANd be done with it. This model can go.    
 class TrueskillSettings(models.Model):
     '''
     The site wide TrueSkill settings to use (i.e. not Game).

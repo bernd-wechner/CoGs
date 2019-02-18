@@ -108,7 +108,6 @@ def add_timezone_context(view, context):
     context['django_timezone'] = str(django_dt.tzinfo)
     context['django_utcoffset'] = django_dt.tzinfo._utcoffset
     
-
 def add_format_context(view, context):
     '''
     Add some useful context information to views that reveal information about the
