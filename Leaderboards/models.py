@@ -12,7 +12,7 @@ from builtins import str
 # Django packages
 from django.db import models, DataError, IntegrityError #, connection, 
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
-from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
 from django.urls import reverse_lazy
 from django.contrib import admin
@@ -1182,7 +1182,7 @@ class Session(TimeZoneMixIn, AdminModel):
     date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
     
     league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
-    location = models.ForeignKey(Location, verbose_name='Session', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
+    location = models.ForeignKey(Location, verbose_name='Location', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
     game = models.ForeignKey(Game, verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
     
     # The game must support team play if this is true, 
@@ -1705,10 +1705,14 @@ class Session(TimeZoneMixIn, AdminModel):
             else:
                 try:
                     rank = Rank.objects.get(session=self, player=performance.player).pk
+                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
                 except Rank.DoesNotExist:
                     rank = None
+                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+                except Rank.MultipleObjectsReturned:
+                    ranks = Rank.objects.filter(session=self, player=performance.player)
+                    html += "<th>{}:</th><td>{}</td>".format(rid, [rank.pk for rank in ranks])
             
-            html += "<th>{}:</th><td>{}</td>".format(rid, rank)
             html += "<th>{}:</th><td>{}</td>".format(tid, team) if self.team_play else ""
             html += "</tr>"
         html += "</table></td></tr>"
@@ -2348,6 +2352,15 @@ class Session(TimeZoneMixIn, AdminModel):
             if not (rank == last_rank_val or rank == last_rank_val+1):
                 raise ValidationError("Session {} has a gap in ranks (between {} and {})".format(self.id), last_rank_val, rank)
             last_rank_val = rank
+
+    def clean_relations(self):
+        pass
+#         errors = {
+#             "date_time": ["Bad DateTime"], 
+#             "league": ["Bad League", "No not really"], 
+#             NON_FIELD_ERRORS: ["One error", "Two errors"]
+#             }
+#         raise ValidationError(errors)            
 
     class Meta(AdminModel.Meta):
         ordering = ['-date_time']

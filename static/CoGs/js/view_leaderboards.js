@@ -72,16 +72,6 @@ function InitControls(options) {
 	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
 	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
 	
-	//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
-	var datetime_format = options.date_format;
-	
-	$(function(){
-		$(".DateTimeField").datetimepicker({
-			"format": datetime_format,
-			"step" : 15
-		});
-	});
-	
 	//Populate the League selector
 	var select = $('#selLeague');                        
 	select.find('option').remove();    

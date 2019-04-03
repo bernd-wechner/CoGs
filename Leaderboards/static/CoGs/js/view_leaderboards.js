@@ -72,16 +72,6 @@ function InitControls(options) {
 	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
 	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
 	
-	//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
-	var datetime_format = options.date_format;
-	
-	$(function(){
-		$(".DateTimeField").datetimepicker({
-			"format": datetime_format,
-			"step" : 15
-		});
-	});
-	
 	//Populate the League selector
 	var select = $('#selLeague');                        
 	select.find('option').remove();    
@@ -130,12 +120,12 @@ function URLopts(element) {
 
 	// Options shared by all reload paths
 	
-	val = $('#selCols').find(":selected").val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-	val = $('#selNames').find(":selected").val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-	val = $('#selLinks').find(":selected").val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+	val = $('#selCols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
+	val = $('#selNames :selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
+	val = $('#selLinks :selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
 
-	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
-	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
+	val = $('#selLeague :selected').val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
+	val = $('#selPlayer :selected').val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
 	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
 	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
@@ -163,6 +153,18 @@ function URLopts(element) {
 	}
 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
+}
+
+function LabelButton(element) {
+	var opts = []
+	
+	val = $('#selPlayer :selected').text(); if (val != $('#selPlayer option:first').text()) opts.push(val);	
+	val = $('#selLeague :selected').text(); if (val != $('#selLeague option:first').text()) opts.push("the " + val + " league");
+	
+	qual = " for " + opts.join(" in ");
+	label = "All Leaderbords" + (opts.length > 0 ? qual : "");
+	
+	$('#'+element).val(label);
 }
 
 function toggle_options() {

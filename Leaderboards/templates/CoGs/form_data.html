@@ -36,11 +36,6 @@
 	{% endcomment %}
 	{% if model_name == 'Session' %}
 		<table id='tableRankings'>
-			{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-			<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/ >
-			<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-			<script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>	
-		
 			<script>
 				"use strict";
 				{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
@@ -121,20 +116,8 @@
 				
 				{# The game props fetcher URL needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
 				const game_props_url 			= "{% url 'get_game_props' 1 %}" 
-
-				const datetime_format			= "{{default_datetime_input_format}}";
 			</script>
-
-			<script>			
-			// Attach a datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
-			$(function(){
-				$(".DateTimeField").datetimepicker({
-					"format": datetime_format,
-					"step" : 15
-				});
-			});
-			</script>
-			
+	
 			{# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}
 			<script src="{% static 'CoGs/js/form_rankings.js'%}"></script>
 		    {% include "CoGs/form_rankings.html" %}

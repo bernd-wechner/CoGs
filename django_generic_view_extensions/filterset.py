@@ -54,7 +54,7 @@ operation_text = {
 def fix(obj):
     '''
     There's a sad known round trip problem with date_times in Python 3.6 and earlier.
-    The str() value fo a datetime for timezone aware datet_times produces a timezone 
+    The str() value fo a datetime for timezone aware date_times produces a timezone 
     format of ±[hh]:[mm] but the django DateTimeField when it validates inputs does not
     recognize this format (because it uses datetime.strptime() and this is a known round
     trip bug discussed for years here:
@@ -70,6 +70,58 @@ def fix(obj):
         return re.sub(r'(\+|\-)(\d\d):(\d\d)$',r'\1\2\3',str(obj))
     else: 
         return str(obj)
+    
+def get_field(model, components, component=0):
+    '''
+    Gets a field given the components of a filterset sepcification.  
+    :param model:      The model in which the identified component is expected to be a field 
+    :param components: A list of components
+    :param component:  An index into that list identifying the component to consider
+    '''
+    def model_field(model, field_name):
+        for field in model._meta.fields:
+            if field.attname == field_name:
+                return field
+        return None
+    
+    field_name = components[component]
+    field = getattr(model, field_name, None)
+    
+    # To Many fields 
+    if hasattr(field, "rel"):
+        if component+1 < len(components):
+            if field.rel.many_to_many:
+                field = get_field(field.field.related_model, components, component+1) 
+            elif field.rel.one_to_many:
+                field = get_field(field.field.model, components, component+1) 
+    
+    # To One fields 
+    elif hasattr(field, "field"): 
+        if component+1 < len(components):
+            field = get_field(field.field.related_model, components, component+1)
+        
+    # local model field
+    else:
+        field = model_field(model, field_name)
+    
+    return field
+
+def is_filter_field(model, field):
+    # For now just splitting for components. This does not in fact generalise if
+    # the filter has an operation at its end, like __gt or such. I've steppped into
+    # the filterset code to see how it builds components, but it's a slow job and I
+    # bailed for now.
+    #
+    # TODO: work out how filtersets build components as we should reall see there 
+    # how it both ignores the operation at end of the name, and also seesm to take one
+    # step further to the id field in relations.
+    #
+    # For now this serves purposes finely as we aren't using it on any filters
+    # with operations (yet) and the last tier trace to id is not important to 
+    # establishing if it's a valid field to filter on.
+    components = field.split("__")
+    filter_field = get_field(model, components)
+    return not filter_field is None
 
 def format_filterset(filterset, as_text=False):
     '''
@@ -78,41 +130,7 @@ def format_filterset(filterset, as_text=False):
      
     :param filterset:   A filterset as produced by url_filter
     :param as_text:     Returns a list if False, or a formatted string if True 
-    '''
-        
-    def get_field(components, component, model):
-        '''
-        Gets a field give the components of a filterset sepcification.  
-        :param components: A list of components
-        :param component:  An index into that list identifying the component to consider
-        :param model:      The model in which the identified component is expected to be a field 
-        '''
-        def model_field(model, field_name):
-            for field in model._meta.fields:
-                if field.attname == field_name:
-                    return field
-            return None
-        
-        field_name = components[component]
-        field = getattr(model, field_name)
-        
-        # To Many fields 
-        if hasattr(field, "rel"):
-            if field.rel.many_to_many:
-                field = get_field(components, component+1, field.field.related_model) 
-            elif field.rel.one_to_many:
-                field = get_field(components, component+1, field.field.model) 
-        
-        # To One fields 
-        elif hasattr(field, "field"): 
-            field = get_field(components, component+1, field.field.related_model)
-            
-        # local model field
-        else:
-            field = model_field(model, field_name)
-        
-        return field
-    
+    '''    
     result = []
 
     try:
@@ -120,7 +138,7 @@ def format_filterset(filterset, as_text=False):
         specs = filterset.get_specs()
         
         for spec in specs:
-            field = get_field(spec.components, 0, filterset.queryset.model)
+            field = get_field(filterset.queryset.model, spec.components)
             if len(spec.components) > 1 and spec.lookup == "exact":
                 Os = field.model.objects.filter(**{"{}__{}".format(field.attname, spec.lookup):spec.value})
                 O = Os[0] if Os.count() > 0 else None

@@ -78,19 +78,19 @@ class PrivacyMixIn():
             '''
             membership = set()
             if hasattr(user, field_name):
-                field = getattr(user, field_name)
+                field = getattr(user, field_name, None)
                 if hasattr(field, 'all') and callable(field.all):
                     membership.add((str(o) for o in field.all())) 
-                else: 
+                elif not field is None: 
                     membership.add(str(field))
     
             for e in extensions:
-                obj = getattr(user, e)
+                obj = getattr(user, e, None)
                 if hasattr(obj, field_name):
                     field = getattr(obj, field_name)
                     if hasattr(field, 'all') and callable(field.all):
                         membership.update([unique_object_id(o) for o in field.all()])
-                    else: 
+                    elif not field is None: 
                         membership.add(unique_object_id(field))
                         
             return membership

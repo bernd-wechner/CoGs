@@ -1,0 +1,83 @@
+#!/bin/bash
+# Restore the last backedup version of the CoGs Database
+#
+# For use on the development machine to faciltate rapid 
+# rollback to a stable database when needed.
+#
+# This produces a lot of messy tracing/diagnostic output for now. 
+# 
+# Written mainly for development use, where after running a pile 
+# of tests that may or may not have left the database in a clean 
+# integral state we want to restore a clean database again and it
+# proged a tedious process by hand through pgadmin4.   
+
+# Find the source dir (we assume this scrip is living in a directory
+# just below the source directory for now like $source_dir/Scripts.
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+# Define the dir where we will look for backups
+backup_dir="$source_dir/Backups"
+
+# Now find the latest backup file
+latest_backup_time=0
+latest_backup_file=""
+
+for file in $backup_dir/[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]\ CoGs*\ Database*.backup; do
+	file_name=$(basename "$file")
+	backup_date=${file_name:0:10}
+	backup_time=$(date --date "$backup_date" +%s)
+	if (( backup_time > latest_backup_time )); then
+		latest_backup_time="$backup_time"
+		latest_backup_file="$file"		
+	fi
+done
+
+latest_backup_file_name=$(basename "$latest_backup_file")
+echo "The latest backup file is: $latest_backup_file_name"
+
+# List the processes using the CoGS database
+echo "Processes using the CoGS database:"
+sudo -u postgres psql -c "	"
+
+# Disconnect the processes using the CoGS database
+echo "Disconnecting them..."
+sudo -u postgres psql -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = 'CoGs';" > /dev/null 
+
+# List the processes using the CoGS database
+echo "Processes now using the CoGS database:"
+sudo -u postgres psql -c "SELECT pid, state FROM pg_stat_activity WHERE datname = 'CoGs';"
+
+# List the databases
+echo "Databases before renaming the CoGs datbase"
+sudo -u postgres psql -l
+
+# Define a suffix for old CoGs Database
+suffix=$(date +%s)
+
+# Rename CoGs to CoGs_timestamp
+echo "Renaming database CoGs to CoGs_$suffix..."
+sudo -u postgres psql -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+
+# List the databases
+echo "Databases after renaming CoGs to CoGs_$suffix"
+sudo -u postgres psql -l
+
+# Recreate CoGs Database 
+echo "Recreating (empty) CoGs database..."
+sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+
+# List the databases
+echo "Databases after recreating CoGs database"
+sudo -u postgres psql -l
+
+# List the databases
+echo "CoGs Database tables before restoring $latest_backup_file"
+sudo -u postgres psql -d "CoGs" -c "SELECT * FROM  pg_catalog.pg_tables WHERE tableowner='CoGs';"
+
+# Now restore the latest backup
+echo "Restoring CoGs database from $latest_backup_file..."
+sudo -u postgres pg_restore --dbname="CoGs" "$latest_backup_file"
+
+# List the databases
+echo "CoGs Database tables after restoring $latest_backup_file"
+sudo -u postgres psql -d "CoGs" -c "SELECT * FROM  pg_catalog.pg_tables WHERE tableowner='CoGs';"

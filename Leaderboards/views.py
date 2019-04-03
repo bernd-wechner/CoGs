@@ -9,7 +9,7 @@ from cuser.middleware import CuserMiddleware
 
 #from collections import OrderedDict
 
-from django_generic_view_extensions.views import TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import  datetime_format_python_to_PHP, class_from_string
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.debug import print_debug 
@@ -23,24 +23,17 @@ from django.utils import timezone
 from django.http import HttpResponse
 from django.http.response import HttpResponseRedirect
 from django.urls import reverse #, resolve
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
 from django.utils.dateparse import parse_datetime
 from django.conf import settings
-
-# TODO: Fix timezone handling. By default in Django we use UTC but we want to enter sessons in local time and see results in local time.
-#        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
-#        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
-#        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
 from django.utils.timezone import get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, localtime, is_aware, make_aware, make_naive, activate
 from django.utils.formats import localize
 from numpy import rank
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
-#TODO: Put a filter in the menu bar, for selecting a league, and then restrict a lot of views only to that league's data.
-
 #TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
 
 #===============================================================================
@@ -282,9 +275,9 @@ def post_process_submitted_model(self):
                 assert not player in player_pool, "Error: Players in session must be unique"
                 player_pool.add(player)
                 
-        # Enforce clean ranking. The MUST happed after Teams are processed above because
-        # Team processing fetches ranks based on the POST submitted rank for the tea. After 
-        # we clean them that relatioonshop is lost. So we should clean the ranks as last 
+        # Enforce clean ranking. This MUST happen after Teams are processed above because
+        # Team processing fetches ranks based on the POST submitted rank for the team. After 
+        # we clean them that relationshop is lost. So we should clean the ranks as last 
         # thing just before calculating TrueSkill impacts.
         
         # First collect all the supplied ranks
@@ -347,15 +340,19 @@ def post_process_submitted_model(self):
         # TODO: Do these checks. Then do test of the transaction rollback and error catch by 
         #       simulating an integrity error.  
 
-def html_league_options():
+def html_league_options(session):
     '''
     Returns a simple string of HTML OPTION tags for use in a SELECT tag in a template
     '''
     leagues = League.objects.all()
     
+    session_filter = session.get("filter", {})
+    selected_league = int(session_filter.get("league", 0))
+    
     options = ['<option value="0">Global</option>']  # Reserved ID for global (no league selected).    
     for league in leagues:
-        options.append('<option value="{}">{}</option>'.format(league.id, league.name))
+        selected = " selected" if league.id == selected_league else ""
+        options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
 def extra_context_provider(self):
@@ -382,7 +379,7 @@ def extra_context_provider(self):
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""
      
-    context['league_options'] = html_league_options()
+    context['league_options'] = html_league_options(self.request.session)
     
     if model_name == 'session':
         if "game" in getattr(self, 'initial', {}):
@@ -413,6 +410,48 @@ def extra_context_provider(self):
     
     return context
 
+def save_league_filters(session, league):
+    # We prioritise leagues over league as players have both the leagues they are in
+    # and their preferred league, and our filter should match any league they are in
+    # Some models only provide league through a relation and hence we need to list 
+    # those. Specifically:
+    #     Teams through players
+    #     Ratings through player
+    #     Ranks and Performances through session
+
+    # Set the name of the filter
+    F = "league"
+
+    # Set the priority list of fields for this filter
+    P = ["leagues", "league", "players__leagues", "player__leagues", "session__league"] 
+    
+    if "filter" in session:
+        if league == 0:
+            if F in session["filter"]:
+                del session["filter"][F]
+        else:
+            session["filter"][F] = league 
+    else: 
+        if league != 0:
+            session["filter"] = { F: league }
+                
+    if len(session["filter"]) == 0:
+        del session["filter"]  
+    
+    if "filter_priorities" in session:
+        if league == 0:
+            del session["filter_priorities"][F]
+        else:
+            session["filter_priorities"][F] = P
+    else:
+        if league != 0:
+            session["filter_priorities"] = { F: P }
+
+    if len(session["filter_priorities"]) == 0:
+        del session["filter_priorities"]  
+
+    session.save()            
+
 #===============================================================================
 # Customize Generic Views for CoGs
 #===============================================================================
@@ -422,10 +461,31 @@ class view_Home(TemplateViewExtended):
     template_name = 'CoGs/view_home.html'
     extra_context_provider = extra_context_provider    
 
+class view_Login(LoginViewExtended):
+    
+    # On Login add a filter to the session for the preferred league
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        
+        username = self.request.POST["username"]
+        try:
+            user = User.objects.get(username=username)
+            preferred_league = user.player.league
+            
+            if preferred_league:
+                save_league_filters(form.request.session, preferred_league.pk)
+                    
+        except user.DoesNotExist:
+            pass
+        
+        return response
+                          
+
 class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
+    #fields = '__all__'
     extra_context_provider = extra_context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
@@ -665,7 +725,7 @@ def view_Leaderboards(request):
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),
          'now': timezone.now(),        
-         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])         
+         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
@@ -682,7 +742,7 @@ def receive_ClientInfo(request):
     pages which asynchonously and silently in the background on a page load, posts
     the client information here.
     
-    The main aim and r'aison d'etre for this whole scheme is to diving the users 
+    The main aim and r'aison d'etre for this whole scheme is to divine the users 
     timezone as quickly and easily as we can, when they first surf in, to whatever
     URL. Of course that first page load will take place with an unknown timezone,
     but subsequent to it we'll know their timezone.
@@ -712,6 +772,25 @@ def receive_ClientInfo(request):
             print_debug(f"location = {request.POST['location']}")
             request.session['location'] = request.POST['location']
             
+    return HttpResponse()
+
+def receive_Filter(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving filter 
+    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
+    pages which asynchonously and silently in the background on a page load, posts
+    the client information here.
+    
+    The main aim and r'aison d'etre for this whole scheme is to rpovide a way to 
+    submit view filters for recording in the session. 
+    '''
+    if (request.POST):
+        # Check for league
+        if "league" in request.POST:            
+            print_debug(f"League = {request.POST['league']}")
+            save_league_filters(request.session, int(request.POST["league"]))
+           
     return HttpResponse()
 
 def ajax_Leaderboards(request, raw=False):
@@ -770,10 +849,10 @@ def ajax_Leaderboards(request, raw=False):
     if ("impact" in request.GET):
         sfilter = Q()
         if lo.league != ALL_LEAGUES:
-            sfilter &= Q(sessions__league__pk=lo.league)
+            sfilter &= Q(league__pk=lo.league)
 
         if lo.player != ALL_PLAYERS:
-            sfilter &= Q(sessions__performances__player__pk=lo.player)
+            sfilter &= Q(performances__player__pk=lo.player)
         
         S = Session.objects.filter(sfilter).order_by("-date_time")
         latest_session = S[0] if S.count() > 0 else None

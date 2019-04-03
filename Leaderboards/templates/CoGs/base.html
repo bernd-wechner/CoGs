@@ -8,6 +8,25 @@
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
 
+	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css"/ >
+	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
+
+	<script>
+		//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
+		const datetime_format = "{{default_datetime_input_format}}";
+	</script>
+	
+{#    Consider moving this the cloudflare cdn too, just need to check it's the samee library.#}
+{#    See: https://cdnjs.com/libraries/clipboard.js#}
+{#    And: https://clipboardjs.com/#}
+{#	  I use it in the leaderboards view.#}
+	<script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
+	
 	<script src="{% static 'CoGs/js/jstz.min.js' %}"></script>
 	<script src="{% static 'CoGs/js/datetime_functions.js' %}"></script>
 
@@ -23,10 +42,32 @@
 	</script>
 	<script src="{% static 'CoGs/js/submit_info.js' %}"></script>
 
-	<script>	
+	<script>
 		function check_for_leagues() {
 			if ("{{league_options|escapejs}}"=="") 
 				document.getElementById("league_selector").style.display = 'none';
+		}
+		
+		function league_changed(event) {
+			// Django provides (and demands if the server implemts it) Cross Site Request Forgery (CSRF) protection 
+			// Django proveds us with a csrf_token which it wants to see in a POST submission or it will reject it.
+			// This how Django knows the POST came from this form here and not some other submitter. 
+			// The token comes as a HTML hidden form element, and we're building out own POST submission so
+			// need to extract the name and value and compose a URI (Uniform Resource Identifer).
+			const CSRF_name = CSRF_field.match( /name="(.*?)"/ )[1];
+			const CSRF_value = CSRF_field.match( /value="(.*?)"/ )[1];
+			const CSRF_uri = CSRF_name + "="  + encodeURI(CSRF_value);
+
+			const FILTER_RECEIVER = "{% url 'post_filter' %}";
+			const POST_FILTER = new XMLHttpRequest();
+		
+			const new_league = event.target.value;
+			const submission = CSRF_uri + "&league=" + encodeURI(new_league)
+
+			POST_FILTER.open("POST", FILTER_RECEIVER, true);
+			POST_FILTER.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+			POST_FILTER.onreadystatechange = function () { location.reload(); }
+			POST_FILTER.send(submission);			
 		}
 	</script>
 	{% block startscript %}{% endblock %}	
@@ -72,7 +113,7 @@
 {#						- for this we need to give each logged in user a default league.#}
 {#		          2) When viewing a session, set it to the league of the session that was loaded.#}
 		        <div id="league_selector" style="margin: 0 auto;">League:
-					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view">
+					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="league_changed(event)">
 						{{league_options|safe}}
 					</select>				
 		        </div>
@@ -138,7 +179,7 @@
 	
 	    {% block footer %}
 	    
-	    {% if True %}
+	    {% if debug %}
 			{% include "CoGs/include/timezone_diag.html" %}
 			{% include "CoGs/include/session_spy.html" %}
         {% endif %}
@@ -147,5 +188,17 @@
 	</div>
 	<!-- END Container -->
 </body>
+
+<script>			
+	// Attach a datetimepicker to all DateTimeFields. 
+	// Assumes DateTimeField widgets have the class "DateTimeField"
+	$(function(){
+		$(".DateTimeField").datetimepicker({
+			"format": datetime_format,
+			"step" : 15
+		});
+	});
+</script>
+
 {% block endscript %}{% endblock %}
 </html>

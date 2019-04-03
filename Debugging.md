@@ -8,4 +8,9 @@ Specifically:
     Yet to test - have to save a team mode session first and then test inheritance and page initialisatioon
 
 3) Swapping modes back and forth on a flexi game with saves between
-    Seems to be working am now 
+    Seems to be working fine now
+
+
+
+qd when loaded from session:
+QueryDict: <QueryDict: {'league': [1]}>

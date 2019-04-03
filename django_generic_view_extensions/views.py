@@ -29,10 +29,13 @@ from django.contrib.auth.views import LoginView
 
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
+from django.db import connection, transaction
 from django.db.models.query import QuerySet
+from django.db.utils import IntegrityError
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
+from django.http.request import QueryDict
 from django.forms.models import fields_for_model
-from django.core.exceptions import ObjectDoesNotExist
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # 3rd Party package imports (dependencies)
 from url_filter.filtersets import ModelFilterSet
@@ -47,7 +50,7 @@ from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields
 from .debug import print_debug
 from .forms import save_related_forms
-from .filterset import format_filterset 
+from .filterset import format_filterset, is_filter_field 
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -57,7 +60,62 @@ def get_filterset(self):
     })
     
     qs = self.model.objects.all()
-    fs = FilterSet(data=self.request.GET, queryset=qs)  
+    
+    qd = QueryDict('', mutable=True)
+    
+    # Add the GET parameter sunconditionally, a user request overrides
+    if hasattr(self.request, 'GET'):
+        qd.update(self.request.GET)
+
+    # Use the session stored filter as a fall back, it is expected
+    # in session["filter"] as a dictionary of (pseudo) fields and 
+    # values. Thatis to say, they are  nominally fields in the model,
+    # but don't need to be, as long as they are keys into 
+    # session["filter_priorities"] which defines prioritised lists of 
+    # fields for that key.    
+    session = self.request.session
+    if 'filter' in session:
+        model = self.model
+        
+        # the filters we make a copy of as we may be modifying them 
+        # based on the filter_priorities, and don't want to modify
+        # the session stored filters (our mods are only used for
+        # selecting the model field to filter on based on stated
+        # priorities).
+        filters = session["filter"].copy()
+        priorities = session.get("filter_priorities", {})
+
+        # Now if priority lists are supplied we apply them keeping only the highest
+        # priority field in any priority list in the list of priorities. 
+        for f in session["filter"]:
+            if f in priorities:
+                p = priorities[f]
+                highest = len(p)    # Initial value, one greater than the largest index in the list  
+                for i, field in enumerate(reversed(p)):
+                    if is_filter_field(model, field):
+                        highest = len(p)- i - 1
+                        
+                # If we found one or more fields in the priority list that are 
+                # filterable we must now have the highest priority one, we replace 
+                # the pseudo filter field with this field.
+                if highest < len(p):
+                    F = p[highest]
+                    val = filters[f]
+                    del filters[f]
+                    filters[F] = val
+
+        # Now the GET filters were already to qd, so we throw out any
+        # session filters already in there as we provide priority to
+        # user specified filters in the GET params over the session 
+        # defined fall backs.
+        for f in filters:
+            if f in qd:
+                del filters[f]
+         
+        qd.update(filters)
+        
+    # TODO: test this with GET params and session filter! 
+    fs = FilterSet(data=qd, queryset=qs)  
     
     # get_specs raises an Empty exception if there are no specs, and a ValidationError if a value is illegal  
     try:
@@ -86,8 +144,9 @@ class LoginViewExtended(LoginView):
         return context
 
     def form_valid(self, form):
-        form.request.session['timezone'] = form.request.POST['timezone']
-        return super().form_valid(form)        
+        response = super().form_valid(form)
+        form.request.session['timezone'] = form.request.POST['timezone']        
+        return response         
 
 class TemplateViewExtended(TemplateView):
     '''
@@ -141,7 +200,7 @@ class ListViewExtended(ListView):
         self.ordering = get_ordering(self)
         
         self.queryset = self.model.objects.all()
-        if len(self.request.GET) > 0:
+        if len(self.request.GET) > 0 or len(self.request.session.get("filter", {})) > 0:
             fs = get_filterset(self)
             
             # If there is a filter specified in the URL
@@ -293,11 +352,62 @@ class DeleteViewExtended(DeleteView):
 # be available on production menues, only for the admin for drilling down and debugging.
 
 class CreateViewExtended(CreateView):
-    '''A CreateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
+    '''
+    A CreateView which makes the model and the related_objects it defines available 
+    to the View so it can render form elements for the related_objects if desired.
+    
+    On a GET request get_context_data() is called to augment the context data for the form render,
+    then get_initial() is called for initial values of the form fields.
+    
+    On a POST request post() is called to validate the submission and save it if good
+    or bounce back with a rerender of the form with errors listed.
+    
+    Both sequences need to defined these:
+        self.model
+        self.fields
+        
+    So we do it in get_context_data() and in post() as our two entry points.
+    
+    Both call get_queryset() in order to obtain the model from the returned queryset, if it's not
+    defined in self.model. And so we could define self.model and self.fields in one place. But it 
+    is a little odd and confusing to think of get_queryset() for a CreaetView, so here we avoid 
+    that convenience and confusions.
+    
+    NOTE: We do also includ a form_valid() override. This is important because in the standard
+    Django post/form_valid pair, post does not save, form_valid does. If we defer to the Django 
+    form_valid it goes and saves the form again. This doesn't create a new copy on creates as it
+    happens as by that point self.instance already has a PK thanks to the save here in post() but
+    it is an unnecessary repeat save all the same.
+    '''
 
     # TODO: the form needs to use combo boxes for list select values like Players in a Session. You have to be able to type and find a player with a pattern match so to speak. The list can get very very long you see. 
 
+    def get_context_data(self, *args, **kwargs):
+        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
+
+        # We need to set self.model here 
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
+        if not hasattr(self, 'fields') or self.fields == None:
+            self.fields = '__all__'
+
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+
+        # Note that the super.get_context_data initialises the form with get_initial
+        context = super().get_context_data(*args, **kwargs)
+
+        # Now add some context extensions ....
+        add_model_context(self, context, plural=False, title='New')
+        add_timezone_context(self, context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
+
     def get_initial(self):
+        '''
+        Returns a dictionary of values keyed on model field names that are used to populated the form widgets
+        with initial values.
+        '''
         initial = super().get_initial()
         
         try:
@@ -318,226 +428,210 @@ class CreateViewExtended(CreateView):
             
         return initial 
 
-    def get_queryset(self, *args, **kwargs):
-        print_debug("Getting queryset for {}: {} {}".format(self.kwargs['model'], args, kwargs))
-        self.fields = '__all__'
-
-        self.app = app_from_object(self)
-        self.model = class_from_string(self, self.kwargs['model'])
-        self.queryset = QuerySet(model=self.model)
-        
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-        
-        print_debug("Got queryset")
-        return self.queryset
-
-    def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
-        print_debug("Getting contex data")
-        # Note that the super.get_context_data initialises the form with get_initial
-        # So after calling this we have ...
-        context = super().get_context_data(*args, **kwargs)
-        print_debug("Adding model context")
-        add_model_context(self, context, plural=False, title='New')
-        print_debug("Adding timezone context")
-        add_timezone_context(self, context)
-        print_debug("Adding extra context")
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        print_debug("Got context data")
-        return context
-
     def post(self, request, *args, **kwargs):
-        form = self.get_form()
-        self.form = form
-        self.object = form.instance
-        
-        # NOTE: At this point form.data has the submitted POST fields.
-        # But form.instance seems to be a default instance of the object. form.data not applied,
-        # Theory, form.full_clean() does the mapping somehow? It calls model.clean() which sees 
-        # populated attribs anyow. full_clean() is initiated by form.add_error or form.is_valid. 
-        
-        # FIXME: Check if these forms have instances attached that can be used for validation.
-        # DONE: There is an instance but not populated yet with data from form.
-        # Which is odd as form.instance is. So it seems to be in get_form() that the mapping 
-        # happens?
-        # related_forms = get_related_forms(self.model, self.object)
-        
-        # FIXME:
-        # Form errors can be injected here and they appear on the rendered form
-        # At this point form.instance has an instance of the model (related forms too?)
-        
-        # TODO: Work out how it get that and ask "Can I create instances of all related models?"         
-        if form.is_valid() and self.is_valid():
-            return self.form_valid(form)
-        else:
-            return self.form_invalid(form)
-
-    def is_valid(self):
-        # TODO: Here we should run is_valid for all related forms.
-        # That runs the clean on each related form.
-        # Then run is_valid on the master form and its clean.
-        # Nothing is saved here yet but objects may well be 
-        # created. We should save them only in form_valid.
-        #
-        # IDEA: Is_valid triggers clean on the form, but not
-        # on related forms. So we need an explicit full_clean 
-        # or clean on the related forms to get an aggregegate 
-        # is_valid. 
-        #
-        # BUT if that's the case what objects are the cleans seeing?
-        # Not saved yet?
-        #
-        # EXPERIMENT, not passing in object but passing in request 
-        # and follwoing through code
-        validation_errors = {}
-        
-        # If requesting to debug the post data, don't do any validation
-        # form_valid will simply return the POST data as a response for debugging it.
-        if self.request.POST.get("debug_post_data", "off") == "on":
-            return True
-
-        # self.model.clean() has been called by Django before we get here
-        # This calls clean() on all the related models (as defined by add_related properties)
-        print_debug("Is_valid? Get related forms for {}".format(self.model))
-        #related_forms = get_related_forms(self.model, self.request.POST)
-        
-        # Now build a rich_object from the collected instances for submission to rich_clean. 
-        print_debug("Is_valid? Get rich object for {}".format(self.object))
-        #rich_object = get_rich_object_from_forms(self.object, related_forms)
-        
-        # Now we need to clean the relations. related_forms has objects built by
-        # get_related_forms but we need to pass these somehow to self.model.clean_relations()
-        # perhaps so in the model we can write the clean up code for the relations.
-        # The objects lack PKs here and we have no clear structure for them yet.
-        stophere = True 
-        
-        return True       
-
-    def form_valid(self, form):
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
             for key in sorted(self.request.POST):
                 html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
             html += "</table>"         
-            return HttpResponse(html)
-        else:        
-            # TODO: Consider if we should save the master first then related objects 
-            # or the other way round or if it should be configurable or if it even matters.
-            
-            # Hook for pre-processing the form (before the data is saved)
-            if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+            return HttpResponse(html)        
+        
+        # The self.object atttribute MUST exist and be None in a CreateView. 
+        self.model = class_from_string(self, self.kwargs['model'])
+        self.object = None
+        if not hasattr(self, 'fields') or self.fields == None:
+            self.fields = '__all__'
+        
+        # Get the form
+        self.form = self.get_form()     
 
-            # Save this form
-            self.object = form.save()
-            self.kwargs['pk'] = self.object.pk
-            self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-            
-            # Save related forms
-            errors = save_related_forms(self)
-            
-            # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
-            # TODO: Tidy this. Render the errors in the message box on the original form somehow.
-            # Basically bounce back to where we were with error messages.
-            # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
-            if errors:
-                return JsonResponse(errors)            
+        # Hook for pre-processing the form (before the data is saved)
+        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+       
+        print_debug(f"Connection vendor: {connection.vendor}")
+        if connection.vendor == 'postgresql':
+            print_debug(f"Is_valid? {self.form.data}")
+            if self.form.is_valid():
+                try:
+                    print_debug(f"Open a transaction")
+                    with transaction.atomic():
+                        self.object = self.form.save()
                         
-            # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_processor', None)): self.post_processor()
-            
-            return HttpResponseRedirect(self.get_success_url())
+                        kwargs = self.kwargs
+                        kwargs['pk'] = self.object.pk
+                        self.success_url = reverse_lazy('view', kwargs=kwargs)
+                        
+                        save_related_forms(self)
+                        print_debug(f"Saved the form and related forms.")
+                        
+                        if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
+                            self.object.clean_relations()
+         
+                        print_debug(f"Cleaned the relations.")
+                except (IntegrityError, ValidationError) as e:
+                    # TODO: Report INtergityErrors too
+                    # TODO: if error_dict refers to a non field this crashes, find what the criterion
+                    #       in add_error is and then if it's a field tat doesn't match this criteron 
+                    #       do somethings sensible. We may be able to attach errors to the formsets too!
+                    for field, errors in e.error_dict.items():
+                        for error in errors:
+                            self.form.add_error(field, error)
+                    return self.form_invalid(self.form)
 
-#     def post(self, request, *args, **kwargs):
-#         response = super().post(request, *args, **kwargs)
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_processor', None)): self.post_processor()
+                                          
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
+           
+        else:
+            if self.form.is_valid():
+                self.object = self.form.save()
+                save_related_forms(self)
+
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_processor', None)): self.post_processor()
+                
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
+             
+    def form_valid(self, form):
+        """If the form is valid, redirect to the supplied URL."""
+        return HttpResponseRedirect(self.get_success_url())
+
+#     def form_invalid(self, form):
+#         """
+#         If the form is invalid, re-render the context data with the
+#         data-filled form and errors.
+#         """
+#         context = self.get_context_data(form=form)        
+#         response = self.render_to_response(context)
 #         return response
 
-    def form_invalid(self, form):
-        """
-        If the form is invalid, re-render the context data with the
-        data-filled form and errors.
-        """
-        context = self.get_context_data(form=form)        
-        response = self.render_to_response(context)
-        return response
-
 class UpdateViewExtended(UpdateView):
-    '''An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.'''
-
-    def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''       
-        print_debug("Getting contex data")
-        context = super().get_context_data(*args, **kwargs)
-        print_debug("Adding model context")
-        add_model_context(self, context, plural=False, title='Edit')
-        print_debug("Adding timezone context")
-        add_timezone_context(self, context)
-        print_debug("Adding extra context")
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        print_debug("Got context data")
-        return context
-
+    '''
+    An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.
+    
+    Note: This is almost identical to the CreateViewExtended class above bar one line, where we set self.object! 
+          Which is precisely how Django differentiates a Create from an Update!
+          
+          Aside from that though we define get_object() in place of get_initial().
+          
+          Unlike the CreateView on a GET request Django calls get_object() first then get_context_data().
+          And on a POST request it just calls post(). So we set up self.model and self.object in 
+          get_object() for GET requests and post() for POST requests. 
+    '''
+    
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
-        self.app = app_from_object(self)
-        self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
+        self.model = class_from_string(self, self.kwargs['model'])
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         
+        if not hasattr(self, 'fields') or self.fields == None:
+            self.fields = '__all__'
+            
         if callable(getattr(self.obj, 'fields_for_model', None)): 
             self.fields = self.obj.fields_for_model()
         else:           
             self.fields = fields_for_model(self.model)
+            
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-        
+         
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
         CuserMiddleware.set_user(self.request.user)
-        
-        return self.obj
+         
+        return self.obj    
 
-    def form_valid(self, form):
+    def get_context_data(self, *args, **kwargs):
+        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
+        # Note that the super.get_context_data initialises the form with get_initial
+        context = super().get_context_data(*args, **kwargs)
+
+        # Now add some context extensions ....
+        add_model_context(self, context, plural=False, title='New')
+        add_timezone_context(self, context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
+
+    def post(self, request, *args, **kwargs):
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
             for key in sorted(self.request.POST):
                 html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
             html += "</table>"         
-            return HttpResponse(html)
+            return HttpResponse(html)        
+
+        # The self.object atttribute MUST exist and be None in a CreateView. 
+        self.model = class_from_string(self, self.kwargs['model'])
+        self.object = self.get_object()
+        if not hasattr(self, 'fields') or self.fields == None:
+            self.fields = '__all__'
+                
+        # Get the form
+        self.form = self.get_form()     
+
+        # Hook for pre-processing the form (before the data is saved)
+        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+       
+        print_debug(f"Connection vendor: {connection.vendor}")
+        if connection.vendor == 'postgresql':
+            print_debug(f"Is_valid? {self.form.data}")
+            if self.form.is_valid():
+                try:
+                    print_debug(f"Open a transaction")
+                    with transaction.atomic():
+                        print_debug("Saving form from POST request containing:")
+                        for (key, val) in sorted(self.request.POST.items()):
+                            print_debug(f"\t{key}: {val}")
+                        
+                        self.object = self.form.save()
+                        print_debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
+                        
+                        kwargs = self.kwargs
+                        kwargs['pk'] = self.object.pk
+                        self.success_url = reverse_lazy('view', kwargs=kwargs)
+                        
+                        print_debug(f"Saving the related forms.")
+                        save_related_forms(self)
+                        print_debug(f"Saved the related forms.")
+                        
+                        if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
+                            self.object.clean_relations()
+         
+                        print_debug(f"Cleaned the relations.")
+                except (IntegrityError, ValidationError) as e:
+                    # TODO: Report INtergityErrors too
+                    # TODO: if error_dict refers to a non field this crashes, find what the criterion
+                    #       in add_error is and then if it's a field tat doesn't match this criteron 
+                    #       do somethings sensible. We may be able to attach errors to the formsets too!
+                    for field, errors in e.error_dict.items():
+                        for error in errors:
+                            self.form.add_error(field, error)
+                    return self.form_invalid(self.form)
+
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_processor', None)): self.post_processor()
+                                          
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
+           
         else:
-            # Hook for pre-processing the form (before the data is saved)
-            if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
+            if self.form.is_valid():
+                self.object = self.form.save()
+                save_related_forms(self)
+                
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_processor', None)): self.post_processor()
+                
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
+             
 
-            # Save this form
-            self.object = form.save()
-            self.kwargs['pk'] = self.object.pk
-            self.success_url = reverse_lazy('view', kwargs=self.kwargs)            
-                        
-            # Save related forms
-            errors = save_related_forms(self)
-            
-            # TODO: Make sure UpdateViewExtended does this too. Am experimenting here for now.
-            # TODO: Tidy this. Render the errors in the message box on the original form somehow.
-            # Basically bounce back to where we were with error messages.
-            # This looks neat: http://stackoverflow.com/questions/14647723/django-forms-if-not-valid-show-form-with-error-message  
-            if errors:
-                return JsonResponse(errors)            
-                        
-            # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_processor')): self.post_processor()
-
-            return HttpResponseRedirect(self.get_success_url())
-
-#     def get_form(self, form_class):
-#         '''Augments the standard generated form by adding widget attributes specified in the model'''
-#         form = super().get_form(form_class)   # Jumps to FormMixinBase.get_form_with_form_class
-#         # Line above instantiates a form from the form_class which lands in BaseModelForm.__init__
-#         # That in turn lands in BaseForm.__init__ which is where the instance gains the "fields" attribute
-#         # "forms" here has tjhe "fields" attribute for Session which it gained in line above somewhere.
-#         if hasattr(self.model,'widget_attrs'):
-#             for field,attr in self.model.widget_attrs.items():
-#                 for attr_name,attr_value in attr.items():
-#                     form.fields[field].widget.attrs.update({attr_name:attr_value})
-#         return form
-
-#     def post(self, request, *args, **kwargs):
-#         response = super().post(request, *args, **kwargs)
-#         return response
+    def form_valid(self, form):
+        """If the form is valid, redirect to the supplied URL."""
+        return HttpResponseRedirect(self.get_success_url())
