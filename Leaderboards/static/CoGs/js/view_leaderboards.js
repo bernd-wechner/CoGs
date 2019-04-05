@@ -162,7 +162,7 @@ function LabelButton(element) {
 	val = $('#selLeague :selected').text(); if (val != $('#selLeague option:first').text()) opts.push("the " + val + " league");
 	
 	qual = " for " + opts.join(" in ");
-	label = "All Leaderbords" + (opts.length > 0 ? qual : "");
+	label = "All Leaderboards" + (opts.length > 0 ? qual : "");
 	
 	$('#'+element).val(label);
 }

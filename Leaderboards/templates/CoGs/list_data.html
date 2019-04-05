@@ -281,8 +281,8 @@
 </table>
 <p/>
 
-{% if txt_filters %}
-	<p><b>{{model_name_plural|title}} for:</b> {{txt_filters}}</p>
+{% if filters_text %}
+	<p><b>{{model_name_plural|title}} for:</b> {{filters_text}}</p>
 {% endif %}
 
 <div id="data">{{ view.as_html }}</div>

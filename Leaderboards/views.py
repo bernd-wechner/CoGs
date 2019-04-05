@@ -423,7 +423,7 @@ def save_league_filters(session, league):
     F = "league"
 
     # Set the priority list of fields for this filter
-    P = ["leagues", "league", "players__leagues", "player__leagues", "session__league"] 
+    P = ["leagues", "league", "session__league", "player__leagues", "players__leagues"] 
     
     if "filter" in session:
         if league == 0:
@@ -778,18 +778,29 @@ def receive_Filter(request):
     '''
     A view that returns (presents) nothing, is not a view per se, but much rather just
     accepts POST data and acts on it. This is specifically for receiving filter 
-    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
-    pages which asynchonously and silently in the background on a page load, posts
-    the client information here.
+    information via an XMLHttpRequest.
     
-    The main aim and r'aison d'etre for this whole scheme is to rpovide a way to 
+    The main aim and r'aison d'etre for this whole scheme is to provide a way to 
     submit view filters for recording in the session. 
     '''
     if (request.POST):
         # Check for league
         if "league" in request.POST:            
             print_debug(f"League = {request.POST['league']}")
-            save_league_filters(request.session, int(request.POST["league"]))
+            save_league_filters(request.session, int(request.POST.get("league", 0)))
+           
+    return HttpResponse()
+
+def receive_DebugMode(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving a debug mode
+    flag via an XMLHttpRequest when debug mode is changed.
+    '''
+    if (request.POST):
+        # Check for league
+        if "debug_mode" in request.POST:            
+            request.session["debug_mode"] = True if request.POST.get("debug_mode", "false") == 'true' else False
            
     return HttpResponse()
 
@@ -989,7 +1000,7 @@ def ajax_List(request, model):
     '''
     Support AJAX rendering of lists of objects on the list view. 
     
-    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
+    To achieve this we instantiate a view_List and fetch its queryset then emit its html view. 
     ''' 
     view = view_List()
     view.request = request

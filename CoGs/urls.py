@@ -61,6 +61,7 @@ urlpatterns = [
 
     path('post/clientinfo', views.receive_ClientInfo, name='post_client_info'),
     path('post/filter', views.receive_Filter, name='post_filter'),
+    path('post/debugmode', views.receive_DebugMode, name='post_debugmode'),
     
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

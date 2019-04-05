@@ -156,6 +156,7 @@
 		
 		function fetch_neighbour(url) {
 			// fetch a neighbouring object without reloading the whole page (AJAX request)
+			$("#reloading_icon").css("visibility", "visible");
 			REQUEST.open("GET", url + URLopts(), true);
 			REQUEST.send(null);
 		}								
@@ -287,8 +288,8 @@
 		<a id="browser_prior" onclick="fetch_neighbour(URL_prior);">&#9664;</a>
 		<span id="browser_position"></span>		
 		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>	
-		{% if txt_filters %}
-			in the <b>filtered set:</b> {{txt_filters}}			
+		{% if filters_text %}
+			in the <b>filtered set:</b> {{filters_text}}			
 		{% endif %}
 		</p>
 	</div>

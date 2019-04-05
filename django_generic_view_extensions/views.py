@@ -44,7 +44,7 @@ from cuser.middleware import CuserMiddleware
 # Package imports
 from .util import app_from_object, class_from_string
 from .html import list_html_output, object_html_output, object_as_html, object_as_table, object_as_ul, object_as_p, object_as_br
-from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context
+from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context, add_debug_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields
@@ -108,11 +108,12 @@ def get_filterset(self):
         # session filters already in there as we provide priority to
         # user specified filters in the GET params over the session 
         # defined fall backs.
+        F = filters.copy()
         for f in filters:
             if f in qd:
-                del filters[f]
+                del F[f]
          
-        qd.update(filters)
+        qd.update(F)
         
     # TODO: test this with GET params and session filter! 
     fs = FilterSet(data=qd, queryset=qs)  
@@ -171,19 +172,6 @@ class ListViewExtended(ListView):
     as_br = object_as_br
     as_html = object_as_html # Chooses one of the first three based on request parameters
 
-    # Add some model identifiers to the context (if 'model' is passed in via the URL)
-    def get_context_data(self, *args, **kwargs):
-        context = super().get_context_data(*args, **kwargs)
-
-        add_model_context(self, context, plural=True)
-        add_timezone_context(self, context)
-        add_format_context(self, context)
-        add_filter_context(self, context, self.filterset)
-        add_ordering_context(self, context, self.ordering)
-        context["total"] =  self.model.objects.all().count        
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        return context
-
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
         self.app = app_from_object(self)
@@ -214,6 +202,21 @@ class ListViewExtended(ListView):
         self.count = len(self.queryset)
         
         return self.queryset
+
+    # Add some model identifiers to the context (if 'model' is passed in via the URL)
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+
+        add_model_context(self, context, plural=True)
+        add_timezone_context(self, context)
+        add_format_context(self, context)
+        add_filter_context(self, context)
+        add_ordering_context(self, context)
+        add_debug_context(self, context)
+        context["total"] =  self.model.objects.all().count        
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
+
 
 class DetailViewExtended(DetailView):
     '''
@@ -291,8 +294,9 @@ class DetailViewExtended(DetailView):
         add_model_context(self, context, plural=False)
         add_timezone_context(self, context)
         add_format_context(self, context)
-        add_filter_context(self, context, self.filterset)
-        add_ordering_context(self, context, self.ordering)
+        add_filter_context(self, context)
+        add_ordering_context(self, context)
+        add_debug_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context  
 
@@ -335,6 +339,7 @@ class DeleteViewExtended(DeleteView):
         add_model_context(self, context, plural=False, title='Delete')
         add_timezone_context(self, context)
         add_format_context(self, context)
+        add_debug_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
@@ -400,6 +405,7 @@ class CreateViewExtended(CreateView):
         # Now add some context extensions ....
         add_model_context(self, context, plural=False, title='New')
         add_timezone_context(self, context)
+        add_debug_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 

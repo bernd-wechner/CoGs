@@ -120,12 +120,12 @@ function URLopts(element) {
 
 	// Options shared by all reload paths
 	
-	val = $('#selCols').find(":selected").val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-	val = $('#selNames').find(":selected").val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-	val = $('#selLinks').find(":selected").val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+	val = $('#selCols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
+	val = $('#selNames :selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
+	val = $('#selLinks :selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
 
-	val = $('#selLeague').find(":selected").val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
-	val = $('#selPlayer').find(":selected").val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
+	val = $('#selLeague :selected').val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
+	val = $('#selPlayer :selected').val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
 
 	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
 	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
@@ -153,6 +153,18 @@ function URLopts(element) {
 	}
 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
+}
+
+function LabelButton(element) {
+	var opts = []
+	
+	val = $('#selPlayer :selected').text(); if (val != $('#selPlayer option:first').text()) opts.push(val);	
+	val = $('#selLeague :selected').text(); if (val != $('#selLeague option:first').text()) opts.push("the " + val + " league");
+	
+	qual = " for " + opts.join(" in ");
+	label = "All Leaderboards" + (opts.length > 0 ? qual : "");
+	
+	$('#'+element).val(label);
 }
 
 function toggle_options() {

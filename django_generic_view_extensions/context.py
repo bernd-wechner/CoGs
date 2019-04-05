@@ -12,6 +12,7 @@ from django.utils.timezone import get_current_timezone, make_naive
 
 # Python imports
 import pytz
+import sqlparse
 from datetime import datetime
 #import json
 
@@ -185,7 +186,7 @@ def add_format_context(view, context):
     
     return context
 
-def add_filter_context(view, context, filterset):
+def add_filter_context(view, context):
     '''
     List and Detail views accept filters via the url (see url_filter). Both these views can do AJAX 
     based refreshes and so want to know the filter criteria that came in. They could suck this out
@@ -193,8 +194,6 @@ def add_filter_context(view, context, filterset):
     
     List view clearly, the filter determines what is listed
     Detail view, only the neighbours for browsing (prior and next) are impacted   
-    :param view:
-    :param context:
     '''
     context['widget_filters'] = FilterWidget(model=view.model, choices=view.request.GET)
     
@@ -202,10 +201,22 @@ def add_filter_context(view, context, filterset):
     context["filters"] = mark_safe('""')  
     
     if hasattr(view, 'filterset') and not view.filterset is None:
-        context["txt_filters"] = mark_safe(format_filterset(view.filterset, as_text=True))        
         context["filters"] = format_filterset(view.filterset, as_text=False)
+        context["filters_text"] = mark_safe(format_filterset(view.filterset, as_text=True))
+        context["filters_data"] = view.filterset.data
+        
+        specs = view.filterset.get_specs()
+        filters_specs = {}
+        for spec in specs:
+            op = spec.lookup
+            key = "__".join(spec.components) + "__" + op
+            val = spec.value
+            filters_specs[key] = val
+            
+        context["filters_specs"] = filters_specs        
+        context["filters_query"] = sqlparse.format(str(view.filterset.filter().query), reindent=True, keyword_case='upper')        
 
-def add_ordering_context(view, context, ordering):
+def add_ordering_context(view, context):
     '''
     List and Detail views respond to ordering via the url. Both these views can do AJAX 
     based refreshes and so want to know the filter criteria that came in. They could suck 
@@ -229,3 +240,11 @@ def add_ordering_context(view, context, ordering):
     else:   
         context["ordering_default"] = ""
 
+def add_debug_context(view, context):
+    '''
+    A hook to add debug into the context when requested by teh session debug flag
+
+    :param view:
+    :param context:
+    '''
+    context['debug_mode'] = view.request.session.get("debug_mode", False)
