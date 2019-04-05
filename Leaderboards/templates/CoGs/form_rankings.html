@@ -1,7 +1,7 @@
 {% load filters %}
 <tr><td colspan=2>
 
-	{# TODO: TAB should move from player to player in the ranking tables as the deault data enry mode would be just tos elect players one after another #}
+	{# TODO: TAB should move from player to player in the ranking tables as the default data enry mode would be just to select players one after another #}
 
 	<!-- Individual Play Block -->
 
@@ -20,7 +20,7 @@
 		<table id="tblIndividualPlay">
 			<tr>
 				<td class="label" style="text-wrap:none">Number of players:</td>
-				<td><input type="number" min=2 class="Number" id="NumPlayers" onchange="OnRowcountChange(event)"/></td>
+				<td><input type="number" class="Number" id="NumPlayers" name="num_players" onchange="OnRowcountChange(event)"/></td>
 		    </tr>
 		</table>
 
@@ -61,13 +61,13 @@
 			which must be submitted with a formset for Django to properly processs the forms.
 			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
 		{% endcomment %}
-		{{ related_forms.Team.management_form }} {# This probably not needed as Teams are not managed by Team IDs but inferred by Players defined in Performance objects. We will need to assemble those players into Team though #}
 		{{ related_forms.Rank.management_form }}
+		{{ related_forms.Rank.related_forms.Team.management_form }} 
 		{{ related_forms.Performance.management_form }}
 		<table id="tblTeamPlay">
 		    <tr>
 		        <td class="label">Number of teams:</td>
-		        <td><input type="number" min=2 class="Number" id="NumTeams" name="num_teams" onchange="OnRowcountChange(event)"/></td>
+		        <td><input type="number" class="Number" id="NumTeams" name="num_teams" onchange="OnRowcountChange(event)"/></td>
 		    </tr>
 		</table>
 
@@ -81,13 +81,14 @@
 			<tr id="templateTeamsHeader">
 			    <th>Place</th>
 			    <th>Team</th>
-			    <th>Number of Players</th>
+			    <th>Players</th>
 			    <th>Show Players</th>
 			    <th class="greedy"></th>
 			</tr>
-			<tr class="team" id="templateTeamsBody"> 			{# Rank and Team stored in Rank model and Player and Weighting in the Performance model. #}
-			    <td>{{related_forms.Rank.id}}                   {# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
-			    	{{related_forms.Rank.rank}}</td>   			{# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
+			<tr class="team" id="templateTeamsBody">   {# Rank and Team stored in Rank model and Player and Weighting in the Performance model. #}
+			    <td>{{related_forms.Rank.id}}          {# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
+			    	{{related_forms.Rank.related_forms.Team.id}} {# Hidden field that should contain the ID of the team object if we're editing rather than adding a record. #}
+			    	{{related_forms.Rank.rank}}</td>   {# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
 
 				{% comment %}
 				OLD CODE (which initialised the team name as Team # which has # replaced by an index number in the supporting JS code) for reference:
@@ -100,7 +101,7 @@
 
 			    <td>{{related_forms.Rank.related_forms.Team.name}}</td>
 
-			    <td><input type="number" min=2 class="Number" name="Team-__prefix__-num_players" onchange="OnRowcountChange(event)"/></td>
+			    <td><input type="number" name="Team-__prefix__-num_players" onchange="OnRowcountChange(event)" class="Number"/></td>
 			    <td><input type="checkbox" name="ShowTeamPlayers" onchange="showhideTeamPlayers(event)" class="NoSubmit"/></td>
 			    <td class="greedy"></td>
 			</tr>

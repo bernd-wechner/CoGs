@@ -1,11 +1,29 @@
 {% extends "CoGs/base.html" %}
+{% load staticfiles %}
+{% load tz %}
+{% get_current_timezone as TIME_ZONE %}
 {% block title %}{{title}}{% endblock %}
 {% block content %}
-
-<form action="" method="post">
+<form id="LoginForm" action="" method="post">
 	{% csrf_token %}
 	{{ form }}
+	
+	{# We want to submit the local timezone info as best we can and store it a session variable #}
+	<script src="{% static 'CoGs/js/jstz.min.js'%}"></script>
+
+    <label for="timezone">Time zone:</label>
+    <select id="timezone" name="timezone">
+        {% for tz in timezones %}
+        <option value="{{ tz }}">{{ tz }}</option>
+        {% endfor %}
+    </select>
+    
+	<script>
+		const tz = jstz.determine();
+		const selector = document.getElementById("timezone");
+		selector.value = tz.name();
+	</script>    
+	
 	<input type="submit" value="Login" style="margin-top:20px;"/>
 </form>
-
 {% endblock %}

@@ -20,15 +20,19 @@ See .model for a definition of add_related.
 '''
 # Python imports
 import collections
+import pickle
+import codecs
 from types import SimpleNamespace
 
 # Django imports
 from django.core.exceptions import ValidationError
 from django.forms.models import fields_for_model, modelformset_factory, inlineformset_factory 
+from django.conf import settings
 
 # Package imports
 from .model import add_related, apply_sort_by
 from .debug import print_debug
+
 
 def classify_widget(field):
     '''
@@ -139,7 +143,7 @@ def get_formset_from_request(Form_Set, form_data):
 
 def get_formset_from_object(Form_Set, db_object, field):
     '''
-    Given a Form_Set cass, a db_object and a field that is a relation, 
+    Given a Form_Set class, a db_object and a field that is a relation, 
     builds a form_set from the db_object if it can and returns it.
     '''
     # A shorthand term
@@ -258,7 +262,7 @@ def get_rich_object_from_forms(root_object, related_forms):
     
     # TODO: How does this generalize to a formset of sessions say?
     
-    # TODO: If model_history is empty then in this model put an attritibute called
+    # TODO: If model_history is empty then in this model put an attribute called
     #       complex_object or such which will be a tree of dictionaries of just the object 
     #       instances with the key being the model name, and the value being one or a list
     #       of objects of that model that are releated to the root model.
@@ -275,7 +279,7 @@ def get_rich_object_from_forms(root_object, related_forms):
     #
     #        The main goal is to have just object instances to walk during a clean to have
     #        and easy way to clean the whole complex_object.
-    print_debug("Building rich object for {}".format(root_object._meta.model))
+    print_debug("Building rich object for {}".format(root_object._meta.model._meta.object_name))
 
     rich_object = SimpleNamespace()
     rich_object.root = root_object
@@ -293,21 +297,23 @@ def get_rich_object_from_forms(root_object, related_forms):
             print_debug("Added instance: {}".format(str(iform.object)))
             for subrelation in iform:
                 print_debug("Checking relation: {}".format(str(subrelation)))
-                
-        
     pass
 
 def generic_related_form(form_set):
     '''
-    Given a Django form_set creates a generic related form which basically an empty form
+    Given a Django form_set creates a generic related form which is basically an empty form
     with a management form and field_data added so that if it's passed into context received
-    by a Django template javascript can be used to build a form_set from this related form.  
+    by a Django template javascript can be used to build a form_set from this related form.    
+    We add the field_name too if it's provided.   
     '''
     related_form = form_set.empty_form
     related_form.management_form = form_set.management_form
     
     if hasattr(form_set, 'field_data'):
         related_form.field_data = form_set.field_data
+        
+    if hasattr(form_set, 'field_name'):
+        related_form.field_name = form_set.field_name
        
     return related_form
 
@@ -344,17 +350,32 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
         return field.formfield()
 
     assert not model in model_history, "Model Error: You have defined a recursive set of model relations with the model.add_related attribute."
-        
-    print_debug("Starting get_related_forms({}), history={}".format(model, model_history))
+
+    # This funcion is recursive, and searches for related forms in related forms in related forms ...
+    # So we track the depth of the recursion here and keep a history so as to try and avoid endless loops.  
+    model_depth = len(model_history)
+    debug_prefix = '\t' * model_depth 
+            
+    print_debug(f"\n{debug_prefix}=================================================================")
+    print_debug(f"{debug_prefix}Starting get_related_forms({model._meta.object_name}), history={[m._meta.object_name for m in model_history]}")
 
     # A db_object if supplied must be an instance of the specified model     
     if not db_object is None:
         assert isinstance(db_object, model), "Coding Error: db_object must be an instance of the specified model"
 
+    if not form_data is None:
+        print_debug(f"{debug_prefix}Using form_data:")
+        for (key, val) in form_data.items():
+            print_debug(f"{debug_prefix}\t{key}:{val}")
+        print_debug("\n")            
+    elif not db_object is None:
+        print_debug(f"{debug_prefix}Using db_object: {db_object._meta.object_name} {db_object.pk}")
+
     related_forms = collections.OrderedDict()
 
-    relations = [f for f in model._meta.get_fields() if (f.is_relation)]
+    print_debug(f"{debug_prefix}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
 
+    relations = [f for f in model._meta.get_fields() if (f.is_relation)]
     if len(relations) > 0:
         for relation in relations:
             # These are the relations we can expect:
@@ -364,15 +385,17 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             #     one_to_one:    this is a OneToOneField
             #
             # At this point we have a model, and a list of relations (other models that relate to it)
-            # For a given relation there with be one or more related objects. If the relation is of the
+            # For a given relation there will be one or more related objects. If the relation is of the
             # form ToOne there will be one related object. If the relation is of the form ToMany there will 
             # be many related objects. 
             #
             # For this relation we want a "related_form" which we'll provide as a empty_form
-            # and if a data_source is provided, to that empty_form we want to add an attribute "field_data" 
-            # which has for each field in the empty form a list of values for each instance.
+            # and if a data source is provided (form_data or db_object), to that empty_form  
+            # we want to add an attribute "field_data" which has for each field in the empty form 
+            # a list of values for each instance. 
+            #
             # For completeness we also add instance_forms to the empty form which is a dictionary of forms
-            # keyed on the PK of the indivudal instances (that are listed in field_data) and the value
+            # keyed on the PK of the individual instances (that are listed in field_data) and the value
             # is a form for that instance (essentially the empty_form with values in the fields).
             #
             # The value in field_data might itself be a simple scalar (for ordinary fields), or a PK if 
@@ -397,25 +420,25 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             #
             # So field_data for a given field could be a list of lists all depending on the relationships.
             #
-            # This is recursive, in that the related_form may also be given an atttribute "related_forms" which is
+            # This is recursive, in that the related_form may also be given an attribute "related_forms" which is
             # a dictionary of related forms in the self same manner for that related model. 
             # 
             # For added convenience, the fields in each related model are also included in field_data.
-            # They are included as lists of values (one for each instance) with psuedo field names in form
+            # They are included as lists of values (one for each instance) with pseudo field names in form
             # model__field (using django's double underscore convention). This is complicated and a good
             # working example will be useful
             #
             # To include a relation it has to be identified in a model's add_related attribute.
             # Either this object has a field which is specified in its add_related list, or
             # The related model has a field which is specified in add_related (in the format "model.field")
-            # The relation will have an atribute named "field" if it's a candidate for the latter. 
+            # The relation will have an attribute named "field" if it's a candidate for the latter. 
             # That "field" in the relation is the field in the related model which points to this one.
             #
             # Examples to elucidate:
             #
             # 1) If we have a Team model and object there is a related model Member which has a field 
             # named "team" which is a ForeignKey field pointing team, then this is many_to_one relationship 
-            # (many Members per Team), then the Team model we should have an atttribute add_related = ['Member.team']
+            # (many Members per Team), then the Team model we should have an attribute add_related = ['Member.team']
             # to request that we include the related form for Member. There is no field in Team for the relationship
             # for us to specify! But if the team field in Member has a related_name ('members' for example) a field of 
             # that name is created in Team and so we also can request the related form with  add_related = ['members'].
@@ -430,6 +453,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             # and the relation will have a field that is the field in Member that is pointing to Team. In this example
             # a field 'team' that points to Team and so Member.team is also a way to specify this related form if desired.
             
+            # If the model's add_related field mentions this relation ... and only if.
             if ( relation.name in add_related(model)
                 or (hasattr(relation, "field") 
                 and relation.field.model.__name__ + "." + relation.field.name in add_related(model)) ):
@@ -446,8 +470,8 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
                 # Build the related_formset and field_data for this relation
                 
                 # Try to use form_data if it's present (it may fail as the form_data may not include
-                # a submission for the related model).Note success or failure in found_form_data so 
-                # we can look at db_object for field values.
+                # a submission for the related model). We record success or failure in found_form_data  
+                # so we can look at db_object for field values.
                 found_form_data = False
                 if not form_data is None:
                     related_formset = get_formset_from_request(Related_Formset, form_data)
@@ -456,6 +480,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
 
                 # If no form data was found try and find it in the db_object
                 if not found_form_data and not db_object is None:                    
+                    print_debug(f"{debug_prefix}Getting formset from: {db_object._meta.object_name} {db_object.pk} using relation {relation} through the field {relation.name}.")
                     related_formset = get_formset_from_object(Related_Formset, db_object, relation)
 
                 # If no management form is present this will fail with a ValidationError
@@ -467,28 +492,36 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
                     if e.code == "missing_management_form":
                         has_management_form = False
                     
-                # If we didn't succeed in building a formset from form_data ot a db_object just
+                # If we didn't succeed in building a formset from form_data or a db_object just
                 # build one from the model, for the empty_form including a management form,
                 if not has_management_form:
                     related_formset = Related_Formset(prefix=relation.related_model.__name__)
+                
+                # Add the name of the field/relation to the related form.
+                # We want to know this when saving related to check the field properties.
+                related_formset.field_name = relation.name 
 
                 # Build the generic_related_form for this relation and save it
-                related_forms[relation.related_model.__name__] = generic_related_form(related_formset)
+                model_name = relation.related_model.__name__
+                related_forms[model_name] = generic_related_form(related_formset)
 
-    # Now check each of the related forms to see if any of them want to add related forms!
-    # This could be dangerous if recursive. Relies on sensible configuration of the add_related model fields.
-    # TODO: Perhaps keep a history as we recurse to detect loopback
+    print_debug(f"{debug_prefix}Found {len(related_forms)} related forms: {[f[0] for f in related_forms.items()]}.")
+
+    # Now add an instance form for each instance that we find in the field_data
+    # and for each instance form, look for related forms in turn, walking down the 
+    # tree so to speak. 
     for rf in related_forms:
         rm = related_forms[rf].Meta.model
             
-        print_debug("Processing {}: add_related={}".format(rm, add_related(rm)))
+        print_debug(f"\n{debug_prefix}Processing {rm._meta.object_name}: add_related={add_related(rm)}")
         
         # add generic related forms (with no object) to provide easy access to 
         # the related empty form and field widgets in the context. Instance forms
         # are added later for each related object. 
         related_forms[rf].related_forms = get_related_forms(rm, model_history=model_history+[model])
+        print_debug(f"{debug_prefix}Got {len(related_forms[rf].related_forms)} generic forms related to {rm._meta.object_name}: {list(related_forms[rf].related_forms.keys())}")
         
-        # add instance_forms for each instance
+        # add instance_forms for each instance (of the related form)
         if hasattr(related_forms[rf], "field_data") and rm._meta.pk.attname in related_forms[rf].field_data:
             related_forms[rf].instance_forms = {}
 
@@ -501,30 +534,36 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             pk_placeholder = 0
             
             # To loop easily, we need a list of pks 
-            # but it may be in field_data as a single pk not a list
-            # so build a list if it's not a list.
-            pks = related_forms[rf].field_data[pk_attr] if isinstance(related_forms[rf].field_data[pk_attr], list) else [related_forms[rf].field_data[pk_attr]] 
+            # but it may be in field_data as a single pk not a list so build a list if it's not a list.
+            pks = related_forms[rf].field_data[pk_attr]
+            pks = pks if isinstance(pks, list) else [pks] 
+            print_debug(f"{debug_prefix}Processing {rm._meta.object_name}: instance PKs={pks}")
+
             for pk in pks:
                 if pk is None:
                     ph = 'PK_{}'.format(pk_placeholder)
                     pk_placeholder += 1
+                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK=None so using a placeholder PK={ph}")
                 else:
                     ph = pk
+                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}")
                 pk_list.append(ph)
-                                
-                print_debug("Processing {}: ph={}".format(rm, ph))
-                        
+                                                        
                 if not pk is None:
                     o = rm.objects.get(pk=pk)
+                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got object from DB: {o}")
                 else:
                     i = len(pk_list)-1
                     fields = {}
+                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field_data : {related_forms[rf].field_data.items()}")                    
                     for field, values in related_forms[rf].field_data.items():
                         f = rm._meta.get_field(field)
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field: {field}, i: {i}, values[i]: {values[i]}, f: {f}, f.is_relation: {f.is_relation}")
                         if values[i] is None:
                             val = None
                         elif f.is_relation:
                             m = f.related_model
+                            print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. related_model: {m}, one_to_one: {f.one_to_one}, many_to_one: {f.many_to_one}, one_to_many: {f.one_to_many}, many_to_many: {f.many_to_many}")
                             if f.one_to_one or f.many_to_one:
                                 val = m.objects.get(pk=values[i])
                             elif f.one_to_many or f.many_to_many:
@@ -532,41 +571,54 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
                                 val = m.objects.filter(pk__in=values[i]) 
                         else:
                             val = values[i]
-                            
-                        fields[field] = val
                         
+                        # I know this bombs when a many_to_many field with val None is added to fields
+                        # TODO: Check this works for many_to_many fields when val is not None! 
+                        # To do this edit a team play session and put a break here on save. Should land
+                        # here with a many to many with a val.   
+                        if not ((f.one_to_many or f.many_to_many) and val is None):    
+                            fields[field] = val
+                        
+                    print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Building object from field_data : {fields}")
                     o = rm(**fields)
-
-                    print_debug("Processing {}: o={}".format(rm, o))
-                     
+                    print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Built object from field_data : {o}")
+                
+                # Earlier we added a generic empty related form, now we add a specific one for each instance populated with
+                # data avalable.
                 instance_forms = get_related_forms(rm, form_data=form_data, db_object=o, model_history=model_history+[model])
                 instance_forms.object = o
-
+                
                 if not instance_forms is None:               
-                    print_debug("Processing {}: Saving instance form for {}".format(rm, ph))
+                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got {len(instance_forms)} related instance forms: {list(instance_forms.keys())}.")
                     related_forms[rf].instance_forms[ph] = instance_forms
                         
-        # For ease of use in the template context add field_data for all the instance related fields as well
+        # Finally, for ease of use in the template context 
+        # add field_data for all the instance related fields as well
+        # TODO: Why do we populate field_data only for Player not for Rank?
         if hasattr(related_forms[rf],"instance_forms"):
+            print_debug(f"{debug_prefix}Building field_data for model={rm._meta.object_name}, PKs={pk_list}")
             for pk in pk_list: # Walk the ordered list of PKs
+                print_debug(f"{debug_prefix}Found {len(related_forms[rf].instance_forms[pk])} instance forms: {list(related_forms[rf].instance_forms[pk].keys())} related to {rf} PK={pk}")
                 for form in related_forms[rf].instance_forms[pk]:
-                    if hasattr(related_forms[rf].instance_forms[pk][form], "field_data"):
+                    if hasattr(related_forms[rf].instance_forms[pk][form], "field_data") and len(related_forms[rf].instance_forms[pk][form].field_data) > 0:
+                        print_debug(f"{debug_prefix}Adding field data to instance form of model={form} related to {rf} PK={pk}")
                         for ro_field in related_forms[rf].instance_forms[pk][form].field_data:
                             ro_field_name = form + "__" + ro_field
-                            print_debug("Adding {}".format(ro_field_name))
                             ro_field_value = related_forms[rf].instance_forms[pk][form].field_data[ro_field]
                             if not ro_field_name in related_forms[rf].field_data:
                                 related_forms[rf].field_data[ro_field_name] = []
                             related_forms[rf].field_data[ro_field_name].append(ro_field_value)
+                            print_debug("f{debug_prefix}Added {ro_field_name}={ro_field_value}")                           
 
-    print_debug("Done with get_related_forms({})".format(model))
+    print_debug(f"{debug_prefix}Done with get_related_forms({model._meta.object_name})")
+    print_debug(f"{debug_prefix}=================================================================\n")
     return related_forms            
 
 def save_related_forms(self):
-
-    #TODO: Implement this! 
-    # Docs state: If your formset contains a ManyToManyField, you’ll also need to call formset.save_m2m() to ensure the many-to-many relationships are saved properly.
-    #        What does that mean?
+    # TODO: Implement and test this - a work in progress 
+    # Docs state: If your formset contains a ManyToManyField, you’ll also need to call 
+    #                formset.save_m2m() to ensure the many-to-many relationships are saved properly.
+    #                What does that mean?
     #
     # Very helpful page:
     #   https://docs.djangoproject.com/en/dev/topics/forms/modelforms/#id1
@@ -579,26 +631,134 @@ def save_related_forms(self):
     #
     # In each case how are the table links saved properly?
     #
-    # In case 1: the related formset is instantiation with the original object passed as an istance. That is how Django knows which object the related formset relates to.
+    # In case 1: the related formset is an instantiation with the original object passed as an instance. 
+    # That is how Django knows which object the related formset relates to.
     # Case 2 and 3 uncertain at present. Think about it.
     
     # This code saves properly and can be used in interim.
-    # TODO: Review how it fits in with cleaning
-    # TODO: Does it handle recursion? forms related to related forms?
-    related_forms = get_related_forms(self.model, self.operation, self.object)
+    # TODO: Review how this fits in with cleaning
+    
+    # Fetch all the related forms. 
+    print_debug(f"Getting related forms for {self.model._meta.object_name} {self.object.pk}, operation: {self.operation}")
+    related_forms = get_related_forms(self.model, db_object=self.object)
+    
+    print_debug(f"Saving {len(related_forms)} Related Forms: {[name for (name, form) in related_forms.items()]}")
+    
+    print_debug(f"Requesting IP is: {self.request.META['REMOTE_ADDR']}")
+    
+    print_debug("From POST request containing:")
+    for (key, val) in sorted(self.request.POST.items()):
+        print_debug(f"\t{key}: {val}")
+    
+    # We won't want to save all of them. To save a related form we need:
+    # 
+    # 1. The related field in this model to be editable. If it's not it wasn't on the 
+    #    parent form, or sure shouldn't have been. We can set editable=False on a model field
+    #    specifically to prevent submission from forms.
+    #
+    # 2. There is data, any data, provided. If not form.data will be empty and it simply 
+    #    means 1. was honoured at least but perhaps for some other reason the submitting form
+    #    has elected not to submit this form. 
+    #
+    # 3. The field related to this form is mentioned in the models 'add_related' attribute. 
+    #    That's the mechanism we use to flag that related forms should be added/saved with
+    #    this parent form. NOTE: This is checked in get_related_forms() already so we don't 
+    #    need to check it here really, but we should assert it all the same.
+    #
+    # That should cover it and let through any related forms that SHOULD be saved, namely
+    # those mentioned in add_related, those that are editible and those that have provided 
+    # data. 
     
     for name,form in related_forms.items():
-        model = self.model                  # The model being saved
-        obj = self.object                   # The object created when it was saved
-        related_model = form._meta.model    # The related model to save
-        Related_Formset = inlineformset_factory(model, related_model, can_delete=False, extra=0, fields=('__all__'))
-        related_formset = Related_Formset(self.request.POST, self.request.FILES, instance=obj, prefix=name)
-        if related_formset.is_valid():
-            related_formset.save()
-        else:
-            # TODO: Report errors cleanly on new edit form
-            # Errors are in related_formset.errors
-            raise ValueError("Invalid Data")    
+        model = self.model                              # The model being saved
+        obj = self.object                               # The object created when it was saved
+        related_model = form._meta.model                # The related model to save
+        field_name = form.field_name                    # Get the field name in self.model that this relation relates to  
+        relation = getattr(model, field_name, None)     # Get the field itself (which is a relation)
+
+        mon = model._meta.object_name                   # Model Object Name
+        rmon = related_model._meta.object_name          # Related Model Object Name
+        
+        print_debug(f"Saving {mon}->{rmon}")
+                
+        if relation.field.editable and (len(self.request.POST) > 0 or len(self.request.FILES) > 0):
+            assert field_name in add_related(model), "Progamming Error: field_name is not in add_related yet we're trying to save it!"
+            
+            Related_Formset = inlineformset_factory(model, related_model, can_delete=True, extra=0, fields=('__all__'))
+            related_formset = Related_Formset(self.request.POST, self.request.FILES, instance=obj, prefix=name)
+            
+            if related_formset.is_valid():
+                ran = relation.rel.related_name         # Related Attribute Name
+                rfn = relation.field.name               # Related model field name
+
+                print_debug(f"\t{mon}->{rmon} is valid. Used prefix={name} and instance={mon} {obj.pk}")
+                if (settings.DEBUG):
+                    robjs_before = len(getattr(obj, ran).all())
+                    print_debug(f"\t\t{mon} {obj.pk}: checking parent before save {ran}={robjs_before}")
+
+                # This is interesting:
+                # https://stackoverflow.com/questions/12486734/how-to-save-m2m-field-in-a-formset-when-commit-false
+                #
+                # Apparently we can do this:
+                
+#                 for form in related_formset:                
+#                     if form.has_changed(): 
+#                         form.save()
+
+                # And he also notes this fascinating pattern
+                
+#                 deal = fm.save(commit=False)
+#                 ...
+#                 deal.save()
+
+                # Implying we can save our session with commit=False and get an object with a PK!
+                # So we can then look the related forms and save them!
+                # This looks cool.
+                
+                print_debug(f"\t{mon}->{rmon} Saving related formset...")
+                instances = related_formset.save()  # returns the instances saved but we don't need them here
+
+                # Debugging output
+                if (settings.DEBUG):
+                    robjs_after = len(getattr(obj, ran).all())
+                    print_debug(f"\t\t{mon} {obj.pk}: checking parent after save {ran}={robjs_after}")
+
+                    if (robjs_after>robjs_before):
+                            print_debug(f"\t\t{mon} {obj.pk}: added {robjs_after-robjs_before} {rmon}s")
+
+                    for instance in instances:
+                        parent = getattr(instance, relation.field.name, None)
+                        if (not parent is None):                    
+                            print_debug(f"\t\t{mon} {obj.pk}: saved {rmon}={instance}. It has {rfn}={parent.pk}")
+                            print_debug(f"\t\t{mon} {obj.pk}: checking parent {ran}={getattr(parent, ran).all()}")
+                    
+                    if (len(instances) == 0):
+                            print_debug(f"\t\t{mon} {obj.pk}: did not save any {rmon}s")
+                            
+                    if (robjs_after<robjs_before):
+                            print_debug(f"\t\t{mon} {obj.pk}: deleted {robjs_before-robjs_after} {rmon}s")
+            else:
+                # TODO: Report errors cleanly on new edit form
+                # Errors are in related_formset.errors
+                raise ValueError(f"Form errors: {related_formset.errors} in form {related_formset}")    
     
     return False # Return no errors
 
+# This was an experiment to save object data to the session for inherit_fields. 
+# Abandoned. But the learning is good and should move this to session.py and keep
+# it on hand as a generic session data saver and loader (modifed a little to be more generic).
+# 
+# def save_inherit_fields(session, model_instance):
+#     for field_name in inherit_fields(model_instance._meta.model):
+#         attr = getattr(model_instance, field_name)
+#         session["last_saved__"+field_name] = codecs.encode(pickle.dumps(attr), "base64").decode() 
+#     
+# def get_inherit_fields(session, model):
+#     inheritance = {}
+#     for field_name in inherit_fields(model):
+#         field_value = session.get("last_saved__"+field_name)
+#         if not field_value is None:
+#             attr = pickle.loads(codecs.decode(field_value.encode(), "base64"))
+#             inheritance[field_name] = attr
+#             
+#     return inheritance if len(inheritance) > 0 else None 

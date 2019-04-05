@@ -1,0 +1,46 @@
+<div id="filters" style="margin-top: 1ex">
+	<style>
+		.left {width:1%;}
+		.right 	{width:100%;padding-left: 2ch;}
+	</style>
+	
+	<table>
+		<tr>
+	        <th rowspan=0 valign=top><b>FILTERS:</b></th>
+			<th class="left">filters:</th>
+			<td class="right">{{ filters }}</td>
+	    </tr>
+		<tr>
+			<th class="left">as text:</th>
+			<td class="right">{{ filters_text }}</td>
+	    </tr>
+		<tr>
+			<th colspan=2>data</th>
+	    </tr>
+			{% for key, value in filters_data.items %}
+				<tr>
+					<td class="left">{{ key }}</td>
+					<td class="right">{{ value }}</td>
+				</tr>
+			{% endfor %}
+		<tr>
+			<th colspan=2>specs</th>
+	    </tr>
+			{% for key, value in filters_specs.items %}
+				<tr>
+					<td class="left">{{ key }}</td>
+					<td class="right">{{ value }}</td>
+				</tr>
+			{% endfor %}
+		<tr>
+			<td colspan=2>
+				<table>
+					<tr>
+						<th valign=top><div style="margin-top:1.3ch;">query:</span></th>
+						<td><pre>{{ filters_query }}</pre></td>
+				    </tr>
+				</table>
+			</td>	
+	    </tr>
+	</table>
+</div>

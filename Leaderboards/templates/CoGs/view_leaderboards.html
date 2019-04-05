@@ -47,12 +47,16 @@
 	<tr>
 		<td class='options' colspan = 2>
 			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
-			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
-			Show session details.
 			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 
 			Highlight players.
 			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 
 			Highlight changes.
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+			Show session details.
+			<input type="checkbox" id="chkSessionAnalysisPre" onchange='DrawTables("tblLB");'> 
+			Show TrueSkill Predictions.
+			<input type="checkbox" id="chkSessionAnalysisPost" onchange='DrawTables("tblLB");'> 
+			Show Post-Session TrueSkill Predictions.
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
@@ -79,8 +83,8 @@
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight' style="line-height:2;">
-			<label>Only games played by league: </label><select id='selLeague'></select><br>
-			<label>Only games played by player: </label><select id='selPlayer'></select><br>
+			<label>Only games played by league: </label><select id='selLeague' onchange='LabelButton("btnAllLeaderboards")'></select><br>
+			<label>Only games played by player: </label><select id='selPlayer' onchange='LabelButton("btnAllLeaderboards")'></select><br>
 			<label>Only this game: </label><select id='selGame'></select><br>
 			<label>Only leaderboards that changed on or after: </label>
 			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
@@ -139,13 +143,6 @@
 {% endblock %}
 
 {% block startscript %}
-<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
-<script src="{% static 'CoGs/js/jquery.datetimepicker.full.min.js'%}"></script>
-<script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>
-
-{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/jquery.datetimepicker.css' %}"/>
-
 <script>
 	// Nab the options and their defaults from context
 	var options = {{ options|safe }};

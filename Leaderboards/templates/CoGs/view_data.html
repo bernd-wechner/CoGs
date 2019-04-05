@@ -5,16 +5,15 @@
 {% block content %}
 
 {% if view %}
-	<script src="//ajax.googleapis.com/ajax/libs/jquery/2.1.4/jquery.min.js"></script>
 	<script type="text/javascript">
 		// Save the URL when we load for later use
 		function init() {
-			filters	= {{filters}};
+			filters	= {{filters|safe}};
 			object_browser = {{view.object_browser|NoneToNull}};
 			
 			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
 			
-			// It's awkward how we can to come via the template/context on load and via the ajax response on browsing. 
+			// It's awkward how we can to land here via the template/context on load and via the ajax response on browsing. 
 			// So this kind of info has to pass into the page from two directions. 
 			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse) 
 			{% if view.object_browser.0 %}
@@ -39,8 +38,12 @@
 		
 			$("#browser_prior").css("visibility", pk_prior == null ? "hidden" : "visible");
 			$("#browser_next").css("visibility", pk_next == null ? "hidden" : "visible");
-		
-			$("#browser_position").html("{{model_name}} " + object_browser[2] + " of "  + object_browser[3]);
+			
+			url = "{% url 'list' model_name %}"
+			if ({{filters|length}}>0) url += "?{{filters|join:'&'}}";
+			html = "{{model_name}} " + object_browser[2] + " of <a href='" + url + "'>" + object_browser[3] + "</a>";
+			
+			$("#browser_position").html(html);
 		}
 		
 		function toggle_filters() {
@@ -153,6 +156,7 @@
 		
 		function fetch_neighbour(url) {
 			// fetch a neighbouring object without reloading the whole page (AJAX request)
+			$("#reloading_icon").css("visibility", "visible");
 			REQUEST.open("GET", url + URLopts(), true);
 			REQUEST.send(null);
 		}								
@@ -203,6 +207,7 @@
 				<input type="checkbox" id="opt_related" value="related" {{format_flags.related|checked}}>Related Fields
 				<input type="checkbox" id="opt_properties" value="properties" {{format_flags.properties|checked}}>Properties
 				<input type="checkbox" id="opt_methods" value="methods" {{format_flags.methods|checked}}>Methods
+				<input type="checkbox" id="opt_summaries" value="summaries" {{format_flags.summaries|checked}}>Summaries
 			</td>
 		</tr>
 		<tr id="opt_separators" class='tight options toggle' style="visibility:collapse;">
@@ -283,8 +288,8 @@
 		<a id="browser_prior" onclick="fetch_neighbour(URL_prior);">&#9664;</a>
 		<span id="browser_position"></span>		
 		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>	
-		{% if txt_filters %}
-			in the <b>filtered set:</b> {{txt_filters}}
+		{% if filters_text %}
+			in the <b>filtered set:</b> {{filters_text}}			
 		{% endif %}
 		</p>
 	</div>

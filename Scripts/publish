@@ -32,15 +32,15 @@ cat > $exclusion_file <<-EOF
 	static
 EOF
 
-# Directory the script is in (expected to be in the project directory)
-source_dir=$(dirname $0)
+# Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
+source_dir=$(cd `dirname $0`/.. && pwd)
 
 # Now collect the static files
 $source_dir/manage.py collectstatic  --verbosity 0 --noinput
 
 # Now publish the site
 echo "Copying site to $server_name..."
-site=(CoGs Leaderboards static django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin DumpData manage.py uwsgi.ini)
+site=(CoGs Leaderboards Scripts static django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin manage.py uwsgi.ini)
 for source in ${site[@]}; do
 	# If we're excluding static dirs, we still want to copy the static folder
 	if grep -q $source $exclusion_file; then
@@ -51,5 +51,9 @@ for source in ${site[@]}; do
 
 	rsync -r $exclude $source_dir/$source $server_mount_dir
 done
+
+# We need to restart the uwsgi service for changes to take effect
+echo "Restarting UWSGI service on $server_name ..."
+ssh -o IdentityFile=$rsa_file $server_account sudo /etc/init.d/uwsgi restart
 
 echo "Done."

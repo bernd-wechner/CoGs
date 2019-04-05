@@ -32,7 +32,9 @@ defaults = { 'object_summary_format': 'brief',
              'field_link_target': 'internal',
              'object_display_flags': 'TODO',
              'object_display_modes': 'as_table',
-             'index': False
+             'index': False, 
+             'key': False,
+             'ordering': ''
             }
 
 # The URL parameters that select the defaults above
@@ -44,9 +46,9 @@ urldefaults = { 'object_summary_format': 'brief',
              'field_link_target': 'internal_links',
              'object_display_flags': 'TODO',
              'object_display_modes': 'as_table',
-             'index': 'noindex'
+             'index': 'noindex',
+             'key': 'nokey'
             }
-
 
 def default(obj):
     '''
@@ -87,7 +89,7 @@ class object_summary_format():
     # TODO: implement a table view which would produce a TR string, with elements in strings, and with a give arg return a header row.:
     # table = 5     # Uses __table_str__ if available else __detail_str__
     # TODO: implement a json format that asks a model to summarise itself in JSON format.
-    # json = 6        # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    
+    # json = 6      # Uses __json_str__ if available, else nothing (specifically for AJAX requests)    
     template = 7    # Render the objects value as "{model.pk}" 
     
     #default = brief # The default to use
@@ -197,15 +199,16 @@ class object_display_flags():
     related = 1 << 4        # fields in other models that point here
     properties = 1 << 5     # properties calculated in the model
     methods = 1 << 6        # property_methods calculated in the model
+    summaries = 1 << 7      # the __*str__ methods 
     
     # Some general formatting flags
-    separated = 1 << 7       # Separate the buckets above
-    header = 1 << 8          # Put a header on the separators
-    line = 1 << 9            # Draw a line separating buckets
+    separated = 1 << 8      # Separate the buckets above
+    header = 1 << 9         # Put a header on the separators
+    line = 1 << 10          # Draw a line separating buckets
 
     # Some shorthand formats
     _normal = separated | header | line | flat | model
-    _all_model = _normal | list | internal | properties
+    _all_model = _normal | list | internal | properties | methods | summaries
     _all = _all_model | related
     
 # A shorthand for the display format options
@@ -272,6 +275,8 @@ class list_display_format():
     link = default(field_link_target)           # Whether to add links to the display and what kind
     menus = default(list_menu_format)           # Whether and how to display menus against each list item
     index = default('index')                    # A bool with request an index, counting 1, 2, 3, 4 down the list.
+    key = default('key')                        # A bool with request the object's primary key to displayed
+    ordering = default('ordering')              # The list of fields ot order by if any
 
 def get_list_display_format(request):
     '''
@@ -291,6 +296,16 @@ def get_list_display_format(request):
         LDF.index = False
     else:
         LDF.index = list_display_format().index
+
+    if 'key' in request:
+        LDF.key = True
+    elif 'nokey' in request:
+        LDF.key = False
+    else:
+        LDF.key = list_display_format().key
+
+    if 'ordering' in request:
+        LDF.ordering = request['ordering']
              
     return LDF
 
@@ -301,6 +316,7 @@ class object_display_format():
 
     flags = object_display_flags._normal
     mode = object_display_modes()
+    ordering = default('ordering')           # The list of fields the associated list is ordered by (for the browser)
 
 def get_object_display_format(request):
     '''
@@ -339,6 +355,8 @@ def get_object_display_format(request):
         ODF.flags &= ~odf.properties    
     if 'nomethods' in request:
         ODF.flags &= ~odf.methods
+    if 'nosummaries' in request:
+        ODF.flags &= ~odf.summaries
 
     # And individual turn ons        
     if 'flat' in request:
@@ -355,6 +373,8 @@ def get_object_display_format(request):
         ODF.flags |= odf.properties
     if 'methods' in request:
         ODF.flags |= odf.methods
+    if 'summaries' in request:
+        ODF.flags |= odf.summaries
 
     # Separations and headers
     if 'noseparated' in request:
@@ -415,7 +435,10 @@ def get_object_display_format(request):
 
     if 'linewidth' in request:
         ODF.mode.line_width = int(request['linewidth']) 
-         
+
+    if 'ordering' in request:
+        ODF.ordering = request['ordering']
+                     
     return ODF
 
 #===============================================================================

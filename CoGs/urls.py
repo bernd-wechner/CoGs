@@ -1,10 +1,11 @@
 """CoGs URL Configuration"""
-from django.conf.urls import include, url
+from django.urls import path, include
 from django.contrib import admin
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib.auth import views as auth_views
 from django.contrib.flatpages import views as flat_views
+
 # from django.contrib.staticfiles.storage import staticfiles_storage
 # from django.views.generic.base import RedirectView
 # from functools import reduce
@@ -17,21 +18,13 @@ from Leaderboards import views
 #    manually copied into that table for now. Be nice to write a loader.
 
 urlpatterns = [
-    url(r'^$', views.view_Home.as_view(), name='home'),
-    url(r'^about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
-    url(r'^admin/', admin.site.urls, name='admin'),
-    url(r'^login/$', auth_views.LoginView.as_view(), name='login'),
-    url('^logout/$', auth_views.LogoutView.as_view(), name='logout'),    
+    path(r'', views.view_Home.as_view(), name='home'),
+    path(r'about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
+    path(r'admin/', admin.site.urls, name='admin'),
+
+    path(r'login/', views.view_Login.as_view(), name='login'),
+    path(r'logout/', auth_views.LogoutView.as_view(), name='logout'),    
     
-    # Some temporary internal URLS for now ...
-    url(r'^fix', views.view_Fix, name='fix'),
-    url(r'^unwind', views.view_UnwindToday, name='unwind'),
-    url(r'^check', views.view_CheckIntegrity, name='check'),
-    url(r'^rebuild', views.view_RebuildRatings, name='rebuild'),
-
-    # Provisional URL (remove in production, a duke nukem way of deleting records)
-    url(r'^kill/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Kill, name='kill'),
-
     # CoGs Generic Views 
     # These expect to receive the following in kwargs 
     # (i.e. passed in via named pattern match in the url as in "(?P<model>\w+)") or as a named argument in as_view()
@@ -44,23 +37,46 @@ urlpatterns = [
     # Always specify a name= to the url as this is how that url is referenced in a template.
     # See: https://docs.djangoproject.com/en/1.10/topics/http/urls/#reverse-resolution-of-urls
      
-    url(r'^list/(?P<model>\w+)', views.view_List.as_view(), name='list'),
+    path('list/<model>', views.view_List.as_view(), name='list'),
     
-    url(r'^view/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Detail.as_view(), name='view'),
-    url(r'^add/(?P<model>\w+)$', views.view_Add.as_view(), name='add'),
-    url(r'^edit/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Edit.as_view(), name='edit'),
-    url(r'^delete/(?P<model>\w+)/(?P<pk>\d+)$', views.view_Delete.as_view(), name='delete'),
+    path('view/<model>/<pk>', views.view_Detail.as_view(), name='view'),
+    path('add/<model>', views.view_Add.as_view(), name='add'),
+    path('edit/<model>/<pk>', views.view_Edit.as_view(), name='edit'),
+    path('delete/<model>/<pk>', views.view_Delete.as_view(), name='delete'),
+    
+    # A special view for database object inspectors where implemented
+    path('inspect/<model>/<pk>', views.view_Inspect, name='inspect'),
    
     # CoGs custom views
-    url(r'^leaderboards', views.view_Leaderboards, name='leaderboards'),
+    path('leaderboards/', views.view_Leaderboards, name='leaderboards'),
     
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     # Specific URLS first
-    url(r'^json/leaderboards', views.ajax_Leaderboards, name='json_leaderboards'),
-    url(r'^json/game/(?P<pk>\d+)$', views.ajax_Game_Properties, name='get_game_props'),
+    path('json/leaderboards/', views.ajax_Leaderboards, name='json_leaderboards'),
+    path('json/game/<pk>', views.ajax_Game_Properties, name='get_game_props'),
     
     # General patterns next
-    url(r'^json/(?P<model>\w+)$', views.ajax_List, name='get_list_html'),
-    url(r'^json/(?P<model>\w+)/(?P<pk>\d+)$', views.ajax_Detail, name='get_detail_html'),
-     
+    path('json/<model>', views.ajax_List, name='get_list_html'),
+    path('json/<model>/<pk>', views.ajax_Detail, name='get_detail_html'),
+
+    path('post/clientinfo', views.receive_ClientInfo, name='post_client_info'),
+    path('post/filter', views.receive_Filter, name='post_filter'),
+    path('post/debugmode', views.receive_DebugMode, name='post_debugmode'),
+    
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
+
+# Provisional URL (remove in production, a duke nukem way of deleting records)
+if not settings.LIVE_SITE:
+    import debug_toolbar
+    
+    urlpatterns += [
+        # Some temporary internal URLS for now ...
+        path('fix', views.view_Fix, name='fix'),
+        path('unwind', views.view_UnwindToday, name='unwind'),
+        path('check', views.view_CheckIntegrity, name='check'),
+        path('rebuild', views.view_RebuildRatings, name='rebuild'),
+        
+        path(r'kill/<model>/<pk>', views.view_Kill, name='kill'),
+        path('__debug__/', include(debug_toolbar.urls)),
+    ]
+

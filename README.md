@@ -32,10 +32,11 @@ could improve below, and improve it!
 1. Install needed dependencies:
 
     ```
-    sudo apt-get install postgresql pgadmin3
-    sudo apt-get install python3 python3-django python3-django-extensions python3-psycopg2 python3-yaml 
-    sudo apt-get install git
-    sudo -H pip3 install trueskill django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil 
+    sudo apt install postgresql pgadmin3
+    sudo apt install python3 python3-pip python3-django python3-django-extensions python3-psycopg2 python3-yaml 
+    sudo apt install git
+    sudo -H pip3 install wheel trueskill scipy json-datetime tzlocal django-timezone-field django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil django-reset-migrations 
+    sudo -H pip3 install Django==2.1.1 
     ```
 		
 2. Install Eclipse and Pydev
@@ -68,6 +69,16 @@ could improve below, and improve it!
      	  * Leaderboards/admin.py<br>
      	  * Essentially if you're copying like this you want to understand each file as you go and what its role is.<br>
      	  * Django documentation is real cool there.<br>
+   
+   If not starting from scratch but getting an existing CoGS dev workspace up and running, then it's a tad different, 
+   here's an outline of what I did to set up a dev box on a new Mint 19 system:
+   
+   Install pgAdmin4
+   connect to the database
+   create a role CoGs
+   create a database CoGs
+   Backup the live site database
+   Restore it on the dev box     	       
     
 3. Seed your database
 	
@@ -76,8 +87,8 @@ could improve below, and improve it!
    Database tips:
      * In pgAdminIII a user is called a Role.
      * Create a new Role "CoGs"  (i.e. a login).
-     * Make sure you can log into the database. That is edit the file:
-	`/var/lib/pgsql/data/pg_hba.conf`
+     * Make sure you can log into the database. That is edit the file: pg_hba.conf
+     It migth be in  /var/lib/pgsql/data` or `/etc/postgresql/vv/main` whre vv is the postgresql version.
 
        And make sure the connection METHOD for local is "md5" not "peer".
 	
@@ -107,7 +118,7 @@ could improve below, and improve it!
 
 4. Try it out
 
-  1. Open the CoGs project in Eclips
+  1. Open the CoGs project in Eclipse
   2. Right click the project then click "Debug As..." the "PyDev: Django". 
   3. In your Console panel you should see something like:
   	```

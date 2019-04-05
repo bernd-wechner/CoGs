@@ -7,16 +7,19 @@ Functions that add to the context that templates see.
 '''
 # Django imports
 from django.utils.safestring import mark_safe
-from django.conf.global_settings import DATETIME_INPUT_FORMATS
-from django.core.serializers.json import DjangoJSONEncoder
+from django.conf import settings 
+from django.utils.timezone import get_current_timezone, make_naive
 
 # Python imports
-import json
+import pytz
+import sqlparse
+from datetime import datetime
+#import json
 
 # Package imports
 from .util import safetitle, datetime_format_python_to_PHP
 from .model import add_related
-from .forms import get_related_forms, classify_widgets
+from .forms import get_related_forms, classify_widgets #, get_inherit_fields
 from .options import urldefaults, odf, odm
 from .widgets import FilterWidget, OrderingWidget
 from .filterset import format_filterset
@@ -36,7 +39,14 @@ def add_model_context(view, context, plural, title=False):
         context["model_name_plural"] = context["view"].model._meta.verbose_name_plural
         context["operation"] = view.operation
         context["title"] = (title + ' ' if title else '') + (safetitle(context["model"]._meta.verbose_name_plural) if plural else safetitle(context["model"]._meta.verbose_name))
-        context["default_datetime_input_format"] = datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])
+        context["default_datetime_input_format"] = datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
+
+#       This was an experiment with saving session stored inheritance data in the context.
+#       Deprecated in favour of a database fetch into 
+#         # If this session has inheritablke defaults load those
+#         inheritance = get_inherit_fields(view.request.session, context["view"].model)
+#         if inheritance:
+#             context["inheritance"] = inheritance            
         
         if len(view.request.GET) > 0:
             context["get_params"] = view.request.GET
@@ -66,6 +76,39 @@ def add_model_context(view, context, plural, title=False):
 
     return context
 
+def add_timezone_context(view, context):
+    '''
+    Add some useful timezone information to the context. Timezone can be determined at login,
+    is stored as a session variable and passed by views into context using this function.
+    '''
+    context['timezones'] = pytz.common_timezones
+    
+    #naive_now = make_naive(datetime.now(get_localzone()))
+    naive_now = datetime.now()
+
+    dt = naive_now
+    context['naive_datetime'] = str(dt)
+    context['naive_timezone'] = None
+    context['naive_utcoffset'] = None
+
+    tz = pytz.timezone(view.request.session.get("timezone", "UTC"))
+    dt = tz.localize(naive_now)
+    context['session_datetime'] = str(dt)
+    context['session_timezone'] = str(dt.tzinfo)
+    context['session_utcoffset'] = dt.tzinfo._utcoffset
+    
+    active_tz = get_current_timezone()
+    active_dt = active_tz.localize(naive_now)
+    context['active_datetime'] = str(active_dt)
+    context['active_timezone'] = str(active_dt.tzinfo)
+    context['active_utcoffset'] = active_dt.tzinfo._utcoffset
+    
+    django_tz = pytz.timezone(settings.TIME_ZONE)
+    django_dt = django_tz.localize(naive_now)
+    context['django_datetime'] = str(django_dt)
+    context['django_timezone'] = str(django_dt.tzinfo)
+    context['django_utcoffset'] = django_dt.tzinfo._utcoffset
+    
 def add_format_context(view, context):
     '''
     Add some useful context information to views that reveal information about the
@@ -143,7 +186,7 @@ def add_format_context(view, context):
     
     return context
 
-def add_filter_context(view, context, filterset):
+def add_filter_context(view, context):
     '''
     List and Detail views accept filters via the url (see url_filter). Both these views can do AJAX 
     based refreshes and so want to know the filter criteria that came in. They could suck this out
@@ -151,8 +194,6 @@ def add_filter_context(view, context, filterset):
     
     List view clearly, the filter determines what is listed
     Detail view, only the neighbours for browsing (prior and next) are impacted   
-    :param view:
-    :param context:
     '''
     context['widget_filters'] = FilterWidget(model=view.model, choices=view.request.GET)
     
@@ -160,11 +201,22 @@ def add_filter_context(view, context, filterset):
     context["filters"] = mark_safe('""')  
     
     if hasattr(view, 'filterset') and not view.filterset is None:
-        context["txt_filters"] = mark_safe(format_filterset(view.filterset, as_text=True))        
-        context["filters"] = mark_safe(format_filterset(view.filterset, as_text=False))
-        print(context["filters"])        
+        context["filters"] = format_filterset(view.filterset, as_text=False)
+        context["filters_text"] = mark_safe(format_filterset(view.filterset, as_text=True))
+        context["filters_data"] = view.filterset.data
+        
+        specs = view.filterset.get_specs()
+        filters_specs = {}
+        for spec in specs:
+            op = spec.lookup
+            key = "__".join(spec.components) + "__" + op
+            val = spec.value
+            filters_specs[key] = val
+            
+        context["filters_specs"] = filters_specs        
+        context["filters_query"] = sqlparse.format(str(view.filterset.filter().query), reindent=True, keyword_case='upper')        
 
-def add_ordering_context(view, context, ordering):
+def add_ordering_context(view, context):
     '''
     List and Detail views respond to ordering via the url. Both these views can do AJAX 
     based refreshes and so want to know the filter criteria that came in. They could suck 
@@ -188,3 +240,11 @@ def add_ordering_context(view, context, ordering):
     else:   
         context["ordering_default"] = ""
 
+def add_debug_context(view, context):
+    '''
+    A hook to add debug into the context when requested by teh session debug flag
+
+    :param view:
+    :param context:
+    '''
+    context['debug_mode'] = view.request.session.get("debug_mode", False)

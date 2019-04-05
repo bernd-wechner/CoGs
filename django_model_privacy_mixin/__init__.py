@@ -17,11 +17,12 @@ from cuser.middleware import CuserMiddleware
 
 class PrivacyMixIn():
     '''
-    A MixIn that adds database load overrides which populate the "hidden" attribute of
-    an object with the names of fields that should be hidden. It is us to the other
+    A MixIn that adds database load overrides which populates the "hidden" attribute of
+    an object with the names of fields that should be hidden. It is up to the other
     methods in the model to implement this hiding where desired.
     '''
     HIDDEN = "<Hidden>"
+    HIDE_EMPTY_FIELD = False    # A flag that we cans et to enable or prevent replacing empty field values (None or empty string rep) with HIDDEN
     
     def fields_to_hide(self, user):
         '''
@@ -77,19 +78,19 @@ class PrivacyMixIn():
             '''
             membership = set()
             if hasattr(user, field_name):
-                field = getattr(user, field_name)
+                field = getattr(user, field_name, None)
                 if hasattr(field, 'all') and callable(field.all):
                     membership.add((str(o) for o in field.all())) 
-                else: 
+                elif not field is None: 
                     membership.add(str(field))
     
             for e in extensions:
-                obj = getattr(user, e)
+                obj = getattr(user, e, None)
                 if hasattr(obj, field_name):
                     field = getattr(obj, field_name)
                     if hasattr(field, 'all') and callable(field.all):
                         membership.update([unique_object_id(o) for o in field.all()])
-                    else: 
+                    elif not field is None: 
                         membership.add(unique_object_id(field))
                         
             return membership
@@ -219,7 +220,9 @@ class PrivacyMixIn():
         if len(obj.hidden) > 0:
             obj.save = obj.safe_save
             for f in obj.hidden:
-                setattr(obj, f, cls.HIDDEN)
+                val = getattr(obj, f, None)
+                if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(obj, f, cls.HIDDEN)
         return obj
 
     @classmethod
@@ -234,7 +237,9 @@ class PrivacyMixIn():
         if len(obj.hidden) > 0:
             obj.save = obj.safe_save
             for f in obj.hidden:
-                setattr(obj, f, cls.HIDDEN)
+                val = getattr(obj, f, None)
+                if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(obj, f, cls.HIDDEN)
         return obj
 
     def refresh_from_db(self, using=None, fields=None, **kwargs):
@@ -248,12 +253,13 @@ class PrivacyMixIn():
         if len(self.hidden) > 0:
             self.save = self.safe_save
             for f in self.hidden:
-                setattr(self, f, self.HIDDEN)
+                val = getattr(self, f, None)
+                if self.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
+                    setattr(self, f, self.HIDDEN)
         
     def safe_save(self, *args, **kwargs):
         '''
-        A disabled save method. If needing to disable save() we assign this method to self.save, 
-        replacing the django save method. This one just throws an exception.
+        A hamstrung save method that will respects the hidden fields (not saving them!)
         '''
         
         # self.hidden was initialised when data was loaded. 
@@ -268,7 +274,7 @@ class PrivacyMixIn():
                 field_names = set()
                 for field in self._meta.concrete_fields:
                     if not field.primary_key and not hasattr(field, 'through'):
-                        field_names.add(field.attname)                
+                        field_names.add(field.name)                
                 
             for f in self.hidden:
                 field_names.remove(f)

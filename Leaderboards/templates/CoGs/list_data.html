@@ -2,15 +2,20 @@
 {% load staticfiles %}
 {% load filters %}
 {% load tags %}
+
 {% block title %}{{title}}{% endblock %}
+
 {% block content %}
 {% if user.is_authenticated %}
 	<p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
 {% endif %}	   
 
-<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
-<script src="https://ajax.googleapis.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
 <script type="text/javascript">
+	"use strict";
+	
+	let URL_ajax;
+	let URL_page;
+	
 	// Save the URL when we load for later use
 	function saveURL() {
 		URL_ajax = "{% url 'get_list_html' model=model_name %}";
@@ -18,16 +23,17 @@
 	}
 	window.onload = saveURL;
 
-	var filters	= {{filters}};
-	var default_elements = "{{format_default.object_summary_format}}";
-	var default_complete = "{{format_default.object_display_modes}}";
-	var default_link = "{{format_default.field_link_target}}";
-	var default_menus = "{{format_default.list_menu_format}}";
-	var default_index = "{{format_default.index}}";
-	var default_ordering = "{{ordering_default}}";
+	const filters	= {{filters|safe}};
+	const default_elements = "{{format_default.object_summary_format}}";
+	const default_complete = "{{format_default.object_display_modes}}";
+	const default_link = "{{format_default.field_link_target}}";
+	const default_menus = "{{format_default.list_menu_format}}";
+	const default_index = "{{format_default.index}}";
+	const default_key = "{{format_default.key}}";
+	const default_ordering = "{{ordering_default}}";
 
 	function toggle_filters() {
-		current = $(".toggle")[0].style.visibility;
+		const current = $(".toggle")[0].style.visibility;
 		if (current == "collapse") 
 			$(".toggle").css('visibility', 'visible'); 
 		else
@@ -39,47 +45,50 @@
 	}
 	
 	function URLopts() {
-		var opts = []
+		let opts = []
 	
 		// The basic formatting and layout options
-		elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
-		complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
-		link = $('input[type=radio][name=opt_link]:checked').attr('value');
-		menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
-		index = $('#opt_index').is(':checked') ? "index" : "noindex";
+		const elements = $('input[type=radio][name=opt_elements]:checked').attr('value');
+		const complete = $('input[type=radio][name=opt_complete]:checked').attr('value');
+		const link = $('input[type=radio][name=opt_link]:checked').attr('value');
+		const menus = $('input[type=radio][name=opt_menus]:checked').attr('value');
+		const index = $('#opt_index').is(':checked') ? "index" : "noindex";
+		const key = $('#opt_key').is(':checked') ? "key" : "nokey";
 		
-		filter_opts = filter_url_opts();
-		ordering_opts = ordering_url_opts();
-		
+		let filter_opts = filter_url_opts();
 		// The filter if specified on the URL may contain condition the filter widget doesn't support
 		// So if  URL supplied filter is not in the widget provided filter opts, include it
-		for (f in filters)
+		for (let f in filters)
 			if (filter_opts.indexOf(filters[f]) < 0) 
-				opts.push(filters[f]);
+				filter_opts.push(filters[f]);
+		Object.freeze(filter_opts);
+
+		const ordering_opts = ordering_url_opts();	
 
 		if (elements != default_elements) opts.push(elements);
 		if (complete != default_complete) opts.push(complete);
 		if (link != default_link) opts.push(link);
 		if (menus != default_menus) opts.push(menus);
 		if (index != default_index) opts.push(index);	
+		if (key != default_key) opts.push(key);	
 				
 		if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
 		if (ordering_opts.length > 0) opts.push(ordering_opts.join("&"));
 		
-		url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
+		let url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 		
 		// Add the global league filter to URL opts used in GET requests 
-		$league_id = $("#id_league_view").val();
-		url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
+		const league_id = $("#id_league_view").val();
+		url_opts += (league_id == 0) ? "" : "&league=" + league_id;
 
 		return url_opts;
 	}
 	
-	var REQUEST = new XMLHttpRequest();
+	let REQUEST = new XMLHttpRequest();
 	REQUEST.onreadystatechange = function () {
 	    // Process the returned JSON
 		if (this.readyState === 4 && this.status === 200){
-			var response = JSON.parse(this.responseText);
+			const response = JSON.parse(this.responseText);
 			$("#data").html(response.HTML);
 			URL_ajax = response.json_URL 
  			window.history.pushState("","", response.view_URL);
@@ -99,7 +108,7 @@
 		$("#opt_rich").prop('disabled', true);
 		$("#opt_detail").prop('disabled', true);
 		$("#opt_specified").prop('disabled', true);
-		var url = URL_ajax + URLopts();
+		const url = URL_ajax + URLopts();
 		REQUEST.open("GET", url, true);
 		REQUEST.send(null);		
 	}
@@ -113,12 +122,12 @@
 	// TODO: ignore options who have no value! Don't add them to fopts.
 	// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
   	function CollectFilterField(index, value) {
-  		var field = $(value);
+  		const field = $(value);
   		console.log("CollectFilterField: " + field);
   		
-  		var opt = field.prop('name');
+  		const opt = field.prop('name');
   		
-  		var val = null;
+  		let val = null;
   		if (field.is("input"))
   			val = field.val();
   		else if (field.is("select"))
@@ -129,11 +138,10 @@
   	}
 	
  	function filter_url_opts() {
-		fopts = [];
-		var widgetid = "session_filtering_widget";
-  		console.log("filter_url_opts: " + widgetid);
+		const widgetid = "session_filtering_widget";
+		let fopts = [];
 		$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
-		return fopts;	
+		return fopts;
  	}
   	
 	// Ordering widget code seems in order and tested. Need to move this into widget def.	 
@@ -148,13 +156,13 @@
 	}
 
  	function ordering_url_opts() {
-		var widgetid = "session_ordering_widget";  	
-		fields = [];  dirs = [];
+		const widgetid = "session_ordering_widget";  	
+		let fields = [];  let dirs = [];
 		$("#"+widgetid).find("span[id^='ordering_field']").each(CollectOrderingField);
 		$("#"+widgetid).find("span[id^='ordering_dir']").each(CollectOrderingDir);
 		
-		var opts = [];
-		for (i = 0; i < fields.length; i++) {
+		let opts = [];
+		for (let i = 0; i < fields.length; i++) {
 			pfx = get_ordering_dir(dirs[i]);
 			if (pfx != null) { 
 				opts.push(pfx+fields[i]);
@@ -165,12 +173,18 @@
 	}
 	
 	function show_url() {
-		var url = URL_page + URLopts();
+		const url = URL_page + URLopts();
 		window.history.pushState("","", url);
 	}
 </script>     
 
-<p>{{model_name_plural | title}}: {{ object_list | length }}</p>
+<p>Displaying 
+{% if object_list|length == total %}
+	all {{ total }} {{model_name_plural}}.
+{% else %}
+	{{ object_list|length }} {{model_name_plural }} of <A href="{% url 'list' model_name %}">{{ total }}</A>. 
+{% endif %}
+</p>
 
 {#{% if get_params %}#}
 {#<p>{{get_params}}</p>#}
@@ -178,9 +192,9 @@
 
 <table id="ListViewOptions" class="tight">
 	<tr>
-		<td class='tight options'>
-			<b>Quick Views:</b>
-		</td>
+		<th class='tight options'>
+			Quick Views:
+		</th>
 		<td class='tight options'>
 			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 			<input type="button" id="opt_brief" value="Brief" onclick="check_button('brief'); reload(event);">
@@ -191,10 +205,10 @@
 		</td>
 	</tr>
 	<tr id="opt_summary_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
+		<th class='tight options'>
 			<br/>
 			<input type="button" id="opt_specified" value="Show:" onclick="reload(event);">
-		</td>
+		</th>
 		<td class='tight options'>
 			<br/>
 			<input type="radio" name="opt_elements" id="opt_elements_brief" value="brief" {{format.elements|checked:1}}>Brief
@@ -205,20 +219,20 @@
 		</td>
 	</tr>
 	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>In:</b>
-		</td>
+		<th class='tight options'>
+			In:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_complete" id="opt_complete_as_table" value="as_table" {{format.complete|checked:1}}>a table
 			<input type="radio" name="opt_complete" id="opt_complete_as_ul" value="as_ul" {{format.complete|checked:2}}>a bulleted list
 			<input type="radio" name="opt_complete" id="opt_complete_as_p" value="as_p" {{format.complete|checked:3}}>paragaphs
-			<input type="radio" name="opt_complete" id="opt_complete_as_br" value="as_br" {{format.complete|checked:4}}>a pargraph
+			<input type="radio" name="opt_complete" id="opt_complete_as_br" value="as_br" {{format.complete|checked:4}}>a paragraph
 		</td>
 	</tr>		
 	<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>links:</b>
-		</td>
+		<th class='tight options'>
+			Links:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_link" id="opt_link_none" value="no_links" {{format.link|checked:0}}>None
 			<input type="radio" name="opt_link" id="opt_link_internal" value="internal_links" {{format.link|checked:1}}>CoGs
@@ -226,9 +240,9 @@
 		</td>
 	</tr>		
 	<tr id="opt_menu_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Menus:</b>
-		</td>
+		<th class='tight options'>
+			Menus:
+		</th>
 		<td class='tight options'>
 			<input type="radio" name="opt_menus" id="opt_menus_none" value="no_menus" {{format.menus|checked:0}}>None
 			<input type="radio" name="opt_menus" id="opt_menus_text" value="text_menus" {{format.menus|checked:1}}>Text
@@ -236,27 +250,30 @@
 		</td>
 	</tr>		
 	<tr id="opt_index_formats" class='tight options toggle' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Index:</b>
-		</td>
+		<th class='tight options'>
+			Rows:
+		</th>
 		<td class='tight options'>
 			<input type="checkbox" id="opt_index" {{format.index|checked}}>
+			<label for="opt_index">Index</label>		
+			<input type="checkbox" id="opt_key" {{format.key|checked}}>
+			<label for="opt_key">Key</label>		
 		</td>
 	</tr>		
 {#	Removed the toggle class from these two rows so they remain hidden.#}
 {#	In development and not ready yet.#}
 	<tr id="opt_filters" class='tight options' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Filter on:</b>
-		</td>
+		<th class='tight options'>
+			Filter on:
+		</th>
 		<td class='tight options'>
 			{{ widget_filters }}		
 		</td>
 	</tr>
 	<tr id="opt_ordering" class='tight options' style="visibility:collapse;">
-		<td class='tight options'>
-			<b>Order by:</b>
-		</td>
+		<th class='tight options'>
+			Order by:
+		</th>
 		<td class='tight options'>
 			{{ widget_ordering }}		
 		</td>
@@ -264,8 +281,8 @@
 </table>
 <p/>
 
-{% if txt_filters %}
-	<p><b>{{model_name_plural|title}} for:</b> {{txt_filters}}</p>
+{% if filters_text %}
+	<p><b>{{model_name_plural|title}} for:</b> {{filters_text}}</p>
 {% endif %}
 
 <div id="data">{{ view.as_html }}</div>

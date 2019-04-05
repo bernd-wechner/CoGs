@@ -1,0 +1,59 @@
+#!/bin/bash
+# Restore the last backedup version of the CoGs Database
+#
+# For use on the live webserverver.
+#
+# Stops the uswsgi service
+# Closes all database connections
+# Renames the database to a format of CoGs_timestamp
+# Creates a new empty database ready to receive a restore from pgadmin4
+#
+# After restoring with pgadmin4 will need to:
+#
+# 1) Consider publishing code base if needed
+# 2) Restart the uwsgi service.
+#
+# This produces a lot of messy tracing/diagnostic output for now. 
+ 
+# Stop the uwsgi service (which is talking to the CoGS database
+# Will need to restart it again manually after a database restore
+sudo service uwsgi stop
+
+# List the processes using the CoGS database
+echo "Processes using the CoGS database:"
+sudo -u postgres psql -c "	"
+
+# Disconnect the processes using the CoGS database
+echo "Disconnecting them..."
+sudo -u postgres psql -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = 'CoGs';" > /dev/null 
+
+# List the processes using the CoGS database
+echo "Processes now using the CoGS database:"
+sudo -u postgres psql -c "SELECT pid, state FROM pg_stat_activity WHERE datname = 'CoGs';"
+
+# List the databases
+echo "Databases before renaming the CoGs datbase"
+sudo -u postgres psql -l
+
+# Define a suffix for old CoGs Database
+suffix=$(date +%s)
+
+# Rename CoGs to CoGs_timestamp
+echo "Renaming database CoGs to CoGs_$suffix..."
+sudo -u postgres psql -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+
+# List the databases
+echo "Databases after renaming CoGs to CoGs_$suffix"
+sudo -u postgres psql -l
+
+# Recreate CoGs Database 
+echo "Recreating (empty) CoGs database..."
+sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+
+# List the databases
+echo "Databases after recreating CoGs database"
+sudo -u postgres psql -l
+
+# List the CoGs database tables
+echo "CoGs Database tables before restoring $latest_backup_file"
+sudo -u postgres psql -d "CoGs" -c "SELECT * FROM  pg_catalog.pg_tables WHERE tableowner='CoGs';"

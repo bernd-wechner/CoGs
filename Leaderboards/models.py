@@ -1,31 +1,39 @@
+# Python packages
 import trueskill
 import html
 import re
+import pytz
+from collections import OrderedDict
+from math import isclose
+from scipy.stats import norm
+from datetime import datetime, timedelta
+from builtins import str
 
+# Django packages
 from django.db import models, DataError, IntegrityError #, connection, 
 from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
-from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
+from django.core.exceptions import NON_FIELD_ERRORS, ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
 from django.urls import reverse_lazy
-from django.utils import formats, timezone
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.utils import timezone
 from django.utils.formats import localize
+from django.utils.timezone import localtime
+from django.utils.safestring import mark_safe
+from django.conf import settings
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
-
-from collections import OrderedDict
-from math import isclose
-from datetime import datetime, timedelta
+from timezone_field import TimeZoneField
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
 
 from django_generic_view_extensions.options import flt, osf
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-
+from django_generic_view_extensions.util import time_str
 
 # CoGs Leaderboard Server Data Model
 #
@@ -42,7 +50,7 @@ from django_generic_view_extensions.decorators import property_method
 
 MAX_NAME_LENGTH = 200                       # The maximum length of a name in the database, i.e. the char fields for player, game, team names and so on.
 FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
-NEVER = timezone.make_aware(datetime.min)   # Used for times to indicat if there is no last play or victory that has a time 
+NEVER = pytz.utc.localize(datetime.min)     # Used for times to indicat if there is no last play or victory that has a time
 
 # Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
 ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
@@ -53,7 +61,7 @@ ALL_GAMES = "ALL"                           # A reserved key for leaderboard fil
 # The support models, that store all the play records that are needed to
 # calculate and maintain TruesKill ratings for players.
 #===============================================================================
-    
+
 class TrueskillSettings(models.Model):
     '''
     The site wide TrueSkill settings to use (i.e. not Game).
@@ -67,11 +75,10 @@ class TrueskillSettings(models.Model):
     # but store each version with a date. That in can of course then support staged ratings histories, so not a bad idea.
     mu0 = models.FloatField('TrueSkill Initial Mean (µ0)', default=trueskill.MU)
     sigma0 = models.FloatField('TrueSkill Initial Standard Deviation (σ0)', default=trueskill.SIGMA)
-    beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
 
     add_related = None
-    def __unicode__(self): return u'µ0={} σ0={} ß={} δ={}'.format(self.mu0, self.sigma0, self.beta, self.delta)
+    def __unicode__(self): return u'µ0={} σ0={} δ={}'.format(self.mu0, self.sigma0, self.delta)
     def __str__(self): return self.__unicode__()
 
     class Meta:
@@ -81,7 +88,7 @@ class TrueskillSettings(models.Model):
 # The Ratings model(s) where TrueSkill ratings are stored
 #===============================================================================
 
-class RatingModel(AdminModel):
+class RatingModel(TimeZoneMixIn, AdminModel):
     '''
     A Trueskill rating for a given Player at a give Game.
 
@@ -97,14 +104,16 @@ class RatingModel(AdminModel):
     
     The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
     '''
-    player = models.ForeignKey('Player', related_name='%(class)ss', on_delete=models.CASCADE)
-    game = models.ForeignKey('Game', related_name='%(class)ss', on_delete=models.CASCADE)
+    player = models.ForeignKey('Player', verbose_name='Player', related_name='%(class)ss', on_delete=models.CASCADE)
+    game = models.ForeignKey('Game', verbose_name='Game', related_name='%(class)ss', on_delete=models.CASCADE)
 
     plays = models.PositiveIntegerField('Play Count', default=0)
     victories = models.PositiveIntegerField('Victory Count', default=0)
     
-    last_play = models.DateTimeField(default=timezone.now)
-    last_victory = models.DateTimeField(default=NEVER)
+    last_play = models.DateTimeField('Time of Last Play', default=NEVER)
+    last_play_tz = TimeZoneField('Time of Last Play, Timezone', default=settings.TIME_ZONE, editable=False)
+    last_victory = models.DateTimeField('Time of Last Victory', default=NEVER)
+    last_victory_tz = TimeZoneField('Time of Last Victory, Timezone', default=settings.TIME_ZONE, editable=False)
     
     # Although Eta (η) is a simple function of Mu (µ) and Sigma (σ), we store it alongside Mu and Sigma because it is also a function of global settings µ0 and σ0.
     # To protect ourselves against changes to those global settings, or simply to detect them if it should happen, we capture their value at time of rating update in the Eta.
@@ -113,26 +122,26 @@ class RatingModel(AdminModel):
     trueskill_sigma = models.FloatField('Trueskill Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
     trueskill_eta = models.FloatField('Trueskill Rating (η)', default=trueskill.SIGMA, editable=False)
     
-    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each rating as an integrity measure.
+    # Record the global TrueskillSettings mu0, sigma0 and delta with each rating as an integrity measure.
     # They can be compared against the global settings and and difference can trigger an update request.
     # That is, flag a warning and if they are consistent across all stored ratings suggest TrueskillSettings
     # should be restored (and offer to do so?) or if inconsistent (which is an integrity error) suggest that
     # ratings be globally recalculated
     trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
     trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
     
-    # Record the game specific Trueskill settings tau and p with rating as an integrity measure.
+    # Record the game specific Trueskill settings beta, tau and p with rating as an integrity measure.
     # Again for a given game these must be consistent among all ratings and the history of each rating. 
     # And change while managing leaderboards should trigger an update request for ratings relating to this game.  
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
-    def __unicode__(self): return  u'{} - {} - {:f} teeth, from (µ={:f}, σ={:f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
+    def __unicode__(self): return  u'{} - {} - {:.1f} teeth, from (µ={:.1f}, σ={:.1f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
     def __str__(self): return self.__unicode__()
         
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['-trueskill_eta']
         abstract = True
     
@@ -240,7 +249,7 @@ class Rating(RatingModel):
                     trueskill_eta=trueskill_mu - TS.mu0 / TS.sigma0 * trueskill_sigma,  # µ − (µ0 ÷ σ0) × σ
                     trueskill_mu0=TS.mu0,
                     trueskill_sigma0=TS.sigma0,
-                    trueskill_beta=TS.beta,
+                    trueskill_beta=game.trueskill_beta,
                     trueskill_delta=TS.delta,
                     trueskill_tau=game.trueskill_tau,
                     trueskill_p=game.trueskill_p
@@ -264,12 +273,12 @@ class Rating(RatingModel):
         
         if not (isclose(r.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE)  
          and isclose(r.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE)
-         and isclose(r.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE)
+         and isclose(r.trueskill_beta, game.trueskill_beta, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_tau, game.trueskill_tau, abs_tol=FLOAT_TOLERANCE)
          and isclose(r.trueskill_p, game.trueskill_p, abs_tol=FLOAT_TOLERANCE)):
-            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_beta, r.trueskill_delta, r.trueskill_tau, r.trueskill_p)
-            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.beta, TS.delta, game.trueskill_tau, game.trueskill_p)
+            SettingsWere = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(r.trueskill_mu0, r.trueskill_sigma0, r.trueskill_delta, r.trueskill_beta, r.trueskill_tau, r.trueskill_p)
+            SettingsAre = "µ0: {}, σ0: {}, ß: {}, δ: {}, τ: {}, p: {}".format(TS.mu0, TS.sigma0, TS.delta, game.trueskill_beta, game.trueskill_tau, game.trueskill_p)
             raise DataError("Data error: A trueskill setting has changed since the last rating was saved. They were ({}) and now are ({})".format(SettingsWere, SettingsAre))
             # TODO: Issue warning to the registrar more cleanly than this
             # Email admins with notification and suggested action (fixing settings or rebuilding ratings).
@@ -313,8 +322,8 @@ class Rating(RatingModel):
                 # Record the TruesSkill settings used to get them                     
                 r.trueskill_mu0 = TS.mu0
                 r.trueskill_sigma0 = TS.sigma0
-                r.trueskill_beta = TS.beta
                 r.trueskill_delta = TS.delta
+                r.trueskill_beta = session.game.trueskill_beta
                 r.trueskill_tau = session.game.trueskill_tau
                 r.trueskill_p = session.game.trueskill_p
                 
@@ -402,13 +411,12 @@ class Rating(RatingModel):
         assert isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
         assert isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
 
-        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
-        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
-        assert isclose(self.trueskill_beta, last_play.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu0, last_play.trueskill_mu0_after)
+        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma0, last_play.trueskill_sigma0_after)
+        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Rating has {} Last Play has {}".format(self.trueskill_delta, last_play.trueskill_delta_after)
 
-        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
+        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Rating has {} Last Play has {}".format(self.trueskill_tau, last_play.trueskill_tau_after)
+        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Rating has {} Last Play has {}".format(self.trueskill_p, last_play.trueskill_p_after)
 
         # Check that the play and victory counts reflect what Performance says
         assert self.plays == last_play.play_number, "Integrity error: Play count mismatch. Rating has {} Last play has {}.".format(self.plays, last_play.play_number)
@@ -431,7 +439,7 @@ class Rating(RatingModel):
             raise ValidationError("Duplicate ratings found for player: {} and game: {}".format(self.player, self.game))
         
         # Rating should match the last performance
-        # TODO: Wehn do we land here? And how do we sync with self.update? 
+        # TODO: When do we land here? And how do we sync with self.update? 
 
 class Backup_Rating(RatingModel):
     '''
@@ -455,12 +463,13 @@ class League(AdminModel):
     All Leagues share the same global and game Trueskill settings, so that a
     meaningful global leaderboard can be reported for any game across all leagues.
     '''
-    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved')])
-    manager = models.ForeignKey('Player', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
+    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}$'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved', inverse_match=True)])
+    
+    manager = models.ForeignKey('Player', verbose_name='Manager', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
 
-    locations = models.ManyToManyField('Location', blank=True, related_name='leagues_playing_here')
-    players = models.ManyToManyField('Player', blank=True, related_name='member_of_leagues')
-    games = models.ManyToManyField('Game', blank=True, related_name='played_by_leagues')
+    locations = models.ManyToManyField('Location', verbose_name='Locations', blank=True, related_name='leagues_playing_here')
+    players = models.ManyToManyField('Player', verbose_name='Players', blank=True, related_name='member_of_leagues')
+    games = models.ManyToManyField('Game', verbose_name='Games', blank=True, related_name='played_by_leagues')
 
     # TODO: Use @cached_property (everywhere)
     @property
@@ -513,7 +522,7 @@ class League(AdminModel):
         detail += "</UL>"
         return detail
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
         
 class Team(AdminModel):
@@ -524,7 +533,7 @@ class Team(AdminModel):
     Teams may have names but don't need them.
     '''
     name = models.CharField('Name of the Team (optional)', max_length=MAX_NAME_LENGTH, null=True)
-    players = models.ManyToManyField('Player', blank=True, editable=False, related_name='member_of_teams')
+    players = models.ManyToManyField('Player', verbose_name='Players', blank=True, editable=False, related_name='member_of_teams')
 
     @property
     def games_played(self) -> list:
@@ -602,14 +611,14 @@ class Player(PrivacyMixIn, AdminModel):
     is_staff = models.BooleanField('Authorised to access the admin site?', default=False)
 
     # Membership fields
-    teams = models.ManyToManyField('Team', editable=False, through=Team.players.through, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
-    leagues = models.ManyToManyField('League', blank=True, through=League.players.through, related_name='players_in_league')
+    teams = models.ManyToManyField('Team', through=Team.players.through, verbose_name='Teams', editable=False, related_name='players_in_team')  # Don't edit teams always inferred from Session submissions
+    leagues = models.ManyToManyField('League', through=League.players.through, verbose_name='Leagues', blank=True, related_name='players_in_league')
 
     # A default or preferred league for each player. Optional. Can be used to customise views.
-    league = models.ForeignKey('League', verbose_name="Preferred League", related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
+    league = models.ForeignKey(League, verbose_name='Preferred League', related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     # account
-    user = models.OneToOneField(User, related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
+    user = models.OneToOneField(User, verbose_name='Username', related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
     # Privacy control (interfaces with django_model_privacy_mixin)
     visibility = (
@@ -619,12 +628,12 @@ class Player(PrivacyMixIn, AdminModel):
         ('all_is_registrar', 'Registrars'), 
         ('all_is_staff', 'Staff'), 
     )
-    
-    visibility_name_nickname = BitField(verbose_name='Nickname Visibility', flags=visibility, default=0, blank=True)
-    visibility_name_personal = BitField(verbose_name='Personal Name Visibility', flags=visibility, default=0, blank=True)
-    visibility_name_family = BitField(verbose_name='Family Name Visibility', flags=visibility, default=0, blank=True)
-    visibility_email_address = BitField(verbose_name='Email Address Visibility', flags=visibility, default=0, blank=True)
-    visibility_BGGname = BitField(verbose_name='BoardGameGeek Name Visibility', flags=visibility, default=0, blank=True)
+   
+    visibility_name_nickname = BitField(visibility, verbose_name='Nickname Visibility', default=('all',), blank=True)
+    visibility_name_personal = BitField(visibility, verbose_name='Personal Name Visibility', default=('all',), blank=True)
+    visibility_name_family = BitField(visibility, verbose_name='Family Name Visibility', default=('share_leagues',), blank=True)
+    visibility_email_address = BitField(visibility, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
+    visibility_BGGname = BitField(visibility, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
 
     @property
     def owner(self) -> User:
@@ -807,7 +816,7 @@ class Player(PrivacyMixIn, AdminModel):
         return detail
 
     # TODO: clean() method to force test that player is in a league!
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name_nickname']
 
 @admin.register(Player)
@@ -820,18 +829,18 @@ class Game(AdminModel):
     BGGid = models.PositiveIntegerField('BoardGameGeek ID')  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
 
     # Which play modes the game supports. This will decide the formats the session submission form supports
-    individual_play = models.BooleanField(default=True)
-    team_play = models.BooleanField(default=False)
+    individual_play = models.BooleanField('Supports individual play', default=True)
+    team_play = models.BooleanField('Supports team play',default=False)
 
     # Player counts, also inform the session logging form how to render
     min_players = models.PositiveIntegerField('Minimum number of players', default=2)
     max_players = models.PositiveIntegerField('Maximum number of players', default=4)
     
-    min_players_per_team = models.PositiveIntegerField('Minimum number of players in a team', default=0)
-    max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=0)
+    min_players_per_team = models.PositiveIntegerField('Minimum number of players in a team', default=2)
+    max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=4)
 
     # Which leagues play this game? A way to keep the game selector focussed on games a given league actually plays. 
-    leagues = models.ManyToManyField(League, blank=True, related_name='games_played', through=League.games.through)
+    leagues = models.ManyToManyField('League', verbose_name='Leagues', blank=True, related_name='games_played', through=League.games.through)
 
     # Game specific TrueSkill settings
     # tau: 0- describes the luck element in a game. 
@@ -841,6 +850,7 @@ class Game(AdminModel):
     #        each other when a draw is recorded after each rating.
     #      0 means lots
     #      1 means not at all
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
@@ -1106,7 +1116,13 @@ class Game(AdminModel):
         return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
 
     def __rich_str__(self, link=None): 
-        return u'{} (plays {}-{}), Luck factor: {:0.2f}, Draw probability: {:d}%'.format(field_render(self.name, link_target_url(self, link)), self.min_players, self.max_players, self.trueskill_tau*100, int(self.trueskill_p*100))    
+        name = field_render(self.name, link_target_url(self, link))
+        pmin = self.min_players
+        pmax = self.max_players
+        beta = self.trueskill_beta
+        tau = self.trueskill_tau*100
+        p = int(self.trueskill_p*100)
+        return u'{} (plays {}-{}), Skill factor: {:0.2f}, Draw probability: {:d}%, Skill dynamics factor: {:0.2f}'.format(name, pmin, pmax, beta, p, tau)
 
     def __detail_str__(self,  link=None):
         detail = self.__rich_str__(link)
@@ -1130,16 +1146,16 @@ class Game(AdminModel):
                 
         return detail
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
 
 class Location(AdminModel):
     '''
     A location that a game session can take place at.
     '''
-    name = models.CharField('name of the location', max_length=MAX_NAME_LENGTH)
-
-    leagues = models.ManyToManyField(League, blank=True, related_name='Locations_used', through=League.locations.through)
+    name = models.CharField('Name of the Location', max_length=MAX_NAME_LENGTH)    
+    timezone = TimeZoneField('Timezone of the Location', default=settings.TIME_ZONE)
+    leagues = models.ManyToManyField(League, verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
 
     @property
     def link_internal(self) -> str:
@@ -1155,23 +1171,25 @@ class Location(AdminModel):
         leagues = list(map(lambda l: field_render(l, link), leagues))
         return u"{} (used by: {})".format(field_render(self, link), ", ".join(leagues))
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['name']
 
-class Session(AdminModel):
+class Session(TimeZoneMixIn, AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
     date_time = models.DateTimeField('Time', default=timezone.now)                                          # When the game session was played
-    league = models.ForeignKey(League, related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
-    location = models.ForeignKey(Location, related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
-    game = models.ForeignKey(Game, related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
+    date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
+    
+    league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
+    location = models.ForeignKey(Location, verbose_name='Location', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
+    game = models.ForeignKey(Game, verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
     
     # The game must support team play if this is true, 
     # and conversely, it must support individual play if this false.
     # TODO: Enforce this constraint
     # TODO: Let the session form know the modes supported so it can enable/disable the entry modes
-    team_play = models.BooleanField(default=False)  # By default games are played by individuals, if true, this session was played by teams
+    team_play = models.BooleanField('Team Play', default=False)  # By default games are played by individuals, if true, this session was played by teams
     
     # A note on session player records:
     #  Players are stored in two distinct places/contexts:
@@ -1188,6 +1206,15 @@ class Session(AdminModel):
     # TODO: consider if we can filter on properties or specify annotations somehow to filter on
     filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
     order_options = ['date_time', 'game', 'league']
+
+    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
+    # Am testing the new simpler way now leaving it in place for a while to see if any issues arise.
+    #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects    
+    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
+    
+    # Specify which fields to inherit from entry to entry when creating a string of objects
+    inherit_fields = ["date_time", "league", "location", "game"]
+    inherit_time_delta = timedelta(minutes=90)
 
     @property
     def num_competitors(self) -> int:
@@ -1279,6 +1306,8 @@ class Session(AdminModel):
         Returns an unordered set of the players in the session, with no guaranteed 
         order. Useful for traversing a list of all players in a session
         irrespective of the structure of teams or otherwise.
+        
+        # TODO: Fix so it works with team sesssion!
         '''
         players = set()
         ranks = Rank.objects.filter(session=self.id)
@@ -1403,8 +1432,8 @@ class Session(AdminModel):
         code.append("import trueskill")
         code.append("mu0 = {}".format(TSS.mu0))
         code.append("sigma0 = {}".format(TSS.sigma0))
-        code.append("beta = {}".format(TSS.beta))
         code.append("delta = {}".format(TSS.delta))
+        code.append("beta = {}".format(self.game.trueskill_beta))
         code.append("tau = {}".format(self.game.trueskill_tau))
         code.append("p = {}".format(self.game.trueskill_p))
         code.append("TS = trueskill.TrueSkill(mu=mu0, sigma=sigma0, beta=beta, tau=tau, draw_probability=p)")
@@ -1470,33 +1499,329 @@ class Session(AdminModel):
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
-#     @property
-#     def predicted_ranking(self) -> list:
-#         '''
-#         Returns a list of players in the predicted order
-#         '''
-#         # TODO: Implement
-#         pass
-#     
-#     @property
-#     def relationships(self) -> list:
-#         '''
-#         Returns a list of tuples containing player pairs representing 
-#         each relationship in the game.
-#         '''
-#         # TODO: Implement
-#         pass
-#             
-#     @property
-#     def prediction_quality(self) -> int:
-#         '''
-#         Returns a measure of the prediction quality that TrueSkill rankings
-#         provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
-#         it all right. 
-#         '''
-#         # TODO: Implement
-#         pass    
+    @property
+    def actual_ranking(self) -> list:
+        '''
+        Returns a list of ranks in the order they ranked
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modelled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.rank)
+        return rankers
 
+    @property
+    def predicted_ranking(self) -> tuple:
+        '''
+        Returns a list of ranks in the predicted order as the first
+        element in a tuple.
+        
+        The second is the probability associated with that prediction.
+        
+        TODO: This should really be in the trueskill package
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modeled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
+        
+        # TODO: This should be in the trueskill package
+        # See my doc "Understanding Trueskill" for the math on this
+        prob = 1
+        for r in range(len(rankers)-1): 
+            perf1 = rankers[r].performance
+            perf2 = rankers[r+1].performance
+            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1]**2 + perf2[1]**2)**0.5
+            p = norm.cdf(x)
+            prob *= p            
+        
+        return (rankers, prob)
+
+    @property
+    def predicted_ranking_after(self) -> tuple:
+        '''
+        Returns a list of ranks in the predicted order after this session as the first
+        element in a tuple.
+        
+        The second is the probability associated with that prediction.
+        
+        TODO: This should really be in the trueskill package
+        '''
+        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # TrueSkill modeled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        rankers = sorted(self.ranks.all(), key=lambda r: r.performance_after[0], reverse=True)
+        
+        # TODO: This should be in the trueskill package
+        # See my doc "Understanding Trueskill" for the math on this
+        prob = 1
+        for r in range(len(rankers)-1):
+            perf1 = rankers[r].performance
+            perf2 = rankers[r+1].performance
+            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1]**2 + perf2[1]**2)**0.5
+            p = norm.cdf(x)
+            prob *= p            
+        
+        return (rankers, prob)
+                            
+    @property
+    def relationships(self) -> set:
+        '''
+        Returns a list of tuples containing player or team pairs representing 
+        each ranker (contestant) relationship in the game.
+        
+        Tuples always ordered (victor, loser) except on draws in which case arbitrary.       
+        '''
+        ranks = self.ranks.all()
+        relationships = set()
+        # Not the most efficient walk but a single game has a comparatively small 
+        # number of rankers (players or teams ranking) and efficiency not a drama
+        # More efficient would be not rewalk walked ground (i.e second loop only has
+        # to go from outer loop index up to end.
+        for rank1 in ranks:
+            for rank2 in ranks:
+                if rank1 != rank2:
+                    relationship = (rank1.ranker, rank2.ranker) if rank1.rank < rank2.rank else (rank2.ranker, rank1.ranker)
+                    if not relationship in relationships:
+                        relationships.add(relationship)
+        
+        return relationships            
+
+    @property
+    def player_relationships(self) -> set:
+        '''
+        Returns a list of tuples containing player pairs representing each player relationship 
+        in the game. Sale as self.relationships() in individual play mode, differs onl in team 
+        mode in that it find all the player relationships and ignores team relationships.
+        
+        Tuples always ordered (victor, loser) except on draws in which case arbitrary.       
+        '''
+        performances = self.performances.all()
+        relationships = set()
+        # Not the most efficient walk but a single game has a comparatively small 
+        # number of rankers (players or teams ranking) and efficiency not a drama
+        # More efficient would be not rewalk walked ground (i.e second loop only has
+        # to go from outer loop index up to end.
+        for performance1 in performances:
+            for performance2 in performances:
+                # Only need relationships where 1 beats 2 or there's a draw
+                if performance1.rank <= performance2.rank and performance1.player != performance2.player:
+                    relationship = (performance1.player, performance2.player)
+                    back_relationship = (performance2.player, performance1.player)
+                    if not back_relationship in relationships:
+                        relationships.add(relationship)
+        
+        return relationships                    
+             
+    def _prediction_quality(self, after=False) -> int:
+        '''
+        Returns a measure of the prediction quality that TrueSkill rankings
+        provided. A number from 0 to 1. 0 being got it all wrong, 1 being got 
+        it all right. 
+        '''
+        def dictify(ordered_ranks):
+            '''
+            Give a list of ranks in any order will return a dictionary keyed on ranker with
+            a new nominal rank based on that order. Thus by ordering a list of ranke a new
+            ordering can be determined on basis of the list in that order.
+            '''
+            rank_dict = {}
+            r = 1
+            for rank in ordered_ranks:
+                rank_dict[rank.ranker] = r
+                r += 1
+            return rank_dict   
+        
+        actual_rank = dictify(self.actual_ranking)
+        predicted_rank = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
+        total = 0
+        right = 0
+        for relationship in self.relationships:
+            ranker1 = relationship[0]
+            ranker2 = relationship[1]
+            real_result = actual_rank[ranker1] < actual_rank[ranker2]
+            pred_result = predicted_rank[ranker1] < predicted_rank[ranker2]
+            total += 1
+            if pred_result == real_result:
+                right +=1
+                                                               
+        return right/total if total > 0 else 0    
+
+    @property
+    def prediction_quality(self) -> int:
+        return self._prediction_quality()
+
+    @property
+    def prediction_quality_after(self) -> int:
+        return self._prediction_quality(True)
+
+    @property
+    def inspector(self) -> str:
+        '''
+        Returns a safe HTML string reporting the structure of a session for prurposes
+        of rapid and easy debugging of any database integrity issues. Many other 
+        properties and methods make assumptions about session integrity and if these fail 
+        they bomb. The aim here is that this is robust and just reports the database 
+        objects related and their basic properties with PKs in a nice HTML div that
+        can be popped onto any page or on a spearate "inspector" page if desired.  
+        '''
+        # A TootlTip Format string
+        ttf = "<div class='tooltip'>{}<span class='tooltiptext'>{}</span></div>"
+        
+        html = "<div id='session_inspector' class='inspector'>"
+        html += "<table>"
+        html += "<tr><th>pk:</th><td>{}</td></tr>".format(self.pk)
+        html += "<tr><th>date_time:</th><td>{}</td></tr>".format(self.date_time)
+        html += "<tr><th>league:</th><td>{}</td></tr>".format(self.league.pk)
+        html += "<tr><th>location:</th><td>{}</td></tr>".format(self.location.pk)
+        html += "<tr><th>game:</th><td>{}</td></tr>".format(self.game.pk)
+        html += "<tr><th>team_play:</th><td>{}</td></tr>".format(self.team_play)
+        
+        pid = ttf.format("pid", "Performance ID - the primary key of a Performance object")
+        rid = ttf.format("rid", "Rank ID - the primary key of a Rank object")
+        tid = ttf.format("tid", "Ream ID - the primary key of a Team object")
+        html += "<tr><th>{}</th><td><table>".format(ttf.format("Integrity:","Every player in the game must have an associated performance, rank and if relevant, team object"))
+        for performance in self.performances.all():
+            html += "<tr>"
+            html += "<th>player:</th><td>{}</td><td>{}</td>".format(performance.player.pk, performance.player.full_name)
+            html += "<th>{}:</th><td>{}</td>".format(pid, performance.pk)
+
+            rank = None
+            team = None
+            if self.team_play:
+                ranks = Rank.objects.filter(session=self)
+                for r in ranks:
+                    if not r.team is None:  # Play it safe in case of database integrity issue
+                        try:
+                            t = Team.objects.get(pk=r.team.pk)
+                        except Team.DoesNotExist:
+                            t = None
+                        
+                        players = t.players.all() if not t is None else []
+
+                        if performance.player in players:
+                            rank = r.pk
+                            team = t.pk
+            else:
+                try:
+                    rank = Rank.objects.get(session=self, player=performance.player).pk
+                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+                except Rank.DoesNotExist:
+                    rank = None
+                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+                except Rank.MultipleObjectsReturned:
+                    ranks = Rank.objects.filter(session=self, player=performance.player)
+                    html += "<th>{}:</th><td>{}</td>".format(rid, [rank.pk for rank in ranks])
+            
+            html += "<th>{}:</th><td>{}</td>".format(tid, team) if self.team_play else ""
+            html += "</tr>"
+        html += "</table></td></tr>"
+        
+        html += "<tr><th>ranks:</th><td><ol start=0>"
+        for rank in self.ranks.all():
+            html += "<li><table>"
+            html += "<tr><th>pk:</th><td>{}</td></tr>".format(rank.pk)
+            html += "<tr><th>rank:</th><td>{}</td></tr>".format(rank.rank)
+            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(rank.player.pk if rank.player else None, rank.player.full_name if rank.player else None)
+            html += "<tr><th>team:</th><td>{}</td><td>{}</td></tr>".format(rank.team.pk if rank.team else None, rank.team.name if rank.team else "")
+            if (rank.team):
+                for player in rank.team.players.all():
+                    html += "<tr><th></th><td>{}</td><td>{}</td></tr>".format(player.pk, player.full_name)                                
+            html += "</table></li>"
+        html += "</ol></td></tr>"
+            
+        html += "<tr><th>performances:</th><td><ol start=0>"
+        for performance in self.performances.all():
+            html += "<li><table>"
+            html += "<tr><th>pk:</th><td>{}</td></tr>".format(performance.pk)
+            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(performance.player.pk, performance.player.full_name)
+            html += "<tr><th>weight:</th><td>{}</td></tr>".format(performance.partial_play_weighting)
+            html += "<tr><th>play_number:</th><td>{}</td>".format(performance.play_number)
+            html += "<th>victory_count:</th><td>{}</td></tr>".format(performance.victory_count)
+            html += "<tr><th>mu_before:</th><td>{}</td>".format(performance.trueskill_mu_before)
+            html += "<th>mu_after:</th><td>{}</td></tr>".format(performance.trueskill_mu_after)
+            html += "<tr><th>sigma_before:</th><td>{}</td>".format(performance.trueskill_sigma_before)
+            html += "<th>sigma_after:</th><td>{}</td></tr>".format(performance.trueskill_sigma_after)
+            html += "<tr><th>eta_before:</th><td>{}</td>".format(performance.trueskill_eta_before)
+            html += "<th>eta_after:</th><td>{}</td></tr>".format(performance.trueskill_eta_after)            
+            html += "</table></li>"
+        html += "</ol></td></tr>"
+        html += "</table>"
+        html += "</div>"
+    
+        return html
+
+    def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style=""):
+        '''
+        Internal OL factory for list of rankers on a session. 
+        
+        :param ordered_ranks:           Rank objects in order we'd like them listed. 
+        :param use_rank:                Use Rank.rank to permit ties, else use the row number
+        :param expected_performance:    Name of Rank method that returns a Predicted Performance summary
+        :param name_style:              The style in which to render names
+        :param ol_style:                A style to apply to the OL if any
+        '''
+                
+        data = []
+        if ol_style:
+            detail = u'<OL style="{}">'.format(ol_style)
+        else:
+            detail = u'<OL>'
+
+        rankers = OrderedDict()
+        row = 1
+        for r in ordered_ranks:
+            if self.team_play:
+                # Teams we can render with the default format
+                # TODO: Check this, they should also respect 
+                #  link   name_style for members and linking of 
+                #     members names when listed!  
+                ranker = field_render(r.team, flt.template)
+                data.append((r.team.pk, None))
+            else:
+                # Render the field first as a template which has:
+                # {Player.PK} in place of the players name, and a
+                # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
+                ranker = field_render(r.player, flt.template, osf.template)
+                
+                # Replace the player name template item with the formatted name of the player
+                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
+                
+                # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view 
+                PK = r.player.pk
+                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname 
+                data.append((PK, BGG))
+            
+            # Add expected performance to the ranker string if requested                
+            eperf = ""
+            if not expected_performance is None:
+                perf = getattr(r, expected_performance, None) # (mu, sigma)
+                if not perf is None:
+                    eperf = perf[0] # mu
+                    
+            if eperf:
+                tip = "<span class='tooltiptext'>Expected performance (teeth)</span>"
+                ranker += " (<div class='tooltip'>{:.1f}{}</div>)".format(eperf, tip)                                    
+            
+            if use_rank:
+                if r.rank in rankers:
+                    rankers[r.rank].append(ranker)
+                else:
+                    rankers[r.rank] = [ranker]            
+            else:
+                rankers[row] = [ranker]
+                
+            row += 1
+        
+        row = 1
+        for rank in rankers:                
+            detail += u'<LI value={}>{}</LI>'.format(row, ", ".join(rankers[rank]))
+            row += 1
+            
+        detail += u'</OL>'
+        
+        return (detail, data)
+        
     def leaderboard_header(self, name_style):
         '''
         Returns a HTML header that can be used on leaderboards.
@@ -1509,44 +1834,83 @@ class Session(AdminModel):
         
         This permits a leaderboard view to render the template altering how 
         the template is rendered.  The ancillary data is for now just the
-        pk and BGG name of the ranker in that session. 
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires. 
         
         :param name_style: Must be supplied
         '''
-        data = []
+        detail = u"<b>" + time_str(self.date_time) + u"</b><br><br>"
         
-        detail = u"<b>" + localize(self.date_time) + u"</b><br><br>"
-        detail += u'<OL>'
-
-        rankers = OrderedDict()
-        for r in self.ranks.all():
-            if self.team_play:
-                # Teams we can render with the default format
-                ranker = field_render(r.team, flt.template)
-                data.append((r.team.pk, None))
-            else:
-                # Players should obey name_style which is one of the styles 
-                # that Player.name supports
-                ranker = field_render(r.player, flt.template, osf.template)
-                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
-                
-                # WE try to be careful about dud BBGnames here supplying None reliably for such. 
-                PK = r.player.pk
-                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname 
-                data.append((PK, BGG))
-            
-            if r.rank in rankers:
-                rankers[r.rank].append(ranker)
-            else:
-                rankers[r.rank] = [ranker]
-            
-        for rank in rankers:
-            detail += u'<LI value={}>{}</LI>'.format(rank, ", ".join(rankers[rank]))
-            
-        detail += u'</OL>'
+        (ol, data) = self._html_rankers_ol(self.ranks.all(), True, None, name_style)
+        
+        detail += ol
         
         return (detail, data)         
+
+    def leaderboard_analysis(self, name_style):
+        '''
+        Returns a HTML header that can be used on leaderboards.
+
+        It includes an analysis of the session. 
+        
+        This comes in two parts, a templates, and ancillary data.
+        
+        The template is HTML with placeholders for the ancillary data.
+        
+        This permits a leaderboard view to render the template altering how 
+        the template is rendered.  The ancillary data is for now just the
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires.
+        
+        Format is as follows:
+        
+        1) An ordered list of players as a the prediction
+        # TODO 2) A confidence in the prediction (some measure of probability) 
+        3) A quality measure of that prediction
+                
+        :param name_style: Must be supplied
+        '''
+        (ordered_ranks, confidence) = self.predicted_ranking
+        
+        tip_sure = "<span class='tooltiptext'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        detail = u"Predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality, tip_accu)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
+        
+        detail += ol
+        
+        return (mark_safe(detail), data)
     
+    def leaderboard_analysis_after(self, name_style):
+        '''
+        Returns a HTML header that can be used on leaderboards.
+
+        It includes an analysis of the session updates. 
+        
+        This comes in two parts, a templates, and ancillary data.
+        
+        The template is HTML with placeholders for the ancillary data.
+        
+        This permits a leaderboard view to render the template altering how 
+        the template is rendered.  The ancillary data is for now just the
+        pk and BGG name of the ranker in that session which allows the 
+        template to link names to this site or to BGG as it desires.
+        
+        Format is as follows:
+        
+        1) An ordered list of players as a the prediction
+        # TODO 2) A confidence in the prediction (some measure of probability) 
+        3) A quality measure of that prediction
+                
+        :param name_style: Must be supplied
+        '''
+        (ordered_ranks, confidence) = self.predicted_ranking_after        
+        detail = u"Post-session predicted ranking ({:.0%} sure, {:.0%} accurate): <br><br>".format(confidence, self.prediction_quality_after)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
+        detail += ol
+        
+        return (mark_safe(detail), data)                  
+   
     def previous_sessions(self, player):
         '''
         Returns all the previous sessions that the nominate player played this game in. 
@@ -1614,7 +1978,7 @@ class Session(AdminModel):
         '''
         assert player != None, "Coding error: Cannot fetch the performance of 'no player'."
         performances = self.performances.filter(player=player)
-        assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={}".format(len(performances), self.pk, player.pk)
+        assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={} sql={}".format(len(performances), self.pk, player.pk, performances.query)
         return performances[0]
 
     def previous_performance(self, player):
@@ -1689,7 +2053,7 @@ class Session(AdminModel):
         Does not update ratings in the database.
         '''
         TSS = TrueskillSettings()
-        TS = trueskill.TrueSkill(mu=TSS.mu0, sigma=TSS.sigma0, beta=TSS.beta, tau=self.game.trueskill_tau, draw_probability=self.game.trueskill_p)
+        TS = trueskill.TrueSkill(mu=TSS.mu0, sigma=TSS.sigma0, beta=self.game.trueskill_beta, tau=self.game.trueskill_tau, draw_probability=self.game.trueskill_p)
 
         def RecordPerformance(rating_groups):
             '''
@@ -1758,19 +2122,14 @@ class Session(AdminModel):
 
         return self.trueskill_impacts 
 
-    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
-    # Am testint the new simpler way now leaving it in place for a while to see if any issues arise.
-    #add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
-    
-    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
     def __unicode__(self): 
-        return u'{} - {}'.format(localize(self.date_time), self.game)
+        return u'{} - {}'.format(time_str(self.date_time), self.game)
     
     def __str__(self): return self.__unicode__()
     
     def __verbose_str__(self):
         return u'{} - {} - {} - {}'.format(
-            localize(self.date_time), 
+            time_str(self.date_time), 
             self.league, 
             self.location, 
             self.game)
@@ -1788,7 +2147,7 @@ class Session(AdminModel):
             
         try:
             return u'{} - {} - {} - {} - {} {} ({} won)'.format(
-                localize(self.date_time), 
+                time_str(self.date_time), 
                 field_render(self.league, link), 
                 field_render(self.location, link), 
                 field_render(self.game, link), 
@@ -1799,7 +2158,7 @@ class Session(AdminModel):
             pass
     
     def __detail_str__(self, link=None):
-        detail = localize(self.date_time) + "<br>"
+        detail = time_str(self.date_time) + "<br>"
         detail += field_render(self.game, link) + "<br>"
         detail += u'<OL>'
 
@@ -1867,15 +2226,16 @@ class Session(AdminModel):
                 assert rank.team.players, "Session Integrity error (id: {}): Rank {} (id:{}) has a team (id:) with no players.".format(self.id, rank.rank, rank.id, rank.team.id)
                 
                 # Check that the number of players is allowed by the game
-                assert rank.team.players.count() >= self.game.min_players, "Session Integrity error (id: {}): Too few players in team (game: {}, team{}, players{}).".format(self.id, self.game.id, rank.team.id, len(players))
-                assert rank.team.players.count() <= self.game.max_players, "Session Integrity error (id: {}): Too many players in team (game: {}, team{}, players{}).".format(self.id, self.game.id, rank.team.id, len(players))
+                num_players = len(rank.team.players.all())
+                assert num_players >= self.game.min_players_per_team, "Session Integrity error (id: {}): Too few players in team (game: {}, team: {}, players: {}, min: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.min_players_per_team)
+                assert num_players <= self.game.max_players_per_team, "Session Integrity error (id: {}): Too many players in team (game: {}, team: {}, players: {}, max: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.max_players_per_team)
                 
-                for player in rank.team.players:
-                    assert player, "Session Integrity error (id: {}): Rank {} (id:{}) has a team (id:) with an invalid player.".format(self.id, rank.rank, rank.id, rank.team.id)
+                for player in rank.team.players.all():
+                    assert player, "Session Integrity error (id: {}): Rank {} (id: {}) has a team (id: {}) with an invalid player.".format(self.id, rank.rank, rank.id, rank.team.id)
                     players.add(player)
         else:
             for rank in self.ranks.all():
-                assert rank.player, "Session Integrity error (id: {}): Rank {} (id:{}) has no player.".format(self.id, rank.rank, rank.id)
+                assert rank.player, "Session Integrity error (id: {}): Rank {} (id: {}) has no player.".format(self.id, rank.rank, rank.id)
                 players.add(rank.player)
         
         # Check that the number of players is allowed by the game
@@ -1897,9 +2257,11 @@ class Session(AdminModel):
             if previous is None:
                 TS = TrueskillSettings()
                 
+                trueskill_eta = TS.mu0 - TS.mu0 / TS.sigma0 * TS.sigma0
+                
                 assert isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
                 assert isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-                assert isclose(performance.trueskill_eta_before, 0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, 0)
+                assert isclose(performance.trueskill_eta_before, trueskill_eta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, trueskill_eta)
             else:
                 assert isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
                 assert isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
@@ -1991,7 +2353,16 @@ class Session(AdminModel):
                 raise ValidationError("Session {} has a gap in ranks (between {} and {})".format(self.id), last_rank_val, rank)
             last_rank_val = rank
 
-    class Meta:
+    def clean_relations(self):
+        pass
+#         errors = {
+#             "date_time": ["Bad DateTime"], 
+#             "league": ["Bad League", "No not really"], 
+#             NON_FIELD_ERRORS: ["One error", "Two errors"]
+#             }
+#         raise ValidationError(errors)            
+
+    class Meta(AdminModel.Meta):
         ordering = ['-date_time']
 
 class Rank(AdminModel):
@@ -2001,15 +2372,68 @@ class Rank(AdminModel):
     Either a player or team is specified, neither or both is a data error.
     Which one, is specified in the Session model where a record is kept of whether this was a Team play session or not (i.e. Individual play)
     '''
-    session = models.ForeignKey(Session, related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
-    rank = models.PositiveIntegerField()  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
+    rank = models.PositiveIntegerField('Rank')  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
 
     # One or the other of these has a value the other should be null (enforce in integrity checks)
     # We coudlof course opt to use a single GenericForeignKey here: 
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
     #    but there are some complexites they introduce that are rather unnatracive as well
-    player = models.ForeignKey(Player, blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
-    team = models.ForeignKey(Team, blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+    player = models.ForeignKey(Player, verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
+    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+
+    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
+
+    def _performance(self, after=False) -> tuple:        
+        '''
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkill specific theory to provide
+        a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
+        
+        :param after: if true returns predicted performance with ratings after the update. ELse before.
+        '''
+        # TODO: Much of this This should really be in the trueskill package not here
+        if self.session.team_play:
+            players = list(self.team.players.all())
+        else:
+            players = [self.player]
+            
+        mu = 0
+        var = 0
+        for player in players:
+            performance = self.session.performance(player)
+            w = performance.partial_play_weighting
+            mu += w * (performance.trueskill_mu_after if after else performance.trueskill_mu_before)
+            sigma = performance.trueskill_sigma_after if after else performance.trueskill_sigma_before
+            var += w**2*(sigma**2 + performance.trueskill_tau**2 + performance.trueskill_beta**2) 
+        return (mu, var**0.5)
+
+    @property
+    def performance(self):
+        '''
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkil specific theory to provide
+        a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.        
+        '''
+        return self._performance()
+    
+    @property
+    def performance_after(self):
+        '''
+        Returns a TrueSkill Performance for this ranking player or team using the ratings the received after this session update. 
+        Uses very TrueSkil specific theory to provide a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill 
+        Performance prediction.
+        '''
+        return self._performance(True)   
+
+    @property
+    def ranker(self) -> object:
+        '''
+        Returns either a Player or Team, as appropriate for the ranker,
+        that is the player or team ranking here   
+        '''
+        if self.session.team_play:
+            return self.team
+        else:
+            return self.player
 
     @property
     def players(self) -> list:
@@ -2025,7 +2449,7 @@ class Rank(AdminModel):
         session = Session.objects.get(id=self.session.id)
         if session.team_play:
             if self.team is None:
-                raise ValueError("Rank '{0}' is associated with a team play session but has no team.".format(self.id))
+                raise ValueError("Rank '{}' is associated with a team play session but has no team.".format(self.id))
             else:
                 # TODO: Test that this returns a clean list and not a QuerySet
                 players = list(self.team.players.all())
@@ -2053,6 +2477,10 @@ class Rank(AdminModel):
         return self.rank == 1
 
     @property
+    def is_team_rank(self):
+        return self.session.team_play
+
+    @property
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
@@ -2070,7 +2498,6 @@ class Rank(AdminModel):
         elif self.player is None:
             assert self.session.team_play, "Ingerity error: Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk)
         
-    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
     def __unicode__(self):
         return "{}".format(self.rank)
     def __str__(self): return self.__unicode__()
@@ -2117,8 +2544,17 @@ class Rank(AdminModel):
             # we have to pass this condition always for now. 
             #raise ValidationError("No team or player specified in rank {}".format(self.pk))
             pass
+        # When editing Rank objects and changing the team_play setting in the associated setting,
+        # It can easily be that a team is added and a player remains. Clean up any duplicity on 
+        # submission. 
         if not self.team is None and not self.player is None:
-            raise ValidationError("Both team and player specified in rank {}".format(self.pk))
+            if not hasattr(self.session,"team_play"):
+                raise ValidationError("Both team and player specified in rank {} but it has no associated session so we can't clean it.".format(self.pk))
+
+            if self.session.team_play:
+                self.player = None
+            else:
+                self.team = None                
         
         # Require that self.team/self.player reflects self.session.team_play
 # TODO: House this elsewhere, can't clean relations here as related objects don't exist yet. This clean can only be internal to this model 
@@ -2127,7 +2563,7 @@ class Rank(AdminModel):
 #         elif self.player is None and not self.session.team_play:
 #             raise ValidationError("Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk))
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['rank']
 
 class Performance(AdminModel):
@@ -2143,8 +2579,8 @@ class Performance(AdminModel):
     '''
     TS = TrueskillSettings()
 
-    session = models.ForeignKey(Session, related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
-    player = models.ForeignKey(Player, related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
+    player = models.ForeignKey(Player, verbose_name='Player', related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
 
@@ -2162,19 +2598,19 @@ class Performance(AdminModel):
     trueskill_sigma_after = models.FloatField('Trueskill Standard Deviation (σ) after the session.', default=TS.sigma0, editable=False)
     trueskill_eta_after = models.FloatField('Trueskill Rating (η) after the session.', default=0, editable=False)
 
-    # Record the global TrueskillSettings mu0, sigma0, beta and delta with each performance
+    # Record the global TrueskillSettings mu0, sigma0 and delta with each performance
     # This will allow us to reset ratings to the state they were at after this performance
     # It is an integrity measure as well against changes in these settings while a leaderboard
     # is running, which has significant consequences (suggesting a rebuild of all ratings is in 
     # order)  
     trueskill_mu0 = models.FloatField('Trueskill Initial Mean (µ)', default=trueskill.MU, editable=False)
     trueskill_sigma0 = models.FloatField('Trueskill Initial Standard Deviation (σ)', default=trueskill.SIGMA, editable=False)
-    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA, editable=False)
     trueskill_delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA, editable=False)
     
-    # Record the game specific Trueskill settings tau and p with each performance.
+    # Record the game specific Trueskill settings beta, tau and p with each performance.
     # Again for a given game these must be consistent among all ratings and the history of each rating. 
     # Any change while managing leaderboards should trigger an update request for ratings relating to this game.  
+    trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA, editable=False)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU, editable=False)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY, editable=False)
 
@@ -2208,7 +2644,7 @@ class Performance(AdminModel):
                     team = Team.objects.get(pk=rank.team.id)
                     players = team.players.all()
                     if self.player in players:
-                        return rank
+                        return rank.rank
         else:
             rank = Rank.objects.get(session=self.session.id, player=self.player.id).rank
             return rank
@@ -2284,8 +2720,8 @@ class Performance(AdminModel):
         TS = TrueskillSettings()
         self.trueskill_mu0 = TS.mu0 
         self.trueskill_sigma0 = TS.sigma0 
-        self.trueskill_beta = TS.beta 
         self.trueskill_delta = TS.delta
+        self.trueskill_beta = self.session.game.trueskill_beta 
         self.trueskill_tau = self.session.game.trueskill_tau 
         self.trueskill_p = self.session.game.trueskill_p 
         
@@ -2315,15 +2751,16 @@ class Performance(AdminModel):
         if previous is None:
             TS = TrueskillSettings()
             
-            assert isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
-            assert isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-            assert isclose(performance.trueskill_beta, TS.beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.beta)
-            assert isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.delta)
+            assert isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu0_before, None, TS.mu0)
+            assert isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma0_before, None, TS.sigma0)
+            assert isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, None, TS.delta)
         else:
-            assert isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
-            assert isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
-            assert isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.beta)
-            assert isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, TS.delta)
+            assert isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu0_after)
+            assert isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma0_after)
+            assert isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, previous.session.date_time, previous.trueskill_delta_after)
+            assert isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_beta_before, previous.session.date_time, previous.trueskill_beta_after)
+            assert isclose(performance.trueskill_tau, previous.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_tau_before, previous.session.date_time, previous.trueskill_tau_after)
+            assert isclose(performance.trueskill_p, previous.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_p_before, previous.session.date_time, previous.trueskill_p_after)
         
         # Check that there is an associate Rank
         assert not self.rank is None, "Integrity error: Apparently no rank avalaible for a Performance (id: {})".format(self.id)  
@@ -2412,7 +2849,7 @@ class Performance(AdminModel):
             when = self.session.date_time
             game = field_render(self.session.game, link)
         performer = field_render(self.player, link)
-        performance = "play number {}, {:+.1f} teeth".format(self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
+        performance = "{:.0%} participation, play number {}, {:+.1f} teeth".format(self.partial_play_weighting, self.play_number, self.trueskill_eta_after - self.trueskill_eta_before)
         return  u'{} - {:%d, %b %Y} - {}: {}'.format(game, when, performer, field_render(performance, link_target_url(self, link)))    
 
     def __detail_str__(self, link=None):
@@ -2427,7 +2864,7 @@ class Performance(AdminModel):
             
         performer = field_render(self.player, link)
         
-        detail = u'{} - {:%d, %b %Y} - {}:<UL>'.format(game, when, performer)
+        detail = u'{} - {:%a, %-d %b %Y} - {}:<UL>'.format(game, when, performer)
         detail += "<LI>Players: {}</LI>".format(players)
         detail += "<LI>Play number: {}</LI>".format(self.play_number)
         detail += "<LI>Play Weighting: {:.0%}</LI>".format(self.partial_play_weighting)
@@ -2436,14 +2873,14 @@ class Performance(AdminModel):
         detail += "</UL>"
         return detail    
 
-    class Meta:
+    class Meta(AdminModel.Meta):
         ordering = ['session', 'player']
 
 #===============================================================================
 # Administrative models
 #===============================================================================
 
-class Rebuild_Log(models.Model):
+class Rebuild_Log(TimeZoneMixIn, models.Model):
     '''
     A log of rating rebuilds.
     
@@ -2452,8 +2889,9 @@ class Rebuild_Log(models.Model):
     1) Performance measure. Rebuild can be slow and we'd like to know how slow. 
     2) Security. To see who rebuilt when
     '''
-    date_time = models.DateTimeField(default=timezone.now)
-    ratings = models.PositiveIntegerField()
-    duration = models.DurationField()
-    rebuilt_by = models.ForeignKey(User, related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
-    reason = models.TextField('Reason')    
+    date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
+    date_time_tz = TimeZoneField('Time of Ratings Rebuild, Timezone', default=settings.TIME_ZONE, editable=False)
+    ratings = models.PositiveIntegerField('Number of Ratings Built')
+    duration = models.DurationField('Duration of Rebuild')
+    rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
+    reason = models.TextField('Reason for Rebuild')    

@@ -9,7 +9,8 @@ but also supporting numerous options that can be passed in through a request (vi
 # Python imports
 import html
 import re
-from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
+from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE.
+from datetime import datetime 
 
 # Django imports
 from django.conf import settings
@@ -21,12 +22,12 @@ from django.utils.safestring import mark_safe
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE 
-from .util import isListValue, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth
+from .util import isListValue, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth, time_str
 from .options import list_display_format, object_display_format, object_display_modes, flt, osf, odm, odf, lmf
 from .filterset import format_filterset
 
 
-def fmt_str(obj):
+def fmt_str(obj, safe=False):
     '''
     A simple enhancement of str() which formats list values a little more nicely IMO.
     
@@ -79,17 +80,19 @@ def fmt_str(obj):
             text = braces[0] + nl_delim.join(lines) + braces[1]
         else:
             text = braces[0] + csv_delim.join(lines) + braces[1]
+    elif isinstance(obj, datetime):
+        text = force_text(time_str(obj))
     else:
         text = force_text(str(obj))
         
     # Not object should land here with HTML embedded really, bar PRE strings. So
     # mark PRE strings as safe, and escape the rest. 
-    if isPRE(text):
+    if safe or isPRE(text):
         return mark_safe(text)    
     else:            
         return html.escape(text)    
 
-def odm_str(obj, fmt):
+def odm_str(obj, fmt, safe=False):
     '''
     Return an object's representative string respecting the ODM (sum_format and link) and privacy configurations. 
 
@@ -117,7 +120,7 @@ def odm_str(obj, fmt):
         LT = fmt.link
 
     # Rich and Detail views on an object are responsible for their own linking.
-    # They should do that vial field_render().
+    # They should do that via field_render().
     # Verbose and Brief views don't so we apply a link wrapper if requested.   
     Awrapper = "{}"
     if not (OSF == osf.detail or OSF == osf.rich):
@@ -136,7 +139,7 @@ def odm_str(obj, fmt):
         elif callable(getattr(obj, '__verbose_str__', None)):
             strobj = html.escape(obj.__verbose_str__())
         else: 
-            strobj = fmt_str(obj)
+            strobj = fmt_str(obj, safe)
     elif OSF == osf.rich:
         if callable(getattr(obj, '__rich_str__', None)):
             strobj = obj.__rich_str__(LT)
@@ -148,9 +151,9 @@ def odm_str(obj, fmt):
         if callable(getattr(obj, '__verbose_str__', None)):
             strobj = html.escape(obj.__verbose_str__())
         else: 
-            strobj = fmt_str(obj)
+            strobj = fmt_str(obj, safe)
     else:
-        strobj = fmt_str(obj)
+        strobj = fmt_str(obj, safe)
     
     return Awrapper.format(strobj) 
 
@@ -183,16 +186,17 @@ def list_html_output(self, LDF=None):
         
     LMF = self.format.menus
     LIF = self.format.index
+    LKF = self.format.key
 
     # Define the standard HTML strings for supported formats    
     if LDF == odm.as_table:
-        normal_row = "<tr>{menu:s}{index:s}<td class='list_item'>{value:s}</td></tr>"
+        normal_row = "<tr>{menu:s}{index:s}{key:s}<td class='list_item'>{value:s}</td></tr>"
     elif LDF == odm.as_ul:
-        normal_row = "<li class='list_item'>{menu:s}{index:s}{value:s}</li>"
+        normal_row = "<li class='list_item'>{menu:s}{index:s}{key:s}{value:s}</li>"
     elif LDF == odm.as_p:
-        normal_row = "<p class='list_item'>{menu:s}{index:s}{value:s}</p>"
+        normal_row = "<p class='list_item'>{menu:s}{index:s}{key:s}{value:s}</p>"
     elif LDF == odm.as_br:
-        normal_row = '{menu:s}{index:s}{value:s}<br>'
+        normal_row = '{menu:s}{index:s}{key:s}{value:s}<br>'
     else:
         raise ValueError("Internal Error: format must always contain one of the object layout modes.")                
 
@@ -226,6 +230,14 @@ def list_html_output(self, LDF=None):
     else:
         index = ""
 
+    # Key support is for one index running down page
+    if LKF:
+        key = "<span class='list_key_text'>{key}</span>"
+        if LDF == odm.as_table:
+            key = "<td class='list_key_cell'>{}</td>".format(key)
+    else:
+        key = ""
+
     # Collect output lines in a list
     output = []
 
@@ -249,9 +261,11 @@ def list_html_output(self, LDF=None):
             
         html_index = index.format(index=i)
         i += 1
+
+        html_key = key.format(key=o.pk)
         
         html_value = six.text_type(odm_str(o, self.format))
-        row = normal_row.format(menu=html_menu, index=html_index, value=html_value)
+        row = normal_row.format(menu=html_menu, index=html_index, key=html_key, value=html_value)
         output.append(row)
 
     return mark_safe('\n'.join(output))
@@ -315,6 +329,7 @@ def object_html_output(self, ODM=None):
             else 'Related fields' if bucket == odf.related
             else 'Properties' if bucket == odf.properties
             else 'Methods' if bucket == odf.methods
+            else 'Summaries' if bucket == odf.summaries
             else 'Standard fields' if bucket == odf.model and ODF.flags & odf.header
             else None if bucket == odf.model
             else 'Unknown ... [internal error]')
@@ -356,7 +371,7 @@ def object_html_output(self, ODM=None):
                 label = conditional_escape(force_text(field.label))
             else:
                 label = ''
-
+                
             # self.format specifies how we'll render the field, i.e. build our row.
             #
             # normal_row has been specified above in accord with the as_ format specified.

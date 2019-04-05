@@ -3,6 +3,7 @@
 	<name>CoGs</name>
 	<comment></comment>
 	<projects>
+		<project>django-bitfield</project>
 		<project>trueskill</project>
 	</projects>
 	<buildSpec>

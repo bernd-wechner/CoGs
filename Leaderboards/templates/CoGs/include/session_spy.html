@@ -1,0 +1,19 @@
+<div id="session" style="margin-top: 1ex">
+	<table>
+		<tr>
+	        <th rowspan=0 valign=top><b>SESSION:</b></th>
+			<th>Key</th>
+			<th>Value</th>
+			<th rowspan=0 valign=top>
+				<form  action="{% url 'post_client_info' %}" method="post">
+					{% csrf_token %}
+					<input type="hidden" name="clear_session" value="1">				
+					<button type="submit">Clear Session</button>
+				</form>
+			</th>
+	    </tr>
+		{% for key, val in request.session.items %}
+			<tr><td>{{ key }}</td><td>{{ val }}</td></tr>
+		{% endfor %}
+	</table>
+</div>

@@ -68,7 +68,7 @@ class StatsMiddleware(object):
         # and backout python time
         python_time = total_time - db_time
         
-        stats = br''.join((br'<div id="stats"><table><tr>'
+        stats = br''.join((br'<div id="stats" style="margin-top:1ex"><table><tr>'
                            br'<td><b>STATS:</b></td>',
                            br'<td style="padding-left: 5ch;">Total Time:</td><td>', "{:.1f} ms".format(total_time*1000).encode(), br'</td>',
                            br'<td style="padding-left: 5ch;">Python Time:</td><td>', "{:.1f} ms".format(python_time).encode(), br'</td>',

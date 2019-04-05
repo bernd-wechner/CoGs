@@ -5,10 +5,11 @@ import pytz
 import sys
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
+from cuser.middleware import CuserMiddleware
 
 #from collections import OrderedDict
 
-from django_generic_view_extensions.views import TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import  datetime_format_python_to_PHP, class_from_string
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.debug import print_debug 
@@ -20,25 +21,19 @@ from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
 from django.http import HttpResponse
+from django.http.response import HttpResponseRedirect
 from django.urls import reverse #, resolve
-from django.contrib.auth.models import Group
+from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.conf.global_settings import DATETIME_INPUT_FORMATS
 from django.utils.dateparse import parse_datetime
-from django.utils.timezone import is_aware, make_aware
-
-# TODO: Fix timezone handling. By default in Django we use UTC but we want to enter sessons in local time and see results in local time.
-#        This may need to be League hooked and/or Venue hooked, that is leagues specify a timezone and Venues can specfy one that overrides?
-#        Either way when adding a session we don't know until the League and Venue are chosen what timezone to use.
-#        Requires a postback on a League or Venue change? So we can render the DateTime and read box in the approriate timezone?
-from django.utils.timezone import get_default_timezone_name, get_current_timezone_name
+from django.conf import settings
+from django.utils.timezone import get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, localtime, is_aware, make_aware, make_naive, activate
 from django.utils.formats import localize
+from numpy import rank
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
-#TODO: Put a filter in the menu bar, for selecting a league, and then restrict a lot of views only to that league's data.
-
 #TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
 
 #===============================================================================
@@ -117,84 +112,135 @@ def post_process_submitted_model(self):
     #       all the participating players were in that were played after the edited session.
     #    A general are you sure? system for edits is worth implementing.
     
-    # TODO: When saving a session sort ranks numerically and substitute by 1, 2, 3, 4 ... to ensure victors are always identifes by rank 1 and rank is the ordinal.
-    #        Silently enforcing this is better than requiring the user to. The form can support any integers that indicate order.
-
         session = self.object
-        
-        # TODO: Bug here?
-        # session.ranks for some reason is None
-        # even after a session.reload_from_db
-        # So can fetch the ranks explicitly. 
-        # But something with the Django field "ranks" is broken
-        # And not sure if it's a local issue or a bug in Django.
-        #
-        # If we sort them in the order that they were created then we have 
-        # a list that is the same order as the TeamPlayers list which we 
-        # we build below, because all are created in order of the submitted
-        # form fields.
-        #
-        # We can sort on pk or creeated_on for the same expected result.
-        ranks = Rank.objects.filter(session=session.pk).order_by('created_on')
-        
-        # TODO: Sort Ranks, and map onto a list of 1, 2, 3, 4 ... 
-        
+                      
         team_play = session.team_play
+        
+        # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
+        # Some empircal testing notes here:
+        #
+        # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
+        #    This must have have happened when we saved the related forms by passing in an instance to the formset.save 
+        #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day. 
+        #    Empirclaly seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #    For example:
+        #
+        #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>]>
+        #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>    
+        #    session.teams                 OrderedDict: OrderedDict() 
+        #
+        # 2) team play mode submission: See similar results exemplified by:
+        #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>, <Performance: Ben>, <Performance: Benjamin>]>
+        #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>    
+        #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)]) 
 
+        # TODO: Was in middle of testing saves with Book/Author test model. Where was I up to?
+
+        # TODO: Consider and test under which circumstances Django has saved teams befor geettng here!
+        #       And do we want to do anything special in the pre processor? And/or validator?
+                     
+        # manage teams properly, as we handl teams in a special way creating them
+        # on the fly as needed and reusing where player sets match.
         if team_play:
+            # Check if a team ID was submitted, then we have a place to start.
             # Get the player list for submitted teams and the name.
-            # Find a team with those players
-            # If the name is not blank or Team n then update the team name
-            # If it doesn't exist, create a team and give it the specified name or null of Team n
+            # If the player list submitted doesn't match that recorded, ignore the team ID
+            #    and look for a new one thathas those players!
+            # If we can't find one, create new team with those players
+            # If the name is not blank then update the team name. 
+            #    As a safety ignore inadvertently submittted "Team n" names.
 
-            # Work out the total number of players and initialize a TeamPlayers and teamRank records
+            # Work out the total number of players and initialise a TeamPlayers list (with one list per team)
             num_teams = int(self.request.POST["num_teams"])
             num_players = 0
             TeamPlayers = []
             for t in range(num_teams):
-                num_team_players = int(self.request.POST["Team-%d-num_players" % t])
+                num_team_players = int(self.request.POST["Team-{:d}-num_players".format(t)])
                 num_players += num_team_players
                 TeamPlayers.append([])
 
             # Populate the TeamPlayers record (i.e. work out which players are on the same team)
+            player_pool = set()
             for p in range(num_players):
-                player = int(self.request.POST["Performance-%d-player" % p])
-                team_num = int(self.request.POST["Performance-%d-team_num" % p])
+                player = int(self.request.POST["Performance-{:d}-player".format(p)])
+                
+                assert not player in player_pool, "Error: Players in session must be unique"
+                player_pool.add(player)                
+                
+                team_num = int(self.request.POST["Performance-{:d}-team_num".format(p)])
                 TeamPlayers[team_num].append(player)
 
             # For each team now, find it, create it , fix it as needed and associate it with the appropriate Rank just created
             for t in range(num_teams):
-                # Rank objects were saved in the database in the order of the 
-                # TeamRanks list. The TeamPlayers list has a matching list of  
-                # player Ids. t is stepping through these lists. So the rank object 
-                # we want to attach this team to is simply: 
-                rank = ranks[t]
+                # Get the submitted Team ID if any and if it is supplied 
+                # fetch the team so we can provisionally use that (renaming it 
+                # if a new name is specified).
+                team_id = self.request.POST.get("Team-{:d}-id".format(t), None)
+                team = None
+                
+                # Get Team players that we already extracted from the POST
+                team_players_post = TeamPlayers[t]
 
-                # Similarly the team players list is in the same order
-                team_players = TeamPlayers[t]
+                # Get the team players according to the database (if we have a team_id!
+                team_players_db = []
+                if (team_id):                                
+                    try:
+                        team = Team.objects.get(pk=team_id)
+                        team_players_db = team.players.all().values_list('id', flat=True)
+                    # If team_id arrives as non-int or the nominated team does not exist, 
+                    # either way we have no team and team_id should have been None.
+                    except (Team.DoesNotExist or ValueError):
+                        team_id = None
+
+                # Check that they are the same, if not, we'll have to create find or 
+                # create a new team, i.e. ignore the submitted team (it could have no 
+                # refrences left if that happens but we won't delete them simply because 
+                # of that (an admin tool for finding and deleting unreferenced objects
+                # is a better approach, be they teams or other objects).  
+                force_new_team = len(team_players_db) > 0 and set(team_players_post) != set(team_players_db)
+                
+                # Get the approriate rank object for this team
+                rank_id = self.request.POST.get("Rank-{:d}-id".format(t), None)
+                rank_rank = self.request.POST.get("Rank-{:d}-rank".format(t), None)
+                rank = session.ranks.get(rank=rank_rank)
+
+                # A rank must have been saved before we got here, either with the POST
+                # specified rank_id (for edit forms) or a ew ID (for add forms) 
+                assert rank, "Save error: No Rank was saved with the rank {}".format(rank_rank)                                            
+
+                # If a rank_id is specified in the POST it must match that saved by
+                # django_generic_view_extensions.forms.save_related_forms
+                # before we got here using that POST specified ID. 
+                if (not rank_id is None):
+                    assert int(rank_id)==rank.pk, "Save error: Saved Rank has different ID to submitted form Rank ID!"                                            
 
                 # The name submitted for this team 
-                new_name = self.request.POST["Team-%d-name" % t]
+                new_name = self.request.POST.get("Team-{:d}-name".format(t), None)
 
                 # Find the team object that has these specific players.
                 # Filter by count first and filter by players one by one.
-                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players))
-                for player in team_players:
+                # recall: these filters are lazy, we construct them here 
+                # but the do not do anything, are just recorded, and when 
+                # needed converted to SQL and executed. 
+                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players_post))
+                for player in team_players_post:
                     teams = teams.filter(players=player)
 
+                print_debug("Team Check: {} teams that have these players".format(len(teams)))
+
                 # If not found, then create a team object with those players and 
-                # link it to the rank object
-                if len(teams) == 0:
+                # link it to the rank object and save that.
+                if len(teams) == 0 or force_new_team:
                     team = Team.objects.create()
 
-                    for player_id in team_players:
+                    for player_id in team_players_post:
                         player = Player.objects.get(id=player_id)
                         team.players.add(player)
 
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
                         team.name = new_name
-                        team.save()
 
+                    team.save()
                     rank.team=team
                     rank.save()
 
@@ -203,19 +249,72 @@ def post_process_submitted_model(self):
                 elif len(teams) == 1:
                     team = teams[0]
 
+                    # If the name changed and is not a placeholder of form "Team n" save it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name :
                         team.name = new_name
                         team.save()
 
+                    # If the team is not linked to the rigth rank, fix the rank and save it. 
                     if (rank.team != team):
-                        rank.team=team
+                        rank.team = team
                         rank.save()
 
                 # Weirdness, we can't legally have more than one team with the same set of players in the database
                 else:
                     raise ValueError("Database error: More than one team with same players in database.")
-
-        # TODO: Ensure each player in game is unique.
+                
+        # Individual play
+        else:
+            # Check that all the players are unique, and double up is going to cause issues and isn't 
+            # really sesnible (same player coming in two different postions may well be allowe din some 
+            # very odd game scenarios but we're not gonig to support that, can of worms and TrueSkill sure
+            # as heck doesn't provide a meaningful result for such odd scenarios.
+        
+            player_pool = set()
+            for player in session.players:
+                assert not player in player_pool, "Error: Players in session must be unique"
+                player_pool.add(player)
+                
+        # Enforce clean ranking. This MUST happen after Teams are processed above because
+        # Team processing fetches ranks based on the POST submitted rank for the team. After 
+        # we clean them that relationshop is lost. So we should clean the ranks as last 
+        # thing just before calculating TrueSkill impacts.
+        
+        # First collect all the supplied ranks
+        ranks = []
+        for rank in session.ranks.all():
+            ranks.append(rank.rank)
+        # Then sort them by rank
+        ranks = sorted(ranks)
+        # Now check that they start at 1 and are contiguous
+        ranks_good = ranks[0] == 1
+        rank_previous = ranks[0]
+        for rank in ranks:
+            if rank - rank_previous > 1:
+                ranks_good = False
+            rank_previous = rank
+            
+        # if the ranks need fixing, fix them (to ensure they start at 1 and are contiguous):
+        if not ranks_good:
+            if rank[0] != 1:
+                rank_obj = session.ranks.get(rank=rank)
+                rank_obj.rank = 1
+                rank_obj.save()
+            
+            rank_previous = 1
+            for rank in ranks:
+                if rank - rank_previous > 1:
+                    rank_obj = session.ranks.get(rank=rank)
+                    rank_obj.rank = rank_previous + 1
+                    rank_obj.save()
+                    rank_previous = rank_obj.rank                    
+                else:
+                    rank_previous = rank                         
+       
+        # TODO: Before we calculate TrueSkillImpacts we need to hgve a completely validated session!
+        #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
+        #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
+        #       impacts but also all subsequent ones involving any of these players if it's an edit!
         
         # Calculate and save the TrueSkill rating impacts to the Performance records
         session.calculate_trueskill_impacts()
@@ -241,15 +340,19 @@ def post_process_submitted_model(self):
         # TODO: Do these checks. Then do test of the transaction rollback and error catch by 
         #       simulating an integrity error.  
 
-def html_league_options():
+def html_league_options(session):
     '''
     Returns a simple string of HTML OPTION tags for use in a SELECT tag in a template
     '''
     leagues = League.objects.all()
     
+    session_filter = session.get("filter", {})
+    selected_league = int(session_filter.get("league", 0))
+    
     options = ['<option value="0">Global</option>']  # Reserved ID for global (no league selected).    
     for league in leagues:
-        options.append('<option value="{}">{}</option>'.format(league.id, league.name))
+        selected = " selected" if league.id == selected_league else ""
+        options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
 def extra_context_provider(self):
@@ -268,15 +371,22 @@ def extra_context_provider(self):
     
     Clearly altering the game should trigger a reload of this metadata for the newly selected game.
     See ajax_Game_Properties below for that. 
+    
+    Note: self.initial has been populated by the fields specfied in the models inherit_fields 
+    attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
     '''
     context = {}
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""
      
-    context['league_options'] = html_league_options()
+    context['league_options'] = html_league_options(self.request.session)
     
-    if model_name == 'session' and hasattr(self, "object"):
-        Default = Game()
+    if model_name == 'session':
+        if "game" in getattr(self, 'initial', {}):
+            Default = self.initial["game"]
+        else:
+            Default = Game()
+        
         context['game_individual_play'] = json.dumps(Default.individual_play)
         context['game_team_play'] = json.dumps(Default.team_play)
         context['game_min_players'] = Default.min_players
@@ -284,19 +394,63 @@ def extra_context_provider(self):
         context['game_min_players_per_team'] = Default.min_players_per_team
         context['game_max_players_per_team'] = Default.max_players_per_team
         
-        session = self.object
-                
-        if session:
-            game = session.game
-            if game:
-                context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
-                context['game_team_play'] = json.dumps(game.team_play)
-                context['game_min_players'] = game.min_players
-                context['game_max_players'] = game.max_players
-                context['game_min_players_per_team'] = game.min_players_per_team
-                context['game_max_players_per_team'] = game.max_players_per_team
+        # Object overrides the defaults above 
+        if hasattr(self, "object"):
+            session = self.object
+                    
+            if session:
+                game = session.game
+                if game:
+                    context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
+                    context['game_team_play'] = json.dumps(game.team_play)
+                    context['game_min_players'] = game.min_players
+                    context['game_max_players'] = game.max_players
+                    context['game_min_players_per_team'] = game.min_players_per_team
+                    context['game_max_players_per_team'] = game.max_players_per_team
     
     return context
+
+def save_league_filters(session, league):
+    # We prioritise leagues over league as players have both the leagues they are in
+    # and their preferred league, and our filter should match any league they are in
+    # Some models only provide league through a relation and hence we need to list 
+    # those. Specifically:
+    #     Teams through players
+    #     Ratings through player
+    #     Ranks and Performances through session
+
+    # Set the name of the filter
+    F = "league"
+
+    # Set the priority list of fields for this filter
+    P = ["leagues", "league", "session__league", "player__leagues", "players__leagues"] 
+    
+    if "filter" in session:
+        if league == 0:
+            if F in session["filter"]:
+                del session["filter"][F]
+        else:
+            session["filter"][F] = league 
+    else: 
+        if league != 0:
+            session["filter"] = { F: league }
+                
+    if len(session["filter"]) == 0:
+        del session["filter"]  
+    
+    if "filter_priorities" in session:
+        if league == 0:
+            del session["filter_priorities"][F]
+        else:
+            session["filter_priorities"][F] = P
+    else:
+        if league != 0:
+            session["filter_priorities"] = { F: P }
+
+    if len(session["filter_priorities"]) == 0:
+        del session["filter_priorities"]  
+
+    session.save()            
 
 #===============================================================================
 # Customize Generic Views for CoGs
@@ -305,12 +459,33 @@ def extra_context_provider(self):
 
 class view_Home(TemplateViewExtended):
     template_name = 'CoGs/view_home.html'
-    extra_context_provider = extra_context_provider
+    extra_context_provider = extra_context_provider    
+
+class view_Login(LoginViewExtended):
+    
+    # On Login add a filter to the session for the preferred league
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        
+        username = self.request.POST["username"]
+        try:
+            user = User.objects.get(username=username)
+            preferred_league = user.player.league
+            
+            if preferred_league:
+                save_league_filters(form.request.session, preferred_league.pk)
+                    
+        except user.DoesNotExist:
+            pass
+        
+        return response
+                          
 
 class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
+    #fields = '__all__'
     extra_context_provider = extra_context_provider
     #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
@@ -371,7 +546,9 @@ class leaderboard_options:
     compare_with = None         # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
     compare_till = None         # Include comparisons only up to this date           
-    details = False             # Show session details atop each boards (about the session that produced that board) 
+    details = False             # Show session details atop each boards (about the session that produced that board)
+    analysis_pre = False        # Show the TrueSkill Pre-session analysis 
+    analysis_post = False       # Show the TrueSkill Post-session analysis 
     highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
     highlight_changes = True    # Highlight changes between historic snapshots
     cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
@@ -386,7 +563,7 @@ class leaderboard_options:
             if attr != me:
                 val = getattr(self, attr)
                 if isinstance(val, datetime):
-                    val = val.strftime(DATETIME_INPUT_FORMATS[0])
+                    val = val.strftime(settings.DATETIME_INPUT_FORMATS[0])
                 elif not isinstance(val, str):
                     try:
                         val = json.dumps(val)
@@ -431,6 +608,12 @@ def get_leaderboard_options(request):
         
     if 'details' in request.GET:
         lo.details = json.loads(request.GET['details'].lower())     
+
+    if 'analysis_pre' in request.GET:
+        lo.analysis_pre = json.loads(request.GET['analysis_pre'].lower())     
+
+    if 'analysis_post' in request.GET:
+        lo.analysis_post = json.loads(request.GET['analysis_post'].lower())     
 
     if 'highlight_players' in request.GET:
         lo.highlight_players = json.loads(request.GET['highlight_players'].lower())
@@ -486,19 +669,19 @@ def get_leaderboard_titles(lo):
     
     subtitle = []
     if lo.as_at != default.as_at:
-        subtitle.append("as at {}".format(localize(lo.as_at)))
+        subtitle.append("as at {}".format(localize(localtime(lo.as_at))))
 
     if lo.changed_since != default.changed_since:
-        subtitle.append("changed after {}".format(localize(lo.changed_since)))
+        subtitle.append("changed after {}".format(localize(localtime(lo.changed_since))))
 
     if lo.compare_back_to != default.compare_back_to:
-        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(lo.compare_back_to)
+        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(localtime(lo.compare_back_to))
         subtitle.append("compared back to the leaderboard as at {}".format(time))
     elif lo.compare_with != default.compare_with:
         subtitle.append("compared up to with {} prior leaderboards".format(lo.compare_with))
 
     if lo.compare_till != default.compare_till:
-        subtitle.append("compared up to the leaderboard as at {}".format(localize(lo.compare_till)))
+        subtitle.append("compared up to the leaderboard as at {}".format(localize(localtime(lo.compare_till))))
         
     return (title, "<BR>".join(subtitle))
 
@@ -542,7 +725,7 @@ def view_Leaderboards(request):
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),
          'now': timezone.now(),        
-         'default_datetime_input_format': datetime_format_python_to_PHP(DATETIME_INPUT_FORMATS[0])         
+         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
@@ -550,6 +733,76 @@ def view_Leaderboards(request):
 #===============================================================================
 # AJAX providers
 #===============================================================================
+
+def receive_ClientInfo(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving client 
+    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
+    pages which asynchonously and silently in the background on a page load, posts
+    the client information here.
+    
+    The main aim and r'aison d'etre for this whole scheme is to divine the users 
+    timezone as quickly and easily as we can, when they first surf in, to whatever
+    URL. Of course that first page load will take place with an unknown timezone,
+    but subsequent to it we'll know their timezone.
+    
+    Implemented as well, just for the heck of it are acceptors for UTC offset, and
+    geolocation, that HTML5 makes available, which can be used in logging site visits.
+    '''
+    if (request.POST):
+        if "clear_session" in request.POST:
+            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            session_keys = list(request.session.keys())
+            for key in session_keys:
+                del request.session[key]
+            return HttpResponse("<script>window.history.pushState('', '', '/session_cleared');</script>")
+
+        # Check for the timezone
+        if "timezone" in request.POST:
+            print_debug(f"Timezone = {request.POST['timezone']}")
+            request.session['timezone'] = request.POST['timezone']
+            activate(request.POST['timezone'])
+
+        if "utcoffset" in request.POST:
+            print_debug(f"UTC offset = {request.POST['utcoffset']}")
+            request.session['utcoffset'] = request.POST['utcoffset']
+
+        if "location" in request.POST :
+            print_debug(f"location = {request.POST['location']}")
+            request.session['location'] = request.POST['location']
+            
+    return HttpResponse()
+
+def receive_Filter(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving filter 
+    information via an XMLHttpRequest.
+    
+    The main aim and r'aison d'etre for this whole scheme is to provide a way to 
+    submit view filters for recording in the session. 
+    '''
+    if (request.POST):
+        # Check for league
+        if "league" in request.POST:            
+            print_debug(f"League = {request.POST['league']}")
+            save_league_filters(request.session, int(request.POST.get("league", 0)))
+           
+    return HttpResponse()
+
+def receive_DebugMode(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving a debug mode
+    flag via an XMLHttpRequest when debug mode is changed.
+    '''
+    if (request.POST):
+        # Check for league
+        if "debug_mode" in request.POST:            
+            request.session["debug_mode"] = True if request.POST.get("debug_mode", "false") == 'true' else False
+           
+    return HttpResponse()
 
 def ajax_Leaderboards(request, raw=False):
     '''
@@ -607,10 +860,10 @@ def ajax_Leaderboards(request, raw=False):
     if ("impact" in request.GET):
         sfilter = Q()
         if lo.league != ALL_LEAGUES:
-            sfilter &= Q(sessions__league__pk=lo.league)
+            sfilter &= Q(league__pk=lo.league)
 
         if lo.player != ALL_PLAYERS:
-            sfilter &= Q(sessions__performances__player__pk=lo.player)
+            sfilter &= Q(performances__player__pk=lo.player)
         
         S = Session.objects.filter(sfilter).order_by("-date_time")
         latest_session = S[0] if S.count() > 0 else None
@@ -623,7 +876,7 @@ def ajax_Leaderboards(request, raw=False):
    
     (title, subtitle) = get_leaderboard_titles(lo)
       
-    # Start the query with an ordered list of all games (lazy, only the SQL created_     
+    # Start the query with an ordered list of all games (lazy, only the SQL created)     
     games = Game.objects.all().annotate(session_count=Count('sessions',distinct=True)).annotate(play_count=Count('sessions__performances',distinct=True)).order_by('-play_count','-session_count')
 
     # Then build a filter on that sorted list
@@ -658,7 +911,7 @@ def ajax_Leaderboards(request, raw=False):
             S = Session.objects.filter(sfilter).order_by("-date_time")
             latest_session = S[0] if S.count() > 0 else None
                 
-            # Fetch the time of the last session in the window changed_since to as_at
+            # Fetch the time of the last session in the window (changed_since -to- as_at)
             # That will capture the leaderboard as at that time, but of course only if
             # it changed since the requested time, else not. 
             if latest_session:
@@ -666,7 +919,7 @@ def ajax_Leaderboards(request, raw=False):
                 if (lo.changed_since == default.changed_since or last_time > lo.changed_since) and (lo.as_at == default.as_at or last_time <= lo.as_at):
                     boards.append(latest_session)
             
-            # If we have a current leaderboard in the time window changed_since to as_at
+            # If we have a current leaderboard in the time window (changed_since -to- as_at)
             # then we may also want to include its history if requested by:
             #  compare_back_to, compare_til or compare_with
             if len(boards) > 0:
@@ -713,10 +966,12 @@ def ajax_Leaderboards(request, raw=False):
                 time = board.date_time
                 players = [p.pk for p in board.players]            
                 detail = board.leaderboard_header(lo.names)
+                analysis = board.leaderboard_analysis(lo.names)
+                analysis_after = board.leaderboard_analysis_after(lo.names)
                 lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
                     counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(time), counts['total'], counts['sessions'], players, detail, lb)
+                    snapshot = (localize(localtime(time)), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
                     snapshots.append(snapshot)
 
             if len(snapshots) > 0:                    
@@ -745,7 +1000,7 @@ def ajax_List(request, model):
     '''
     Support AJAX rendering of lists of objects on the list view. 
     
-    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
+    To achieve this we instantiate a view_List and fetch its queryset then emit its html view. 
     ''' 
     view = view_List()
     view.request = request
@@ -793,15 +1048,30 @@ def ajax_Detail(request, model, pk):
      
     return HttpResponse(json.dumps(response))
 
-#===============================================================================
-# Special sneaky fixerupper and diagnostic view for testing code snippets
-#===============================================================================
-
 def view_About(request):
     '''
     Displays the About page (static HTML wrapped in our base template
     '''
     return
+
+#===============================================================================
+# Special sneaky fixerupper and diagnostic views for testing code snippets
+#===============================================================================
+
+def view_Inspect(request, model, pk): 
+    '''
+    A special debugging view which simply displays the inspector property of a given model 
+    object if it's implemented. Intended as a hook into quick inspection of rich objects 
+    that implement a neat HTML inspector property.
+    '''
+    CuserMiddleware.set_user(request.user)
+
+    m = class_from_string('Leaderboards', model)
+    o = m.objects.get(pk=pk)
+    
+    result = getattr(o, "inspector", "{} has no 'inspector' property implemented.".format(model))   
+    c = {"title": "{} Inspector".format(model), "inspector": result}
+    return render(request, 'CoGs/view_inspector.html', context=c)
 
 def view_CheckIntegrity(request):
     '''
@@ -814,6 +1084,7 @@ def view_CheckIntegrity(request):
     
     All needs some serious tidy up for a productions site.    
     '''
+    CuserMiddleware.set_user(request.user)
     
     print("Checking all Performances for internal integrity.", flush=True)
     for P in Performance.objects.all():
@@ -838,6 +1109,7 @@ def view_CheckIntegrity(request):
     return HttpResponse("Passed All Integrity Tests")
 
 def view_RebuildRatings(request):
+    CuserMiddleware.set_user(request.user)
     html = rebuild_ratings()
     return HttpResponse(html)
 
@@ -846,6 +1118,7 @@ def view_UnwindToday(request):
     A simple view that deletes all sessions (and associated ranks and performances) created today. Used when testing. 
     Dangerous if run on a live database on same day as data was entered clearly. Testing view only.
     '''
+    CuserMiddleware.set_user(request.user)
     
     unwind_to = date.today() # - timedelta(days=1)
     
@@ -870,6 +1143,7 @@ def view_UnwindToday(request):
     
     return HttpResponse(html)
 
+from django.apps import apps
 def view_Fix(request):
 
 # DONE: Used this to create Performance objects for existing Rank objects
@@ -894,12 +1168,74 @@ def view_Fix(request):
     #html = rebuild_ratings()
     #html = import_sessions()
     
+    #=============================================================================
+    # Datetime fix up
+    # We want to walk through every Session and fix the datetime so it's right
+    # Subsequent to this we want to walk through every model and fix the Created and Modified datetime as well
+    
+    # Session times
+    sessions = Session.objects.all()
+    
+    activate('Australia/Hobart')
+
+    # Did this on dev database. Seems to have worked a charm.
+    for session in sessions:
+        dt_raw = session.date_time
+        dt_local = localtime(dt_raw)
+        error = dt_local.tzinfo._utcoffset
+        dt_new = dt_raw - error
+        dt_new_local = localtime(dt_new)
+        print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+        session.date_time = dt_new_local
+        session.save()
+        
+    # The rating model has two DateTimeFields that are wrong in the same way, but thee can be fixed by rebuilding ratings.
+    pass  
+        
+    # Now for every model that we have that derives from AdminModel we need to updated we have two fields:
+    #     created_on
+    #     last_edited_on
+    # That we need to tweak the same way.
+    
+    # We can do this by looping all our models and checking for those fields.  
+    models = apps.get_app_config('Leaderboards').get_models()
+    for model in models:
+        if hasattr(model, 'created_on') or hasattr(model, 'last_edited_on'):
+            for obj in model.objects.all():
+                if hasattr(obj, 'created_on'): 
+                    dt_raw = obj.created_on
+                    dt_local = localtime(dt_raw)
+                    error = dt_local.tzinfo._utcoffset
+                    dt_new = dt_raw - error
+                    dt_new_local = localtime(dt_new)
+                    print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+                    obj.created_on = dt_new_local 
+
+                if hasattr(obj, 'last_edited_on'): 
+                    dt_raw = obj.last_edited_on
+                    dt_local = localtime(dt_raw)
+                    error = dt_local.tzinfo._utcoffset
+                    dt_new = dt_raw - error
+                    dt_new_local = localtime(dt_new)
+                    print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+                    obj.last_edited_on = dt_new_local
+                
+                obj.save()
+        
+#     for session in sessions:
+#         dt_raw = session.date_time
+#         dt_local = localtime(dt_raw)
+#         dt_naive = make_naive(dt_local)
+#         ctz = get_current_timezone()
+#         print_debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
     
     html = "Success"
     
     return HttpResponse(html)
 
 def view_Kill(request, model, pk):
+    CuserMiddleware.set_user(request.user)
+
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
     o.delete()
@@ -1007,6 +1343,8 @@ def import_sessions():
     return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
 
 def rebuild_ratings():
+    activate(settings.TIME_ZONE)
+
     title = "Rebuild of all ratings"
     pr = cProfile.Profile()
     pr.enable()
