@@ -62,6 +62,10 @@ urlpatterns = [
     path('post/clientinfo', views.receive_ClientInfo, name='post_client_info'),
     path('post/filter', views.receive_Filter, name='post_filter'),
     path('post/debugmode', views.receive_DebugMode, name='post_debugmode'),
+
+    path('autocomplete/<model>/<field_name>', views.Autocomplete.as_view(), name='autocomplete'),    
+
+    path('selector/<model>/<pk>', views.ajax_Selector, name='get_selector'),
     
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

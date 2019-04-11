@@ -15,8 +15,8 @@
 			which must be submitted with a formset for Django to properly processs the forms.
 			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
 		{% endcomment %}
-		{{ related_forms.Rank.management_form }}
-		{{ related_forms.Performance.management_form }}
+		{{ form.related_forms.Rank.management_form }}
+		{{ form.related_forms.Performance.management_form }}
 		<table id="tblIndividualPlay">
 			<tr>
 				<td class="label" style="text-wrap:none">Number of players:</td>
@@ -39,12 +39,12 @@
 				<th>Partial Play Weighting</th>
 			</tr>
 			<tr class="players" id="templatePlayersBody">       {# Rank and Player stored in Rank model and Player and Weighting in the Performance model. #}
-				<td>{{related_forms.Rank.id}}           		{# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
-					{{related_forms.Performance.id}}    		{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
-					{{related_forms.Rank.rank}}</td>			{# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
-				<td>{{related_forms.Performance.player|add_attributes:"onchange:OnPlayerChange(event)"}}	{# The ID of a player for the performance object, with an event that keeps the copy updated #}
-				    {{related_forms.Rank.player.as_hidden}}</td>               								{# The ID of a player for the rank object - Javascript will have to keep this as a copy of related_forms.Performance.player #}
-				<td>{{related_forms.Performance.partial_play_weighting}}</td>  								{# The value (0-1) of a partial play weighting for this play #}
+				<td>{{form.related_forms.Rank.id}}           		{# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
+					{{form.related_forms.Performance.id}}    		{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
+					{{form.related_forms.Rank.rank}}</td>			{# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
+				<td>{{form.related_forms.Performance.player|add_attributes:"onchange:OnPlayerChange(event)"}}	{# The ID of a player for the performance object, with an event that keeps the copy updated #}
+				    {{form.related_forms.Rank.player.as_hidden}}</td>               								{# The ID of a player for the rank object - Javascript will have to keep this as a copy of related_forms.Performance.player #}
+				<td>{{form.related_forms.Performance.partial_play_weighting}}</td>  								{# The value (0-1) of a partial play weighting for this play #}
 			</tr>
 		</table>
 	</div>
@@ -61,9 +61,9 @@
 			which must be submitted with a formset for Django to properly processs the forms.
 			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
 		{% endcomment %}
-		{{ related_forms.Rank.management_form }}
-		{{ related_forms.Rank.related_forms.Team.management_form }} 
-		{{ related_forms.Performance.management_form }}
+		{{ form.related_forms.Rank.management_form }}
+		{{ form.related_forms.Rank.related_forms.Team.management_form }} 
+		{{ form.related_forms.Performance.management_form }}
 		<table id="tblTeamPlay">
 		    <tr>
 		        <td class="label">Number of teams:</td>
@@ -86,9 +86,9 @@
 			    <th class="greedy"></th>
 			</tr>
 			<tr class="team" id="templateTeamsBody">   {# Rank and Team stored in Rank model and Player and Weighting in the Performance model. #}
-			    <td>{{related_forms.Rank.id}}          {# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
-			    	{{related_forms.Rank.related_forms.Team.id}} {# Hidden field that should contain the ID of the team object if we're editing rather than adding a record. #}
-			    	{{related_forms.Rank.rank}}</td>   {# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
+			    <td>{{form.related_forms.Rank.id}}          {# Hidden field that should contain the ID of the rank object if we're editing rather than adding a record. #}
+			    	{{form.related_forms.Rank.related_forms.Team.id}} {# Hidden field that should contain the ID of the team object if we're editing rather than adding a record. #}
+			    	{{form.related_forms.Rank.rank}}</td>   {# A text box into which the rank can be entered, initialized with a default when adding or with the recorded value when editing #}
 
 				{% comment %}
 				OLD CODE (which initialised the team name as Team # which has # replaced by an index number in the supporting JS code) for reference:
@@ -99,7 +99,7 @@
 				Although on Submission teams of format Team # should be ignored - this is not a formal name of a team and equates to None.
 				{% endcomment %}
 
-			    <td>{{related_forms.Rank.related_forms.Team.name}}</td>
+			    <td>{{form.related_forms.Rank.related_forms.Team.name}}</td>
 
 			    <td><input type="number" name="Team-__prefix__-num_players" onchange="OnRowcountChange(event)" class="Number"/></td>
 			    <td><input type="checkbox" name="ShowTeamPlayers" onchange="showhideTeamPlayers(event)" class="NoSubmit"/></td>
@@ -117,9 +117,9 @@
 			    <th>Partial Play Weighting</th>
 			</tr>
 			<tr class="teamplayers" id="templateTeamPlayersBody">
-			    <td>{{related_forms.Performance.id}}					{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
-			        {{related_forms.Performance.player}}</td>
-			    <td>{{related_forms.Performance.partial_play_weighting}}</td>
+			    <td>{{form.related_forms.Performance.id}}					{# Hidden field that should contain the ID of the performance object if we're editing rather than adding a record. #}
+			        {{form.related_forms.Performance.player}}</td>
+			    <td>{{form.related_forms.Performance.partial_play_weighting}}</td>
 			</tr>
 		</table>
 	</div>

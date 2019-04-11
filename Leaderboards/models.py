@@ -508,7 +508,8 @@ class League(AdminModel):
         return lb
     
     add_related = None
-    def __unicode__(self): return self.name
+    selector_field = "name"
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (manager: {})".format(self, self.manager)
@@ -792,7 +793,8 @@ class Player(PrivacyMixIn, AdminModel):
         return NEVER if (plays is None or plays.count() == 0) else plays[0] 
 
     add_related = None
-    def __unicode__(self): return u'{}'.format(self.name_nickname)
+    selector_field = "name_nickname"
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
@@ -1110,7 +1112,8 @@ class Game(AdminModel):
             pass  
             
     add_related = None
-    def __unicode__(self): return self.name
+    selector_field = "name"
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
@@ -1162,7 +1165,8 @@ class Location(AdminModel):
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     add_related = None
-    def __unicode__(self): return self.name
+    selector_field = "name"
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (used by: {})".format(self.__str__(), ", ".join(list(self.leagues.all().values_list('name', flat=True))))

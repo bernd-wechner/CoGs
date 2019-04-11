@@ -6,8 +6,7 @@ admin.site.site_title = "CoGs"
 admin.site.site_header = "CoGs Leaderboard Server Administration"
 
 # Registers all known models 
-# (probably more than we want on a production site
-# but awesome for development).
+# (probably more than we want on a production site but awesome for development).
 for model in apps.get_models():
     try:
         admin.site.register(model)

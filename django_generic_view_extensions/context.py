@@ -8,7 +8,7 @@ Functions that add to the context that templates see.
 # Django imports
 from django.utils.safestring import mark_safe
 from django.conf import settings 
-from django.utils.timezone import get_current_timezone, make_naive
+from django.utils.timezone import get_current_timezone
 
 # Python imports
 import pytz
@@ -41,33 +41,8 @@ def add_model_context(view, context, plural, title=False):
         context["title"] = (title + ' ' if title else '') + (safetitle(context["model"]._meta.verbose_name_plural) if plural else safetitle(context["model"]._meta.verbose_name))
         context["default_datetime_input_format"] = datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
 
-#       This was an experiment with saving session stored inheritance data in the context.
-#       Deprecated in favour of a database fetch into 
-#         # If this session has inheritablke defaults load those
-#         inheritance = get_inherit_fields(view.request.session, context["view"].model)
-#         if inheritance:
-#             context["inheritance"] = inheritance            
-        
         if len(view.request.GET) > 0:
             context["get_params"] = view.request.GET
-
-        # Check for related models and pass into the context either a related form or related view.
-        # Only do this if the model asks us to do so via the add_related attribute.
-        if view.operation in ["add", "edit"] and len(add_related(context["model"])) > 0:
-            if hasattr(view.request, 'POST') and not view.request.POST is None and len(view.request.POST)>0:
-                form_data = view.request.POST
-            elif hasattr(view.request, 'GET') and not view.request.GET is None and len(view.request.GET)>0:
-                form_data = view.request.GET
-            else:
-                form_data = None
-            
-            if hasattr(view, 'object') and isinstance(view.object, context['model']):
-                db_object = view.object
-            else:
-                db_object = None
-                  
-            related_forms = get_related_forms(context["model"], form_data, db_object)
-            context['related_forms'] = related_forms
 
         if view.operation in ["add", "edit"] and 'form' in context:
             classify_widgets(context['form'])

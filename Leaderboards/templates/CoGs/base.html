@@ -49,11 +49,11 @@
 		}
 		
 		function setting_changed(event) {
-			// Django provides (and demands if the server implemts it) Cross Site Request Forgery (CSRF) protection 
-			// Django proveds us with a csrf_token which it wants to see in a POST submission or it will reject it.
+			// Django provides (and demands, if the server implements it) Cross Site Request Forgery (CSRF) protection 
+			// Django provides us with a csrf_token which it wants to see in a POST submission or it will reject it.
 			// This how Django knows the POST came from this form here and not some other submitter. 
-			// The token comes as a HTML hidden form element, and we're building out own POST submission so
-			// need to extract the name and value and compose a URI (Uniform Resource Identifer).			
+			// The token comes as a HTML hidden form element, and we're building our own POST submission so
+			// need to extract the name and value and compose a URI (Uniform Resource Identifer).
 			const CSRF_name = CSRF_field.match( /name="(.*?)"/ )[1];
 			const CSRF_value = CSRF_field.match( /value="(.*?)"/ )[1];
 			const CSRF_uri = CSRF_name + "="  + encodeURI(CSRF_value);
