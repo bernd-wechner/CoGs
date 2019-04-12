@@ -1051,48 +1051,6 @@ def ajax_Detail(request, model, pk):
      
     return HttpResponse(json.dumps(response))
 
-def ajax_Selector(request, model, pk):
-    '''
-    Support AJAX fetching of a select box text for a given pk.
-    
-    Specificially in support of a django-autocomplte-light select2 widget that we want to provide with
-    initial data iin the javascript that builds a formset from supplied data. 
-    
-    Will work only for models that a selector_field attribute. And returns simply the selector for a provided pk. 
-    ''' 
-    Model = class_from_string('Leaderboards', model)
-    
-    selector = ""
-    if getattr(Model, "selector_field", None):
-        try:
-            Object = Model.objects.get(pk=pk)        
-            selector_field = getattr(Object, "selector_field", "")
-            selector = getattr(Object, selector_field, "")
-        except:
-            pass
-        
-    return HttpResponse(selector)
-
-#===============================================================================
-# An Autocomplete view
-#
-# Can of course be tuned and refined. Here's a tutorial:
-#
-# https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
-#===============================================================================
-
-class Autocomplete(autocomplete.Select2QuerySetView):
-    def get_queryset(self):
-        self.model = class_from_string(self, self.kwargs['model'])
-        self.field_name = self.kwargs['field_name']        
-        
-        qs = self.model.objects.all()
-        
-        if self.q:
-            qs = qs.filter(**{f'{self.field_name}__istartswith': self.q})
-
-        return qs
-
 #===============================================================================
 # Some genral function based views
 #===============================================================================

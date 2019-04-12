@@ -506,9 +506,33 @@ class League(AdminModel):
                 lb.append((str(r.player), r.trueskill_eta, r.plays, r.victories))
                 
         return lb
+        
+    selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, q, s):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        league = s.get('filter',{}).get('league', None)
+        if league:
+            # TODO: It's a bit odd to filter leagues on league. Might consider instead to filter
+            #       one related leagues, that is the more complex question, for a selected league,
+            #       itself and all leagues that share one or players with this league. These are
+            #       conceivably related fields.
+            qs = qs.filter(pk=league)
+        
+        if q:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+        
+        return qs
     
     add_related = None
-    selector_field = "name"
+    
     def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
@@ -792,8 +816,31 @@ class Player(PrivacyMixIn, AdminModel):
 
         return NEVER if (plays is None or plays.count() == 0) else plays[0] 
 
-    add_related = None
     selector_field = "name_nickname"
+    @classmethod
+    def selector_queryset(cls, q, s):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        league = s.get('filter',{}).get('league', None)
+        if league:
+            # TODO: Should really respect s['filter_priorities'] as the list view does.
+            qs = qs.filter(leagues=league)
+        
+        if q:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+
+        qs = qs.annotate(play_count=Count('performances')).order_by("-play_count")
+        
+        return qs
+    
+    add_related = None
+    
     def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
@@ -1110,9 +1157,32 @@ class Game(AdminModel):
             # a rating object as at a specific date/time
             # TODO: Implement
             pass  
+
+    selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, q, s):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        league = s.get('filter',{}).get('league', None)
+        if league:
+            qs = qs.filter(leagues=league)         
+        
+        if q:
+            # TODO: Should really respect s['filter_priorities'] as the list view does.
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+
+        qs = qs.annotate(play_count=Count('sessions')).order_by("-play_count")
+               
+        return qs
             
     add_related = None
-    selector_field = "name"
+
     def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
@@ -1164,8 +1234,29 @@ class Location(AdminModel):
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
-    add_related = None
     selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, q, s):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        league = s.get('filter',{}).get('league', None)
+        if league:
+            # TODO: Should really respect s['filter_priorities'] as the list view does.
+            qs = qs.filter(leagues=league)
+        
+        if q:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+        
+        return qs
+    
+    add_related = None
+
     def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 

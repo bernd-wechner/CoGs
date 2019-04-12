@@ -10,6 +10,8 @@ from django.contrib.flatpages import views as flat_views
 # from django.views.generic.base import RedirectView
 # from functools import reduce
 
+from django_generic_view_extensions.views import ajax_Autocomplete, ajax_Selector
+
 from Leaderboards import views
 
 # A note on flatpages:
@@ -63,9 +65,18 @@ urlpatterns = [
     path('post/filter', views.receive_Filter, name='post_filter'),
     path('post/debugmode', views.receive_DebugMode, name='post_debugmode'),
 
-    path('autocomplete/<model>/<field_name>', views.Autocomplete.as_view(), name='autocomplete'),    
+    # An AJAX provider for the django-autocomplete-light widgets. 
+    # As we're using a generic view, we need to provide the app name with the model explicitly
+    # Views above that come from the Leaderboards app don't need that.
+    path('autocomplete/<model>/<field_name>', ajax_Autocomplete.as_view(), {'app': 'Leaderboards'}, name='autocomplete'),
 
-    path('selector/<model>/<pk>', views.ajax_Selector, name='get_selector'),
+    # An AJAX view that is used to return teh value of a select option given an id/pk
+    # If we create a formset dynamically from supplied IDs the select widget wants to
+    # have text to display for that ID too. THis isuse exists with django-autocomplete-light
+    # widgets becuase they are initially empty until the autocomplete URL above is called to 
+    # populate a drop down. It doesn't exist using normal Django select widgets because they
+    # are initialised with ALL the options a model offers (not scaleable alas).
+    path('selector/<model>/<pk>', ajax_Selector, {'app': 'Leaderboards'}, name='get_selector'),
     
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 

@@ -34,7 +34,7 @@ from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 from django.http.request import QueryDict
-from django.forms.models import fields_for_model, ModelChoiceField
+from django.forms.models import fields_for_model, ModelChoiceField, ModelMultipleChoiceField
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # 3rd Party package imports (dependencies)
@@ -420,7 +420,11 @@ class CreateViewExtended(CreateView):
                 selector = getattr(field_model, "selector_field", None)
                 if not selector is None:
                     url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                    field.widget = autocomplete.ModelSelect2(url=url)
+                    if isinstance(field, ModelMultipleChoiceField):
+                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                    else:
+                        field.widget = autocomplete.ModelSelect2(url=url)
+
                     field.widget.choices = field.choices
 
         if len(add_related(model)) > 0:
@@ -445,7 +449,11 @@ class CreateViewExtended(CreateView):
                         selector = getattr(field_model, "selector_field", None)
                         if not selector is None:
                             url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                            field.widget = autocomplete.ModelSelect2(url=url)
+                            if isinstance(field, ModelMultipleChoiceField):
+                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                            else:
+                                field.widget = autocomplete.ModelSelect2(url=url)
+                            
                             field.widget.choices = field.choices
                             
             form.related_forms = related_forms
@@ -597,7 +605,7 @@ class UpdateViewExtended(UpdateView):
         context = super().get_context_data(*args, **kwargs)
 
         # Now add some context extensions ....
-        add_model_context(self, context, plural=False, title='New')
+        add_model_context(self, context, plural=False, title='Edit')
         add_timezone_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
@@ -614,7 +622,11 @@ class UpdateViewExtended(UpdateView):
                 selector = getattr(field_model, "selector_field", None)
                 if not selector is None:
                     url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                    field.widget = autocomplete.ModelSelect2(url=url)
+                    if isinstance(field, ModelMultipleChoiceField):
+                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                    else:
+                        field.widget = autocomplete.ModelSelect2(url=url)
+                        
                     field.widget.choices = field.choices
 
         if len(add_related(model)) > 0:
@@ -639,7 +651,11 @@ class UpdateViewExtended(UpdateView):
                         selector = getattr(field_model, "selector_field", None)
                         if not selector is None:
                             url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                            field.widget = autocomplete.ModelSelect2(url=url)
+                            if isinstance(field, ModelMultipleChoiceField):
+                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                            else:
+                                field.widget = autocomplete.ModelSelect2(url=url)
+                            
                             field.widget.choices = field.choices
                             
             form.related_forms = related_forms
@@ -724,3 +740,66 @@ class UpdateViewExtended(UpdateView):
     def form_valid(self, form):
         """If the form is valid, redirect to the supplied URL."""
         return HttpResponseRedirect(self.get_success_url())
+
+#===============================================================================
+# An Autocomplete view
+#
+# Can of course be tuned and refined. Here's a tutorial:
+#
+# https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
+#===============================================================================
+
+class ajax_Autocomplete(autocomplete.Select2QuerySetView):
+    '''
+    Support AJAX fetching of option lists for the django-autocomplte-light widgets.
+    They provide a query string in self.q. 
+    
+    urls.py can route a URL to here such that this:
+    
+    reverse_lazy('autocomplete', kwargs={"model": name_of_model, "field_name": name_of_field})
+    
+    lands here. Which in Django 2.1 should look like:
+    
+    path('autocomplete/<model>/<field_name>', ajax_autocomplete.as_view(), {'app': 'name_of_app_model_is_in'}, name='autocomplete'),    
+    
+    it returns a queryset and will use a model provided list or a default one.
+    '''
+    def get_queryset(self):
+        self.model = class_from_string(self.kwargs['app'], self.kwargs['model'])
+        self.field_name = self.kwargs['field_name']        
+
+        if callable(getattr(self.model, "selector_queryset", None)):
+            qs = self.model.selector_queryset(self.q, self.request.session)
+        else:
+            qs = self.model.objects.all()
+            
+            if self.q:
+                qs = qs.filter(**{f'{self.field_name}__istartswith': self.q})
+
+        return qs
+    
+def ajax_Selector(request, app, model, pk):
+    '''
+    Support AJAX fetching of a select box text for a given pk.
+    
+    Specificially in support of a django-autocomplte-light select2 widget that 
+    we may need to provide with initial data in javascript that builds formsets 
+    dynamically from supplied data. 
+    
+    Expects models to provide a selector_field attribute. 
+    ''' 
+    Model = class_from_string(app, model)
+    
+    selector = ""
+    if getattr(Model, "selector_field", None):
+        try:
+            Object = Model.objects.get(pk=pk)        
+            selector_field = getattr(Object, "selector_field", "")
+            # Use the selector_field if possible, fall back on a basic 
+            # string representation of Object.
+            selector = getattr(Object, selector_field, str(Object))
+        except:
+            # If we fail to find an Object, fail silently.
+            pass
+        
+    return HttpResponse(selector)
