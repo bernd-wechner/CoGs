@@ -3,21 +3,21 @@
 
 Aims to be a website that can manage TrueSkill based leaderboards for game players of any kind.
 
-##Basics:
+## Basics:
   * The CoGs webserver is written in python3 using the django web framework.
-  * I use the Eclipse IDE with PyDev and while there are plenty of othe options I can recomment it because:
-    * Pretty awesome visul debugging. Can set breakpoints and examine all internals.
+  * I use the Eclipse IDE with PyDev (LiClips bundles this too) and while there are plenty of othe options I can recomment it because:
+    * Pretty awesome visual debugging. Can set breakpoints and examine all internals.
     * Pretty nice code collapse and outline features in its editor
-    * Platform independent (runs no Linux and Windows) In fact Is tarted dev on Windows and moved to Linux. 
+    * Platform independent (runs no Linux and Windows) In fact I started dev on Windows and moved to Linux. 
     * Supports inline task management TODO comments appearing as tasks in a task list. I love that. 
     * Which is all I'm after really ;-).
   * This a very incomplete project with much learning going on. Contributions welcome.
   * I wrote a  generic django extensions module that need tidy up and documentation as time permits:
     * Django had awesome generic forms, but total lack of generic detail views I wanted some for easy generic display of indivudal records
-    * Django does not supply in the context any informationon related objects. I implemented a system for doing that - for the Session form.
+    * Django does not supply in the context any information on related objects. I implemented a system for doing that - for the Session form.
     * Once it's tidy and well documented it could be a community contrib to Django
  
-##How to build a site like CoGs
+## How to build a site like CoGs
 
 Great site describes it here:
 
