@@ -5,8 +5,6 @@ import pytz
 import sys
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
-from cuser.middleware import CuserMiddleware
-
 #from collections import OrderedDict
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
@@ -14,22 +12,26 @@ from django_generic_view_extensions.util import  datetime_format_python_to_PHP, 
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.debug import print_debug 
 
+from cuser.middleware import CuserMiddleware
+
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
+
 #from django import forms
 from django.db.models import Count, Q
 #from django.db.models.fields import DateField 
 from django.shortcuts import render
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.utils.timezone import localtime, is_aware, make_aware, activate #, get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, make_naive, 
+from django.utils.formats import localize
 from django.http import HttpResponse
 #from django.http.response import HttpResponseRedirect
-from django.urls import reverse #, resolve
+from django.urls import reverse, reverse_lazy #, resolve
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.utils.dateparse import parse_datetime
 from django.conf import settings
-from django.utils.timezone import localtime, is_aware, make_aware, activate #, get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, make_naive, 
-from django.utils.formats import localize
+from django.forms.models import ModelChoiceIterator, ModelMultipleChoiceField
 
 from dal import autocomplete
 
@@ -358,6 +360,23 @@ def html_league_options(session):
         options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
+def html_selector(model, session):
+    '''
+    Returns an HTML string for a league selector. 
+    :param session:
+    '''
+    url = reverse_lazy('autocomplete_all', kwargs={"model": model.__name__, "field_name": model.selector_field})
+    field = ModelMultipleChoiceField(model.objects.all())
+    widget = autocomplete.ModelSelect2Multiple(url=url)
+    widget.choices = ModelChoiceIterator(field)
+    
+    if model is League:
+        value = session.get("filter", {}).get("league", 0)
+    else:
+        value = 0
+        
+    return widget.render(model.__name__, value)    
+
 def extra_context_provider(self):
     '''
     Returns a dictionary for extra_context with CoGs specific items 
@@ -383,6 +402,7 @@ def extra_context_provider(self):
     model_name = model._meta.model_name if model else ""
      
     context['league_options'] = html_league_options(self.request.session)
+    context['league_widget'] = html_selector(League, self.request.session)
     
     if model_name == 'session':
         if "game" in getattr(self, 'initial', {}):

@@ -69,6 +69,7 @@ urlpatterns = [
     # As we're using a generic view, we need to provide the app name with the model explicitly
     # Views above that come from the Leaderboards app don't need that.
     path('autocomplete/<model>/<field_name>', ajax_Autocomplete.as_view(), {'app': 'Leaderboards'}, name='autocomplete'),
+    path('autocomplete/<model>/<field_name>/all', ajax_Autocomplete.as_view(), {'app': 'Leaderboards', 'all': True}, name='autocomplete_all'),
 
     # An AJAX view that is used to return teh value of a select option given an id/pk
     # If we create a formset dynamically from supplied IDs the select widget wants to

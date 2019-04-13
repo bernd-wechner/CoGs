@@ -509,7 +509,7 @@ class League(AdminModel):
         
     selector_field = "name"
     @classmethod    
-    def selector_queryset(cls, q, s):
+    def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
         :param cls: Our class (so we can build a queryset on it to return)
@@ -518,16 +518,17 @@ class League(AdminModel):
         '''
         qs = cls.objects.all()
 
-        league = s.get('filter',{}).get('league', None)
-        if league:
-            # TODO: It's a bit odd to filter leagues on league. Might consider instead to filter
-            #       one related leagues, that is the more complex question, for a selected league,
-            #       itself and all leagues that share one or players with this league. These are
-            #       conceivably related fields.
-            qs = qs.filter(pk=league)
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: It's a bit odd to filter leagues on league. Might consider instead to filter
+                #       one related leagues, that is the more complex question, for a selected league,
+                #       itself and all leagues that share one or players with this league. These are
+                #       conceivably related fields.
+                qs = qs.filter(pk=league)
         
-        if q:
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
         
         return qs
     
@@ -818,7 +819,7 @@ class Player(PrivacyMixIn, AdminModel):
 
     selector_field = "name_nickname"
     @classmethod
-    def selector_queryset(cls, q, s):
+    def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
         :param cls: Our class (so we can build a queryset on it to return)
@@ -827,13 +828,14 @@ class Player(PrivacyMixIn, AdminModel):
         '''
         qs = cls.objects.all()
 
-        league = s.get('filter',{}).get('league', None)
-        if league:
-            # TODO: Should really respect s['filter_priorities'] as the list view does.
-            qs = qs.filter(leagues=league)
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: Should really respect s['filter_priorities'] as the list view does.
+                qs = qs.filter(leagues=league)
         
-        if q:
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
 
         qs = qs.annotate(play_count=Count('performances')).order_by("-play_count")
         
@@ -1160,7 +1162,7 @@ class Game(AdminModel):
 
     selector_field = "name"
     @classmethod    
-    def selector_queryset(cls, q, s):
+    def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
         :param cls: Our class (so we can build a queryset on it to return)
@@ -1169,13 +1171,14 @@ class Game(AdminModel):
         '''
         qs = cls.objects.all()
 
-        league = s.get('filter',{}).get('league', None)
-        if league:
-            qs = qs.filter(leagues=league)         
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                qs = qs.filter(leagues=league)         
         
-        if q:
+        if query:
             # TODO: Should really respect s['filter_priorities'] as the list view does.
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
 
         qs = qs.annotate(play_count=Count('sessions')).order_by("-play_count")
                
@@ -1236,7 +1239,7 @@ class Location(AdminModel):
 
     selector_field = "name"
     @classmethod    
-    def selector_queryset(cls, q, s):
+    def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
         :param cls: Our class (so we can build a queryset on it to return)
@@ -1245,13 +1248,14 @@ class Location(AdminModel):
         '''
         qs = cls.objects.all()
 
-        league = s.get('filter',{}).get('league', None)
-        if league:
-            # TODO: Should really respect s['filter_priorities'] as the list view does.
-            qs = qs.filter(leagues=league)
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: Should really respect s['filter_priorities'] as the list view does.
+                qs = qs.filter(leagues=league)
         
-        if q:
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': q})
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
         
         return qs
     

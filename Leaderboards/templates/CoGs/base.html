@@ -139,7 +139,8 @@
 		        <div id="league_selector" style="margin: 0 auto;">League:
 					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
 						{{league_options|safe}}
-					</select>				
+					</select>
+{#					{{league_widget|safe}}#}
 		        </div>
 		        <div id="login" style="float: right; margin-right:50px;">
 					{% if user.is_authenticated %}
@@ -202,7 +203,7 @@
 	    <!-- END Content -->
 	
 	    {% block footer %}
-	    
+
 	    <!-- DEBUG: debug is the settings.DEBUG flag and session["debug_mode"] flag -->
 	    {% if debug or debug_mode %}
 			{% include "CoGs/include/timezone_diag.html" %}

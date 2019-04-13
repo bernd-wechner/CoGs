@@ -769,7 +769,8 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
         self.field_name = self.kwargs['field_name']        
 
         if callable(getattr(self.model, "selector_queryset", None)):
-            qs = self.model.selector_queryset(self.q, self.request.session)
+            all = self.kwargs.get('all', False)
+            qs = self.model.selector_queryset(self.q, self.request.session, all)
         else:
             qs = self.model.objects.all()
             
