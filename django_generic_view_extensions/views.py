@@ -280,7 +280,6 @@ class DetailViewExtended(DetailView):
         
         # Add this information to the view (so it's available in the context).
         self.object_browser = neighbours        
-
         
         self.format = get_object_display_format(self.request.GET)
         

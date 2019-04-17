@@ -22,10 +22,22 @@ body {
     text-decoration: underline;
 }
 
-#header .select2-container {
+.select2-container, 
+{
     color: Black;
 }
 
+/* .select2-search__field, */
+/* .select2-selection__rendered */
+/* .select2-search--inline, */
+/* .select2-container--bootstrap,  */
+/* .select2-selection--multiple, */
+/* { */
+/*     line-height: 1 !important; */
+/* 	height: 16px !important; */
+/*     min-height: 16px !important; */
+/* } */
+ 
 p {
 	margin-top:0;
 }

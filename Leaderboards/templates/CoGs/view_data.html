@@ -119,6 +119,11 @@
 			return url_opts;
 		}		
 		
+		function show_url() {
+			var url = "{% url 'get_detail_html' model=model_name pk=pk %}" + URLopts();
+			window.history.pushState("","", url);
+		}
+				
 		var REQUEST = new XMLHttpRequest();
 		REQUEST.onreadystatechange = function () {
 		    // Process the returned JSON
@@ -190,6 +195,8 @@
 			<td class='tight options'>
 			    <br/>
 				<input type="button" id="opt_specified" value="Show:" onclick="refetch(event);">
+				<a onclick='show_url()' style='margin-left: 8ch;'>URL</a>
+				<a 
 			</td>
 			<td class='tight options'>
 				<br/>

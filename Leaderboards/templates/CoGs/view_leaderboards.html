@@ -3,6 +3,12 @@
 {% block title %}Leaderboards{% endblock %}
 
 {% block content %}
+{{ widget_media }}
+
+<script>
+	$.fn.select2.defaults.set( "theme", "bootstrap" );
+</script>
+
 <table class=LeaderboardOptions>
 	<tr>
 		<td class='tight options'>
@@ -82,10 +88,20 @@
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
-		<td class='options tight' style="line-height:2;">
-			<label>Only games played by league: </label><select id='selLeague' onchange='LabelButton("btnAllLeaderboards")'></select><br>
-			<label>Only games played by player: </label><select id='selPlayer' onchange='LabelButton("btnAllLeaderboards")'></select><br>
-			<label>Only this game: </label><select id='selGame'></select><br>
+		<td class='options tight'> 
+{#		 style="line-height:2;"#}
+			<label>Only games played by league: </label>
+{#				<select id='selLeague' onchange='LabelButton("btnAllLeaderboards")'></select>#}
+				{{ widget_leagues }}
+				<br>				
+			<label>Only games played by player: </label>
+{#				<select id='selPlayer' onchange='LabelButton("btnAllLeaderboards")'></select>#}
+				{{ widget_players }}
+				<br>
+			<label>Only this game: </label>
+{#				<select id='selGame'></select>#}
+				{{ widget_games }}
+				<br>				
 			<label>Only leaderboards that changed on or after: </label>
 			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
 		</td>			

@@ -115,8 +115,9 @@ function InitControls(options) {
 }
 
 function URLopts(element) {
-	var opts = []
-	var val;
+	let opts = [];
+	let val = "";
+	let vals = [];
 
 	// Options shared by all reload paths
 	
@@ -124,9 +125,11 @@ function URLopts(element) {
 	val = $('#selNames :selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
 	val = $('#selLinks :selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
 
-	val = $('#selLeague :selected').val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
-	val = $('#selPlayer :selected').val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
-
+	// List values
+	vals = $('#selLeagues').val(); val = vals.join(","); if (vals.length) opts.push("leagues="+encodeURIComponent(val).replace(/%2C/g, ","));	
+	vals = $('#selPlayers').val(); val = vals.join(","); if (vals.length) opts.push("players="+encodeURIComponent(val).replace(/%2C/g, ","));	
+	vals = $('#selGames').val();   val = vals.join(","); if (vals.length) opts.push("games="+encodeURIComponent(val).replace(/%2C/g, ","));	
+	
 	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
 	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
 	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
@@ -135,6 +138,10 @@ function URLopts(element) {
 
 	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
 
+	// TODO: Serioulsy rethink these ocmplicated buttons. We don't want this complexity.
+	// Makes the Show URL button a liar too as it doesn't know which of these button paths
+	// it's showing for! 
+	// Perhaps move most of this logic serve side and just submit the danged fields!
 	if (element == "btnImpact") {
 		opts.push("impact");
 		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
@@ -144,8 +151,10 @@ function URLopts(element) {
 		opts.push("num_games=0");
 	}
 	else {
-		val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
-		val = $('#selGame').find(":selected").val(); if (val != defaults.game) opts.push("game="+encodeURIComponent(val));	
+		if ($('#selGames').val().length == 0) {
+			val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
+		}
+
 		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
 		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
 		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));

@@ -37,6 +37,8 @@ from dal import autocomplete
 
 from numpy import rank
 
+from .models import ALL_LEAGUES
+
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
 #TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
@@ -360,22 +362,19 @@ def html_league_options(session):
         options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
-def html_selector(model, session):
+def html_selector(model, id, default=0, placeholder="", attrs={}):
     '''
     Returns an HTML string for a league selector. 
-    :param session:
+    :param model:    The model to provide a selector widget for
+    :param session:  The session dictionary (to look for League filters)
     '''
     url = reverse_lazy('autocomplete_all', kwargs={"model": model.__name__, "field_name": model.selector_field})
     field = ModelMultipleChoiceField(model.objects.all())
-    widget = autocomplete.ModelSelect2Multiple(url=url)
-    widget.choices = ModelChoiceIterator(field)
-    
-    if model is League:
-        value = session.get("filter", {}).get("league", 0)
-    else:
-        value = 0
         
-    return widget.render(model.__name__, value)    
+    widget = autocomplete.ModelSelect2Multiple(url=url, attrs={**attrs, "id": id, "data-placeholder": placeholder, "data-theme": "bootstrap"})    
+    widget.choices = ModelChoiceIterator(field)
+        
+    return widget.render(model.__name__, default)
 
 def extra_context_provider(self):
     '''
@@ -402,7 +401,7 @@ def extra_context_provider(self):
     model_name = model._meta.model_name if model else ""
      
     context['league_options'] = html_league_options(self.request.session)
-    context['league_widget'] = html_selector(League, self.request.session)
+    context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
     
     if model_name == 'session':
         if "game" in getattr(self, 'initial', {}):
@@ -558,9 +557,9 @@ class view_Detail(DetailViewExtended):
 # Define defaults for the view inputs 
 
 class leaderboard_options:
-    league = ALL_LEAGUES        # Restrict to games played by specified League
-    player = ALL_PLAYERS        # Restrict to games played by specified Player
-    game = ALL_GAMES            # Restrict to specified Game
+    leagues = []                # Restrict to games played by specified Leagues
+    players = []                # Restrict to games played by specified Players
+    games = []                  # Restrict to specified Game
     num_games = 5               # List only this many games (most popular ones)
     num_days = 1                # For impact Quick Views only, return impact of last session of this length in days
     as_at = None                # Do everything as if it were this time now (pretend it is now as_at)
@@ -598,14 +597,14 @@ class leaderboard_options:
     
 def get_leaderboard_options(request):
     lo = leaderboard_options()
-    if 'league' in request.GET:
-        lo.league = request.GET['league']
+    if 'leagues' in request.GET:
+        lo.leagues = request.GET['leagues'].split(",")
         
-    if 'player' in request.GET:
-        lo.player = request.GET['player']
+    if 'players' in request.GET:
+        lo.players = request.GET['players'].split(",")
         
-    if 'game' in request.GET:        
-        lo.game = request.GET['game']
+    if 'games' in request.GET:        
+        lo.games = request.GET['games'].split(",")
     
     if 'num_games' in request.GET and request.GET['num_games'].isdigit():
         lo.num_games = int(request.GET["num_games"])
@@ -664,28 +663,29 @@ def get_leaderboard_options(request):
     return lo
 
 def get_leaderboard_titles(lo):
-    # TODO: Make this more robust against illegal PKs. The whole view should be graceful if sent a bad league or player.
+    # TODO: Make this more robust against illegal PKs. 
+    # The whole view should be graceful if sent a bad league or player.
     try:
-        P = Player.objects.get(pk=lo.player)
+        P = Player.objects.filter(pk__in=lo.players)
     except:
-        P = None
+        P = []
 
     try:
-        L = League.objects.get(pk=lo.league)
+        L = League.objects.filter(pk__in=lo.leagues)
     except:
-        L = None
+        L = []
         
     # Format the page title
-    if lo.player == ALL_PLAYERS:
-        if lo.league == ALL_LEAGUES:
+    if not lo.players:
+        if not lo.leagues:
             title = "Global Leaderboards"
         else:
-            title = "Leaderboards for the {} league".format(L)
+            title = f"Leaderboards for the leagues {L}"
     else:
-        if lo.league == ALL_LEAGUES:
-            title = "Leaderboards for {}".format(P)
+        if not lo.leagues:
+            title = f"Leaderboards for the players {P}"
         else:
-            title = "Leaderboards for {} in the {} league".format(P, L)        
+            title = f"Leaderboards for {P} in the leagues {L} "        
 
     default = leaderboard_options()
     
@@ -726,26 +726,34 @@ def view_Leaderboards(request):
 
     # Get list of players, (pk, name) tuples.
     players = [(ALL_PLAYERS, 'ALL')] 
-    if lo.league == ALL_LEAGUES:
-        players += [(x.pk, str(x)) for x in Player.objects.all()]    
+    if lo.leagues:
+        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk__in=lo.leagues)]
     else:   
-        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=lo.league)]
+        players += [(x.pk, str(x)) for x in Player.objects.all()]    
 
     # Get list of games, (pk, name) tuples.
     games = [(ALL_GAMES, 'ALL')] 
-    if lo.league == ALL_LEAGUES:
-        games += [(x.pk, str(x)) for x in Game.objects.all()]    
+    if lo.leagues:
+        games += [(x.pk, str(x)) for x in Game.objects.filter(leagues__pk__in=lo.leagues)]
     else:   
-        games += [(x.pk, str(x)) for x in Game.objects.filter(leagues__pk=lo.league)]
+        games += [(x.pk, str(x)) for x in Game.objects.all()]    
             
     c = {'title': title,
          'subtitle': subtitle,
          'options': lo.as_dict,
          'defaults': default.as_dict,
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
+         
          'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),
+         
+         
+         'widget_leagues': html_selector(League, "selLeagues", request.session.get("filter", {}).get("league", 0), ALL_LEAGUES),
+         'widget_players': html_selector(Player, "selPlayers", 0, ALL_PLAYERS),
+         'widget_games': html_selector(Game, "selGames", 0, ALL_GAMES),
+         'widget_media': autocomplete.Select2().media,
+         
          'now': timezone.now(),        
          'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
          }
@@ -757,81 +765,12 @@ def view_Leaderboards(request):
 # AJAX providers
 #===============================================================================
 
-def receive_ClientInfo(request):
-    '''
-    A view that returns (presents) nothing, is not a view per se, but much rather just
-    accepts POST data and acts on it. This is specifically for receiving client 
-    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
-    pages which asynchonously and silently in the background on a page load, posts
-    the client information here.
-    
-    The main aim and r'aison d'etre for this whole scheme is to divine the users 
-    timezone as quickly and easily as we can, when they first surf in, to whatever
-    URL. Of course that first page load will take place with an unknown timezone,
-    but subsequent to it we'll know their timezone.
-    
-    Implemented as well, just for the heck of it are acceptors for UTC offset, and
-    geolocation, that HTML5 makes available, which can be used in logging site visits.
-    '''
-    if (request.POST):
-        if "clear_session" in request.POST:
-            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
-            session_keys = list(request.session.keys())
-            for key in session_keys:
-                del request.session[key]
-            return HttpResponse("<script>window.history.pushState('', '', '/session_cleared');</script>")
-
-        # Check for the timezone
-        if "timezone" in request.POST:
-            print_debug(f"Timezone = {request.POST['timezone']}")
-            request.session['timezone'] = request.POST['timezone']
-            activate(request.POST['timezone'])
-
-        if "utcoffset" in request.POST:
-            print_debug(f"UTC offset = {request.POST['utcoffset']}")
-            request.session['utcoffset'] = request.POST['utcoffset']
-
-        if "location" in request.POST :
-            print_debug(f"location = {request.POST['location']}")
-            request.session['location'] = request.POST['location']
-            
-    return HttpResponse()
-
-def receive_Filter(request):
-    '''
-    A view that returns (presents) nothing, is not a view per se, but much rather just
-    accepts POST data and acts on it. This is specifically for receiving filter 
-    information via an XMLHttpRequest.
-    
-    The main aim and r'aison d'etre for this whole scheme is to provide a way to 
-    submit view filters for recording in the session. 
-    '''
-    if (request.POST):
-        # Check for league
-        if "league" in request.POST:            
-            print_debug(f"League = {request.POST['league']}")
-            save_league_filters(request.session, int(request.POST.get("league", 0)))
-           
-    return HttpResponse()
-
-def receive_DebugMode(request):
-    '''
-    A view that returns (presents) nothing, is not a view per se, but much rather just
-    accepts POST data and acts on it. This is specifically for receiving a debug mode
-    flag via an XMLHttpRequest when debug mode is changed.
-    '''
-    if (request.POST):
-        # Check for league
-        if "debug_mode" in request.POST:            
-            request.session["debug_mode"] = True if request.POST.get("debug_mode", "false") == 'true' else False
-           
-    return HttpResponse()
-
 def ajax_Leaderboards(request, raw=False):
     '''
     A view that returns a JSON string representing requested leaderboards.
     
-    This is used with raw=True as well view_Leaderboards to get the leaderboard data.
+    This is used with raw=True as well by view_Leaderboards to get the leaderboard data,
+    not JSON encoded.
     
     Should only validly be called from view_Leaderboards when a view is rendered
     or as an AJAX call when requesting a leaderboard refresh because the player name 
@@ -866,11 +805,15 @@ def ajax_Leaderboards(request, raw=False):
     '''
     # Start a filter rolling
 
+    # TODO: This should be sans get_ just a initialiser for the leaderboard_options that
+    # optionallytakes a request or not. Simialr with other options classes?
     lo = get_leaderboard_options(request)
 
     default = leaderboard_options()
     
-    # TODO: Challenge, implement num_games. Need to order games in the query rather than after if possible. Explore.
+    # TODO: Challenge, implement num_games. 
+    #       Need to order games in the query rather than after if possible. 
+    #       Explore.
     #
     # Query thoughts:
     #
@@ -882,16 +825,16 @@ def ajax_Leaderboards(request, raw=False):
     # Process the impact quick view 
     if ("impact" in request.GET):
         sfilter = Q()
-        if lo.league != ALL_LEAGUES:
-            sfilter &= Q(league__pk=lo.league)
+        if lo.leagues:
+            sfilter &= Q(league__pk__in=lo.leagues)
 
-        if lo.player != ALL_PLAYERS:
-            sfilter &= Q(performances__player__pk=lo.player)
+        if lo.players:
+            sfilter &= Q(performances__player__pk__in=lo.players)
         
         S = Session.objects.filter(sfilter).order_by("-date_time")
         latest_session = S[0] if S.count() > 0 else None
 
-        if not latest_session is None:
+        if latest_session:
             date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
             lo.changed_since = date - timedelta(days=lo.num_days)
             lo.compare_back_to = lo.changed_since
@@ -904,15 +847,14 @@ def ajax_Leaderboards(request, raw=False):
 
     # Then build a filter on that sorted list
     gfilter = Q()
-    # TODO: Consider supporting multi-selects on all these and using __in set filters
-    if lo.league != ALL_LEAGUES:
-        gfilter &= Q(sessions__league__pk=lo.league)
-    if lo.player != ALL_PLAYERS:
-        gfilter &= Q(sessions__performances__player__pk=lo.player)
+    if lo.leagues:
+        gfilter &= Q(sessions__league__pk__in=lo.leagues)
+    if lo.players:
+        gfilter &= Q(sessions__performances__player__pk__in=lo.players)
+    if lo.games: 
+        gfilter &= Q(pk__in=lo.games)
     if lo.changed_since != NEVER:
         gfilter &= Q(sessions__date_time__gte=lo.changed_since)
-    if lo.game != ALL_GAMES: 
-        gfilter &= Q(pk=lo.game)
         
     games = games.filter(gfilter).distinct()
     
@@ -921,14 +863,14 @@ def ajax_Leaderboards(request, raw=False):
     
     leaderboards = []
     for game in games:
-        if lo.league == ALL_LEAGUES or game.leagues.filter(pk=lo.league).exists():
+        if not lo.leagues or game.leagues.filter(pk__in=lo.leagues).exists():
             # Let's build a list of board times for Tier2 that we want to present, as specified in the request
             # These should reflect the session time stamps at which that leaderboard came to be. We bundle a 
             # session_detail string with each time stamp.
             boards = []
             
             sfilter = Q(game=game)
-            if not lo.as_at is None:
+            if lo.as_at:
                 sfilter &= Q(date_time__lte=lo.as_at)
                 
             S = Session.objects.filter(sfilter).order_by("-date_time")
@@ -944,9 +886,9 @@ def ajax_Leaderboards(request, raw=False):
             
             # If we have a current leaderboard in the time window (changed_since -to- as_at)
             # then we may also want to include its history if requested by:
-            #  compare_back_to, compare_til or compare_with
+            #  compare_back_to, compare_till or compare_with
             if len(boards) > 0:
-                if (not lo.compare_with is None) or (not lo.compare_back_to is None):
+                if lo.compare_with or lo.compare_back_to:
                     sfilter = Q(game=game)
                     
                     if lo.compare_till is None:
@@ -954,7 +896,7 @@ def ajax_Leaderboards(request, raw=False):
                     else:
                         sfilter &= Q(date_time__lte=lo.compare_till)
     
-                    if not lo.compare_back_to is None:
+                    if lo.compare_back_to:
                         # we want to include, if it exists, the last session prior to compare_back_to
                         # As a comparison board for the last snapshot. So it has a reference.
                         ref_session = Session.objects.filter(sfilter & Q(date_time__lt=lo.compare_back_to)).order_by('-date_time')[:1]
@@ -970,7 +912,7 @@ def ajax_Leaderboards(request, raw=False):
                         
                     last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
                     
-                    if not lo.compare_with is None and lo.compare_with < last_sessions.count():
+                    if lo.compare_with and lo.compare_with < last_sessions.count():
                         last_sessions = last_sessions[:lo.compare_with]
     
                     for s in last_sessions:
@@ -987,14 +929,25 @@ def ajax_Leaderboards(request, raw=False):
                 #       game.play_counts and game.session_list might run faster with one query rather 
                 #       than two.
                 time = board.date_time
-                players = [p.pk for p in board.players]            
+                players = [p.pk for p in board.players]
                 detail = board.leaderboard_header(lo.names)
                 analysis = board.leaderboard_analysis(lo.names)
                 analysis_after = board.leaderboard_analysis_after(lo.names)
-                lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
+                
+                # FIXME: This needs testing and thinking through with new widgets.
+                # Essentially if lo.leagues = [] then we don't get global we get all leagues 
+                # including global in a dict. We get global with [ALL_LEAGUES].
+                # This is all predictae don what teh leagues cwidget submits:
+                # - by default (for no league filterig so GLOABL
+                # - when one or more leagues are selected.        
+                # So plug a widget in and let's see and test.
+                
+                lb = game.leaderboard(leagues=lo.leagues, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
-                    counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(localtime(time)), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
+                    counts = game.play_counts(leagues=lo.leagues, asat=time)
+                    total = counts['total']
+                    sessions = counts['sessions']
+                    snapshot = (localize(localtime(time)), total, sessions, players, detail, analysis, analysis_after, lb)
                     snapshots.append(snapshot)
 
             if len(snapshots) > 0:                    
@@ -1072,7 +1025,81 @@ def ajax_Detail(request, model, pk):
     return HttpResponse(json.dumps(response))
 
 #===============================================================================
-# Some genral function based views
+# Some POST information receivers
+#===============================================================================
+
+def receive_ClientInfo(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving client 
+    information via an XMLHttpRequest bound to the DOMContentLoaded event on site
+    pages which asynchonously and silently in the background on a page load, posts
+    the client information here.
+    
+    The main aim and r'aison d'etre for this whole scheme is to divine the users 
+    timezone as quickly and easily as we can, when they first surf in, to whatever
+    URL. Of course that first page load will take place with an unknown timezone,
+    but subsequent to it we'll know their timezone.
+    
+    Implemented as well, just for the heck of it are acceptors for UTC offset, and
+    geolocation, that HTML5 makes available, which can be used in logging site visits.
+    '''
+    if (request.POST):
+        if "clear_session" in request.POST:
+            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            session_keys = list(request.session.keys())
+            for key in session_keys:
+                del request.session[key]
+            return HttpResponse("<script>window.history.pushState('', '', '/session_cleared');</script>")
+
+        # Check for the timezone
+        if "timezone" in request.POST:
+            print_debug(f"Timezone = {request.POST['timezone']}")
+            request.session['timezone'] = request.POST['timezone']
+            activate(request.POST['timezone'])
+
+        if "utcoffset" in request.POST:
+            print_debug(f"UTC offset = {request.POST['utcoffset']}")
+            request.session['utcoffset'] = request.POST['utcoffset']
+
+        if "location" in request.POST :
+            print_debug(f"location = {request.POST['location']}")
+            request.session['location'] = request.POST['location']
+            
+    return HttpResponse()
+
+def receive_Filter(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving filter 
+    information via an XMLHttpRequest.
+    
+    The main aim and r'aison d'etre for this whole scheme is to provide a way to 
+    submit view filters for recording in the session. 
+    '''
+    if (request.POST):
+        # Check for league
+        if "league" in request.POST:            
+            print_debug(f"League = {request.POST['league']}")
+            save_league_filters(request.session, int(request.POST.get("league", 0)))
+           
+    return HttpResponse()
+
+def receive_DebugMode(request):
+    '''
+    A view that returns (presents) nothing, is not a view per se, but much rather just
+    accepts POST data and acts on it. This is specifically for receiving a debug mode
+    flag via an XMLHttpRequest when debug mode is changed.
+    '''
+    if (request.POST):
+        # Check for league
+        if "debug_mode" in request.POST:            
+            request.session["debug_mode"] = True if request.POST.get("debug_mode", "false") == 'true' else False
+           
+    return HttpResponse()
+
+#===============================================================================
+# Some general function based views
 #===============================================================================
 
 def view_About(request):
