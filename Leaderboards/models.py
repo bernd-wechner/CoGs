@@ -53,9 +53,9 @@ FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float
 NEVER = pytz.utc.localize(datetime.min)     # Used for times to indicat if there is no last play or victory that has a time
 
 # Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
-ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
-ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
-ALL_GAMES = "ALL GAMES"                     # A reserved key for leaderboard filtering representing all games
+ALL_LEAGUES = "Global"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
+ALL_PLAYERS = "Everyone"                    # A reserved key for leaderboard filtering representing all players
+ALL_GAMES = "All Games"                     # A reserved key for leaderboard filtering representing all games
 
 #===============================================================================
 # The support models, that store all the play records that are needed to

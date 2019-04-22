@@ -210,6 +210,10 @@ function copy_if_empty(from, to) {
 	if ($(to).val() == '') $(to).val($(from).val());
 }
 
+function blank_zero(target) { 
+	if (target.value == 0) target.value = ""; 
+}
+
 function show_url() {
 	var url = url_leaderboards + URLopts(null);
 	window.history.pushState("","", url);

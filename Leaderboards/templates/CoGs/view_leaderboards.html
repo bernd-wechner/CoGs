@@ -20,10 +20,10 @@
 			<input type="button" id="btnAllLeaderboards" value="All Leaderboards" onclick="refetchLeaderboards(event);">
 
 			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);" style="margin-left: 8ch;"> for
-			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;"> most popular games
+			
 			
 			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
-			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch"> days
+			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);"> days
 		</td>
 	</tr>
 	<tr>
@@ -50,25 +50,36 @@
 			</select>
 		</td>
 	</tr>
+	
+{#	ADVANCED OPTIONS #}
+	
 	<tr>
 		<td class='options' colspan = 2>
 			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
-			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 
+
+			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 		
 			Highlight players.
-			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 
+
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 		
 			Highlight changes.
-			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 
+
+			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 		
 			Show session details.
-			<input type="checkbox" id="chkSessionAnalysisPre" onchange='DrawTables("tblLB");'> 
+			
+			<input type="checkbox" id="chkSessionAnalysisPre" onchange='DrawTables("tblLB");'> 		
 			Show TrueSkill Predictions.
+			
 			<input type="checkbox" id="chkSessionAnalysisPost" onchange='DrawTables("tblLB");'> 
-			Show Post-Session TrueSkill Predictions.
+			Show Post-Session TrueSkill Predictions.			
 		</td>
 	</tr>
+	
+{#	FORMATTING OPTIONS #}
+	
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' colspan=2>
+		<th class='options indent' colspan=2>
 			Formatting:
-		</td>
+		</th>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
@@ -81,35 +92,97 @@
 			</select>
 		</td>
 	</tr>
+	
+{#	FILTERING OPTIONS #}
+	
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' colspan=2>
+		<th class='options indent' colspan=2>
 			Filtering:
-		</td>
+		</th>
 	</tr>
+
+	{# GAME FILTERS #}
+		
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
-		<td class='options tight'> 
-{#		 style="line-height:2;"#}
-			<label>Only games played by league: </label>
-{#				<select id='selLeague' onchange='LabelButton("btnAllLeaderboards")'></select>#}
-				{{ widget_leagues }}
-				<br>				
-			<label>Only games played by player: </label>
-{#				<select id='selPlayer' onchange='LabelButton("btnAllLeaderboards")'></select>#}
-				{{ widget_players }}
-				<br>
-			<label>Only this game: </label>
-{#				<select id='selGame'></select>#}
-				{{ widget_games }}
-				<br>				
+		<th class='options tight'> 
+			Games:				
+		</th>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> most popular games<br>
+			<label>Only these games: </label>{{ widget_games }}<br>				
+		</td>			
+	</tr>			
+	
+	{# PLAYER FILTERS #}
+			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<th class='options tight'> 
+			Players:
+		</th>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<label>Only games played by one or more of these players: </label>{{ widget_players }}<br>
+			<input type="number" id="num_players" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> 
+				<select id="PlayerNumberContext">
+				  <option value="top">top players</option>
+				  <option value="before">players before a select player</option>
+				  <option value="around">players around a select player</option>
+				  <option value="after">players around a select player</option>
+				</select><br>		
+			<label>Only players who have played a game at least </label> 
+				<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);">
+				<label>times</label><br>
+			<label>Only players who have played a game since: </label> 
+				<input class="DateTimeField" id="played_since" type="text"><br>
+		</td>			
+	</tr>			
+
+	{# LEAGUE FILTERS #}
+			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<th class='options tight'> 
+			Leagues:
+		</th>			
+	</tr>			
+
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<label>Only games played by one or more of these leagues: </label>{{ widget_leagues }}<br>				
+		</td>			
+	</tr>			
+
+	{# ACTIVITY FILTERS #}
+			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<th class='options tight'> 
+			Activity:
+		</th>			
+	</tr>			
+
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
 			<label>Only leaderboards that changed on or after: </label>
 			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
 		</td>			
 	</tr>			
+
+{#	PERSPECTIVE OPTIONS #}
+	
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' colspan=2>
+		<th class='options indent' colspan=2>
 			Perspective:
-		</td>
+		</th>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
@@ -117,25 +190,53 @@
 			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
 			<input class="DateTimeField" id="as_at" type="text" ><br>
 		</td>			
-	</tr>			
+	</tr>	
+			
+{#	EVOLUTION OPTIONS #}
+
+{#TODO: Move Impact of to here and use radio buttons. Eitehr#}
+{# impact of last n day session or #}
+{# compare with last n prior or#}
+{# present between date range#}
+{# three radio buttons to choose from.#}
+
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options' colspan=2>
+		<th class='options indent' colspan=2>
 			Evolution:
+		</th>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight'  style="line-height:2;">
+			<label>Compare each leaderboard with</label>:
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
-		<td class='options tight' style="line-height:2;">
-			<label>Compare each leaderboard with</label>
-			<input id="compare_with" size=3 type="text" onkeyup="this.value=this.value.replace(/[^\d]+/,'')">
-			<label>prior leaderboards, or leaderboards back to</label>
-			<input class="DateTimeField" id="compare_back_to" type="text">
-			<label>and/or up until</label>			
-			<input class="DateTimeField" id="compare_till" type="text">
+		<td class='options tight indent' style="line-height:2;">
+			<input type="number" id="compare_with" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
+			<label>prior leaderboards</label>
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options'>
+		<td class='options tight'/>
+		<td class='options tight'>
+				or
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;">
+			<label>leaderboards back to:</label> <input class="DateTimeField" id="compare_back_to" type="text">
+			<label>and/or up until:</label>			
+			<input class="DateTimeField" id="compare_till" type="text">
+		</td>
+	</tr>	
+	
+{#	ADVANCED ACTIONS #}
+	
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options indent'>
 			<button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> 
 		</td>
 		<td class='options'>
@@ -143,7 +244,7 @@
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
-		<td class='options'>
+		<td class='options indent'>
 			<button type="button" id='btnShowURL' onclick="show_url();">Show</button> 
 		</td>
 		<td class='options'>

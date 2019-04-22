@@ -22,9 +22,12 @@ body {
     text-decoration: underline;
 }
 
-.select2-container, 
-{
+.select2-container {
     color: Black;
+}
+
+.select2-search__field {
+	line-height: 1 !important;
 }
 
 /* .select2-search__field, */
@@ -50,6 +53,19 @@ ul, ol {
 
 li {
 	margin-bottom:0;
+}
+
+/* A simple override to kill margins and padding on an element */
+.tight
+{
+  padding: 0 !important;
+  margin: 0 !important;
+  border-spacing: 0 !important;
+}
+
+/* A simple override to force an element to consume space  */
+.greedy {
+    width: 100% !important;
 }
 
 th {
@@ -162,7 +178,7 @@ table.options
 	border-width: 1px 1px 1px 1px;
 }
 
-td.options
+td.options, th.options
 {
 	margin: 0;
 	
@@ -178,9 +194,9 @@ td.options
 	border-width: 0 0 0 0;
 }
 
-td.options.indent
+td.options.indent, th.options.indent
 {
-	padding-left: +20px;
+	padding-left: 5ch !important;
 }
 
 table.results {
@@ -189,15 +205,7 @@ table.results {
     border-collapse: collapse;
 }
 
-th.results {
-    padding: 5px;
-    border-style: solid;
-    border-width: 1px;
-    border-color: black;
-    border-spacing: 0px;
-}
-
-td.results {
+td.results, th.results {
     padding: 5px;
     border-style: solid;
     border-width: 1px;
@@ -276,22 +284,9 @@ td.leaderboard.wrapper
 	padding-right: 15px;
 }
 
-/* A simple override to kill margins and padding on an element */
-.tight
-{
-  padding: 0 !important;
-  margin: 0 !important;
-  border-spacing: 0 !important;
-}
-
-/* A simple override to force an element to consume space  */
-.greedy {
-    width: 100% !important;
-}
-
 /* DateTimeFields should be wide enough for the date_time formats in use */
 .DateTimeField {
-	width: 18ch;
+	width: 22ch;
 }
 
 /* ToolTip support */
