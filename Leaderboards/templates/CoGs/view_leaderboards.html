@@ -15,10 +15,9 @@
 	<tr>
 		<td class='tight options'>
 			<b>View:</b>
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'>
 		</td>
-		<td class='tight options'>
-			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
-			
+		<td class='tight options'>			
 			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);">
 		</td>
 	</tr>
@@ -50,14 +49,19 @@
 {#	ADVANCED OPTIONS #}
 	
 	<tr>
-		<td class='options' colspan = 2>
+		<td class='options' valign='top'>
 			<span style="margin-right: 4ch;"><b><a onclick="toggle_options();">Advanced options&#9660;</a></b></span>
-
-			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_player_highlights();'> 		
+		</td>
+		<td class='options'>
+			<input type="checkbox" id="chkHighlightPlayers" onchange='toggle_highlights("players", this);'> 		
 			Highlight players.
 
-			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_change_highlights();'> 		
+			<input type="checkbox" id="chkHighlightChanges" onchange='toggle_highlights("changes", this);'> 		
 			Highlight changes.
+
+			<input type="checkbox" id="chkHighlightSelected" onchange='toggle_highlights("selected", this);'> 			
+			Highlight selected players.
+			<br>
 
 			<input type="checkbox" id="chkSessionDetails" onchange='DrawTables("tblLB");'> 		
 			Show session details.
@@ -141,7 +145,7 @@
 		<td class='options tight indent' style="line-height:2;"> 
 			<input type="radio" name="game_selection" value="activity"> 
 			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')">
+			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to');">
 		</td>			
 	</tr>			
 	<tr class="toggle" style="visibility: collapse;">
@@ -156,7 +160,7 @@
 		<td class='options tight indent' style="line-height:2;"> 
 			<input type="radio" name="game_selection" value="session_impact">
 			Only leaderboards for games played in the last session of 
-			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
+			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="mirror('#num_days','#num_days_ev'); blank_zero(this);">
 			<label>days duration</label>
 		</td>			
 	</tr>			
@@ -229,6 +233,13 @@
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight indent' style="line-height:2;">
+			<input type="radio" name="evolution_selection" value="none">
+			<label>nothing</label>
+		</td>
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;">
 			<input type="radio" name="evolution_selection" value="n_prior">
 			<input type="number" id="compare_with" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
 			<label>prior leaderboards</label>
@@ -246,7 +257,7 @@
 		<td class='options tight indent' style="line-height:2;">
 			<input type="radio" name="evolution_selection" value="session_impact">
 			leaderboards back to, just before, the last game session 
-			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
+			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" onchange="mirror('#num_days_ev','#num_days'); blank_zero(this);">
 			<label>days duration</label>
 		</td>
 	</tr>

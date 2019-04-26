@@ -249,25 +249,36 @@ th.leaderboard.normal, td.leaderboard.normal
 	font-weight: normal;
 }
 
-td.leaderboard.highlight_off
+td.leaderboard.highlight_changes_off
 {
 	background-color: #FFF7F0;
 }
 
-td.leaderboard.highlight_on
+td.leaderboard.highlight_changes_on
 {
 	background-color: #FFE0E0 !important;
 }
 
-leaderboard.emphasis_off
+leaderboard.highlight_players_off
 {
 	font-weight: normal;
 }
 
-td.leaderboard.emphasis_on
+td.leaderboard.highlight_players_on
 {
 	font-weight: bold !important;
 }
+
+leaderboard.highlight_selected_off
+{
+	background-color: #FFF7F0;
+}
+
+td.leaderboard.highlight_selected_on
+{
+	background-color: #FF6161 !important;
+}
+
 
 table.leaderboard.wrapper 
 {

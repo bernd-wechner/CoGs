@@ -567,7 +567,8 @@ class leaderboard_options:
                                   ("played_by", "Games played by"),
                                   ("session_impact", "Games from last session")))
     
-    EvolutionSelections = OrderedDict((("n_prior", "Prior n leaderboard snapshots"), 
+    EvolutionSelections = OrderedDict((("none", "Nothing"),
+                                       ("n_prior", "Prior n leaderboard snapshots"), 
                                        ("back_to", "Leaderboard snapshots back to"), 
                                        ("session_impact", "Leaderboard snapshots to show last session impact")))
     
@@ -596,7 +597,7 @@ class leaderboard_options:
     game_selection = GameSelection.top_n.name  # The means by which to select games
 
     # We support multiple means of specifying which evolution snapshots to present that ar enot compatible and must choose one of them. 
-    evolution_selection = EvolutionSelection.n_prior.name  # The means by which to select an evolution display (historic leaderboard snapshots)
+    evolution_selection = EvolutionSelection.none.name  # The means by which to select an evolution display (historic leaderboard snapshots)
     
     # Options that determine which games to list leaderboards for
     leagues = []                # Restrict to games played by specified Leagues
@@ -605,7 +606,7 @@ class leaderboard_options:
 
     changed_since = NEVER       # Show only leaderboards that changed since this date 
     num_games = 5               # List only this many games (most popular ones)
-    num_days = 1                # For impact Quick Views only, return impact of last session of this length in days
+    num_days = 1                # List only games played in the last num_days_gs long session (also used for snapshot defintion) 
 
     # Options that determing which players are listed in the leadrboards
     num_players = 10                                         # The number of players that the context uses
@@ -616,8 +617,9 @@ class leaderboard_options:
     # Options that determine which snapshots to present for each selected game (above)
     # A snapshot being the leaderboard immediately after a given session.  
     as_at = None                # Do everything as if it were this time now (pretend it is now as_at)
-    compare_with = None         # Compare with this many historic leaderboards
+    compare_with = 1            # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
+    # num_days is also used for selecting snapshots
 
     # Options to include extra info in a leaderboard header
     details = False             # Show session details atop each boards (about the session that produced that board)
@@ -625,8 +627,9 @@ class leaderboard_options:
     analysis_post = False       # Show the TrueSkill Post-session analysis
     
     # Options for formatting the contents of a given leaderbaords 
-    highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
-    highlight_changes = True    # Highlight changes between historic snapshots
+    highlight_players = True            # Highlight the players that played the last session of this game (the one that produced this leaderboard)
+    highlight_changes = True            # Highlight changes between historic snapshots
+    highlight_selected_players = True   # Highlight players selected in game filtering.
     
     names = NameSelection.complete.name # Render player names like this
     links = LinkSelection.CoGs.name     # Link games and players to this target
@@ -658,38 +661,73 @@ class leaderboard_options:
         
         # The method selectors first
         if 'game_selection' in request:
-            self.game_selection = request['game_selection']
+            self.game_selection = request['game_selection']        
+        elif 'games' in request:
+            self.game_selection = self.GameSelection.selected.name 
+        elif 'num_games' in request:
+            self.game_selection = self.GameSelection.top_n.name 
+        elif 'changed_since' in request:
+            self.game_selection = self.GameSelection.activity.name
+        elif 'players' in request:
+            self.game_selection = self.GameSelection.played_by.name
+        elif 'num_days' in request:
+            self.game_selection = self.GameSelection.session_impact.name
             
         if 'evolution_selection' in request:
             self.evolution_selection = request['evolution_selection']
+        elif 'compare_with' in request:
+            self.evolution_selection = self.EvolutionSelection.n_prior.name
+        elif 'compare_back_to' in request:
+            if request['compare_back_to'].endswith('_day_impact'):                
+                self.evolution_selection = self.EvolutionSelection.session_impact.name
+            else:
+                self.evolution_selection = self.EvolutionSelection.back_to.name                            
                 
         # Capture the multivalue select ptions first that help us determine the list of games
         # to provide leaderboards for.        
         if 'leagues' in request:
-            self.leagues = request['leagues'].split(",")
+            leagues = request['leagues'].split(",")
+            
+            # Validate the leagues  discarding any invalid ones
+            self.leagues = []
+            for league in leagues:
+                if League.objects.all().filter(pk=league).exists():
+                    self.leagues.append(league)
             
         if 'players' in request:
-            self.players = request['players'].split(",")
+            players = request['players'].split(",")
+
+            # Validate the players discarding any invalid ones
+            self.players = []
+            for player in players:
+                if Player.objects.all().filter(pk=player).exists():
+                    self.players.append(player)
             
         if 'games' in request:        
-            self.games = request['games'].split(",")        
+            games = request['games'].split(",")        
+
+            # Validate the games discarding any invalid ones
+            self.games = []
+            for game in games:
+                if Game.objects.all().filter(pk=game).exists():
+                    self.games.append(game)
     
         # Some more game selection options.    
+        if 'changed_since' in request:
+            self.changed_since = fix_time_zone(parser.parse(request['changed_since']))
+
         if 'num_games' in request and request['num_games'].isdigit():
             self.num_games = int(request["num_games"])
     
         if 'num_days' in request and request['num_days'].isdigit():
-            self.num_days = int(request["num_days"])
-        
-        if 'changed_since' in request:
-            self.changed_since = fix_time_zone(parser.parse(request['changed_since']))
+            self.num_days = int(request["num_days"])        
 
         # Player selectors:
         if 'num_players' in request and request['num_players'].isdigit():
             self.num_players = int(request["num_players"])
        
         if 'num_players_context' in request:
-            self.num_players_context = request['num_players_context']
+            self.num_players_context = self.PlayerNumContextSelection[request['num_players_context']]
 
         if 'min_plays' in request and request['min_plays'].isdigit():
             self.min_plays = int(request["min_plays"])
@@ -704,8 +742,11 @@ class leaderboard_options:
         if 'compare_with' in request and request['compare_with'].isdigit():
             self.compare_with = int(request['compare_with'])
     
-        if 'compare_back_to' in request:                                         
-            self.compare_back_to = fix_time_zone(parser.parse(request['compare_back_to']))
+        if 'compare_back_to' in request:
+            try:
+                self.compare_back_to = fix_time_zone(parser.parse(request['compare_back_to']))
+            except ValueError:
+                self.compare_back_to = request['compare_back_to']
 
         # Options to include extra infor in a leaderboard header
         if 'details' in request:
@@ -723,12 +764,15 @@ class leaderboard_options:
              
         if 'highlight_changes' in request:
             self.highlight_changes = json.loads(request['highlight_changes'].lower()) # A boolean value is parsed
+
+        if 'highlight_selected_players' in request:
+            self.highlight_selected_players = json.loads(request['highlight_selected_players'].lower()) # A boolean value is parsed
         
         if 'names' in request:
-            self.names = request['names']
+            self.names = self.NameSelection[request['names']]
         
         if 'links' in request: 
-            self.links = request['links']
+            self.links = self.LinkSelection[request['links']]
 
         # Options for laying out leaderboards on screen 
         if 'cols' in request:
@@ -766,8 +810,11 @@ class leaderboard_options:
         return d
 
 def get_leaderboard_titles(lo):
-    # TODO: Make this more robust against illegal PKs. 
-    # The whole view should be graceful if sent a bad league or player.
+    '''
+    Builds page title and subtitle form the leaderboard options supplied
+    
+    Returns them in a 2-tuple.
+    '''
     try:
         P = Player.objects.filter(pk__in=lo.players)
     except:
@@ -777,18 +824,21 @@ def get_leaderboard_titles(lo):
         L = League.objects.filter(pk__in=lo.leagues)
     except:
         L = []
-        
+
+    p = ", ".join([p.name_nickname for p in P]) 
+    l = ", ".join([l.name for l in L]) 
+            
     # Format the page title
     if not lo.players:
         if not lo.leagues:
             title = "Global Leaderboards"
         else:
-            title = f"Leaderboards for the leagues {L}"
+            title = f"Leaderboards for the leagues {l}"
     else:
         if not lo.leagues:
-            title = f"Leaderboards for the players {P}"
+            title = f"Leaderboards for the players {p}"
         else:
-            title = f"Leaderboards for {P} in the leagues {L} "        
+            title = f"Leaderboards for {p} in the leagues {l} "        
 
     default = leaderboard_options()
     
@@ -800,7 +850,11 @@ def get_leaderboard_titles(lo):
         subtitle.append("changed after {}".format(localize(localtime(lo.changed_since))))
 
     if lo.compare_back_to != default.compare_back_to:
-        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(localtime(lo.compare_back_to))
+        if lo.compare_back_to.endswith("_day_impact"):
+            # FIXME: parse out num_days
+            time = "before the last game session"
+        else:
+            time = "that same time" if lo.compare_back_to == lo.changed_since else localize(localtime(lo.compare_back_to))
         subtitle.append("compared back to the leaderboard as at {}".format(time))
     elif lo.compare_with != default.compare_with:
         subtitle.append("compared up to with {} prior leaderboards".format(lo.compare_with))
@@ -817,8 +871,7 @@ def view_Leaderboards(request):
     # Fetch the leaderboards
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
-    lo = leaderboard_options(request.GET)
-    
+    lo = leaderboard_options(request.GET)    
     default = leaderboard_options()
     
     (title, subtitle) = get_leaderboard_titles(lo)
@@ -913,57 +966,18 @@ def ajax_Leaderboards(request, raw=False):
     Links to games and players in the leaderboard are built in the template, wrapping a player name in
     a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
-    # Start a filter rolling
-
+    
+    # Fetch the options submitted (and the defaults)
     lo = leaderboard_options(request.GET)
 
-    default = leaderboard_options()
-    
-    # Process the impact quick view 
-    #
-    # We are looking back from now to find the last session recorded 
-    # (for the given leagues) and then num_days prior to that and catching
-    # all the recorded sessions in that window to present the impact of 
-    # that set of sessions. The idea being that if lo.num_days is 1 that's 
-    # catches your typical games night, or if it's 2 or 3 your typcial games 
-    # weekend event etc.
-    #
-    # We model this in fact by setting:
-    #
-    # lo.changed_since
-    # lo.compare_back_to
-    #
-    # FIXME: We should be choosing these based on lo.as_at! 
-    # And also setting lo.compare_till as a result.
-    #
-    # FIXME: Don't look for impact in request.get, put it into lo.
-    #        We wants ome radio buttons for common scenarios that 
-    #        autofill other options in a sense.
-    if ("impact" in request.GET):
-        sfilter = Q()
-        if lo.leagues:
-            sfilter &= Q(league__pk__in=lo.leagues)
-
-        if lo.players:
-            sfilter &= Q(performances__player__pk__in=lo.players)
-        
-        S = Session.objects.filter(sfilter).order_by("-date_time")
-        latest_session = S[0] if S.count() > 0 else None
-
-        if latest_session:
-            date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            lo.changed_since = date - timedelta(days=lo.num_days)
-            lo.compare_back_to = lo.changed_since
-            lo.num_games = 0
-   
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = get_leaderboard_titles(lo)
-      
+          
     #######################################################################################################
     ## CHOOSE THE GAMES we will report leaderboards on
     #######################################################################################################
     #
-    # Theya re used to populate Tier 1 in the leaderboard structure we return
+    # They are used to populate Tier 1 in the leaderboard structure we return
     #
     # Start the query with an ordered list of all games (lazy, only the SQL created)     
     # Sort them by default in descending order of play_count then session_count (measures
@@ -975,122 +989,161 @@ def ajax_Leaderboards(request, raw=False):
                          .annotate(play_count=Count('sessions__performances',distinct=True))
                          .order_by('-play_count','-session_count'))
 
-    # Then filter the sorted list of games based on any Player or Game specifications
     gfilter = Q()
-    if lo.players:
-        gfilter &= Q(sessions__performances__player__pk__in=lo.players)
-    if lo.games: 
-        gfilter &= Q(pk__in=lo.games)
 
-    # Filter also on Activity specification
-    if lo.changed_since != NEVER:
-        gfilter &= Q(sessions__date_time__gte=lo.changed_since)
+    # Now build up gfilter based on the game selectors
+    if (lo.game_selection == lo.GameSelection.selected.name):
+        if lo.games: 
+            gfilter &= Q(pk__in=lo.games)
+    elif (lo.game_selection == lo.GameSelection.activity.name):
+        if lo.changed_since != NEVER:
+            gfilter &= Q(sessions__date_time__gte=lo.changed_since)
+    elif (lo.game_selection == lo.GameSelection.played_by.name):
+        if lo.players:
+            gfilter &= Q(sessions__performances__player__pk__in=lo.players)
+    elif (lo.game_selection == lo.GameSelection.session_impact.name):
+        # We model session impact by selecting games played between 
+        # as_at and changed_since as follows
+        sfilter = Q()
+        
+        # Respect the leagues filter
+        if lo.leagues:
+            sfilter &= Q(league__pk__in=lo.leagues)
 
-    # Apply the filters        
+        # Respect the perspevite request
+        if lo.as_at:
+            sfilter &= Q(date_time__lte=lo.as_at)
+        
+        S = Session.objects.filter(sfilter).order_by("-date_time")
+        latest_session = S[0] if S.count() > 0 else None
+
+        if latest_session:
+            date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+            changed_since = date - timedelta(days=lo.num_days)        
+
+            gfilter &= Q(sessions__date_time__gte=changed_since)        
+
+    # Apply the game selector(s)
     games = games.filter(gfilter).distinct()
-    
-    # If we have an upper limit on the number of games we want, respect that
-    if lo.num_games > 0:
-        games = games[:lo.num_games]
 
+    # Slicing has to happen after the filtering
+    if (lo.game_selection == lo.GameSelection.top_n.name):
+        if lo.num_games > 0:
+            games = games[:lo.num_games]
+    
     #######################################################################################################
     ## FOR ALL THE GAMES WE SELECTED build a leaderboard (with any associated snapshots)
     #######################################################################################################
     leaderboards = []
     for game in games:
-        if not lo.leagues or game.leagues.filter(pk__in=lo.leagues).exists():
-            #######################################################################################################
-            ## CHOOSE THE SESSSIONS (leaderboard snapshots) to report
-            #######################################################################################################
-            # A snapshot is the leaderboard as it appears after  agiven game session
-            # The default and noly standard snapshot is the current leaderboard after the last session of the game
-            # But this can be altered by:
-            #
-            # Perspective request:
-            # lo.as_at which asks for the leaderboard as at a given time (not the latest one)
-            # 
-            # Evolution requests:
-            #
-            # FIXME: document them
-            #
-            # We build a list of sessions after which we wnat the leaderboard snapshots.
-            #
-            # Theya re used to populate Tier 2 in the leaderboards structure we return.
+        #######################################################################################################
+        ## CHOOSE THE SESSSIONS (leaderboard snapshots) to report
+        #######################################################################################################
+        # A snapshot is the leaderboard as it appears after a given game session
+        # The default and only standard snapshot is the current leaderboard after the 
+        # last session of the game.
+        #
+        # But this can be altered by:
+        #
+        # A perspective request:
+        #    lo.as_at which asks for the leaderboard as at a given time (not the latest one)
+        # 
+        # Evolution requests:
+        #    lo.EvolutionSelections documents the possible selections
+        #       
+        # We build a list of sessions after which we wnat the leaderboard snapshots.
+        #
+        # They are used to populate Tier 2 in the leaderboards structure we return.
 
-            boards = []
-            
-            sfilter = Q(game=game)
-            if lo.as_at:
-                sfilter &= Q(date_time__lte=lo.as_at)
-                
-            S = Session.objects.filter(sfilter).order_by("-date_time")
-            latest_session = S[0] if S.count() > 0 else None
-                
-            # Fetch the time of the last session in the window (changed_since -to- as_at)
-            # That will capture the leaderboard as at that time, but of course only if
-            # it changed since the requested time, else not. 
-            if latest_session:
-                last_time = latest_session.date_time
-                if ((lo.changed_since == default.changed_since or last_time > lo.changed_since)  
-                    and (lo.as_at == default.as_at or last_time <= lo.as_at)):
-                    boards.append(latest_session)
-            
-            # If we have a current leaderboard in the time window (changed_since -to- as_at)
-            # then we may also want to include its history if requested by:
-            #  compare_back_to, compare_till or compare_with
-            if len(boards) > 0:
-                if lo.compare_with or lo.compare_back_to:
-                    sfilter = Q(game=game)
-                    
-                    if lo.compare_till is None:
-                        sfilter &= Q(date_time__lt=latest_session.date_time)
-                    else:
-                        sfilter &= Q(date_time__lte=lo.compare_till)
-    
-                    if lo.compare_back_to:
-                        # we want to include, if it exists, the last session prior to compare_back_to
-                        # As a comparison board for the last snapshot. So it has a reference.
-                        ref_session = Session.objects.filter(sfilter & Q(date_time__lt=lo.compare_back_to)).order_by('-date_time')[:1]
+        boards = []
+        
+        # Start our Session filter with sessions for the game in question
+        sfilter = Q(game=game)
+        
+        # Respect the leagues filter 
+        # This game may be played by different leagues 
+        # and we're not interested in their sessions
+        if lo.leagues:
+            sfilter &= Q(league__pk__in=lo.leagues)
 
-                        # Of course if there is no session prior to compare_back_to, we can't do that
-                        count = ref_session.count()
-                        if count == 0:
-                            sfilter &= Q(date_time__gte=lo.compare_back_to)
-                        elif count == 1:
-                            sfilter &= Q(date_time__gte=ref_session[0].date_time)
-                        else:
-                            raise ValueError("Internal error: Illegal count of reference sessions.")
-                        
-                    # We now get the sessions that are between 
-                    # lo.compare_back_to (or one earlier) and 
-                    # lo.compare_till (or latest_session.date_time, where latest is as_at!)
-                    # So the window of sessions of interest
-                    #
-                    # Note: lo.as_at and lo.compare_till have EXACTLY the same impact up 
-                    # to here in fetching last_sessions                    
-                    last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
-                    
-                    # If we only want to compare a certain number of historic snapshopts 
-                    # and we have more than that in our window, give precedence to the 
-                    # number. 
-                    #
-                    # FIXME: What if we have less in the window that lo.compare_with?
-                    # We should also give it priority. Or?
-                    if lo.compare_with and lo.compare_with < last_sessions.count():
-                        last_sessions = last_sessions[:lo.compare_with]
+        # Respect the perspective request
+        if lo.as_at:
+            sfilter &= Q(date_time__lte=lo.as_at)
+
+        # The order the session in reverse data_time order and take 
+        # the top one, the latest session, as our reference.            
+        sessions = Session.objects.filter(sfilter).order_by("-date_time")
+        
+        # We need only continue with thsi game if it has sessions recorded
+        if sessions:
+            # The latest session is at the top of the list
+            latest_session = sessions.first()
     
-                    for s in last_sessions:
+            # And we always wnat that session to display a board
+            boards.append(latest_session)
+            
+            # Now respec tthe Evolution selection in choosing which historic
+            # snapshots to add to the boards for this game.
+            compare_back_to = None
+            if lo.evolution_selection == lo.EvolutionSelection.session_impact.name:
+                # We model this by looking back_to the session just before the one
+                # after num_days before latest session for the game. In short, we
+                # want to find a compare_back_to value that we can use 
+                date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
+                compare_back_to = date - timedelta(days=lo.num_days)      
+                  
+            elif lo.evolution_selection == lo.EvolutionSelection.back_to.name:
+                compare_back_to= lo.compare_back_to
+            
+            if lo.evolution_selection == lo.EvolutionSelection.n_prior.name:
+                if not lo.compare_with:
+                    back_sessions = []
+                elif lo.compare_with < sessions.count():
+                    back_sessions = sessions[1:lo.compare_with]
+                else:
+                    back_sessions = sessions[1:]
+                    
+                if back_sessions:
+                    # Add them to the boards we want
+                    for s in back_sessions: 
                         boards.append(s)
+    
+            elif compare_back_to:                 
+                # We get the sessions back to lo.compare_back_to     
+                back_sessions = sessions.filter(date_time__gt=compare_back_to, date_time__lt=latest_session.date_time)
+                
+                if back_sessions:
+                    # Add them to the boards we want
+                    for s in back_sessions: 
+                        boards.append(s)
+                        
+                    # In that list we want to look one back before the earliest one
+                    # Becasue it's the leaderboard after that session, that was current
+                    # at lo.compare_back_to. 
+                    earliest_session = back_sessions.last()
+                    back_sessions = sessions.filter(date_time__lt=earliest_session.date_time)
+                    
+                    if back_sessions:
+                        # The one prior to earliest_session will be at top of the list of back_sessions
+                        boards.append(back_sessions.first())                        
+                else:
+                    # If there are no back sessions we want the one prior to the latest session as 
+                    # it represents the current leadrerboad before this latest sessionw as played/                    
+                    back_sessions = sessions.filter(date_time__lt=latest_session.date_time)
 
+                    if back_sessions:
+                        # The one prior to earliest_session will be at top of the list of back_sessions
+                        boards.append(back_sessions.first())
+    
             #######################################################################################################
-            ## BUILD EACH SNAPSHOT BOARD
+            ## BUILD EACH SNAPSHOT BOARD - from the sessions we recorded in "boards"
             #######################################################################################################
             #
             # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure 
             # now. That is assemble the actualy leaderbards after each of the collected sessions.
             
             snapshots = []            
-            for board in boards:            
+            for board in boards:
                 # IF as_at is now, the first time should be the last session time for the game 
                 # and thus should translate to the same as what's in the Rating model. 
                 # TODO: Perform an integrity check around that and indeed if it's an ordinary
@@ -1106,7 +1159,7 @@ def ajax_Leaderboards(request, raw=False):
                 detail = board.leaderboard_header(lo.names)
                 analysis = board.leaderboard_analysis(lo.names)
                 analysis_after = board.leaderboard_analysis_after(lo.names)
-
+    
                 # Now get the leaderboard asat the time of this board.                
                 lb = game.leaderboard(leagues=lo.leagues, asat=time, names=lo.names, indexed=True)
                 if not lb is None:
@@ -1115,7 +1168,7 @@ def ajax_Leaderboards(request, raw=False):
                     sessions = counts['sessions']
                     snapshot = (localize(localtime(time)), total, sessions, players, detail, analysis, analysis_after, lb)
                     snapshots.append(snapshot)
-
+    
             # Technically we MUST have at least one snapshot! If not, it implies that
             if len(snapshots) > 0:                    
                 leaderboards.append((game.pk, game.BGGid, game.name, snapshots))

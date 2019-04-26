@@ -99,7 +99,8 @@ function InitControls(options) {
 	// Then the rest of the game selectors
 	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
 	$('#num_games').val(options.num_games);
-	$('#num_days').val(options.num_days);
+	$('#num_days').val(options.num_days);	  // Mirror of num_days_ev
+	$('#num_days_ev').val(options.num_days);  // Mirror of num_days
 
 	// Then the player selectors
 	$('#num_players').val(options.num_players);
@@ -241,7 +242,7 @@ function URLopts(element) {
 	// The last one is special as each game would have it's own last n day session!
 	//
 	// Method in use: flag with special value of compare_back_to coded as 
-	// n_day_session.
+	// n_day_impact.
 	switch(evolution_selection) {
 	  case "n_prior":
 		  	if (compare_with)
@@ -253,7 +254,7 @@ function URLopts(element) {
 		    break;
 	  case "session_impact":
 		  	if (num_days)
-		  		opts.push("compare_back_to=" + encodeURIComponent(num_days) + "_day_session");
+		  		opts.push("compare_back_to=" + encodeURIComponent(num_days) + "_day_impact");
 		    break;
 	}
 
@@ -272,51 +273,7 @@ function URLopts(element) {
 	// Then the leaderboard screen layout options
 	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
 	
-//	// Options shared by all reload paths
-//	let val = "";
-//	let vals = [];
-
-//	
-////	val = $('#cols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-////	val = $('#names:selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-////	val = $('#links:selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
-//
-//	// List values
-//	vals = $('#selLeagues').val(); val = vals.join(","); if (vals.length) opts.push("leagues="+encodeURIComponent(val).replace(/%2C/g, ","));	
-//	vals = $('#selPlayers').val(); val = vals.join(","); if (vals.length) opts.push("players="+encodeURIComponent(val).replace(/%2C/g, ","));	
-//	vals = $('#selGames').val();   val = vals.join(","); if (vals.length) opts.push("games="+encodeURIComponent(val).replace(/%2C/g, ","));	
-//	
-//	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
-//	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
-//	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
-//	val = $('#chkHighlightPlayers').is(":checked"); if (val != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(val));
-//	val = $('#chkHighlightChanges').is(":checked"); if (val != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(val));
-//
-//	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));	
-
-//	// TODO: Serioulsy rethink these complicated buttons. We don't want this complexity.
-//	// Makes the Show URL button a liar too as it doesn't know which of these button paths
-//	// it's showing for! 
-//	// Perhaps move most of this logic serve side and just submit the danged fields!
-//	if (element == "btnImpact") {
-//		opts.push("impact");
-//		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
-//		opts.push("num_games=0");
-//	}
-//	else if (element == "btnAllLeaderboards") {
-//		opts.push("num_games=0");
-//	}
-//	else {
-//		if ($('#selGames').val().length == 0) {
-//			val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
-//		}
-//
-//		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
-//		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
-//		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
-//		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
-//	}
-
+	// Join the opts and return them 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
 
@@ -348,23 +305,35 @@ function toggle_filters() {
 		$(".toggle").css('display', 'none');		
 }
 
-function toggle_player_highlights() {
-	if (document.getElementById("chkHighlightPlayers").checked)
-		$(".leaderboard.emphasis_off").removeClass('emphasis_off').addClass('emphasis_on');
+function toggle_highlights(highlight_type, checkbox) {
+	const tag = "highlight_" + highlight_type;
+
+	const tag_on = tag + "_on"; 
+	const tag_off = tag + "_off"; 
+		
+	if (checkbox.checked)
+		$(".leaderboard."+tag_off).removeClass(tag_off).addClass(tag_on);
 	else
-		$(".leaderboard.emphasis_on").removeClass('emphasis_on').addClass('emphasis_off');
+		$(".leaderboard."+tag_on).removeClass(tag_on).addClass(tag_off);
 }
 
-function toggle_change_highlights() {
-	if (document.getElementById("chkHighlightChanges").checked)
-		$(".leaderboard.highlight_off").removeClass('highlight_off').addClass('highlight_on');
-	else
-		$(".leaderboard.highlight_on").removeClass('highlight_on').addClass('highlight_off');
-}
+//function toggle_player_highlights() {
+//	if (document.getElementById("chkHighlightPlayers").checked)
+//		$(".leaderboard.emphasis_off").removeClass('emphasis_off').addClass('emphasis_on');
+//	else
+//		$(".leaderboard.emphasis_on").removeClass('emphasis_on').addClass('emphasis_off');
+//}
+//
+//function toggle_change_highlights() {
+//	if (document.getElementById("chkHighlightChanges").checked)
+//		$(".leaderboard.highlight_off").removeClass('highlight_off').addClass('highlight_on');
+//	else
+//		$(".leaderboard.highlight_on").removeClass('highlight_on').addClass('highlight_off');
+//}
 
-function copy_if_empty(from, to) {
-	if ($(to).val() == '') $(to).val($(from).val());
-}
+function mirror(from, to) {	$(to).val($(from).val()); }
+
+function copy_if_empty(from, to) { if ($(to).val() == '') $(to).val($(from).val()); }
 
 function blank_zero(target) { 
 	if (target.value == 0) target.value = ""; 
@@ -651,24 +620,32 @@ function LBtable(LB, snapshot, links) {
 
 	// Body
 
-	var highlight_players = document.getElementById("chkHighlightPlayers").checked;
-	var highlight_changes = document.getElementById("chkHighlightChanges").checked;
+	const highlight_players = document.getElementById("chkHighlightPlayers").checked;
+	const highlight_changes = document.getElementById("chkHighlightChanges").checked;
+	const highlight_selected = document.getElementById("chkHighlightSelected").checked;
+	
+	const selected_players = options.players;  // A list of string ids
 
-	var tableBody = document.createElement('TBODY');
+	const tableBody = document.createElement('TBODY');
 	table.appendChild(tableBody);
 
-	for (var i = 0; i < player_list.length; i++) {
-		var tr = document.createElement('TR');
+	for (let i = 0; i < player_list.length; i++) {
+		const tr = document.createElement('TR');
 		tableBody.appendChild(tr);
 
 		td_class = 'leaderboard normal';
-		var this_player = i<player_list.length ? player_list[i][0] : null; 
-		if (highlight_players && session_players.indexOf(this_player) >= 0)
-			td_class += ' emphasis_on'; 
-		if (highlight_changes && player_prev) {
+		const this_player = i<player_list.length ? player_list[i][0] : null; 
+		
+		if (session_players.indexOf(this_player) >= 0)
+			td_class += highlight_players ? ' highlight_players_on' : ' highlight_players_off'; 
+
+		if (selected_players.indexOf(this_player.toString()) >= 0)
+			td_class += highlight_selected ? ' highlight_selected_on' : ' highlight_selected_off'; 
+
+		if (player_prev) {
 			var prev_player = i<player_prev.length ? player_prev[i][0] : null;
 			if (this_player != prev_player)
-				td_class += ' highlight_on';
+				td_class += highlight_changes ? ' highlight_changes_on' : ' highlight_changes_off';
 		}
 
 		// The Rank column
@@ -736,7 +713,7 @@ function DrawTables(target, links) {
 	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure why. 
 	const selLinks = document.getElementById("links");	
 	const selCols = document.getElementById("cols");
-	const cols = parseInt(selCols.options[selCols.selectedIndex].text);
+	let cols = parseInt(selCols.options[selCols.selectedIndex].text);	
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
