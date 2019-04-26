@@ -1,4 +1,4 @@
-// Layout is driven by snapshots.
+	 // Layout is driven by snapshots.
 // 
 // If we have one snapshot per game all is normal and we can just layout 
 //    one board per game using cols as requested.
@@ -50,61 +50,86 @@ function get_and_report_metrics(LB) {
 // But on first load we have leaderboards that were provided through context, so process those now 
 get_and_report_metrics(leaderboards);
 
-//Report the snapshot count
+// An initialiser for Select2 widgets used. Alas not so trivial to set
+// as descrribed here: 
+//   https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
+function Select2Init(selector, values) {	
+	if (values.length > 0) {
+		selector.val(null).trigger('change');
+		$.ajax({
+		    type: 'GET',
+		    url: url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + values
+		}).then(function (data) {
+			// data arrives in JSON like:
+			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
+				
+			for (let i=0; i<data.results.length; i++) {
+			    // create the option and append to Select2
+			    var option = new Option(data.results[i].text, data.results[i].id, true, true);
+			    selector.append(option).trigger('change');
+			}
+	
+		    // manually trigger the `select2:select` event
+		    selector.trigger({
+		        type: 'select2:select',
+		        params: {
+		            data: data
+		        }
+		    });
+		});
+	}
+}
 
 function InitControls(options) {
+	// We'll follow the same order as Leaderboards.views.leaderboard_options
+	// This takes those same options provided in context (or from an ajx call) 
+	// as "options" and initialises the controls on the page. 
+	
+	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
+	$("input[name=game_selection][value="+options.game_selection+"]").prop('checked', true);
+	$("input[name=evolution_selection][value="+options.evolution_selection+"]").prop('checked', true);
+
+	// Then we populate all the Game selectors, starting with the three multiselectors
+	// We request displaying of games only that are listed or played in the listed leagues 
+	// or by the listed players. 
+	Select2Init($('#leagues'), options.leagues)
+	Select2Init($('#games'), options.games)
+	Select2Init($('#players'), options.players)
+	
+	// Then the rest of the game selectors
+	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
 	$('#num_games').val(options.num_games);
 	$('#num_days').val(options.num_days);
 
-	$('#selCols').val(options.cols);
-	$('#selNames').val(options.names);	
-	$('#selLinks').val(options.links);
+	// Then the player selectors
+	$('#num_players').val(options.num_players);
+	$('#num_players_context').val(options.num_players_context);
+	$('#min_plays').val(options.min_plays);
+	$('#played_since').val(options.played_since == defaults.played_since ? '' : options.played_since);
 	
-	$('#chkHighlightPlayers').prop('checked', options.highlight_players.boolean())
-	$('#chkHighlightChanges').prop('checked', options.highlight_changes.boolean())
+	// Then the snapshot selectors
+	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
+	$('#compare_with').val(options.compare_with);
+	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
+	
+	// Then the extra info options for leaderboard headers
 	$('#chkSessionDetails').prop('checked', options.details.boolean());
 	$('#chkSessionAnalysisPre').prop('checked', options.analysis_pre.boolean());
 	$('#chkSessionAnalysisPost').prop('checked', options.analysis_post.boolean());
 
-	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
-	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
-	$('#compare_with').val(options.compare_with == defaults.compare_with ? '' : options.compare_with);
-	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
-	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
+	// The the content formatting options
+	$('#chkHighlightPlayers').prop('checked', options.highlight_players.boolean())
+	$('#chkHighlightChanges').prop('checked', options.highlight_changes.boolean())
 	
-	//Populate the League selector
-	var select = $('#selLeague');                        
-	select.find('option').remove();    
-	var league_choices = "";
-	for (var i = 0, len = leagues.length; i < len; i++) {
-		pair = leagues[i];
-		league_choices += '<option value=' + pair[0] + (pair[0] == options.league ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(league_choices);
-	
-	//Populate the Player selector
-	var select = $('#selPlayer');                        
-	select.find('option').remove();    
-	var player_choices = "";
-	for (var i = 0, len = players.length; i < len; i++) {
-		pair = players[i];
-		player_choices += '<option value=' + pair[0] + (pair[0] == options.player ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(player_choices);
-	
-	//Populate the Game selector
-	var select = $('#selGame');                        
-	select.find('option').remove();    
-	var game_choices = "";
-	for (var i = 0, len = games.length; i < len; i++) {
-		pair = games[i];
-		game_choices += '<option value=' + pair[0] + (pair[0] == options.game ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(game_choices);
+	$('#names').val(options.names);	
+	$('#links').val(options.links);
+
+	// Then the leaderboard screen layout options
+	$('#cols').val(options.cols);
 	
 	//Configure the Copy Button
-	var copybutton = document.getElementById("btnCopy");
-	var clipboard = new ClipboardJS(copybutton);
+	const copybutton = document.getElementById("btnCopy");
+	const clipboard = new ClipboardJS(copybutton);
 	
 	//What to do when the copy button is clicked 
 	clipboard.on('success', function(e) {
@@ -115,51 +140,182 @@ function InitControls(options) {
 }
 
 function URLopts(element) {
+	// The opposite so to speal of InitControls() here we read those same conrols and prepare
+	// URL options for self same to submit an AJAX request for updates (or simply display on
+	// the address bar if desired)
+	//
+	// Again we'll follow the same order as in InitControls and Leaderboards.views.leaderboard_options
+	// but in the URL we will only include values that deviate form the defaults (in the interests of
+	// brevity and efficiency. Also, the broader game and evolution only submitting options relevant 
+	// to that option (again, for brevity and efficiency)
+	
+	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
+	const game_selection = $("input[name='game_selection']:checked").val();
+	const evolution_selection = $("input[name='evolution_selection']:checked").val();
+	
+	// Then get the values of the trhee multiselect game specifierd
+	const leagues = $('#leagues').val().join(",");
+	const games = $('#games').val().join(",");
+	const players = $('#players').val().join(",");
+	
+	// Then the rest of the game selectors
+	const changed_since = $('#changed_since').val();
+	const num_games = $('#num_games').val();
+	const num_days = $('#num_days').val();
+	
+	// Then the player selectors
+	const num_players = $('#num_players').val();
+	const num_players_context = $('#num_players_context').val();
+	const min_plays = $('#min_plays').val();
+	const played_since = $('#played_since').val();
+	
+	// Then the snapshot selectors
+	const as_at = $('#as_at').val();
+	const compare_with = $('#compare_with').val();
+	const compare_back_to = $('#compare_back_to').val();
+	
+	// Then the extra info options for leaderboard headers
+	const details = $('#chkSessionDetails').is(":checked");
+	const analysis_pre = $('#chkSessionAnalysisPre').is(":checked");
+	const analysis_post = $('#chkSessionAnalysisPost').is(":checked");
+	
+	// The the content formatting options
+	const highlight_players = $('#chkHighlightPlayers').is(":checked");
+	const highlight_changes = $('#chkHighlightChanges').is(":checked");
+	
+	const names = $('#names').val();	
+	const links = $('#links').val();
+
+	// Then the leaderboard screen layout options
+	const cols = $('#cols').val();
+	
+	// Now push the Game selectors selectively onto opts
 	let opts = [];
-	let val = "";
-	let vals = [];
 
-	// Options shared by all reload paths
+	// League filtering on games is always an overlay on the rest of the game selectors
+	opts.push("leagues="+encodeURIComponent(leagues).replace(/%2C/g, ","))
 	
-	val = $('#selCols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-	val = $('#selNames :selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-	val = $('#selLinks :selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+	// Push even default values as the existence of the value also flags 
+	// the game_selection implicitly, so we don't need to push its value.
+	// But don't push empty values, they have no meaning. 
+	switch(game_selection) {
+	  case "selected":
+		  	if (games)
+		  		opts.push("games="+encodeURIComponent(games).replace(/%2C/g, ","))
+		    break;
+	  case "top_n":
+		  	if (num_games)
+		  		opts.push("num_games="+encodeURIComponent(num_games))
+		    break;
+	  case "activity":
+		  	if (changed_since)
+		  		opts.push("changed_since="+encodeURIComponent(changed_since))
+		    break;
+	  case "played_by":
+		  	if (players)
+		  		opts.push("players="+encodeURIComponent(players).replace(/%2C/g, ","))
+		    break;
+	  case "session_impact":
+		  	if (num_days)
+		  		opts.push("num_days="+encodeURIComponent(num_days))
+		    break;
+	}		
 
-	// List values
-	vals = $('#selLeagues').val(); val = vals.join(","); if (vals.length) opts.push("leagues="+encodeURIComponent(val).replace(/%2C/g, ","));	
-	vals = $('#selPlayers').val(); val = vals.join(","); if (vals.length) opts.push("players="+encodeURIComponent(val).replace(/%2C/g, ","));	
-	vals = $('#selGames').val();   val = vals.join(","); if (vals.length) opts.push("games="+encodeURIComponent(val).replace(/%2C/g, ","));	
+	// Push the player selectors only if they are not default values or null values
+	if (num_players && num_players != defaults.num_players) opts.push("num_players="+encodeURIComponent(num_players))
+	if (num_players_context && num_players_context != defaults.num_players_context) opts.push("num_players_context="+encodeURIComponent(num_players_context))
+	if (min_plays && min_plays != defaults.min_plays) opts.push("min_plays="+encodeURIComponent(min_plays))
+	if (played_since && played_since != defaults.played_since) opts.push("played_since="+encodeURIComponent(played_since))
+
+	// Now push the snapshot selectors
+	if (as_at && as_at != defaults.as_at) opts.push("as_at="+encodeURIComponent(as_at))
 	
-	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
-	val = $('#chkHighlightPlayers').is(":checked"); if (val != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(val));
-	val = $('#chkHighlightChanges').is(":checked"); if (val != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(val));
-
-	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
-
-	// TODO: Serioulsy rethink these ocmplicated buttons. We don't want this complexity.
-	// Makes the Show URL button a liar too as it doesn't know which of these button paths
-	// it's showing for! 
-	// Perhaps move most of this logic serve side and just submit the danged fields!
-	if (element == "btnImpact") {
-		opts.push("impact");
-		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
-		opts.push("num_games=0");
+	// The evolution_selection can also be implied by submission of one of the three
+	// key values. Note that the num_days are a mirrored box to the game_selector
+	// but we can gave these sensible combinations:
+	//
+	// select_game on session and evolution on session
+	// select_game on session and evolution some other way
+	// select game some other way and evolution on session
+	//
+	// The last one is special as each game would have it's own last n day session!
+	//
+	// Method in use: flag with special value of compare_back_to coded as 
+	// n_day_session.
+	switch(evolution_selection) {
+	  case "n_prior":
+		  	if (compare_with)
+		  		opts.push("compare_with="+encodeURIComponent(compare_with));
+			break;
+	  case "back_to":
+		  	if (compare_back_to && compare_back_to != defaults.compare_back_to)
+		  		opts.push("compare_back_to="+encodeURIComponent(compare_back_to));
+		    break;
+	  case "session_impact":
+		  	if (num_days)
+		  		opts.push("compare_back_to=" + encodeURIComponent(num_days) + "_day_session");
+		    break;
 	}
-	else if (element == "btnAllLeaderboards") {
-		opts.push("num_games=0");
-	}
-	else {
-		if ($('#selGames').val().length == 0) {
-			val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
-		}
 
-		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
-		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
-		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
-		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
-	}
+	// Then the extra info options for leaderboard headers
+	if (details != defaults.details.boolean()) opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (analysis_post != defaults.details.boolean()) opts.push("analysis_post="+encodeURIComponent(analysis_post));
+
+	// The the content formatting options
+	if (highlight_players != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(highlight_players));
+	if (highlight_changes != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
+	
+	if (names != defaults.names) opts.push("names="+encodeURIComponent(names));
+	if (links != defaults.links) opts.push("links="+encodeURIComponent(links));
+	
+	// Then the leaderboard screen layout options
+	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
+	
+//	// Options shared by all reload paths
+//	let val = "";
+//	let vals = [];
+
+//	
+////	val = $('#cols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
+////	val = $('#names:selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
+////	val = $('#links:selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+//
+//	// List values
+//	vals = $('#selLeagues').val(); val = vals.join(","); if (vals.length) opts.push("leagues="+encodeURIComponent(val).replace(/%2C/g, ","));	
+//	vals = $('#selPlayers').val(); val = vals.join(","); if (vals.length) opts.push("players="+encodeURIComponent(val).replace(/%2C/g, ","));	
+//	vals = $('#selGames').val();   val = vals.join(","); if (vals.length) opts.push("games="+encodeURIComponent(val).replace(/%2C/g, ","));	
+//	
+//	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
+//	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
+//	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
+//	val = $('#chkHighlightPlayers').is(":checked"); if (val != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(val));
+//	val = $('#chkHighlightChanges').is(":checked"); if (val != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(val));
+//
+//	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));	
+
+//	// TODO: Serioulsy rethink these complicated buttons. We don't want this complexity.
+//	// Makes the Show URL button a liar too as it doesn't know which of these button paths
+//	// it's showing for! 
+//	// Perhaps move most of this logic serve side and just submit the danged fields!
+//	if (element == "btnImpact") {
+//		opts.push("impact");
+//		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
+//		opts.push("num_games=0");
+//	}
+//	else if (element == "btnAllLeaderboards") {
+//		opts.push("num_games=0");
+//	}
+//	else {
+//		if ($('#selGames').val().length == 0) {
+//			val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
+//		}
+//
+//		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
+//		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
+//		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
+//		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
+//	}
 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
@@ -215,7 +371,8 @@ function blank_zero(target) {
 }
 
 function show_url() {
-	var url = url_leaderboards + URLopts(null);
+	// We strip a trailing / if present for elegance
+	var url = url_leaderboards.replace(/\/$/, "") + URLopts(null);
 	window.history.pushState("","", url);
 }
 
@@ -576,10 +733,10 @@ function LBtable(LB, snapshot, links) {
 
 //Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly the jQuery forms $('#selLinks) and $('#selCols) fails here. Not sure why. 
-	var selLinks = document.getElementById("selLinks");	
-	var selCols = document.getElementById("selCols");
-	var cols = parseInt(selCols.options[selCols.selectedIndex].text);
+	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure why. 
+	const selLinks = document.getElementById("links");	
+	const selCols = document.getElementById("cols");
+	const cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 

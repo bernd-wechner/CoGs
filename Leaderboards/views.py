@@ -1,8 +1,8 @@
-import re
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import json
 import pytz
 import sys
+import enum
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
 #from collections import OrderedDict
@@ -38,6 +38,7 @@ from dal import autocomplete
 from numpy import rank
 
 from .models import ALL_LEAGUES
+from _collections import OrderedDict
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
@@ -364,7 +365,7 @@ def html_league_options(session):
 
 def html_selector(model, id, default=0, placeholder="", attrs={}):
     '''
-    Returns an HTML string for a league selector. 
+    Returns an HTML string for a model selector. 
     :param model:    The model to provide a selector widget for
     :param session:  The session dictionary (to look for League filters)
     '''
@@ -557,35 +558,204 @@ class view_Detail(DetailViewExtended):
 # Define defaults for the view inputs 
 
 class leaderboard_options:
+    # Some useful enums to use in the options. Really just a way of encapsulating related 
+    # types so we can use them in templates to pupulate selectors and receive them from 
+    # requests in an orderly way.    
+    GameSelections = OrderedDict((("selected", "Selected games"), 
+                                  ("top_n", "Top n games"),
+                                  ("activity", "Games played since"),
+                                  ("played_by", "Games played by"),
+                                  ("session_impact", "Games from last session")))
+    
+    EvolutionSelections = OrderedDict((("n_prior", "Prior n leaderboard snapshots"), 
+                                       ("back_to", "Leaderboard snapshots back to"), 
+                                       ("session_impact", "Leaderboard snapshots to show last session impact")))
+    
+    NameSelections = OrderedDict((("nick", "nickname"),
+                                  ("full", "full name"),
+                                  ("complete", "full name (nickname)")))
+    
+    LinkSelections = OrderedDict((("none", "nowhere"),
+                                  ("CoGs", "CoGs Leaderboard Space"),
+                                  ("BGG", "boardgamegeek.com")))
+    
+    PlayerNumContextSelections = OrderedDict((("top", "top players"),
+                                              ("before", "players before a select player"),
+                                              ("around", "players around a select player"),
+                                              ("after", "players around a select player"))) 
+
+    # We make enums out of the lists of 2-tuples for use in code.       
+    GameSelection             = enum.Enum("GameSelection", GameSelections)
+    EvolutionSelection        = enum.Enum("EvolutionSelection", EvolutionSelections)       
+    NameSelection             = enum.Enum("NameSelection", NameSelections)
+    LinkSelection             = enum.Enum("LinkSelection", LinkSelections)
+    PlayerNumContextSelection = enum.Enum("PlayerNumContextSelection", PlayerNumContextSelections)
+       
+    # Method selectors
+    # We support multiple means of specifying which games to present that ar enot compatible and must choose one of them. 
+    game_selection = GameSelection.top_n.name  # The means by which to select games
+
+    # We support multiple means of specifying which evolution snapshots to present that ar enot compatible and must choose one of them. 
+    evolution_selection = EvolutionSelection.n_prior.name  # The means by which to select an evolution display (historic leaderboard snapshots)
+    
+    # Options that determine which games to list leaderboards for
     leagues = []                # Restrict to games played by specified Leagues
     players = []                # Restrict to games played by specified Players
-    games = []                  # Restrict to specified Game
+    games = []                  # Restrict to specified Games
+
+    changed_since = NEVER       # Show only leaderboards that changed since this date 
     num_games = 5               # List only this many games (most popular ones)
     num_days = 1                # For impact Quick Views only, return impact of last session of this length in days
+
+    # Options that determing which players are listed in the leadrboards
+    num_players = 10                                         # The number of players that the context uses
+    num_players_context = PlayerNumContextSelection.top.name # How num_players is used to select players
+    min_plays = 2                                            # The minimum number of times a player has to have played this game to be listed
+    played_since = NEVER                                     # The date since which a player needs to have played this game to be listed
+
+    # Options that determine which snapshots to present for each selected game (above)
+    # A snapshot being the leaderboard immediately after a given session.  
     as_at = None                # Do everything as if it were this time now (pretend it is now as_at)
-    changed_since = NEVER       # Show only leaderboards that changed since this date 
     compare_with = None         # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
-    compare_till = None         # Include comparisons only up to this date           
+
+    # Options to include extra info in a leaderboard header
     details = False             # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False        # Show the TrueSkill Pre-session analysis 
-    analysis_post = False       # Show the TrueSkill Post-session analysis 
+    analysis_post = False       # Show the TrueSkill Post-session analysis
+    
+    # Options for formatting the contents of a given leaderbaords 
     highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
     highlight_changes = True    # Highlight changes between historic snapshots
-    cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
-    names = 'complete'          # Render player names like this
-    links = 'CoGs'              # Link games and players to this target
     
+    names = NameSelection.complete.name # Render player names like this
+    links = LinkSelection.CoGs.name     # Link games and players to this target
+
+    # Options for laying out leaderboards on screen 
+    cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
+    
+    # NOT YET IMPLEMENTED
+    trace = []                  # A list of players to draw trace arrows for from snapshot to snapshot
+       
+    def __init__(self, request=None):
+        '''
+        Build a leaderboard options instance populated with options froma request dictionary
+        (could be from request.GET or request.POST). If none is specified build with default 
+        values, i.e.e do nothing here (defaults are specified in attribute declaratons above) 
+        
+        :param request: a request.GET or request.POST dictionary that contains options.
+        
+        TODO: Make robust against illegal entries in request, notably PKs that don't exist in
+              the League, Game and Player selectors.
+        '''
+        
+        # Just keep defaults if no request if provided
+        if request is None:
+            return
+        
+        # The default value of the option is an indicator of the expected type. 
+        # The 
+        
+        # The method selectors first
+        if 'game_selection' in request:
+            self.game_selection = request['game_selection']
+            
+        if 'evolution_selection' in request:
+            self.evolution_selection = request['evolution_selection']
+                
+        # Capture the multivalue select ptions first that help us determine the list of games
+        # to provide leaderboards for.        
+        if 'leagues' in request:
+            self.leagues = request['leagues'].split(",")
+            
+        if 'players' in request:
+            self.players = request['players'].split(",")
+            
+        if 'games' in request:        
+            self.games = request['games'].split(",")        
+    
+        # Some more game selection options.    
+        if 'num_games' in request and request['num_games'].isdigit():
+            self.num_games = int(request["num_games"])
+    
+        if 'num_days' in request and request['num_days'].isdigit():
+            self.num_days = int(request["num_days"])
+        
+        if 'changed_since' in request:
+            self.changed_since = fix_time_zone(parser.parse(request['changed_since']))
+
+        # Player selectors:
+        if 'num_players' in request and request['num_players'].isdigit():
+            self.num_players = int(request["num_players"])
+       
+        if 'num_players_context' in request:
+            self.num_players_context = request['num_players_context']
+
+        if 'min_plays' in request and request['min_plays'].isdigit():
+            self.min_plays = int(request["min_plays"])
+        
+        if 'played_since' in request:
+            self.played_since = fix_time_zone(parser.parse(request['played_since']))
+
+        # Snapshot selector options
+        if 'as_at' in request:
+            self.as_at = fix_time_zone(parser.parse(request['as_at']))
+                                     
+        if 'compare_with' in request and request['compare_with'].isdigit():
+            self.compare_with = int(request['compare_with'])
+    
+        if 'compare_back_to' in request:                                         
+            self.compare_back_to = fix_time_zone(parser.parse(request['compare_back_to']))
+
+        # Options to include extra infor in a leaderboard header
+        if 'details' in request:
+            self.details = json.loads(request['details'].lower()) # A boolean value is parsed     
+    
+        if 'analysis_pre' in request:
+            self.analysis_pre = json.loads(request['analysis_pre'].lower()) # A boolean value is parsed     
+    
+        if 'analysis_post' in request:
+            self.analysis_post = json.loads(request['analysis_post'].lower()) # A boolean value is parsed
+    
+        # Options for formatting the contents of a given leaderbaords 
+        if 'highlight_players' in request:
+            self.highlight_players = json.loads(request['highlight_players'].lower()) # A boolean value is parsed
+             
+        if 'highlight_changes' in request:
+            self.highlight_changes = json.loads(request['highlight_changes'].lower()) # A boolean value is parsed
+        
+        if 'names' in request:
+            self.names = request['names']
+        
+        if 'links' in request: 
+            self.links = request['links']
+
+        # Options for laying out leaderboards on screen 
+        if 'cols' in request:
+            self.cols = request['cols']
+
+        if 'trace' in request:
+            self.trace = request['trace'].split(",")
+   
     @property
-    def as_dict(self):
+    def as_json_dict(self):
+        '''
+        Produces a dictionary of JSONified option values which can be passed to context
+        and used in Javascript. 
+        '''
         me = sys._getframe().f_code.co_name
         d = {}
-        for attr in [a for a in dir(self) if not a.startswith('__')]:
-            if attr != me:
-                val = getattr(self, attr)
+        for attr in [a for a in dir(self) if (not a.startswith('__') and a != me)]:
+            val = getattr(self, attr)
+            
+            # Don't include the enums
+            if not isinstance(val, enum.EnumMeta) and not isinstance(val, dict):            
+                # Format date_times sensibly
                 if isinstance(val, datetime):
                     val = val.strftime(settings.DATETIME_INPUT_FORMATS[0])
-                elif not isinstance(val, str):
+    
+                # fallback on a json dump where possible
+                elif not isinstance(val, str) and not isinstance(val, list):
                     try:
                         val = json.dumps(val)
                     except TypeError:
@@ -594,73 +764,6 @@ class leaderboard_options:
                 d[attr] = val
                 
         return d
-    
-def get_leaderboard_options(request):
-    lo = leaderboard_options()
-    if 'leagues' in request.GET:
-        lo.leagues = request.GET['leagues'].split(",")
-        
-    if 'players' in request.GET:
-        lo.players = request.GET['players'].split(",")
-        
-    if 'games' in request.GET:        
-        lo.games = request.GET['games'].split(",")
-    
-    if 'num_games' in request.GET and request.GET['num_games'].isdigit():
-        lo.num_games = int(request.GET["num_games"])
-
-    if 'num_days' in request.GET and request.GET['num_days'].isdigit():
-        lo.num_days = int(request.GET["num_days"])
-
-    if 'as_at' in request.GET:
-        lo.as_at = fix_time_zone(parser.parse(request.GET['as_at']))
-                                 
-    if 'changed_since' in request.GET:
-        lo.changed_since = fix_time_zone(parser.parse(request.GET['changed_since']))
-
-    if 'compare_with' in request.GET and request.GET['compare_with'].isdigit():
-        lo.compare_with = int(request.GET['compare_with'])
-
-    if 'compare_back_to' in request.GET:                                         
-        lo.compare_back_to = fix_time_zone(parser.parse(request.GET['compare_back_to']))
-
-    if 'compare_till' in request.GET:        
-        lo.compare_till = fix_time_zone(parser.parse(request.GET['compare_till']))    
-        
-    if 'details' in request.GET:
-        lo.details = json.loads(request.GET['details'].lower())     
-
-    if 'analysis_pre' in request.GET:
-        lo.analysis_pre = json.loads(request.GET['analysis_pre'].lower())     
-
-    if 'analysis_post' in request.GET:
-        lo.analysis_post = json.loads(request.GET['analysis_post'].lower())     
-
-    if 'highlight_players' in request.GET:
-        lo.highlight_players = json.loads(request.GET['highlight_players'].lower())
-         
-    if 'highlight_changes' in request.GET:
-        lo.highlight_changes = json.loads(request.GET['highlight_changes'].lower())
-    
-    if 'cols' in request.GET:
-        lo.cols = request.GET['cols']
-        
-    if 'names' in request.GET:
-        lo.names = request.GET['names']
-    
-    if 'links' in request.GET: 
-        lo.links = request.GET['links']
-    
-#     # TODO: Bail with an error message
-#     # TODO: Do consistency checks on all the dates submitted
-#     if league != ALL_LEAGUES and not League.objects.filter(pk=league).exists():
-#         pass
-#     if player != ALL_PLAYERS and not Player.objects.filter(pk=player).exists():
-#         pass
-#     if game != ALL_GAMES and not Game.objects.filter(pk=game).exists():
-#         pass    
-    
-    return lo
 
 def get_leaderboard_titles(lo):
     # TODO: Make this more robust against illegal PKs. 
@@ -702,8 +805,8 @@ def get_leaderboard_titles(lo):
     elif lo.compare_with != default.compare_with:
         subtitle.append("compared up to with {} prior leaderboards".format(lo.compare_with))
 
-    if lo.compare_till != default.compare_till:
-        subtitle.append("compared up to the leaderboard as at {}".format(localize(localtime(lo.compare_till))))
+    if lo.as_at != default.as_at:
+        subtitle.append("compared up to the leaderboard as at {}".format(localize(localtime(lo.as_at))))
         
     return (title, "<BR>".join(subtitle))
 
@@ -714,7 +817,7 @@ def view_Leaderboards(request):
     # Fetch the leaderboards
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
-    lo = get_leaderboard_options(request)
+    lo = leaderboard_options(request.GET)
     
     default = leaderboard_options()
     
@@ -740,19 +843,27 @@ def view_Leaderboards(request):
             
     c = {'title': title,
          'subtitle': subtitle,
-         'options': lo.as_dict,
-         'defaults': default.as_dict,
+         
+         # For use in Javascript
+         'options': lo.as_json_dict,         
+         'defaults': default.as_json_dict,   
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          
+         # For us in templates
+         'leaderboard_options': lo,
+         
+         # To populate the selectors with
          'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
          'players': json.dumps(players, cls=DjangoJSONEncoder),
          'games': json.dumps(games, cls=DjangoJSONEncoder),         
          
-         'widget_leagues': html_selector(League, "selLeagues", request.session.get("filter", {}).get("league", 0), ALL_LEAGUES),
-         'widget_players': html_selector(Player, "selPlayers", 0, ALL_PLAYERS),
-         'widget_games': html_selector(Game, "selGames", 0, ALL_GAMES),
+         # Widgets to use in the form
+         'widget_leagues': html_selector(League, "leagues", request.session.get("filter", {}).get("league", 0), ALL_LEAGUES),
+         'widget_players': html_selector(Player, "players", 0, ALL_PLAYERS),
+         'widget_games': html_selector(Game, "games", 0, ALL_GAMES),
          'widget_media': autocomplete.Select2().media,
          
+         # Time and timezone info
          'now': timezone.now(),        
          'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
          }
@@ -804,9 +915,7 @@ def ajax_Leaderboards(request, raw=False):
     '''
     # Start a filter rolling
 
-    # TODO: This should be sans get_ just a initialiser for the leaderboard_options that
-    # optionallytakes a request or not. Simialr with other options classes?
-    lo = get_leaderboard_options(request)
+    lo = leaderboard_options(request.GET)
 
     default = leaderboard_options()
     
@@ -1012,7 +1121,7 @@ def ajax_Leaderboards(request, raw=False):
                 leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
-    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict, leaderboards)))
+    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_json_dict, leaderboards)))
 
 def ajax_Game_Properties(request, pk):
     '''

@@ -765,16 +765,29 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
     '''
     def get_queryset(self):
         self.model = class_from_string(self.kwargs['app'], self.kwargs['model'])
-        self.field_name = self.kwargs['field_name']        
+        self.field_name = self.kwargs.get('field_name', None)
+        self.field_operation = self.kwargs.get('field_operation', "istartswith")
+        self.selector_field = getattr(self.model, "selector_field", None)
+        self.selector_queryset = getattr(self.model, "selector_queryset", None)
+        
+        if self.field_operation == "in":
+            self.field_value = self.q.split(",")
+        else:
+            self.field_value = self.q
+        
+        # If this is false then self.selector_queryset is permitted to do pre-filtering
+        # (which could be based on any othe rcriteria, like session stored filters for example)
+        # If it is true it is denied this permission.
+        self.select_from_all = self.kwargs.get('all', False)
 
-        if callable(getattr(self.model, "selector_queryset", None)):
-            all = self.kwargs.get('all', False)
-            qs = self.model.selector_queryset(self.q, self.request.session, all)
+        # use the model's selectoprovided selector_queryset if available
+        if self.field_name and self.field_name == self.selector_field and callable(self.selector_queryset):
+            qs = self.selector_queryset(self.field_value, self.request.session, self.select_from_all)
         else:
             qs = self.model.objects.all()
             
-            if self.q:
-                qs = qs.filter(**{f'{self.field_name}__istartswith': self.q})
+            if self.q:                
+                qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
 
         return qs
     

@@ -70,13 +70,16 @@ urlpatterns = [
     # Views above that come from the Leaderboards app don't need that.
     path('autocomplete/<model>/<field_name>', ajax_Autocomplete.as_view(), {'app': 'Leaderboards'}, name='autocomplete'),
     path('autocomplete/<model>/<field_name>/all', ajax_Autocomplete.as_view(), {'app': 'Leaderboards', 'all': True}, name='autocomplete_all'),
+    path('autocomplete/<model>/<field_name>/<field_operation>', ajax_Autocomplete.as_view(), {'app': 'Leaderboards'}, name='autocomplete_flexible'),
 
-    # An AJAX view that is used to return teh value of a select option given an id/pk
+    # An AJAX view that is used to return the value of a select option given an id/pk
     # If we create a formset dynamically from supplied IDs the select widget wants to
-    # have text to display for that ID too. THis isuse exists with django-autocomplete-light
+    # have text to display for that ID too. This isuse exists with django-autocomplete-light
     # widgets becuase they are initially empty until the autocomplete URL above is called to 
     # populate a drop down. It doesn't exist using normal Django select widgets because they
     # are initialised with ALL the options a model offers (not scaleable alas).
+    #
+    # This URL returns the string for a given PK in a model that a selector should show.
     path('selector/<model>/<pk>', ajax_Selector, {'app': 'Leaderboards'}, name='get_selector'),
     
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)

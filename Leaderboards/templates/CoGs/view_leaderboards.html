@@ -4,10 +4,12 @@
 
 {% block content %}
 {{ widget_media }}
-
 <script>
 	$.fn.select2.defaults.set( "theme", "bootstrap" );
 </script>
+
+{#   A pile of options for leaderboards that will try populate a structure in the backend - Leaderboards.views.leaderboard_options#}
+{#   while enforcing some rules locally in the UI for convenience with JS. The rules can be summarised as follows:   #}
 
 <table class=LeaderboardOptions>
 	<tr>
@@ -17,13 +19,7 @@
 		<td class='tight options'>
 			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 			
-			<input type="button" id="btnAllLeaderboards" value="All Leaderboards" onclick="refetchLeaderboards(event);">
-
-			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);" style="margin-left: 8ch;"> for
-			
-			
-			<input type="button" id="btnImpact" value="Impact of Last Session"  onclick="refetchLeaderboards(event);" style="margin-left: 8ch;">
-			of <input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);"> days
+			<input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);">
 		</td>
 	</tr>
 	<tr>
@@ -31,7 +27,7 @@
 			in
 		</td>
 		<td class='options'>
-			<select id="selCols" onchange='DrawTables("tblLB");' autofocus>
+			<select id="cols" onchange='DrawTables("tblLB");' autofocus>
 			  <option>1</option>
 			  <option>2</option>
 			  <option>3</option>
@@ -43,10 +39,10 @@
 
 			linking game and player names to
 			
-			<select id="selLinks" onchange='DrawTables("tblLB");'>
-			  <option value="none">nowhere</option>
-			  <option value="CoGs">CoGs Leaderboard Space</option>
-			  <option value="BGG">boardgamegeek.com</option>
+			<select id="links" onchange='DrawTables("tblLB");'>
+				{% for v, l in leaderboard_options.LinkSelections.items %}
+				  <option value="{{ v }}">{{ l }}</option>
+				{% endfor %}			  
 			</select>
 		</td>
 	</tr>
@@ -85,10 +81,10 @@
 		<td class='options tight'/>
 		<td class='options tight' style="line-height:2;">
 			Using player 
-			<select id="selNames">
-			  <option value="nick">nickname</option>
-			  <option value="full">full name</option>
-			  <option  value="complete">full name (nickname)</option>
+			<select id="names">
+				{% for v, l in leaderboard_options.NameSelections.items %}
+				  <option value="{{ v }}">{{ l }}</option>
+				{% endfor %}			  
 			</select>
 		</td>
 	</tr>
@@ -100,49 +96,6 @@
 			Filtering:
 		</th>
 	</tr>
-
-	{# GAME FILTERS #}
-		
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options tight'/>
-		<th class='options tight'> 
-			Games:				
-		</th>			
-	</tr>			
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options tight'/>
-		<td class='options tight indent' style="line-height:2;"> 
-			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> most popular games<br>
-			<label>Only these games: </label>{{ widget_games }}<br>				
-		</td>			
-	</tr>			
-	
-	{# PLAYER FILTERS #}
-			
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options tight'/>
-		<th class='options tight'> 
-			Players:
-		</th>			
-	</tr>			
-	<tr class="toggle" style="visibility: collapse;">
-		<td class='options tight'/>
-		<td class='options tight indent' style="line-height:2;"> 
-			<label>Only games played by one or more of these players: </label>{{ widget_players }}<br>
-			<input type="number" id="num_players" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> 
-				<select id="PlayerNumberContext">
-				  <option value="top">top players</option>
-				  <option value="before">players before a select player</option>
-				  <option value="around">players around a select player</option>
-				  <option value="after">players around a select player</option>
-				</select><br>		
-			<label>Only players who have played a game at least </label> 
-				<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);">
-				<label>times</label><br>
-			<label>Only players who have played a game since: </label> 
-				<input class="DateTimeField" id="played_since" type="text"><br>
-		</td>			
-	</tr>			
 
 	{# LEAGUE FILTERS #}
 			
@@ -156,24 +109,92 @@
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight indent' style="line-height:2;"> 
-			<label>Only games played by one or more of these leagues: </label>{{ widget_leagues }}<br>				
+			<label>Only leaderboards for these leagues: </label>{{ widget_leagues }}<br>				
 		</td>			
 	</tr>			
 
-	{# ACTIVITY FILTERS #}
+	{# GAME FILTERS #}
+		
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<th class='options tight'> 
+			Games:				
+		</th>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="radio" name="game_selection" value="selected"> 
+			<label>Only leaderboards for these games: </label>{{ widget_games }}
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="radio" name="game_selection" value="top_n">
+			<label>Only leaderboards for the</label>
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> most popular games
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="radio" name="game_selection" value="activity"> 
+			<label>Only leaderboards that changed on or after: </label>
+			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')">
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="radio" name="game_selection" value="played_by"> 
+			<label>Only leaderboards for games played by one or more of these players: </label>{{ widget_players }}
+		</td>			
+	</tr>
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<input type="radio" name="game_selection" value="session_impact">
+			Only leaderboards for games played in the last session of 
+			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
+			<label>days duration</label>
+		</td>			
+	</tr>			
+	
+	
+	{# PLAYER FILTERS #}
 			
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<th class='options tight'> 
-			Activity:
+			Players:
 		</th>			
 	</tr>			
-
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight indent' style="line-height:2;"> 
-			<label>Only leaderboards that changed on or after: </label>
-			<input class="DateTimeField" id="changed_since" type="text" onchange="copy_if_empty('#changed_since','#compare_back_to')"><br>
+			Show 
+			<input type="number" id="num_players" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);"> 
+				<select id="num_players_context">
+					{% for v, l in leaderboard_options.PlayerNumContextSelections.items %}
+					  <option value="{{ v }}">{{ l }}</option>
+					{% endfor %}
+				</select> in each leaderboard.
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<label>Show players who have played the game at least </label> 
+				<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" onchange="blank_zero(this);">
+				<label>times</label>
+		</td>			
+	</tr>			
+	<tr class="toggle" style="visibility: collapse;">
+		<td class='options tight'/>
+		<td class='options tight indent' style="line-height:2;"> 
+			<label>Show players who have played a game since: </label> 
+				<input class="DateTimeField" id="played_since" type="text">
 		</td>			
 	</tr>			
 
@@ -187,18 +208,12 @@
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight' style="line-height:2;">
-			<label>Leaderboards as they were at (i.e. historic snapshot): </label>
-			<input class="DateTimeField" id="as_at" type="text" ><br>
+			<label>Leaderboards as they were at: </label>
+			<input class="DateTimeField" id="as_at" type="text" > <label>(i.e. historic snapshot)</label><br>
 		</td>			
 	</tr>	
-			
-{#	EVOLUTION OPTIONS #}
 
-{#TODO: Move Impact of to here and use radio buttons. Eitehr#}
-{# impact of last n day session or #}
-{# compare with last n prior or#}
-{# present between date range#}
-{# three radio buttons to choose from.#}
+{#	EVOLUTION OPTIONS #}
 
 	<tr class="toggle" style="visibility: collapse;">
 		<th class='options indent' colspan=2>
@@ -214,25 +229,28 @@
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight indent' style="line-height:2;">
+			<input type="radio" name="evolution_selection" value="n_prior">
 			<input type="number" id="compare_with" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
 			<label>prior leaderboards</label>
 		</td>
 	</tr>
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
-		<td class='options tight'>
-				or
+		<td class='options tight indent' style="line-height:2;">
+			<input type="radio" name="evolution_selection" value="back_to">
+			<label>leaderboards back to:</label> <input class="DateTimeField" id="compare_back_to" type="text">
 		</td>
-	</tr>
+	</tr>	
 	<tr class="toggle" style="visibility: collapse;">
 		<td class='options tight'/>
 		<td class='options tight indent' style="line-height:2;">
-			<label>leaderboards back to:</label> <input class="DateTimeField" id="compare_back_to" type="text">
-			<label>and/or up until:</label>			
-			<input class="DateTimeField" id="compare_till" type="text">
+			<input type="radio" name="evolution_selection" value="session_impact">
+			leaderboards back to, just before, the last game session 
+			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this);">
+			<label>days duration</label>
 		</td>
-	</tr>	
-	
+	</tr>
+				
 {#	ADVANCED ACTIONS #}
 	
 	<tr class="toggle" style="visibility: collapse;">
@@ -253,10 +271,14 @@
 	</tr>
 </table>
 
+{#	PAGE HEADER #}
+
 <h3><label id='lblTotalCount'></label><label id='lblSnapCount' style='margin-left:1ch'></label></h3>
+
+{# THE LEADERBOARDS! - Placeholder filled by Javascript rendered of the template or ajax provided data #}
 		
-<table id='tblLB'>
-</table>
+<table id='tblLB'></table>
+
 {% endblock %}
 
 {% block startscript %}
@@ -284,7 +306,7 @@
 	// As a side note, the standard view has one snapshot, the current ratings, and leaderboards pr at some other specified time (as_at) 
 	// Extra snapshots are expected when asked for (for comparisons with history and evolutionary examinations), one
 	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
-	// up to and including the snapshot at compare_till or now if compare_till isn't specified.  
+	// up to and including the snapshot at as_at or now if as_at isn't specified.  
 	
 	var leaderboards = {{leaderboards|safe}};
 	
@@ -302,7 +324,10 @@
 	url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
 	url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
 	url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
-	url_list_Sessions = "{% url 'list' 'Session'%}";		
+	url_list_Sessions = "{% url 'list' 'Session'%}";
+	
+	// A URL for the Select2 widgets (initilising them is a little involved)
+	url_selector = "{% url 'autocomplete_flexible' '__MODEL__' 'pk' 'in' %}"		
 </script>
 {% endblock %}
 
