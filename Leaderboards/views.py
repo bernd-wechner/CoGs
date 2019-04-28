@@ -558,13 +558,47 @@ class view_Detail(DetailViewExtended):
 # Define defaults for the view inputs 
 
 class leaderboard_options:
+    '''
+    Captures the options that can be made available to and be submitted by a web page when
+    requesting leaderboards. 
+    
+    Three key parts in the class:
+    
+    1) Some enum defintions for selectable options. Defined as lists of 2-tuples. 
+        The lists and the enums built fromt hem are useful in code and the 
+        context of a Leaderboards page (the lists of 2 tuples for example can
+        be used to construct select widgets).
+        
+        These are CamelCased  
+        
+    2) The options themselves. They ar elower case words _ seaprated.
+    
+    3) Methods:
+    
+        A constructor that can receives a QueryDcit from requst.GET or reuqest.POST
+        and build an instance on basis of what is submitted. A default instance if 
+        none is supplied.
+        
+        A JSONifier to supply context with a dict of JSONified options so the options
+        can conveniently be used in a template.
+    '''
+    
     # Some useful enums to use in the options. Really just a way of encapsulating related 
     # types so we can use them in templates to pupulate selectors and receive them from 
-    # requests in an orderly way.    
+    # requests in an orderly way.
+    #
+    # They are defined as lists of 2-tuples. The first value in each tuple is the name
+    # of the enum and typically the value that is used in URLs and in GET and POST 
+    # submissions. The second value is the plain text label that can be used on selector
+    # on a web page if needed, a more verbose explanation of the selection.    
+    LeagueSelections = OrderedDict((("played_by_any", "Games played by any of the selected leagues"),
+                                    ("played_by_all", "Games played by all of the selected leagues")))
+
     GameSelections = OrderedDict((("selected", "Selected games"), 
                                   ("top_n", "Top n games"),
                                   ("activity", "Games played since"),
-                                  ("played_by", "Games played by"),
+                                  ("played_by_any", "Games played by any of the selected players"),
+                                  ("played_by_all", "Games played by all of the selected players"),
                                   ("session_impact", "Games from last session")))
     
     EvolutionSelections = OrderedDict((("none", "Nothing"),
@@ -583,16 +617,24 @@ class leaderboard_options:
     PlayerNumContextSelections = OrderedDict((("top", "top players"),
                                               ("before", "players before a select player"),
                                               ("around", "players around a select player"),
-                                              ("after", "players around a select player"))) 
+                                              ("after", "players around a select player")))
+    
 
-    # We make enums out of the lists of 2-tuples for use in code.       
+    # We make enums out of the lists of the lists of 2-tuples above for use in code.       
+    LeagueSelection           = enum.Enum("LeagueSelection", LeagueSelections)
     GameSelection             = enum.Enum("GameSelection", GameSelections)
     EvolutionSelection        = enum.Enum("EvolutionSelection", EvolutionSelections)       
     NameSelection             = enum.Enum("NameSelection", NameSelections)
     LinkSelection             = enum.Enum("LinkSelection", LinkSelections)
     PlayerNumContextSelection = enum.Enum("PlayerNumContextSelection", PlayerNumContextSelections)
-       
+           
     # Method selectors
+    
+    # We support a couple fo ways toc ombine multiple leagues
+    # NOTE: leagues are used to selected games and players.
+    # FIXME: clarify how. WIP - work in progress
+    league_selection = LeagueSelection.played_by_any.name
+            
     # We support multiple means of specifying which games to present that ar enot compatible and must choose one of them. 
     game_selection = GameSelection.top_n.name  # The means by which to select games
 
@@ -638,6 +680,8 @@ class leaderboard_options:
     cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
     
     # NOT YET IMPLEMENTED
+    # Consider: could be a list of players, could be a bool like hightlight_players
+    # and use the players list.
     trace = []                  # A list of players to draw trace arrows for from snapshot to snapshot
        
     def __init__(self, request=None):
@@ -998,7 +1042,7 @@ def ajax_Leaderboards(request, raw=False):
     elif (lo.game_selection == lo.GameSelection.activity.name):
         if lo.changed_since != NEVER:
             gfilter &= Q(sessions__date_time__gte=lo.changed_since)
-    elif (lo.game_selection == lo.GameSelection.played_by.name):
+    elif (lo.game_selection == lo.GameSelection.played_by_any.name):
         if lo.players:
             gfilter &= Q(sessions__performances__player__pk__in=lo.players)
     elif (lo.game_selection == lo.GameSelection.session_impact.name):

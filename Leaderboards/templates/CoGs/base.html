@@ -3,10 +3,13 @@
 <head>
 	{% load staticfiles %}
 	<title>{% block title %}{% endblock %}</title>
+	
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/default.css' %}" />
 	<link rel="icon" href="{% static 'favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
+	
+	{% block styles %}{% endblock %}
 
 	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >

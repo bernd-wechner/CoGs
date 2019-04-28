@@ -289,20 +289,12 @@ function LabelButton(element) {
 	$('#'+element).val(label);
 }
 
-function toggle_options() {
-	current = $(".toggle")[0].style.visibility;
-	if (current == "collapse") 
-		$(".toggle").css('visibility', 'visible'); 
+function toggle_visibility(class_name, visible_style) {
+	current = $("."+class_name)[0].style.display;
+	if (current == visible_style) 
+		$("."+class_name).css('display', 'none');		
 	else
-		$(".toggle").css('visibility', 'collapse');		
-}
-
-function toggle_filters() {
-	current = $(".toggle")[0].style.display;
-	if (current == "none")
-		$(".toggle").css('display', 'table-row');
-	else
-		$(".toggle").css('display', 'none');		
+		$("."+class_name).css('display', visible_style); 
 }
 
 function toggle_highlights(highlight_type, checkbox) {
@@ -317,33 +309,14 @@ function toggle_highlights(highlight_type, checkbox) {
 		$(".leaderboard."+tag_on).removeClass(tag_on).addClass(tag_off);
 }
 
-//function toggle_player_highlights() {
-//	if (document.getElementById("chkHighlightPlayers").checked)
-//		$(".leaderboard.emphasis_off").removeClass('emphasis_off').addClass('emphasis_on');
-//	else
-//		$(".leaderboard.emphasis_on").removeClass('emphasis_on').addClass('emphasis_off');
-//}
-//
-//function toggle_change_highlights() {
-//	if (document.getElementById("chkHighlightChanges").checked)
-//		$(".leaderboard.highlight_off").removeClass('highlight_off').addClass('highlight_on');
-//	else
-//		$(".leaderboard.highlight_on").removeClass('highlight_on').addClass('highlight_off');
-//}
-
-function mirror(from, to) {	$(to).val($(from).val()); }
-
-function copy_if_empty(from, to) { if ($(to).val() == '') $(to).val($(from).val()); }
-
-function blank_zero(target) { 
-	if (target.value == 0) target.value = ""; 
-}
-
-function show_url() {
-	// We strip a trailing / if present for elegance
-	var url = url_leaderboards.replace(/\/$/, "") + URLopts(null);
-	window.history.pushState("","", url);
-}
+// Some simple one-liner functions to handle input events
+function check_check(me, boxes) { $(boxes).prop('checked', Boolean(me.value)); }
+function check_radio(me, name, value, fallback) { $("input[name='"+name+"'][value='"+(me.value?value:fallback)+"']").prop("checked",true); }
+function only_one(me, others) {	if (me.checked)	$(others).prop('checked', false); }
+function mirror(me, to) { $(to).val(me.value); }
+function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
+function blank_zero(me) { if (me.value == 0) me.value = ""; }
+function show_url() { window.history.pushState("","", url_leaderboards.replace(/\/$/, "") + URLopts(null)); }
 
 var REQUEST = new XMLHttpRequest();
 REQUEST.onreadystatechange = function () {
