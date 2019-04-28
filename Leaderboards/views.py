@@ -1,3 +1,4 @@
+import re
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import json
 import pytz
@@ -372,7 +373,7 @@ def html_selector(model, id, default=0, placeholder="", attrs={}):
     url = reverse_lazy('autocomplete_all', kwargs={"model": model.__name__, "field_name": model.selector_field})
     field = ModelMultipleChoiceField(model.objects.all())
         
-    widget = autocomplete.ModelSelect2Multiple(url=url, attrs={**attrs, "id": id, "data-placeholder": placeholder, "data-theme": "bootstrap"})    
+    widget = autocomplete.ModelSelect2Multiple(url=url, attrs={**attrs, "class": "multi_selector", "id": id, "data-placeholder": placeholder, "data-theme": "bootstrap"})    
     widget.choices = ModelChoiceIterator(field)
         
     return widget.render(model.__name__, default)
@@ -684,7 +685,7 @@ class leaderboard_options:
     # and use the players list.
     trace = []                  # A list of players to draw trace arrows for from snapshot to snapshot
        
-    def __init__(self, request=None):
+    def __init__(self, request=None, session_filter={}):
         '''
         Build a leaderboard options instance populated with options froma request dictionary
         (could be from request.GET or request.POST). If none is specified build with default 
@@ -696,8 +697,9 @@ class leaderboard_options:
               the League, Game and Player selectors.
         '''
         
-        # Just keep defaults if no request if provided
-        if request is None:
+        # Just keep defaults if no request if provided and no session filter exists
+        # Either of which may be used to set some options.
+        if not request and not session_filter:
             return
         
         # The default value of the option is an indicator of the expected type. 
@@ -727,11 +729,15 @@ class leaderboard_options:
             else:
                 self.evolution_selection = self.EvolutionSelection.back_to.name                            
                 
-        # Capture the multivalue select ptions first that help us determine the list of games
-        # to provide leaderboards for.        
+        # Capture the multivalue select options first that help us determine 
+        # the list of games to provide leaderboards for.
+        preferred_league = session_filter.get("league", 0)
         if 'leagues' in request:
             leagues = request['leagues'].split(",")
+        elif preferred_league:
+            leagues = [preferred_league]
             
+        if leagues:            
             # Validate the leagues  discarding any invalid ones
             self.leagues = []
             for league in leagues:
@@ -915,28 +921,10 @@ def view_Leaderboards(request):
     # Fetch the leaderboards
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
-    lo = leaderboard_options(request.GET)    
+    lo = leaderboard_options(request.GET, request.session.get('filter',{}))    
     default = leaderboard_options()
     
     (title, subtitle) = get_leaderboard_titles(lo)
-
-    # Get list of leagues, (pk, name) tuples.
-    leagues = [(ALL_LEAGUES, 'ALL')] 
-    leagues += [(x.pk, str(x)) for x in League.objects.all()]
-
-    # Get list of players, (pk, name) tuples.
-    players = [(ALL_PLAYERS, 'ALL')] 
-    if lo.leagues:
-        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk__in=lo.leagues)]
-    else:   
-        players += [(x.pk, str(x)) for x in Player.objects.all()]    
-
-    # Get list of games, (pk, name) tuples.
-    games = [(ALL_GAMES, 'ALL')] 
-    if lo.leagues:
-        games += [(x.pk, str(x)) for x in Game.objects.filter(leagues__pk__in=lo.leagues)]
-    else:   
-        games += [(x.pk, str(x)) for x in Game.objects.all()]    
             
     c = {'title': title,
          'subtitle': subtitle,
@@ -949,15 +937,10 @@ def view_Leaderboards(request):
          # For us in templates
          'leaderboard_options': lo,
          
-         # To populate the selectors with
-         'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
-         'players': json.dumps(players, cls=DjangoJSONEncoder),
-         'games': json.dumps(games, cls=DjangoJSONEncoder),         
-         
          # Widgets to use in the form
-         'widget_leagues': html_selector(League, "leagues", request.session.get("filter", {}).get("league", 0), ALL_LEAGUES),
-         'widget_players': html_selector(Player, "players", 0, ALL_PLAYERS),
-         'widget_games': html_selector(Game, "games", 0, ALL_GAMES),
+         'widget_leagues': html_selector(League, "leagues", lo.leagues, ALL_LEAGUES),
+         'widget_players': html_selector(Player, "players", lo.players, ALL_PLAYERS),
+         'widget_games': html_selector(Game, "games", lo.games, ALL_GAMES),
          'widget_media': autocomplete.Select2().media,
          
          # Time and timezone info
@@ -1012,7 +995,7 @@ def ajax_Leaderboards(request, raw=False):
     '''
     
     # Fetch the options submitted (and the defaults)
-    lo = leaderboard_options(request.GET)
+    lo = leaderboard_options(request.GET, request.session.get('filter',{}))
 
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = get_leaderboard_titles(lo)

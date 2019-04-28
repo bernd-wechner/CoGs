@@ -53,8 +53,14 @@ get_and_report_metrics(leaderboards);
 // An initialiser for Select2 widgets used. Alas not so trivial to set
 // as descrribed here: 
 //   https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
-function Select2Init(selector, values) {	
-	if (values.length > 0) {
+function Select2Init(selector, values) {
+	const selected = selector.val();
+	let changed = false;
+
+	for (let i = 0; i < values.length; i++)
+		if (selected.indexOf(values[i].toString()) < 0) changed = true;
+	
+	if (changed) {
 		selector.val(null).trigger('change');
 		$.ajax({
 		    type: 'GET',
@@ -92,10 +98,10 @@ function InitControls(options) {
 	// Then we populate all the Game selectors, starting with the three multiselectors
 	// We request displaying of games only that are listed or played in the listed leagues 
 	// or by the listed players. 
-	Select2Init($('#leagues'), options.leagues)
 	Select2Init($('#games'), options.games)
+	Select2Init($('#leagues'), options.leagues)
 	Select2Init($('#players'), options.players)
-	
+		
 	// Then the rest of the game selectors
 	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
 	$('#num_games').val(options.num_games);
@@ -294,7 +300,8 @@ function toggle_visibility(class_name, visible_style) {
 	if (current == visible_style) 
 		$("."+class_name).css('display', 'none');		
 	else
-		$("."+class_name).css('display', visible_style); 
+		$("."+class_name).css('display', visible_style);
+	$('.multi_selector').trigger('change');
 }
 
 function toggle_highlights(highlight_type, checkbox) {
