@@ -43,28 +43,28 @@
 	
 	<div class="lo_visibiity">
 		<div class="lo_highlight_players">
-			<input type="checkbox" id="chkHighlightPlayers" oninput='toggle_highlights("players", this);'> 		
-			<label for="chkHighlightPlayers">Highlight players</label>
+			<input type="checkbox" id="chk_highlight_players" oninput='toggle_highlights("players", this);'> 		
+			<label for="chk_highlight_players">Highlight players</label>
 		</div>
 		<div class="lo_highlight_changes">
-			<input type="checkbox" id="chkHighlightChanges" oninput='toggle_highlights("changes", this);'> 		
-			<label for="chkHighlightChanges">Highlight changes</label>
+			<input type="checkbox" id="chk_highlight_changes" oninput='toggle_highlights("changes", this);'> 		
+			<label for="chk_highlight_changes">Highlight changes</label>
 		</div>
 		<div class="lo_highlight__selected">
-			<input type="checkbox" id="chkHighlightSelected" oninput='toggle_highlights("selected", this);'> 			
-			<label for="chkHighlightSelected">Highlight selected players</label>
+			<input type="checkbox" id="chk_highlight_selected" oninput='toggle_highlights("selected", this);'> 			
+			<label for="chk_highlight_selected">Highlight selected players</label>
 		</div>
 		<div class="lo_session_details">
-			<input type="checkbox" id="chkSessionDetails" oninput='DrawTables("tblLB");'> 		
-			<label for="chkSessionDetails">Show session details</label>
+			<input type="checkbox" id="chk_details" oninput='DrawTables("tblLB");'> 		
+			<label for="chk_details">Show session details</label>
 		</div>
 		<div class="lo_pre_predictions">
-			<input type="checkbox" id="chkSessionAnalysisPre" oninput='DrawTables("tblLB");'> 		
-			<label for="chkSessionAnalysisPre">Show TrueSkill Predictions</label>
+			<input type="checkbox" id="chk_analysis_pre" oninput='DrawTables("tblLB");'> 		
+			<label for="chk_analysis_pre">Show TrueSkill Predictions</label>
 		</div>	
 		<div class="lo_post_predictions">
-			<input type="checkbox" id="chkSessionAnalysisPost" oninput='DrawTables("tblLB");'> 
-			<label for="chkSessionAnalysisPost">Show Post-Session TrueSkill Predictions</label>
+			<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'> 
+			<label for="chk_analysis_post">Show Post-Session TrueSkill Predictions</label>
 		</div>	
 	</div>	
 	
@@ -96,121 +96,134 @@
 		    <div class="select_players">{{ widget_players }}</div>
 		</div>
 	  
+		{#	Game Filters	#}
+	  
 		<div class="filter_games_selected">
-			<input type="checkbox" id="chk_game_selected"> 
-			<label for="chk_game_selected">for the <b>selected</b> games (above).</label>
+			<input type="checkbox" id="chk_games" class="filter_games"> 
+			<label for="chk_games">for the <b>selected</b> games (above).</label>
 	 	</div>
 	
 		<div class="filter_games_top_n">
-			<input type="checkbox" id="chk_game_top_n">
-			<label for="num_games">for the</label>
-			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_game_top_n');"> 
-			<label for="num_games"><b>most popular</b> games</label>
+			<input type="checkbox" id="chk_num_games" class="filter_games">
+			<label for="chk_num_games">for the
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_games');"> 
+			<b>most popular</b> games</label>
 		</div>
 		
-	  	<div class="filter_games_played_since">
-			<input type="checkbox" id="chk_game_activity"> 
-			<label for="changed_since">that <b>changed on or after</b>: </label>
-			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_game_activity'); copy_if_empty(this,'#compare_back_to');">
-	  	</div>
-	  
 	  	<div class="filter_games_league_any">
-			<input type="checkbox" id="chk_game_league_any" oninput="only_one(this, '#chk_game_league_all')"> 
-			<label for="chk_game_league_any">for games played by <b>any</b> of the selected <b>leagues</b> (above)</label>
+			<input type="checkbox" id="chk_game_leagues_any" class="filter_games" oninput="only_one(this, '#chk_game_leagues_all')"> 
+			<label for="chk_game_leagues_any">for games played by <b>any</b> of the selected <b>leagues</b> (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_games_league_all">
-			<input type="checkbox" id="chk_game_league_all" oninput="only_one(this, '#chk_game_league_any')"> 
-			<label for="chk_game_league_all">for games played by <b>all</b> of the selected <b>leagues</b> (above)</label>
+			<input type="checkbox" id="chk_game_leagues_all" class="filter_games" oninput="only_one(this, '#chk_game_leagues_any')"> 
+			<label for="chk_game_leagues_all">for games played by <b>all</b> of the selected <b>leagues</b> (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_games_player_any">
-			<input type="checkbox" id="chk_game_player_any" oninput="only_one(this, '#chk_game_player_all')"> 
-			<label for="chk_game_player_any">for games played by <b>any</b> of the selected <b>players</b> (above)</label>
+			<input type="checkbox" id="chk_game_players_any" class="filter_games" oninput="only_one(this, '#chk_game_players_all')"> 
+			<label for="chk_game_players_any">for games played by <b>any</b> of the selected <b>players</b> (above)</label>
 	  	</div>
 	  	
 	 	<div class="filter_games_player_all">
-			<input type="checkbox" id="chk_game_player_all" oninput="only_one(this, '#chk_game_player_any')"> 
-			<label for="chk_game_player_all">for games played by <b>all</b> of the selected <b>players</b> (above)</label>
+			<input type="checkbox" id="chk_game_players_all" class="filter_games" oninput="only_one(this, '#chk_game_players_any')"> 
+			<label for="chk_game_players_all">for games played by <b>all</b> of the selected <b>players</b> (above)</label>
 	  	</div>
 
-	  	<div class="filter_games_session">
-			<input type="checkbox" id="chk_game_session"> 
-			for games played in the last session of  
-			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_game_session'); mirror(this,'#num_days_ev');"> 
-			<label for="num_days">days duration</label> 
+	  	<div class="filter_games_played_since">
+			<input type="checkbox" id="chk_changed_since" class="filter_games" oninput="only_one(this, '#chk_num_days')"> 
+			<label for="chk_changed_since">that <b>changed on or after</b>: </label>
+			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_changed_since', '#chk_num_days'); copy_if_empty(this,'#compare_back_to');">
 	  	</div>
+	  
+	  	<div class="filter_games_session">
+			<input type="checkbox" id="chk_num_days" class="filter_games" oninput="only_one(this, '#chk_changed_since')" > 
+			<label for="chk_num_days">for games played in the last session of  
+			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '#chk_changed_since'); mirror(this,'#num_days_ev');"> 
+			days duration</label> 
+	  	</div>
+	  	
+		{#	Player Filters	#}
+	
+		<div class="filter_players_selected">
+			<input type="checkbox" id="chk_players" class="filter_players"> 
+			<label for="chk_players">the <b>selected</b> players (above).</label>
+	 	</div>
 	
 	  	<div class="filter_players_top">
-			<input type="checkbox" id="chk_player_top"> 
-			<input type="number" id="num_players_top" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_player_top');">
-			<label for="num_players_top">top players</label>   
+			<input type="checkbox" id="chk_num_players_top" class="filter_players"> 
+			<input type="number" id="num_players_top" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_top');">
+			<label for="chk_num_players_top">top players</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_above">
-			<input type="checkbox" id="chk_player_above"> 
-			<input type="number" id="num_players_above" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_player_above');">   
-			<label for="num_players_above">players above each selected player (above)</label>   
+			<input type="checkbox" id="chk_num_players_above" class="filter_players"> 
+			<input type="number" id="num_players_above" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_above');">   
+			<label for="chk_num_players_above">players above each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_below">
-			<input type="checkbox" id="chk_player_below"> 
-			<input type="number" id="num_players_below" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_player_below');">   
-			<label for="num_players_below">players below each selected player (above)</label>   
+			<input type="checkbox" id="chk_num_players_below" class="filter_players"> 
+			<input type="number" id="num_players_below" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_below');">   
+			<label for="chk_num_players_below">players below each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_min_playcount">
-			<input type="checkbox" id="chk_player_min_count"> 
-			<label for="min_plays">players who have <b>played the game at least</b> </label> 
-			<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_player_min_count');">
-			<label for="min_plays"><b>times</b></label>
+			<input type="checkbox" id="chk_min_plays" class="filter_players"> 
+			<label for="chk_min_plays">players who have <b>played the game at least</b> 
+			<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_min_plays');">
+			<b>times</b></label>
 	  	</div>
 	  	
 	  	<div class="filter_players_played_since">
-			<input type="checkbox" id="chk_player_played_since"> 
-			<label for="played_since">players who have <b>played the game since</b> </label> 
-			<input class="DateTimeField" id="played_since" type="text" onchange="check_check(this, '#chk_player_played_since');">
+			<input type="checkbox" id="chk_played_since" class="filter_players"> 
+			<label for="chk_played_since">players who have <b>played the game since</b> </label> 
+			<input class="DateTimeField" id="played_since" type="text" onchange="check_check(this, '#chk_played_since');">
 	  	</div>
 	  	
 	  	<div class="filter_players_league_any">
-			<input type="checkbox" id="chk_player_league_any" oninput="only_one(this, '#chk_player_league_all')"> 
-			<label for="chk_player_league_any">players in <b>any</b> of the selected leagues (above)</label>
+			<input type="checkbox" id="chk_player_leagues_any" class="filter_players" oninput="only_one(this, '#chk_player_leagues_all')"> 
+			<label for="chk_player_leagues_any">players in <b>any</b> of the selected leagues (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_players_league_all">
-			<input type="checkbox" id="chk_player_league_all" oninput="only_one(this, '#chk_player_league_any')"> 
-			<label for="chk_player_league_all">players in <b>all</b> of the selected leagues (above)</label>
+			<input type="checkbox" id="chk_player_leagues_all" class="filter_players" oninput="only_one(this, '#chk_player_leagues_any')"> 
+			<label for="chk_player_leagues_all">players in <b>all</b> of the selected leagues (above)</label>
 	  	</div>
+	  
+		{#	Perspective option 	#}
 	  
 		<div class="select_perspective">
-			<label for="as_at">Show leaderboards as they were at: </label>
-			<input class="DateTimeField" id="as_at" type="text" > <label>(i.e. historic snapshots)</label><br>
+			<label for="as_at">Show leaderboards as they were at:
+			<input class="DateTimeField" id="as_at" type="text" > (i.e. historic snapshots)</label><br>
 	  	</div>
 	  
+		{#	Evolution options #}
+
 		<div class="select_evolution">Compare each leaderboard with:</div>
 		
 	  	<div class="select_evolution_none">
-			<input type="radio" name="evolution_selection" value="select_evolution_none">
-			<label for="select_evolution_none">nothing</label>
+			<input type="radio" name="evolution_selection" value="no_evolution" id="chk_no_evolution"  class="evolution_selection">
+			<label for="chk_no_evolution">nothing</label>
 	  	</div>
 	
 	  	<div class="select_evolution_n_prior">
-			<input type="radio" name="evolution_selection" value="n_prior">
-			<input type="number" id="compare_with" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'n_prior', 'select_evolution_none');">
-			<label for="compare_with">prior leaderboards</label>
+			<input type="radio" name="evolution_selection" value="compare_with" id="chk_compare_with" class="evolution_selection">
+			<input type="number" id="compare_with" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'compare_with', 'no_evolution');">
+			<label for="chk_compare_with">prior leaderboards</label>
 	  	</div>
 	
 	  	<div class="select_evolution_back_to">
-			<input type="radio" name="evolution_selection" value="back_to">
-			<label for="compare_back_to">leaderboards back to:</label> 
-			<input class="DateTimeField" id="compare_back_to" type="text" onchange="check_radio(this, 'evolution_selection', 'back_to', 'select_evolution_none');">
+			<input type="radio" name="evolution_selection" value="compare_back_to" id="chk_compare_back_to" class="evolution_selection">
+			<label for="chk_compare_back_to">leaderboards back to:</label> 
+			<input class="DateTimeField" id="compare_back_to" type="text" onchange="check_radio(this, 'evolution_selection', 'compare_back_to', 'no_evolution');">
 	  	</div>
 	
 	  	<div class="select_evolution_session">
-			<input type="radio" name="evolution_selection" value="session_impact">
-			<label for="num_days_ev">leaderboards back to the start of the last game session of</label> 
-			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'session_impact', 'select_evolution_none'); mirror(this,'#num_days');">
-			<label for="num_days_ev">days duration</label>
+			<input type="radio" name="evolution_selection" value="num_days_ev" id="chk_num_days_ev"  class="evolution_selection">
+			<label for="chk_num_days_ev">leaderboards back to the start of the last game session of 
+			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'num_days_ev', 'no_evolution'); mirror(this,'#num_days');">
+			days duration</label>
 	  	</div>
 	
 	  	<div class="button_copy"><button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> </div>

@@ -785,7 +785,7 @@ class Player(PrivacyMixIn, AdminModel):
         '''
         Renders the players name in a nominated style
         :param style: Supports "nick", "full", "complete"
-        '''
+        '''        
         return self.complete_name if style == "complete" else self.full_name if style == "full" else self.name_nickname if style == "nick" else "Anonymous"        
 
     def rating(self, game):
@@ -1476,14 +1476,12 @@ class Session(TimeZoneMixIn, AdminModel):
         order. Useful for traversing a list of all players in a session
         irrespective of the structure of teams or otherwise.
         
-        # TODO: Fix so it works with team sesssion!
         '''
         players = set()
-        ranks = Rank.objects.filter(session=self.id)
+        performances = Performance.objects.filter(session=self.pk)
         
-        for rank in ranks:
-            for player in rank.players:
-                players.add(player)
+        for performance in performances:
+            players.add(performance.player)
                 
         return players
 

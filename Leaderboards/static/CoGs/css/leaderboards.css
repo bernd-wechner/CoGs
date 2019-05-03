@@ -62,14 +62,15 @@
 		"label_filtering   intro_games             intro_games                  intro_games                  intro_games"
 		"label_filtering   .                       filter_games_selected        filter_games_selected        filter_games_selected"
 		"label_filtering   .                       filter_games_top_n           filter_games_top_n           filter_games_top_n"
-		"label_filtering   .                       filter_games_played_since    filter_games_played_since    filter_games_played_since"
 		"label_filtering   .                       filter_games_league_any      filter_games_league_any      filter_games_league_any"
 		"label_filtering   .                       filter_games_league_all      filter_games_league_all      filter_games_league_all"
 		"label_filtering   .                       filter_games_player_any      filter_games_player_any      filter_games_player_any"
 		"label_filtering   .                       filter_games_player_all      filter_games_player_all      filter_games_player_all"
+		"label_filtering   .                       filter_games_played_since    filter_games_played_since    filter_games_played_since"
 		"label_filtering   .                       filter_games_session         filter_games_session         filter_games_session"
 		"label_filtering   filter_players          filter_players               filter_players               filter_players"
 		"label_filtering   intro_players           intro_players                intro_players                intro_players"
+		"label_filtering   .                       filter_players_selected      filter_players_selected      filter_players_selected"
 		"label_filtering   .                       filter_players_top           filter_players_top           filter_players_top"
 		"label_filtering   .                       filter_players_above         filter_players_above         filter_players_above"
 		"label_filtering   .                       filter_players_below         filter_players_below         filter_players_below"
@@ -130,6 +131,7 @@
 .filter_games_player_all { grid-area: filter_games_player_all; }
 .filter_games_session { grid-area: filter_games_session; }
 
+.filter_players_selected { grid-area: filter_players_selected; }
 .filter_players_top { grid-area: filter_players_top; }
 .filter_players_above { grid-area: filter_players_above; }
 .filter_players_below { grid-area: filter_players_below; }

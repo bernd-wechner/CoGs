@@ -92,44 +92,75 @@ function InitControls(options) {
 	// as "options" and initialises the controls on the page. 
 	
 	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
-	$("input[name=game_selection][value="+options.game_selection+"]").prop('checked', true);
 	$("input[name=evolution_selection][value="+options.evolution_selection+"]").prop('checked', true);
 
 	// Then we populate all the Game selectors, starting with the three multiselectors
-	// We request displaying of games only that are listed or played in the listed leagues 
-	// or by the listed players. 
+	// footnote: The league selector could be populated from game_leagues or player_leagues
+	//           though they should typically be identical anyhow (albeit not guaranteed to 
+	//			 be. If roundtripping from this form they will be, but a URL GET request can
+	//			 specify separate lists. We'll priritise game_leagues here.
 	Select2Init($('#games'), options.games)
-	Select2Init($('#leagues'), options.leagues)
-	Select2Init($('#players'), options.players)
+	Select2Init($('#leagues'), options.game_leagues)
+	Select2Init($('#players'), options.game_players)
+	
+	// Get the list of enabled options
+	const enabled = options.enabled;
+	
+	// special case if neither compare_with nor compare_back_to are enabled we
+	// want to specificallye enable no_evolution. If we check it first a 
+	// subsequent check on compare_with or compare_back_to will uncheck it as
+	// they are radio buttons.
+	$("#chk_no_evolution").prop('checked', true);
+
+		// and set all the checkboxes they map to:
+	for (i = 0; i < enabled.length; i++) {		
+		const opt = enabled[i];
+
+		// compare_back_to is a special option because we share it 
+		// between two radio buttons base on its value (int or date)
+		const chk = (opt == "compare_back_to" && Number.isInteger(options.compare_back_to))
+					? "#chk_num_days_ev"
+				    : "#chk_" + opt;
+
+		$(chk).prop('checked', true);	
+	} 	
 		
 	// Then the rest of the game selectors
-	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
 	$('#num_games').val(options.num_games);
-	$('#num_days').val(options.num_days);	  // Mirror of num_days_ev
-	$('#num_days_ev').val(options.num_days);  // Mirror of num_days
+	$('#changed_since').val(options.changed_since);
+	$('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
+	$('#num_days_ev').val(options.num_days);  		// Mirror of num_days
 
 	// Then the player selectors
-	$('#num_players').val(options.num_players);
-	$('#num_players_context').val(options.num_players_context);
+	$('#num_players_top').val(options.num_players_top);
+	$('#num_players_above').val(options.num_players_above);
+	$('#num_players_below').val(options.num_players_below);
 	$('#min_plays').val(options.min_plays);
-	$('#played_since').val(options.played_since == defaults.played_since ? '' : options.played_since);
+	$('#played_since').val(options.played_since);
 	
-	// Then the snapshot selectors
-	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
-	$('#compare_with').val(options.compare_with);
-	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
-	
-	// Then the extra info options for leaderboard headers
-	$('#chkSessionDetails').prop('checked', options.details.boolean());
-	$('#chkSessionAnalysisPre').prop('checked', options.analysis_pre.boolean());
-	$('#chkSessionAnalysisPost').prop('checked', options.analysis_post.boolean());
+	// Then the persepective option
+	$('#as_at').val(options.as_at);
 
+	// Then the snapshot selectors
+	$('#compare_with').val(options.compare_with);
+	
+	if (Number.isInteger(options.compare_back_to))
+		$('#num_days_ev').val(options.compare_back_to);
+	else
+		$('#compare_back_to').val(options.compare_back_to);
+		
 	// The the content formatting options
-	$('#chkHighlightPlayers').prop('checked', options.highlight_players.boolean())
-	$('#chkHighlightChanges').prop('checked', options.highlight_changes.boolean())
+	$('#chk_highlight_players').prop('checked', options.highlight_players)
+	$('#chk_highlight_changes').prop('checked', options.highlight_changes)
+	$('#chk_highlight_selected').prop('checked', options.highlight_selected)
 	
 	$('#names').val(options.names);	
 	$('#links').val(options.links);
+
+	// Then the extra info options for leaderboard headers
+	$('#chk_details').prop('checked', options.details);
+	$('#chk_analysis_pre').prop('checked', options.analysis_pre);
+	$('#chk_analysis_post').prop('checked', options.analysis_post);
 
 	// Then the leaderboard screen layout options
 	$('#cols').val(options.cols);
@@ -146,6 +177,40 @@ function InitControls(options) {
 	});	
 }
 
+function is_enabled(checkbox_id) {
+	return $("input[id='"+checkbox_id+"']").is(":checked");
+}
+
+function encodeList(list) {
+	return encodeURIComponent(list).replace(/%2C/g, ",");
+}
+
+function encodeDateTime(datetime) {
+	// We communicate datetimes in the ISO 8601 format:
+	// 	https://en.wikipedia.org/wiki/ISO_8601
+	// but in URLS they turn into an ugly mess. If we make a few simple URL safe
+	// substitutions and unmake them at the server end all is good, and URLs become 
+	// legible approximations to ISO 8601.
+	//
+	// Of note:
+	//
+	// + is a standard way to encode a space in URL. Though encodeURIComponent opts for %20.
+	//   we can use + safely and it arrives at server as a space.
+	//
+	// : is encoded as %3A. It turns out : is not a recommended URL character and a 
+	//   reserved character, but it does transport fine at least on Chrome tests. 
+	//   Still we can substitue - for it and that is safe legible char already in
+	//   use on the dates and can be decoded back to : by the server.
+	//
+	// The Timezone is introduced by + or -
+	//
+	// - travels unhindered. Is a safe URL character.
+	// + is encoded as %2B, but we can encode it with + which translates to a 
+	//   space at the server, but known we did this it can decdoe the space back 
+	//   to +. 
+	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
+}
+
 function URLopts(element) {
 	// The opposite so to speal of InitControls() here we read those same conrols and prepare
 	// URL options for self same to submit an AJAX request for updates (or simply display on
@@ -156,39 +221,50 @@ function URLopts(element) {
 	// brevity and efficiency. Also, the broader game and evolution only submitting options relevant 
 	// to that option (again, for brevity and efficiency)
 	
-	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
-	const game_selection = $("input[name='game_selection']:checked").val();
+	// Start with the method selectors
+	//
+	// While not used, these are nice ways to collect sets of enabled checkboxes:
+	//
+	// let filter_games = [];
+	// $("input[class='filter_games']:checked").each(function(){ filter_games.push(this.id); });
+	//	
+	// let filter_players = [];
+	// $("input[class='filter_players']:checked").each(function(){ filter_players.push(this.id); });;
+		
+	// For the radio buttons we just fetch the selected value
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
 	
-	// Then get the values of the trhee multiselect game specifierd
-	const leagues = $('#leagues').val().join(",");
+	// Then get the values of the three multiselect game specifierd
 	const games = $('#games').val().join(",");
+	const leagues = $('#leagues').val().join(",");
 	const players = $('#players').val().join(",");
 	
 	// Then the rest of the game selectors
-	const changed_since = $('#changed_since').val();
 	const num_games = $('#num_games').val();
+	const changed_since = $("#changed_since").val();
 	const num_days = $('#num_days').val();
 	
 	// Then the player selectors
-	const num_players = $('#num_players').val();
-	const num_players_context = $('#num_players_context').val();
+	const num_players_top = $('#num_players_top').val();
+	const num_players_above = $('#num_players_above').val();
+	const num_players_below = $('#num_players_below').val();
 	const min_plays = $('#min_plays').val();
 	const played_since = $('#played_since').val();
 	
-	// Then the snapshot selectors
+	// Then the perspective and snapshot selectors
 	const as_at = $('#as_at').val();
 	const compare_with = $('#compare_with').val();
 	const compare_back_to = $('#compare_back_to').val();
 	
-	// Then the extra info options for leaderboard headers
-	const details = $('#chkSessionDetails').is(":checked");
-	const analysis_pre = $('#chkSessionAnalysisPre').is(":checked");
-	const analysis_post = $('#chkSessionAnalysisPost').is(":checked");
-	
 	// The the content formatting options
-	const highlight_players = $('#chkHighlightPlayers').is(":checked");
-	const highlight_changes = $('#chkHighlightChanges').is(":checked");
+	const highlight_players  = $('#chk_highlight_players').is(":checked");
+	const highlight_changes  = $('#chk_highlight_changes').is(":checked");
+	const highlight_selected = $('#chk_highlight_selected').is(":checked");
+
+	// Then the extra info options for leaderboard headers
+	const details = $('#chk_details').is(":checked");
+	const analysis_pre = $('#chk_analysis_pre').is(":checked");
+	const analysis_post = $('#chk_analysis_post').is(":checked");	
 	
 	const names = $('#names').val();	
 	const links = $('#links').val();
@@ -196,89 +272,191 @@ function URLopts(element) {
 	// Then the leaderboard screen layout options
 	const cols = $('#cols').val();
 	
-	// Now push the Game selectors selectively onto opts
+	// Now push everything selectively onto opts keeping them to a minimum
+	// by: 
+	//
+	// a) ignoring selected values that have no supporting data (option 
+	//    selected but supporting input not completed and 
+	// b) ignoring those whose selected values are identical to the defaults 
+	//    that can be ignored (inferred by the server) which is not all those
+	//    that have defaults.
 	let opts = [];
 
-	// League filtering on games is always an overlay on the rest of the game selectors
-	opts.push("leagues="+encodeURIComponent(leagues).replace(/%2C/g, ","))
+	// Start with the game filters:	
+	//
+	// TODO: Add a Location filter, so we cna narrow sessions down to games
+	//       played at a given location.
+	// TODO: Implement Tourneys and a Tourney filter.  
+	if (is_enabled("chk_games") && games)
+		// A list of game is always supplied to server, but only if we 
+		// asking to filter on them, so the server can take a missing
+		// games list as a request not to filter on it.
+		//
+		// TODO: Need to consider if the games in the widget survive an 
+		// AJAX round trip. Would be a shame to lose them because we don't
+		// submit them, but we need to check if the widget is updated and
+		// if so how. Could be it too ignores an empty list and keeps what 
+		// it has? Or should?  
+		opts.push("games="+encodeList(games));
 	
-	// Push even default values as the existence of the value also flags 
-	// the game_selection implicitly, so we don't need to push its value.
-	// But don't push empty values, they have no meaning. 
-	switch(game_selection) {
-	  case "selected":
-		  	if (games)
-		  		opts.push("games="+encodeURIComponent(games).replace(/%2C/g, ","))
-		    break;
-	  case "top_n":
-		  	if (num_games)
-		  		opts.push("num_games="+encodeURIComponent(num_games))
-		    break;
-	  case "activity":
-		  	if (changed_since)
-		  		opts.push("changed_since="+encodeURIComponent(changed_since))
-		    break;
-	  case "played_by":
-		  	if (players)
-		  		opts.push("players="+encodeURIComponent(players).replace(/%2C/g, ","))
-		    break;
-	  case "session_impact":
-		  	if (num_days)
-		  		opts.push("num_days="+encodeURIComponent(num_days))
-		    break;
-	}		
-
-	// Push the player selectors only if they are not default values or null values
-	if (num_players && num_players != defaults.num_players) opts.push("num_players="+encodeURIComponent(num_players))
-	if (num_players_context && num_players_context != defaults.num_players_context) opts.push("num_players_context="+encodeURIComponent(num_players_context))
-	if (min_plays && min_plays != defaults.min_plays) opts.push("min_plays="+encodeURIComponent(min_plays))
-	if (played_since && played_since != defaults.played_since) opts.push("played_since="+encodeURIComponent(played_since))
-
-	// Now push the snapshot selectors
-	if (as_at && as_at != defaults.as_at) opts.push("as_at="+encodeURIComponent(as_at))
+	if (is_enabled("chk_num_games") && num_games)
+		// We submit num_games with an integer to enable this option. 
+		// If num_games is not submited or 0, the server should not 
+		// consider a game_top_n request in force.  
+		opts.push("num_games="+encodeURIComponent(num_games));
 	
-	// The evolution_selection can also be implied by submission of one of the three
-	// key values. Note that the num_days are a mirrored box to the game_selector
-	// but we can gave these sensible combinations:
-	//
-	// select_game on session and evolution on session
-	// select_game on session and evolution some other way
-	// select game some other way and evolution on session
-	//
-	// The last one is special as each game would have it's own last n day session!
-	//
-	// Method in use: flag with special value of compare_back_to coded as 
-	// n_day_impact.
+	const league_list = encodeList(leagues);
+	// We submit the list of leagues only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. The defaults should include
+	// game_league_any = preferred_league from the session filter and that should
+	// see the chk_game_league_any checked when we initControls.
+	if (is_enabled("chk_game_leagues_any") && leagues)
+		opts.push("game_leagues_any="+league_list);	
+	else if (is_enabled("chk_game_leagues_all") && leagues)
+		opts.push("game_leagues_all="+league_list);
+
+	const player_list = encodeList(players);		
+	// We submit the list of players only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. 		
+	if (is_enabled("chk_game_players_any") && players)
+		opts.push("game_players_any="+player_list);
+	else if (is_enabled("chk_game_players_all") && players)
+		opts.push("game_players_all="+player_list);
+
+	if (is_enabled("chk_changed_since") && changed_since)
+		// We submit changed_since with a date/time. If it's not submitted
+		// or submitted as an empty string then the server should not be
+		// enforcing a game_activity filter on games.
+		opts.push("changed_since="+encodeDateTime(changed_since));			
+	
+	if (is_enabled("chk_num_days") && num_days)
+		// We submit session_games as the length of the session in days, only if
+		// it's checked and a value is provided. Server side can take presence of
+		// the option as request to enforce it and should not enforce the filter
+		// if it's absent. This is a special filter which finds the last session
+		// of any game played (in the filtered list above) from now or as_at
+		// and subtracts num_days and returns the games played in that window
+		// of days. Used to get quick results on a games night or weekend or
+		// other event. 
+		opts.push("num_days="+encodeURIComponent(num_days));
+	
+	// Then the player filters:
+	if (is_enabled("chk_players") && players)
+		// If we want to show only selected players.
+		opts.push("players="+player_list);			
+	
+	if (is_enabled("chk_num_players_top") && num_players_top)
+		// If we want to show only the top n players on every leaderboard this is the
+		// option. As ever, the server should take submission of the option as a request
+		// to filter players by it, and absence as a request not to apply that filter.
+		opts.push("num_players_top="+encodeURIComponent(num_players_top));		
+		
+	// TODO: Implement a "selected" option, like in games above, to request
+	//       that listed players be shown. It too can provide a player list!
+	//       we can consider doing a ref: to the other list if it's the same?
+	
+	if (is_enabled("chk_num_players_above") && num_players_above) 
+		// If a player list is provided a further option of showing a number
+		// of players above any selected player. As usual submitted only if
+		// enabled and a value provided and lack of submission asks server
+		// not to display any.
+		opts.push("num_players_above="+encodeURIComponent(num_players_above));		
+		
+	if (is_enabled("chk_num_players_below") && num_players_below)	
+		// If a player list is provided a further option of showing a number
+		// of players below any selected player. As usual submitted only if
+		// enabled and a value provided and lack of submission asks server
+		// not to display any.
+		opts.push("num_players_below="+encodeURIComponent(num_players_below));		
+		
+	if (is_enabled("chk_min_plays") && min_plays)
+		// We submit a request to show only players who have played at least a 
+		// certain number of times on the leaderboard. This a means of filtering
+		// out the players who've only played once or twice from the crowd.
+		// Submitting a number requests they be filtered out, not submitting it
+		// asks server not to filter players based on play count. 
+		opts.push("min_plays="+encodeURIComponent(min_plays));		
+		
+	if (is_enabled("chk_played_since") && played_since)
+		// We submit also if request an option to filter on recent activity. 
+		// Basically a way to say, we want to filter out anyone who hasn't 
+		// played a game in the last period of interest, to grab a leaderboard
+		// of currently active players.
+		opts.push("played_since="+encodeDateTime(played_since));		
+		
+	// We submit the list of leagues only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. The defaults should include
+	// player_league_any = preferred_league from the session filter and that should
+	// see the chk_player_league_any checked when we initControls.
+	if (is_enabled("chk_player_leagues_any") && leagues)
+		opts.push("player_leagues_any="+league_list);
+	if (is_enabled("chk_player_leagues_all") && leagues) 
+		opts.push("player_leagues_all="+league_list);			
+	
+	// Then the perspective option	
+	if (as_at)
+		// We submit the the persepective request (pretend the submitted date is 'now', basically)
+		opts.push("as_at="+encodeDateTime(as_at))
+
+	// And the evolution option
 	switch(evolution_selection) {
-	  case "n_prior":
+	  // Evolution asks each leaderboard to be presented ith one or more historic leaderboards 
+	  // so we can see the change in the leaderboards each session produces (the default 
+	  // leaderboard is of course the one current (now or as_at). But in this case only one
+	  // option makes sense. The default is of course "none" and we submit nothing if that is 
+	  // selected.
+	  case "compare_with":
 		  	if (compare_with)
+		  		// We submit a number of past session to compare the current one with
 		  		opts.push("compare_with="+encodeURIComponent(compare_with));
 			break;
-	  case "back_to":
-		  	if (compare_back_to && compare_back_to != defaults.compare_back_to)
-		  		opts.push("compare_back_to="+encodeURIComponent(compare_back_to));
+	  case "compare_back_to":
+		  	if (compare_back_to)
+		  		// We submit a a date to compare back to. We want to compare back to the last
+		  		// session before this date as it created the leaderboard in effect at this date.
+		  		// TODO: Check the server does this.
+		  		opts.push("compare_back_to="+encodeDateTime(compare_back_to));
 		    break;
-	  case "session_impact":
+	  case "num_days_ev":
 		  	if (num_days)
-		  		opts.push("compare_back_to=" + encodeURIComponent(num_days) + "_day_impact");
+		  		// The partner to the game filter above is a back to request which asks to show
+		  		// all the leaderboard evolution during that game session. So should present
+		  		// the leaderboard in effect when that session started and one after each game
+		  		// session in that broader session (not we use the term session to denote the
+		  		// play of one game and recording of its results or alternately the play of a load
+		  		// of games over a day or days ...).
+		  		//
+		  		// We encode the number of days in the back to request as a plain int, as opposed
+		  		// to a date/time and this is how the server knows it's a session relative request.
+		  		opts.push("compare_back_to=" + encodeURIComponent(num_days));
 		    break;
 	}
-
-	// Then the extra info options for leaderboard headers
-	if (details != defaults.details.boolean()) opts.push("details="+encodeURIComponent(details));
-	if (analysis_pre != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
-	if (analysis_post != defaults.details.boolean()) opts.push("analysis_post="+encodeURIComponent(analysis_post));
-
-	// The the content formatting options
-	if (highlight_players != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(highlight_players));
-	if (highlight_changes != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
+	
+	// Then the content formatting options
+	// These have valid defaults, on or off, and we only have to submit deviations from that default. 
+	if (highlight_players != defaults.highlight_players) opts.push("highlight_players="+encodeURIComponent(highlight_players));
+	if (highlight_changes != defaults.highlight_changes) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
+	if (highlight_selected != defaults.highlight_selected) opts.push("highlight_selected="+encodeURIComponent(highlight_changes));
 	
 	if (names != defaults.names) opts.push("names="+encodeURIComponent(names));
 	if (links != defaults.links) opts.push("links="+encodeURIComponent(links));
-	
+
+	// Then the extra info options for leaderboard headers
+	// These too have valid defaults, on or off, and we only have to submit deviations from that default. 
+	if (details != defaults.details) opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre != defaults.analysis_pre) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (analysis_post != defaults.details) opts.push("analysis_post="+encodeURIComponent(analysis_post));
+
 	// Then the leaderboard screen layout options
+	// This also has a valid default, and we only have to submit deviations from that default. 
 	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
-	
+
 	// Join the opts and return them 
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
@@ -317,7 +495,7 @@ function toggle_highlights(highlight_type, checkbox) {
 }
 
 // Some simple one-liner functions to handle input events
-function check_check(me, boxes) { $(boxes).prop('checked', Boolean(me.value)); }
+function check_check(me, boxes, unboxes) { $(boxes).prop('checked', Boolean(me.value)); if (unboxes) { $(unboxes).prop('checked', !Boolean(me.value));} }
 function check_radio(me, name, value, fallback) { $("input[name='"+name+"'][value='"+(me.value?value:fallback)+"']").prop("checked",true); }
 function only_one(me, others) {	if (me.checked)	$(others).prop('checked', false); }
 function mirror(me, to) { $(to).val(me.value); }
@@ -411,7 +589,6 @@ function LBtable(LB, snapshot, links) {
 	var session_analysis_post_data = LB[3][snapshot][6][1];
 	var player_list = LB[3][snapshot][7];
 	var player_prev = (snapshot+1<LB[3].length) ? LB[3][snapshot+1][7] : null; 
-
 	
 	// Create the Game link based on the requested link target
 	var linkGameCoGs = url_view_Game.replace('00',pkg);
@@ -513,7 +690,7 @@ function LBtable(LB, snapshot, links) {
 	
 	// Second (optional) Header Row (session details if requested)
 
-	var details = document.getElementById("chkSessionDetails").checked;
+	var details = document.getElementById("chk_details").checked;
 	
 	if (details) {
 		var tr = document.createElement('TR');
@@ -540,7 +717,7 @@ function LBtable(LB, snapshot, links) {
 
 	// Third Header Row
 
-	var analysis_pre = document.getElementById("chkSessionAnalysisPre").checked;
+	var analysis_pre = document.getElementById("chk_analysis_pre").checked;
 
 	if (analysis_pre) {
 		var tr = document.createElement('TR');
@@ -555,7 +732,7 @@ function LBtable(LB, snapshot, links) {
 
 	// Fourth Header Row
 
-	var analysis_post = document.getElementById("chkSessionAnalysisPost").checked;
+	var analysis_post = document.getElementById("chk_analysis_post").checked;
 
 	if (analysis_post) {
 		var tr = document.createElement('TR');
@@ -600,9 +777,9 @@ function LBtable(LB, snapshot, links) {
 
 	// Body
 
-	const highlight_players = document.getElementById("chkHighlightPlayers").checked;
-	const highlight_changes = document.getElementById("chkHighlightChanges").checked;
-	const highlight_selected = document.getElementById("chkHighlightSelected").checked;
+	const highlight_players = document.getElementById("chk_highlight_players").checked;
+	const highlight_changes = document.getElementById("chk_highlight_changes").checked;
+	const highlight_selected = document.getElementById("chk_highlight_selected").checked;
 	
 	const selected_players = options.players;  // A list of string ids
 
