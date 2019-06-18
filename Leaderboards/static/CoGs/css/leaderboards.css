@@ -1,6 +1,9 @@
 @charset "utf-8";
 /* CSS Document */
 
+/* LEADERBOARD OPTIONS */
+
+
 /*.leaderboard_options * {  */
 /* 	border: 1px solid red; */
 /* }	 */
@@ -55,22 +58,24 @@
 	grid-auto-rows: min-content;
 	grid-row-gap: 5px;  
 
+/* TODO: A location filter, a tourneys filter */
 	grid-template-areas:
-		"label_formatting  select_name_format      select_name_format           select_name_format           select_name_format"
 		"label_filtering   selectors_multi         selectors_multi              selectors_multi              selectors_multi"
 		"label_filtering   filter_games            filter_games                 filter_games                 filter_games"
 		"label_filtering   intro_games             intro_games                  intro_games                  intro_games"
-		"label_filtering   .                       filter_games_selected        filter_games_selected        filter_games_selected"
-		"label_filtering   .                       filter_games_top_n           filter_games_top_n           filter_games_top_n"
+		"label_filtering   .                       filter_games_selected_ex     filter_games_selected_ex     filter_games_selected_ex"
 		"label_filtering   .                       filter_games_league_any      filter_games_league_any      filter_games_league_any"
 		"label_filtering   .                       filter_games_league_all      filter_games_league_all      filter_games_league_all"
 		"label_filtering   .                       filter_games_player_any      filter_games_player_any      filter_games_player_any"
 		"label_filtering   .                       filter_games_player_all      filter_games_player_all      filter_games_player_all"
+		"label_filtering   .                       filter_games_top_n           filter_games_top_n           filter_games_top_n"
+		"label_filtering   .                       filter_games_latest_n        filter_games_latest_n        filter_games_latest_n"
 		"label_filtering   .                       filter_games_played_since    filter_games_played_since    filter_games_played_since"
 		"label_filtering   .                       filter_games_session         filter_games_session         filter_games_session"
+		"label_filtering   .                       filter_games_selected_in     filter_games_selected_in     filter_games_selected_in"
 		"label_filtering   filter_players          filter_players               filter_players               filter_players"
 		"label_filtering   intro_players           intro_players                intro_players                intro_players"
-		"label_filtering   .                       filter_players_selected      filter_players_selected      filter_players_selected"
+		"label_filtering   .                       filter_players_selected_ex   filter_players_selected_ex   filter_players_selected_ex"
 		"label_filtering   .                       filter_players_top           filter_players_top           filter_players_top"
 		"label_filtering   .                       filter_players_above         filter_players_above         filter_players_above"
 		"label_filtering   .                       filter_players_below         filter_players_below         filter_players_below"
@@ -78,6 +83,7 @@
 		"label_filtering   .                       filter_players_played_since  filter_players_played_since  filter_players_played_since"
 		"label_filtering   .                       filter_players_league_any    filter_players_league_any    filter_players_league_any"
 		"label_filtering   .                       filter_players_league_all    filter_players_league_all    filter_players_league_all"
+		"label_filtering   .                       filter_players_selected_in   filter_players_selected_in   filter_players_selected_in"
 		"label_perspective select_perspective      select_perspective           select_perspective           select_perspective"
 		"label_evolution   select_evolution        select_evolution             select_evolution             select_evolution"
 		"label_evolution   .                       select_evolution_none        select_evolution_none        select_evolution_none"
@@ -103,15 +109,12 @@
 }
 
 .label_filtering { grid-area: label_filtering; font-weight: bold !important; }
-.label_formatting { grid-area: label_formatting; font-weight: bold !important; }
 .filter_games { grid-area: filter_games; font-weight: bold !important; }
 .intro_games { grid-area: intro_games; margin-left: 2ch;}
 .filter_players { grid-area: filter_players; font-weight: bold !important; }
 .intro_players { grid-area: intro_players; margin-left: 2ch;}
 .label_perspective { grid-area: label_perspective; font-weight: bold !important; }
 .label_evolution { grid-area: label_evolution; font-weight: bold !important; }
-
-.select_name_format { grid-area: select_name_format; }
 
 .label_leagues { grid-area: label_leagues; }
 .select_leagues { grid-area: select_leagues; }
@@ -122,8 +125,10 @@
 .label_players { grid-area: label_players; }
 .select_players { grid-area: select_players; }
 
-.filter_games_selected { grid-area: filter_games_selected; }
+.filter_games_selected_ex { grid-area: filter_games_selected_ex; }
+.filter_games_selected_in { grid-area: filter_games_selected_in; }
 .filter_games_top_n { grid-area: filter_games_top_n; }
+.filter_games_latest_n { grid-area: filter_games_latest_n; }
 .filter_games_played_since { grid-area: filter_games_played_since; }
 .filter_games_league_any { grid-area: filter_games_league_any; }
 .filter_games_league_all { grid-area: filter_games_league_all; }
@@ -131,7 +136,8 @@
 .filter_games_player_all { grid-area: filter_games_player_all; }
 .filter_games_session { grid-area: filter_games_session; }
 
-.filter_players_selected { grid-area: filter_players_selected; }
+.filter_players_selected_ex { grid-area: filter_players_selected_ex; }
+.filter_players_selected_in { grid-area: filter_players_selected_in; }
 .filter_players_top { grid-area: filter_players_top; }
 .filter_players_above { grid-area: filter_players_above; }
 .filter_players_below { grid-area: filter_players_below; }
@@ -153,3 +159,50 @@
 
 .button_url { grid-area: button_url; }
 .label_url { grid-area: label_url; }
+
+
+/* LEADERBOARD TABLES */
+
+table.leaderboard
+{
+	margin-right: 10px;
+	border-color: #600;
+	border-style: solid;
+	border-width: 0 0 1px 1px;
+	border-collapse: collapse;
+	border-spacing: 10px;
+}
+
+th.leaderboard, 
+td.leaderboard
+{
+	border-color: #600;
+	border-style: solid;
+	margin: 0;
+	padding: 4px;
+	border-width: 1px 1px 0 0;
+	white-space: nowrap;
+}
+
+th.leaderboard.normal, 
+td.leaderboard.normal {	background-color: #FFF7F0;	font-weight: normal; }
+
+td.leaderboard.highlight_changes_off { background-color: #FFF7F0; }
+td.leaderboard.highlight_changes_on { background-color: #FFE0E0 !important; }
+
+td.leaderboard.highlight_players_off {	font-weight: normal; }
+td.leaderboard.highlight_players_on { font-weight: bold !important; }
+
+td.leaderboard.highlight_selected_off { background-color: #FFF7F0; }
+td.leaderboard.highlight_selected_on {background-color: #FF6161 !important; } 
+
+table.leaderboard.wrapper { border-style: none; margin: 10px; }
+
+td.leaderboard.wrapper 
+{
+	vertical-align: top;
+	background-color: transparent;
+	border-style: none;
+	padding-left: 0;
+	padding-right: 15px;
+}

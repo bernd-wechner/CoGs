@@ -65,7 +65,8 @@ from django.utils.timezone import get_current_timezone
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
-from .util import isListType, isListValue, isDictionary, safetitle, time_str
+from .util import isListType, isListValue, isDictionary, safetitle
+from .datetime import time_str
 from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str, fmt_str

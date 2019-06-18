@@ -4,6 +4,7 @@
 
 {% block styles %}
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/leaderboards.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
 {% endblock %}
 
 {% block content %}
@@ -33,9 +34,16 @@
 
 		<label for="cols">columns</label>,
 		
-		<label for="linbks">linking game and player names to</label>
-			<select id="links" oninput='DrawTables("tblLB");'>
-				{% for v, l in leaderboard_options.LinkSelections.items %}
+		<label for="names">player</label> 
+			<select id="names" oninput="DrawTables('tblLB');">
+				{% for v, l in name_selections.items %}
+				  <option value="{{ v }}">{{ l }}</option>
+				{% endfor %}			  
+			</select>
+
+		<label for="links">and linking game and player names to</label>
+			<select id="links" oninput="DrawTables('tblLB');">
+				{% for v, l in link_selections.items %}
 				  <option value="{{ v }}">{{ l }}</option>
 				{% endfor %}			  
 			</select>
@@ -69,23 +77,13 @@
 	</div>	
 	
 	<section class="lo_advanced">
-		<div class="label_formatting">Formatting:</div>
 		<div class="label_filtering">Filtering:</div>
 		<div class="filter_games">Games:</div>
-		<div class="intro_games">Display only leaderboards</div>
+		<div class="intro_games">Display leaderboards</div>
 		<div class="filter_players">Players</div>
-		<div class="intro_players">Show only</div>
+		<div class="intro_players">Show</div>
 		<div class="label_perspective">Perspective:</div>
 		<div class="label_evolution">Evolution:</div>
-	  
-		<div class="select_name_format">
-			Use player 
-			<select id="names">
-				{% for v, l in leaderboard_options.NameSelections.items %}
-				  <option value="{{ v }}">{{ l }}</option>
-				{% endfor %}			  
-			</select>
-		</div>
 	  
 		<div class="selectors_multi">
 		    <div class="label_games">Games(s)</div>
@@ -98,99 +96,116 @@
 	  
 		{#	Game Filters	#}
 	  
-		<div class="filter_games_selected">
-			<input type="checkbox" id="chk_games" class="filter_games"> 
-			<label for="chk_games">for the <b>selected</b> games (above).</label>
+		<div class="filter_games_selected_ex">
+			<input type="checkbox" id="chk_games_ex" class="filter_games" oninput="only_one(this, '.filter_games')"> 
+			<label for="chk_games_ex">exclusively for the <b>selected</b> games (above).</label>
 	 	</div>
 	
-		<div class="filter_games_top_n">
-			<input type="checkbox" id="chk_num_games" class="filter_games">
-			<label for="chk_num_games">for the
-			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_games');"> 
-			<b>most popular</b> games</label>
-		</div>
-		
 	  	<div class="filter_games_league_any">
-			<input type="checkbox" id="chk_game_leagues_any" class="filter_games" oninput="only_one(this, '#chk_game_leagues_all')"> 
+			<input type="checkbox" id="chk_game_leagues_any" class="filter_games" oninput="only_one(this, '#chk_games_ex, #chk_game_leagues_all')"> 
 			<label for="chk_game_leagues_any">for games played by <b>any</b> of the selected <b>leagues</b> (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_games_league_all">
-			<input type="checkbox" id="chk_game_leagues_all" class="filter_games" oninput="only_one(this, '#chk_game_leagues_any')"> 
+			<input type="checkbox" id="chk_game_leagues_all" class="filter_games" oninput="only_one(this, '#chk_games_ex, #chk_game_leagues_any')"> 
 			<label for="chk_game_leagues_all">for games played by <b>all</b> of the selected <b>leagues</b> (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_games_player_any">
-			<input type="checkbox" id="chk_game_players_any" class="filter_games" oninput="only_one(this, '#chk_game_players_all')"> 
+			<input type="checkbox" id="chk_game_players_any" class="filter_games" oninput="only_one(this, '#chk_games_ex, #chk_game_players_all')"> 
 			<label for="chk_game_players_any">for games played by <b>any</b> of the selected <b>players</b> (above)</label>
 	  	</div>
 	  	
 	 	<div class="filter_games_player_all">
-			<input type="checkbox" id="chk_game_players_all" class="filter_games" oninput="only_one(this, '#chk_game_players_any')"> 
+			<input type="checkbox" id="chk_game_players_all" class="filter_games" oninput="only_one(this, '#chk_games_ex, #chk_game_players_any')"> 
 			<label for="chk_game_players_all">for games played by <b>all</b> of the selected <b>players</b> (above)</label>
 	  	</div>
 
+		<div class="filter_games_top_n">
+			<input type="checkbox" id="chk_top_games" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1');">
+			<label for="chk_top_games">for the
+			<input type="number" id="num_games" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); mirror(this,'#num_games_latest', '#chk_latest_games'); check_check(this, '#chk_top_games', '.exclusive_group1');"> 
+			<b>most popular</b> games</label>
+		</div>
+		
+		<div class="filter_games_latest_n">
+			<input type="checkbox" id="chk_latest_games" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1');">
+			<label for="chk_latest_games">for the
+			<input type="number" id="num_games_latest" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); mirror(this,'#num_games', '#chk_top_games'); check_check(this, '#chk_latest_games', '.exclusive_group1');"> 
+			<b>last played </b> games</label>
+		</div>
+
 	  	<div class="filter_games_played_since">
-			<input type="checkbox" id="chk_changed_since" class="filter_games" oninput="only_one(this, '#chk_num_days')"> 
+			<input type="checkbox" id="chk_changed_since" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1')"> 
 			<label for="chk_changed_since">that <b>changed on or after</b>: </label>
-			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_changed_since', '#chk_num_days'); copy_if_empty(this,'#compare_back_to');">
+			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_changed_since', '.exclusive_group1'); copy_if_empty(this,'#compare_back_to');">
 	  	</div>
 	  
 	  	<div class="filter_games_session">
-			<input type="checkbox" id="chk_num_days" class="filter_games" oninput="only_one(this, '#chk_changed_since')" > 
+			<input type="checkbox" id="chk_num_days" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1')" > 
 			<label for="chk_num_days">for games played in the last session of  
-			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '#chk_changed_since'); mirror(this,'#num_days_ev');"> 
+			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '.exclusive_group1'); mirror(this,'#num_days_ev');"> 
 			days duration</label> 
 	  	</div>
 	  	
+		<div class="filter_games_selected_in">
+			<input type="checkbox" id="chk_games_in" class="filter_games" oninput="only_one(this, '#chk_games_ex')"> 
+			<label for="chk_games_in">for the <b>selected</b> games (above), in addition to any others.</label>
+	 	</div>
+
 		{#	Player Filters	#}
 	
-		<div class="filter_players_selected">
-			<input type="checkbox" id="chk_players" class="filter_players"> 
-			<label for="chk_players">the <b>selected</b> players (above).</label>
+		<div class="filter_players_selected_ex">
+			<input type="checkbox" id="chk_players_ex" class="filter_players" oninput="only_one(this, '.filter_players')"> 
+			<label for="chk_players_ex">exclusively the <b>selected</b> players (above).</label>
 	 	</div>
 	
 	  	<div class="filter_players_top">
 			<input type="checkbox" id="chk_num_players_top" class="filter_players"> 
-			<input type="number" id="num_players_top" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_top');">
+			<input type="number" id="num_players_top" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_top', '#chk_players_ex');">
 			<label for="chk_num_players_top">top players</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_above">
 			<input type="checkbox" id="chk_num_players_above" class="filter_players"> 
-			<input type="number" id="num_players_above" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_above');">   
+			<input type="number" id="num_players_above" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_above', '#chk_players_ex');">   
 			<label for="chk_num_players_above">players above each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_below">
 			<input type="checkbox" id="chk_num_players_below" class="filter_players"> 
-			<input type="number" id="num_players_below" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_below');">   
+			<input type="number" id="num_players_below" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_below', '#chk_players_ex');">   
 			<label for="chk_num_players_below">players below each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_min_playcount">
 			<input type="checkbox" id="chk_min_plays" class="filter_players"> 
 			<label for="chk_min_plays">players who have <b>played the game at least</b> 
-			<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_min_plays');">
+			<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_min_plays', '#chk_players_ex');">
 			<b>times</b></label>
 	  	</div>
 	  	
 	  	<div class="filter_players_played_since">
 			<input type="checkbox" id="chk_played_since" class="filter_players"> 
 			<label for="chk_played_since">players who have <b>played the game since</b> </label> 
-			<input class="DateTimeField" id="played_since" type="text" onchange="check_check(this, '#chk_played_since');">
+			<input class="DateTimeField" id="played_since" type="text" onchange="check_check(this, '#chk_played_since', '#chk_players_ex');">
 	  	</div>
 	  	
 	  	<div class="filter_players_league_any">
-			<input type="checkbox" id="chk_player_leagues_any" class="filter_players" oninput="only_one(this, '#chk_player_leagues_all')"> 
+			<input type="checkbox" id="chk_player_leagues_any" class="filter_players" oninput="only_one(this, '#chk_players_ex, #chk_player_leagues_all')"> 
 			<label for="chk_player_leagues_any">players in <b>any</b> of the selected leagues (above)</label>
 	  	</div>
 	  	
 	  	<div class="filter_players_league_all">
-			<input type="checkbox" id="chk_player_leagues_all" class="filter_players" oninput="only_one(this, '#chk_player_leagues_any')"> 
+			<input type="checkbox" id="chk_player_leagues_all" class="filter_players" oninput="only_one(this, '#chk_players_ex, #chk_player_leagues_any')"> 
 			<label for="chk_player_leagues_all">players in <b>all</b> of the selected leagues (above)</label>
 	  	</div>
 	  
+		<div class="filter_players_selected_in">
+			<input type="checkbox" id="chk_players_in" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
+			<label for="chk_players_in">the <b>selected</b> players (above), in addition to any others.</label>
+	 	</div>
+
 		{#	Perspective option 	#}
 	  
 		<div class="select_perspective">

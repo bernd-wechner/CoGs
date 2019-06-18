@@ -33,7 +33,9 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.util import time_str
+from django_generic_view_extensions.datetime import time_str
+from django_generic_view_extensions.debug import print_debug 
+from _ctypes import ArgumentError
 
 # CoGs Leaderboard Server Data Model
 #
@@ -490,8 +492,11 @@ class League(AdminModel):
     @property_method
     def leaderboard(self, game=None):
         '''
-        Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
-        specified game or if no game is provided, a dictionary of such lists keyed on game.
+        Return an ordered list of (player, rating, plays, victories) tuples that represents 
+        the leaderboard for a specified game or if no game is provided, a dictionary of such 
+        lists keyed on game.
+        
+        # TODO: consider as_at support
         '''
         if game is None:
             lb = {}
@@ -800,16 +805,14 @@ class Player(PrivacyMixIn, AdminModel):
             raise ValueError("Database error: more than one rating for {} at {}".format(self.name_nickname, game.name))
         return r
     
-    def leaderboard_position(self, game, league=None):
-        lb = game.leaderboard(league, indexed=True)
-        position = 1
+    def leaderboard_position(self, game, leagues=[]):
+        lb = game.leaderboard(leagues, simple=False)
         for entry in lb:
-            if entry[0] == self.pk:
-                return position
-            position += 1
+            if entry[1] == self.pk:
+                return entry[0]
     
-    def is_at_top_of_leaderbard(self, game, league=None):
-        return self.leaderboard_position(game, league) == 1
+    def is_at_top_of_leaderbard(self, game, leagues=[]):
+        return self.leaderboard_position(game, leagues) == 1
     
     def last_play(self, game):
         '''
@@ -1087,9 +1090,10 @@ class Game(AdminModel):
             players: is a count of players who played this game at least once
             sessions: is a count of the number of sessions this game has been played
         
-        leagues can be a single league (a pk) or a list of leagues (pks)
+        leagues can be a single league (a pk) or a list of leagues (pks).        
+        We always return the playcount across all the listed leagues.
         
-        If not leagues are specified returns the play_counts for ALL_LEAGUES.
+        If no leagues are specified returns the play_counts for all leagues.
       
         Optionally can provide the count of plays as at a given date time as well. 
 
@@ -1142,32 +1146,65 @@ class Game(AdminModel):
         return pc
 
     @property_method
-    def leaderboard(self, leagues=[], asat=None, names="complete", indexed=False) -> list:
+    def leaderboard(self, leagues=[], asat=None, names="nick", simple=True) -> list:
         '''
         Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for 
         specified leagues, or for all leagues if None is specified. As at a given date/time if such is specified,
         else, as at now (latest or current, leaderboard).
         
-        :param league:    Show only players in these leagues if specified, else in any league (a single league or a list of leagues)
+        :param leagues:   Show only players in any of these leagues if specified, else in any league (a single league or a list of leagues)
         :param asat:      Show the leaderboard as it was at this time rather than now, if specified
         :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options. 
-        :param indexed:   if True adds some ancillary player player info to each row returned (PK and BGGname of the player) 
+        :param simple     Defaults to Tue and is designed for the simple property method and a simple view
+                          of a games leaderboard.
+                          
+                          if False a more complex tuple is returned on each row of the board empowering
+                          the caller and a view to do some filtering with the data provided.
+                          Designed for use by a leaderboard view that wants to 
+                                present leaderboards with links to player info (on-site - PK, or at BGG)
+                                present the mu and sigma in a ToolTip or other annotation
+                                present alternate name formats (default tupe has complete, we include nick and full in prepend).
+                                filter player lists based on activity (last_play) or league membership (league PKs).
+                          If annotated is requested we ignore leaques and names (filtering and name renderig handled by caller) 
         '''  
         # If a single league was provided make a list with one entry.
         if not isinstance(leagues, list):
             if leagues:
                 leagues = [leagues]
             else:
-                leagues = []
+                leagues = []                
+
+        print_debug(f"\t\tBuilding leaderboard for {self.name}.")
                 
+        # If a complex  leaderboard is requested we ignore "names" and the caller
+        # must perform name formatting (we provide all formats in the tuple). But 
+        # we ignore it vehemently, it's a programming error to invoke this method 
+        # with "names" and not simple ...
+        if not simple and names != "nick":
+            raise ArgumentError("Game.leaderboards requested with annotations. Expected no names submitted but got: {names}")                        
+            
         # We can accept leagues as League instances or PKs but want a PK list for the queries.
         for l in range(0, len(leagues)):
             if isinstance(leagues[l], League):
                 leagues[l] = leagues[l].pk
             elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
                 raise ValueError(f"Unexpected league: {leagues[l]}.")
+
+        print_debug(f"\t\tValidated leagues")
             
-        if not asat:
+        if asat:
+            # Build leaderboard as at a given time as specified
+            # Can't use the Ratings model as that stores current ratings. Instead use the Performance
+            # model which records ratings after every game session and the sessions have a date/time
+            # so the information can be extracted therefrom. These are returned in order -eta as well
+            # so in the right order for a leaderboard (descending skill rating)
+            if leagues:
+                # Get the last performances for all players in the specified leagues
+                ratings = self.last_performances(leagues=leagues, asat=asat) 
+            else:
+                # Get the last performances for all players in all leagues
+                ratings = self.last_performances(asat=asat)
+        else:
             # If leagues are specified we don't want to see people from other leagues
             # on this leaderboard, only players from the nominated leagues.  
             lb_filter = Q(game=self)
@@ -1178,36 +1215,51 @@ class Game(AdminModel):
                 
             # These come pre-sorted by -eta (so in the right order for the leaderboard).
             # (descending skill rating). The Rating model ensures this
-            ratings = Rating.objects.filter(lb_filter).distinct()
+            ratings = Rating.objects.filter(lb_filter).distinct()        
+                 
+        print_debug(f"\t\tBuilt ratings queryset.")
         
-            # Now build a leaderboard from all the ratings for players (in this league) at this game. 
-            lb = []
-            for r in ratings:
-                name = r.player.name(names)
-                lb_entry = (name, r.trueskill_eta, r.plays, r.victories) 
-                if indexed:
-                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
-                lb.append(lb_entry)
-        else: # Build leaderboard as at a given time as specified
-            # Can't use the Ratings model as that stores current ratings. Instead use the Performance
-            # model which records ratings after every game session and the sessions have a date/time
-            # so the information can be extracted therefrom. These are returned in order -eta as well
-            # so in the right order for a leaderboard (descending skill rating)
-            if leagues:
-                # Get the last performances for all players in the specified leagues
-                ratings = self.last_performances(leagues=leagues, asat=asat) 
+        # Now build a leaderboard from all the ratings for players (in this league) at this game. 
+        lb = []
+        for i, r in enumerate(ratings):
+            # r may be a Rating object or a Performance object. They both have a player
+            # but other metadata is specific. So we fetch them based on their accessibility
+            if isinstance(r, Rating):
+                trueskill_eta = r.trueskill_eta
+                trueskill_mu = r.trueskill_mu
+                trueskill_sigma = r.trueskill_sigma
+                plays = r.plays
+                victories = r.victories
+                last_play = r.last_play
+            elif isinstance(r, Performance):
+                trueskill_eta = r.trueskill_eta_after
+                trueskill_mu = r.trueskill_mu_after
+                trueskill_sigma = r.trueskill_sigma_after
+                plays = r.rating.plays
+                victories = r.rating.victories
+                last_play = r.rating.last_play
             else:
-                # Get the last performances for all players in all leagues
-                ratings = self.last_performances(asat=asat) 
+                raise ValueError(f"Progamming error in Game.leaderboard().")
+            
+            if simple:
+                lb_entry = (r.player.name(names), trueskill_eta, plays, victories) 
+            else:
+                lb_entry = (i+1,
+                            r.player.pk, 
+                            r.player.BGGname, 
+                            r.player.name('nick'), 
+                            r.player.name('full'),
+                            r.player.name('complete'),
+                            trueskill_eta, 
+                            trueskill_mu, 
+                            trueskill_sigma, 
+                            plays, 
+                            victories,                                
+                            last_play, 
+                            [l.pk for l in r.player.leagues.all()])
+            lb.append(lb_entry)
 
-            # Now build a leaderboard from all the ratings for players in the specified leagues (or globally)
-            lb = []
-            for r in ratings:
-                name = r.player.name(names)
-                lb_entry = (name, r.trueskill_eta_after, r.play_number, r.victory_count) 
-                if indexed:
-                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
-                lb.append(lb_entry)
+        print_debug(f"\t\tBuilt leaderboard.")
                             
         return None if len(lb) == 0 else lb
 
@@ -1687,7 +1739,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         TODO: This should really be in the trueskill package
         '''
-        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # Rank.performance returns a (mu, sigma) tuple for the ranker
         # TrueSkill modeled performance. And the expected ranking is
         # ranking by expected performance which is mu of the performance.
         rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
@@ -1967,7 +2019,7 @@ class Session(TimeZoneMixIn, AdminModel):
                     eperf = perf[0] # mu
                     
             if eperf:
-                tip = "<span class='tooltiptext'>Expected performance (teeth)</span>"
+                tip = "<span class='tooltiptext' style='width: 600%;'>Expected performance (teeth)</span>"
                 ranker += " (<div class='tooltip'>{:.1f}{}</div>)".format(eperf, tip)                                    
             
             if use_rank:
@@ -2020,7 +2072,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         It includes an analysis of the session. 
         
-        This comes in two parts, a templates, and ancillary data.
+        This comes in two parts, a template, and ancillary data.
         
         The template is HTML with placeholders for the ancillary data.
         
@@ -2031,16 +2083,16 @@ class Session(TimeZoneMixIn, AdminModel):
         
         Format is as follows:
         
-        1) An ordered list of players as a the prediction
-        # TODO 2) A confidence in the prediction (some measure of probability) 
+        1) An ordered list of players as the prediction
+        2) A confidence in the prediction (a measure of probability)
         3) A quality measure of that prediction
                 
         :param name_style: Must be supplied
         '''
         (ordered_ranks, confidence) = self.predicted_ranking
         
-        tip_sure = "<span class='tooltiptext'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
-        tip_accu = "<span class='tooltiptext'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
         detail = u"Predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality, tip_accu)
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
         
@@ -2066,13 +2118,16 @@ class Session(TimeZoneMixIn, AdminModel):
         Format is as follows:
         
         1) An ordered list of players as a the prediction
-        # TODO 2) A confidence in the prediction (some measure of probability) 
+        2) A confidence in the prediction (some measure of probability)
         3) A quality measure of that prediction
                 
         :param name_style: Must be supplied
         '''
-        (ordered_ranks, confidence) = self.predicted_ranking_after        
-        detail = u"Post-session predicted ranking ({:.0%} sure, {:.0%} accurate): <br><br>".format(confidence, self.prediction_quality_after)
+        (ordered_ranks, confidence) = self.predicted_ranking_after
+
+        tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        detail = u"Post-session predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality_after, tip_accu)                
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
         detail += ol
         

@@ -157,7 +157,25 @@ TIME_ZONE = str(get_localzone())
 
 DATETIME_FORMAT = 'D, j M Y H:i'
 
-DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S%z'] + global_settings.DATETIME_INPUT_FORMATS 
+DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S%z'] + global_settings.DATETIME_INPUT_FORMATS
+
+# Use the Pickle Serializer. It comes with a warning when using the cookie backend
+# but we're using the default database backend so are safe. Basically if:
+#    SESSION_ENGINE == 'django.contrib.sessions.backends.signed_cookies'
+# Then this is abad idea. But we have 
+#    SESSION_ENGINE == 'django.contrib.sessions.backends.db'  
+# As that is the Django default. That is the actual session data remains local
+# never travels between server and browser or  vice versa and a cookie is only
+# used to ID a local database stored session.
+#
+# The PickleSerializer is vulnerable appparently to code injection. That is it
+# can execut arbitrary Python code if manipulated to do so. But if we are keeping
+# all session dfdata local and all the data is secure, we're good.
+#
+# We wabtr to use the Pickle Serializer because we want to cache some data
+# in the session that includes datateims that don't serialize with the JSON 
+# serializer. 
+SESSION_SERIALIZER =  'django.contrib.sessions.serializers.PickleSerializer'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.8/howto/static-files/
