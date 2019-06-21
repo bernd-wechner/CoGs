@@ -161,32 +161,32 @@
 	 	</div>
 	
 	  	<div class="filter_players_top">
-			<input type="checkbox" id="chk_num_players_top" class="filter_players"> 
+			<input type="checkbox" id="chk_num_players_top" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
 			<input type="number" id="num_players_top" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_top', '#chk_players_ex');">
 			<label for="chk_num_players_top">top players</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_above">
-			<input type="checkbox" id="chk_num_players_above" class="filter_players"> 
+			<input type="checkbox" id="chk_num_players_above" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
 			<input type="number" id="num_players_above" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_above', '#chk_players_ex');">   
 			<label for="chk_num_players_above">players above each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_below">
-			<input type="checkbox" id="chk_num_players_below" class="filter_players"> 
+			<input type="checkbox" id="chk_num_players_below" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
 			<input type="number" id="num_players_below" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_num_players_below', '#chk_players_ex');">   
 			<label for="chk_num_players_below">players below each selected player (above)</label>   
 	  	</div>
 	  	
 	  	<div class="filter_players_min_playcount">
-			<input type="checkbox" id="chk_min_plays" class="filter_players"> 
+			<input type="checkbox" id="chk_min_plays" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
 			<label for="chk_min_plays">players who have <b>played the game at least</b> 
 			<input type="number" id="min_plays" min="0" class="Number" style="width: 5ch;" oninput="blank_zero(this); check_check(this, '#chk_min_plays', '#chk_players_ex');">
 			<b>times</b></label>
 	  	</div>
 	  	
 	  	<div class="filter_players_played_since">
-			<input type="checkbox" id="chk_played_since" class="filter_players"> 
+			<input type="checkbox" id="chk_played_since" class="filter_players" oninput="only_one(this, '#chk_players_ex')"> 
 			<label for="chk_played_since">players who have <b>played the game since</b> </label> 
 			<input class="DateTimeField" id="played_since" type="text" onchange="check_check(this, '#chk_played_since', '#chk_players_ex');">
 	  	</div>

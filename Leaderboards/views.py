@@ -479,10 +479,22 @@ class view_Login(LoginViewExtended):
         username = self.request.POST["username"]
         try:
             user = User.objects.get(username=username)
-            preferred_league = user.player.league
+                        
+            # We have to lose a leaderboard cache after a login as 
+            # privacy setting change and lots of player name fields
+            # in particular will be missing data in the cache that
+            # is now available to the logged in user. This us 
+            # unfortunate and theremay be a better way:
+            # TODO: rather that deleting the cache, we could
+            #       rebuild only the names in the leaderboards 
+            #       but that would be some fiddly code.
+            del self.request.session["leaderboard_cache"]
             
-            if preferred_league:
-                save_league_filters(form.request.session, preferred_league.pk)
+            if hasattr(user, 'player') and user.player:
+                preferred_league = user.player.league
+                
+                if preferred_league:
+                    save_league_filters(form.request.session, preferred_league.pk)
                     
         except user.DoesNotExist:
             pass
@@ -646,44 +658,13 @@ def ajax_Leaderboards(request, raw=False):
     (title, subtitle) = lo.titles()
     
     # Get the cache if available
-    lb_cache = request.session.get("leaderboard_cache", None) 
-    
-    # FIXME: Will have to disect code below to find good entry points for
-    # these two options.
     #
-    # Strategy:
-    #     We build a list of "games" either from DB or cache
-    #     We loop over the games, and build a list of "boards" from DB or cache
-    #     We loop over boards to filter "players"
-    #
-    #     We are building "leaderboards" by pushing a game tuple at a time onto it.
-    #     We build a game tuple by pushing its boards onto it
+    # It should contain leaderboard snapshots already produced.
+    # Each snapshot is uniquely identified by the session.pk 
+    # that it belongs to. And so we can store them in cache in 
+    # a dict keyed on session.pk
+    lb_cache = request.session.get("leaderboard_cache", {}) 
     
-    if lb_cache:
-        if lo.needs_db(lb_cache.options):
-            # Using the lo (leaderboard options) build a list of games by querying the 
-            # database.
-            #
-            # BUT only fetch new things not in the cache! So for this we want a list 
-            # of the games in the cache that are valid. We need to generate a list of 
-            # games with a status:
-            # 
-            # Can get all boards from cache
-            # Can get some boards from cache
-            # Can get no boards from cache
-            #
-            # A method on lo again.
-            #
-            # Here we have Game objects.
-            pass
-        else:
-            # Use the cache as a data source. We know the games list is the same as that
-            # in lb_cache because game filters are not cache safe, so we can get the list 
-            # of game PKs from the cache.
-            #
-            # Here we have only Game PKs 
-            pass
-                      
     # Fetch the queryset of games that thes options specify
     # This is lazy and should not have caused a database hit just return an unevaluated queryset 
     games = lo.games_queryset()
@@ -748,66 +729,84 @@ def ajax_Leaderboards(request, raw=False):
                 #        From here we build a snapshot tuple. This is what we can find in the cache rather 
                 #        than build so it boils down here to getting the snapshot from chache or building 
                 #        it. 
-                            
-                # Compile the information we need for the header of a leaderboard we present
-                snapshot_pk = board.pk
-                time = board.date_time
-                time_local = localize(localtime(time))
                 
-                print_debug(f"\tBoard/Snapshot for session at {time_local}.")                     
-                
-                players = [p.pk for p in board.players]
-                detail = board.leaderboard_header(lo.names)
-                analysis = board.leaderboard_analysis(lo.names)
-                analysis_after = board.leaderboard_analysis_after(lo.names)
-    
-                print_debug(f"\tGot the analyses.")                     
+                print_debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
 
-                # Now get the leaderboard asat the time of this board.
-                # We request an annotated version which supplies us with the information needed
-                # for player filtering and renderig, the leaderboard returned is completete
-                # (no league filter applied, all name renderig options supplied). 
-                lb = game.leaderboard(asat=time, simple=False)
+                # First fetch the global (unfiltered) snapshot for this board/session
+                if board.pk in lb_cache:
+                    full_snapshot = lb_cache[board.pk]
+                else:
+                    full_snapshot = board.leaderboard_snapshot()
+                    if full_snapshot:
+                        lb_cache[board.pk] = full_snapshot
+
+                # TODO, consider not relying on a firm index here, either providing 
+                # indexes as a an enumeration or using a dict? snapshot would habe 
+                # to be turned into a tuple or lsit of dict values to be inserted into
+                # a the leaderboards tuple for this game though. Unless the whole 
+                # structure moved more toward dicts (and dicts passed well as JSON 
+                # to context and AJAX callers?
+                #
+                # Alternately make snapshots  class with attrs? What are the 
+                # consequences of that for caching, JSONifying to context and 
+                # AJAX callers?
+                print_debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
                 
-                print_debug(f"\tGot the board/snapshot. It has {len(lb)} players on it.")
-                                     
-                lbf = lo.apply(lb)
-                                
-                if lbf:
-                    # First we add the previous rank if available to each players tuple in the leaderboard
-                    if previous_rank:
+                # Then filter and annotate it in context of lo
+                if full_snapshot:
+                    lb = full_snapshot[8]
+                    
+                    snapshot = lo.apply(full_snapshot)
+                    lbf = snapshot[8]
+
+                    print_debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
+            
+                    # Counts supplied in the full_snapshot are global and we want to constrain them to
+                    # the leagues in question.
+                    #
+                    # Playcounts are always across all the leagues specified.
+                    #   if we filter games on any leagues, the we list games played by any of the leagues
+                    #        and play count across all the leagues makes sense.
+                    #   if we filter games on all leagues, then list only games played by all the leagues present
+                    #        and it still makes sense to list a playcount across all those leagues.
+                    
+                    counts = game.play_counts(leagues=lo.game_leagues, asat=board.date_time)                    
+                    
+                    # We add the previous rank if available to each players tuple in the leaderboard
+                    if lbf and previous_rank:
                         for p in range(len(lbf)):
                             player_tuple = lbf[p]
                             pk = player_tuple[1]
                             if pk in previous_rank:
                                 lbf[p] = player_tuple + (previous_rank[pk],)
+
                     
-                    # Playcounts are always across all the leagues specified.
-                    #   if we filter games on any leagues, the we list games played by any of the leagues
-                    #        and play count across all the leagues makes sense.
-                    #   if we filrer games on all leagues, then list only games played by all the leagues present
-                    #        and it still makes sense to list a playcount across all those leagues.
-                    counts = game.play_counts(leagues=lo.game_leagues, asat=time)
-                    total = counts['total']
-                    sessions = counts['sessions']
-                    snapshot = (snapshot_pk, time_local, total, sessions, players, detail, analysis, analysis_after, lbf)
-                    snapshots.append(snapshot)
-                    
-                    print_debug(f"\tDone. Now it has {len(lbf)} players, {len(lb)-len(lbf)} players filtered out.")                     
-                
-                # Clear and rebuild the previouse_rank dictionary with this boards' lb values
-                # We use the wholeleaderboard hear (lb) not the player filtered leaderboard (lbf)
-                previous_rank = {}
-                for p in lb:
-                    rank = p[0]
-                    pk = p[1]
-                    previous_rank[pk] = rank
+                    # snapshot 0 and 1 are the session PK and localized time
+                    # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
+                    # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
+                    # snapshot 8 is the leaderboard (a tuple of player tuples
+                    # The HTML header and analyses use flex player naming and expect client side to render 
+                    # appropriately. See Player.name() for flexi naming standard.
+                    snapshot = (snapshot[0:2] 
+                             +  (counts['total'], counts['sessions']) 
+                             +  snapshot[4:8] 
+                             +  (lbf,))
+                                    
+                    # Clear and rebuild the previouse_rank dictionary with this boards' lb values
+                    # We use the wholeleaderboard hear (lb) not the player filtered leaderboard (lbf)
+                    previous_rank = {}
+                    for p in lb:
+                        rank = p[0]
+                        pk = p[1]
+                        previous_rank[pk] = rank
+                        
+                    snapshots.append(snapshot)                
 
             # For this game we now have all the snapshots and we can save a game tuple
             # to the leaderboards list. We must have at least one snapshot, because we
             # ignored all games with 0 recorded sessions already in buiulding our list 
             # games. So if we don't have any something really bizarre has happened/  
-            assert len(snapshots) > 0, "Internal error: Games was in list for which no leaderboard snapshot was found. It should not have been in the list."
+            assert len(snapshots) > 0, "Internal error: Game was in list for which no leaderboard snapshot was found. It should not have been in the list."
 
             # We reverse the snapshots back to newest first oldest last                                
             snapshots.reverse()
@@ -815,8 +814,7 @@ def ajax_Leaderboards(request, raw=False):
             # Then build the game tuple with all its snapshots
             leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
 
-    cache = leaderboard_cache(lo, leaderboards)
-    request.session["leaderboard_cache"] = cache
+    request.session["leaderboard_cache"] = lb_cache
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

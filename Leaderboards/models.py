@@ -789,9 +789,19 @@ class Player(PrivacyMixIn, AdminModel):
     def name(self, style):
         '''
         Renders the players name in a nominated style
-        :param style: Supports "nick", "full", "complete"
+        :param style: Supports "nick", "full", "complete", "flexi"
+        
+        flexi is a special request to return {pk, nick, full, complete} 
+        empowering the caller to choose the name style later. This is
+        ideally to allow a client to choose rendering in Javascript
+        rather than fixing the rendering at server side.
         '''        
-        return self.complete_name if style == "complete" else self.full_name if style == "full" else self.name_nickname if style == "nick" else "Anonymous"        
+        # TODO: flexi has touse a delimeter that cannot be in a name and that should be enforced (names have them escaped
+        return (self.name_nickname if style == "nick" 
+           else self.full_name if style == "full" 
+           else self.complete_name if style == "complete" 
+           else f"{{{self.pk},{self.name_nickname},{self.full_name},{self.complete_name}}}" if style == "flexi" 
+           else "Anonymous")
 
     def rating(self, game):
         '''
@@ -1084,10 +1094,10 @@ class Game(AdminModel):
     def play_counts(self, leagues=[], asat=None) -> list:
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
-            total: is the sum of all the individual player counts (so a count of total play experiences)
-            max: is the largest play count of any player
-            average: is the average play count of all players who've played at least once
-            players: is a count of players who played this game at least once
+            total:    is the sum of all the individual player counts (so a count of total play experiences)
+            max:      is the largest play count of any player
+            average:  is the average play count of all players who've played at least once
+            players:  is a count of players who played this game at least once
             sessions: is a count of the number of sessions this game has been played
         
         leagues can be a single league (a pk) or a list of leagues (pks).        
@@ -1993,7 +2003,7 @@ class Session(TimeZoneMixIn, AdminModel):
             if self.team_play:
                 # Teams we can render with the default format
                 # TODO: Check this, they should also respect 
-                #  link   name_style for members and linking of 
+                #  link and name_style for members and linking of 
                 #     members names when listed!  
                 ranker = field_render(r.team, flt.template)
                 data.append((r.team.pk, None))
@@ -2004,7 +2014,7 @@ class Session(TimeZoneMixIn, AdminModel):
                 ranker = field_render(r.player, flt.template, osf.template)
                 
                 # Replace the player name template item with the formatted name of the player
-                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
+                ranker = re.sub(fr'{{Player\.{r.player.pk}}}', r.player.name(name_style), ranker)
                 
                 # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view 
                 PK = r.player.pk
@@ -2041,7 +2051,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (detail, data)
         
-    def leaderboard_header(self, name_style):
+    def leaderboard_header(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
@@ -2066,7 +2076,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (detail, data)         
 
-    def leaderboard_analysis(self, name_style):
+    def leaderboard_analysis(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
@@ -2093,14 +2103,14 @@ class Session(TimeZoneMixIn, AdminModel):
         
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
-        detail = u"Predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality, tip_accu)
+        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality:.0%} accurate){tip_accu}</div>: <br><br>"
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
         
         detail += ol
         
         return (mark_safe(detail), data)
     
-    def leaderboard_analysis_after(self, name_style):
+    def leaderboard_analysis_after(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
@@ -2127,11 +2137,50 @@ class Session(TimeZoneMixIn, AdminModel):
 
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
-        detail = u"Post-session predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality_after, tip_accu)                
+        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality_after:.0%} accurate){tip_accu}</div>: <br><br>"
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
         detail += ol
         
         return (mark_safe(detail), data)                  
+
+    def leaderboard_snapshot(self):
+        '''
+        Prepares a leaderboard snapshot for passing to a view for rendering. 
+        
+        A snapshot is defined by a tuple with these entries in order:
+        
+        session.pk, 
+        session.date_time (in local time), 
+        session.game.play_counts()['total'], 
+        session.game.play_counts()['sessions'], 
+        session.players() (as a list of pks), 
+        session.leaderboard_header(), 
+        session.leaderboard_analysis(), 
+        session.leaderboard_analysis_after(), 
+        game.leaderboard()
+        '''        
+        # Get the leaderboard asat the time of this board.
+        # We request an annotated version which supplies us with the information 
+        # needed for player filtering and renderig, the leaderboard returned is 
+        # complete (no league filter applied, or name rendering options supplied).
+        # It will be up to the view to filter players as desired and select the 
+        # name format at render time.
+        lb = self.game.leaderboard(asat=self.date_time, simple=False)
+        
+        counts = self.game.play_counts(asat=self.date_time)
+
+        # Build the snapshot tuple
+        snapshot = (self.pk, 
+                    localize(localtime(self.date_time)),
+                    counts['total'], 
+                    counts['sessions'], 
+                    [p.pk for p in self.players], 
+                    self.leaderboard_header(), 
+                    self.leaderboard_analysis(), 
+                    self.leaderboard_analysis_after(), 
+                    lb)
+        
+        return snapshot
    
     def previous_sessions(self, player):
         '''

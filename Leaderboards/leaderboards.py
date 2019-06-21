@@ -146,12 +146,7 @@ class leaderboard_options:
     # These options invalidate the cache if they change
     cache_invalidating_options = perspective_options
     
-    # FIXME: num_games needs two interpretations:
-    #            top in popularity
-    #            most recently played.
-    #        Worth adding now while this is all being jiggery pokeried.
-    #
-    # TODO: For same reason, consider adding Tourney's now and a search for
+    # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.          
     
     # An option enabler. We want options to have sensible defaults to 
@@ -167,7 +162,7 @@ class leaderboard_options:
     # This only applies to the game selectors, the player selectors
     # and the perspective and evolution options. 
     #
-    # The formatting,extra info, and layout options are not enabled 
+    # The formatting, extra info, and layout options are not enabled 
     # or disabled,they simply are (always in force).
     enabled = {"game_leagues_any", "top_games", "player_leagues_any", "num_players_top"}
     
@@ -520,6 +515,7 @@ class leaderboard_options:
         # Then an option to discard all but the top num_players of each board
         # As the starting point. Other options can add players of course, this 
         # is not exclusive of other player selecting options.
+        self.__needs_enabling__.add('num_players_top')          
         if 'num_players_top' in request and request['num_players_top'].isdigit():
             self.num_players_top = int(request["num_players_top"])
             self.__enable__('num_players_top', self.num_players_top)                            
@@ -752,88 +748,93 @@ class leaderboard_options:
         '''
         return not ( self.is_enabled('compare_with') or self.is_enabled('compare_back_to') )
 
-    def apply(self, leaderboard):
+    def apply(self, leaderboard_snapshot):
         '''
-        Given a leaderboard in the format that Game.leaderboard() provides,
-        applies these options to it returning a filtered leaderboard. 
+        Given a leaderboard snapshot in the format that Session.leaderboard_snapshot() 
+        provides, applies these options to it returning a filtered version of the same
+        snapshot as dictated by these options (self).
+    
+        We only filter players. We don't apply name or link formatting here, the 
+        snapshot elements contain sufficient information for the view itself to 
+        implement those rendering options. Our aim here is to send to the view 
+        a filtered snaphot because global leaderboads for a game can grow very 
+        large and most views will be concerned with a subset based on leagues.
+        '''
+        leaderboard = leaderboard_snapshot[8]
         
-        Only player filters have any meaning here of course, the aim being
-        that the full leaderboard may be very large (hold many players) and 
-        we want to return soem filtered version of it by applying these 
-        options (self).  
-        '''
-        lbf = []   # A player-filtered version of lb 
+        # leaderboard is a well defined list of tuples that contain player info/metadata
+        # The list is ordered by ranking.
+        #  
+        # We want to apply the player filters now. So create a new list
+        # pushing on candidates as we find them.
+        
+        # If any player filters are specified, list only the players that pass the criteria the options specify
+        if self.player_filters():                    
+            lbf = []   # A player-filtered version of leaderboard 
 
-        if leaderboard:                    
-            # lb is a well defined list of tuples that contain player info/metadata
-            # The list is ordered by ranking.
-            #  
-            # We want to apply the player filters now. So create a new list
-            # pushing on candidates as we find them.
-            
-            # If any player filters are specified, list only the players that pass the criteria the options specify
-            if self.player_filters():                    
-                for p in leaderboard:
-                    # Fetch data from the tuple
-                    rank = p[0]
-                    pk = p[1]
-                    plays = p[9]
-                    last_play = p[11]
-                    leagues = p[12] 
-                    
-                    # If an exlusive player list is enabled respect that
-                    if self.is_enabled('players_ex'):
-                        if pk in self.players:
-                            lbf.append(p)
-                        continue
-                    
-                    # Apply remaining citeria one by one
-                    
-                    # List top N players regardless of who they are
-                    if self.is_enabled('num_players_top') and len(lbf) < self.num_players_top:
-                        lbf.append(p)
-                        continue
-
-                    # For the rest of the list we check if the player is ok by the filters                   
-                    if self.player_ok(pk, plays, last_play, leagues):
-                        lbf.append(p)
-                        continue
-                    
-                    # If the player is not OK themsleves, perhaps proximity to a mointanted player
-                    # wins them inclusion?
-                    
-                    # We need be we look ahead n players for a nominated player
-                    if self.is_enabled('num_players_above'):
-                        # rank is numbered from 1 ... the list from 0
-                        # the current player is at list inded rank-1
-                        # We want to start looking form the next player 
-                        # so index rank-1+1
-                        # i goes from 0 to lo.num_players_above-1
-                        start = rank
-                        for i in range(self.num_players_above):
-                            if start + i < len(leaderboard) and self.player_nominated(leaderboard[start + i][1]):
-                                lbf.append(p)
-
-                    # If need be we look back n players for a nominated player
-                    if self.is_enabled('num_players_below'):
-                        # rank is numbered from 1 ... the list from 0
-                        # the current player is at list inded rank-1
-                        # We want to start looking form the previous player 
-                        # so index rank-1-1
-                        # i goes from 0 to lo.num_players_above-1
-                        start = rank - 2
-                        for i in range(self.num_players_below):
-                            if start - i >= 0 and self.player_nominated(leaderboard[start - i][1]):
-                                lbf.append(p)
-                                    
-            # If no player filters are specified, lsit the all the players
-            else:
-                lbf = leaderboard
+            for p in leaderboard:
+                # Fetch data from the tuple
+                rank = p[0]
+                pk = str(p[1])   # Force to string as self.players is a list of string pks
+                plays = p[9]
+                last_play = p[11]
+                leagues = p[12] 
                 
-        return lbf        
+                # If an exlusive player list is enabled respect that
+                if self.is_enabled('players_ex'):
+                    if pk in self.players:
+                        lbf.append(p)
+                    continue
+                
+                # Apply remaining citeria one by one
+                
+                # List top N players regardless of who they are
+                if self.is_enabled('num_players_top') and len(lbf) < self.num_players_top:
+                    lbf.append(p)
+                    continue
+
+                # For the rest of the list we check if the player is ok by the filters                   
+                if self.player_ok(pk, plays, last_play, leagues):
+                    lbf.append(p)
+                    continue
+                
+                # If the player is not OK themsleves, perhaps proximity to a mointanted player
+                # wins them inclusion?
+                
+                # We need be we look ahead n players for a nominated player
+                if self.is_enabled('num_players_above'):
+                    # rank is numbered from 1 ... the list from 0
+                    # the current player is at list inded rank-1
+                    # We want to start looking form the next player 
+                    # so index rank-1+1
+                    # i goes from 0 to lo.num_players_above-1
+                    start = rank
+                    for i in range(self.num_players_above):
+                        if start + i < len(leaderboard) and self.player_nominated(leaderboard[start + i][1]):
+                            lbf.append(p)
+
+                # If need be we look back n players for a nominated player
+                if self.is_enabled('num_players_below'):
+                    # rank is numbered from 1 ... the list from 0
+                    # the current player is at list inded rank-1
+                    # We want to start looking form the previous player 
+                    # so index rank-1-1
+                    # i goes from 0 to lo.num_players_above-1
+                    start = rank - 2
+                    for i in range(self.num_players_below):
+                        if start - i >= 0 and self.player_nominated(leaderboard[start - i][1]):
+                            lbf.append(p)
+                                
+        # If no player filters are specified, lsit the all the players
+        else:
+            lbf = leaderboard
+                
+        return leaderboard_snapshot[0:8] + (lbf,) 
 
     def needs_db(self, cache_options):
         '''
+        TODO: Reconsider any need for this! It may be redundant!
+        
         Given a cached copy of self, returns true if we need to use the database.
         If false the cache alone contains all the info we need to build leaderboards
         

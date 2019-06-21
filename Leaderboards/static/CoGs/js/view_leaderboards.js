@@ -582,6 +582,9 @@ function LBtable(LB, snapshot, links) {
 	const iBGGid = 1;
 	const iGameName = 2;
 	const iSnapshots = 3;
+
+	// The name format to use
+	const name_choice  = $("#names").val();
 	
 	// Extract the data we need
 	const pkg = LB[iPKgame];
@@ -631,27 +634,28 @@ function LBtable(LB, snapshot, links) {
 	const linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 
 	// Fix the session detail and analysis headers which were provided with templated links
-	var linkPlayerCoGs = url_view_Player.replace('00','{ID}');
-	var linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
-	var linkTeamCoGs = url_view_Team.replace('00','{ID}');
+	let linkPlayerCoGs = url_view_Player.replace('00','{ID}');
+	let linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
+	let linkTeamCoGs = url_view_Team.replace('00','{ID}');
 	
-	var linkRanker = {};
+	let linkRanker = {};
 	linkRanker["Player"] = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
 	linkRanker["Team"] = links == "CoGs" ? linkTeamCoGs : links == "BGG" ?  null : null;
 
 	// Build a map of PK to BGGid for all rankers
 	// Note, session_details_data, session_analysis_pre_data and session_analysis_post_data perforce
 	// contain the same map (albeit in a different order) so we can use just one of them to build the map. 
-	var linkRankerID = {}
-	for (var r = 0; r < session_details_data.length; r++) {
-		var PK = session_details_data[r][0];
-		var BGGname = session_details_data[r][1];
+	let linkRankerID = {}
+	for (let r = 0; r < session_details_data.length; r++) {
+		const PK = session_details_data[r][0];
+		const BGGname = session_details_data[r][1];
 		
 		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
 	}
 
 	// A regex replacer which has as args first the matched string then each of the matched subgroups
-	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text.
+	// The subgroups we expect for a link update to the HTML headers are 
+	// klass, model, id and then the text.
 	// This is a function that the following replace() functions pass matched groups to and is tasked
 	// with returning a the replacement string. 
 	function fix_template_link(match, klass, model, id, txt) {
@@ -663,10 +667,30 @@ function LBtable(LB, snapshot, links) {
 		}
 	}
 	
-	// Fix the HTML of the headers
+	// Fix the links in the HTML headers
+	// An example: {link.field_link.Player.1}Bernd{link_end}
 	session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+		
+	// A regex replacer which has as args first the matched string then each of the matched subgroups
+	// The subgroups we expect from name update to the HTML headers are:
+	// pk, nick, full, complete
+	// We don't actually need the PK, it's just there.
+	function fix_template_name(match, pk, nick, full, complete) {
+	    switch (name_choice) {
+	      case "nick": return nick;
+	      case "full": return full;
+	      case "complete": return complete;
+	      default: throw new Error ("Illegal name selector.");
+	    }
+	}
+
+	// Fix the names in the HTML headers
+	// An example: "{1,Bernd,Bernd <Hidden>,Bernd <Hidden> (Bernd)}"
+	session_details_html = session_details_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
+	session_analysis_pre_html = session_analysis_pre_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
+	session_analysis_post_html = session_analysis_post_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
 	
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
@@ -905,7 +929,6 @@ function LBtable(LB, snapshot, links) {
 
 		//###########################################################################
 		// The PLAYER column
-		const name_choice  = $("#names").val();
 		const chosen_name = name_choice == 'nick' ? player_list[i][iNickName]
 		                  : name_choice == 'full' ? player_list[i][iFullName]
 			        	  : name_choice == 'complete' ? player_list[i][iCompleteName]
