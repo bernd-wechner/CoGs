@@ -88,8 +88,8 @@ function OnLoad(event) {
 	team_switch.addEventListener('click', switchMode)
 	
 	// Add a listener to the game selector (so that the form can adapt to the properties of the newly selected game)
-	const game_selector = $$(id_prefix+"game");
-	game_selector.addEventListener('change', switchGame)
+	const game_selector = $("#"+id_prefix+"game");
+	game_selector .on("change", switchGame);
 	
 	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form 
 	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
@@ -1043,8 +1043,8 @@ function OnRowcountChange(event) {
 // Event handler for change of a selected player
 // In Individual Play Mode, the player is identified in both a Rank object and a Performance Object. 
 // And so the form has to contain two widgets:
-//		related_forms.Rank.player
-//		related_forms.Performance.player
+//		form.related_forms.Rank.player
+//		form.related_forms.Performance.player
 // One should be display the other hidden. This event handler attached to the displayed, copies the selected
 // player ID to the hidden one. This ensures that both the Rank and Performance update the relevant Rank and 
 // Performance database objects on a standard Django formset save. 
@@ -1057,7 +1057,8 @@ function OnPlayerChange(event) {
 					   null;
 					   
 	if (player_copy_id != null) {
-		const player_copy = $$(player_copy_id);
+		const row = event.target.parentElement.parentElement;
+		const player_copy = $$(player_copy_id, row);
 		player_copy.value = event.target.value;
 	}
 }
@@ -1082,8 +1083,8 @@ function showhideTrash(event) {
 
 // There are managment forms for both Rank and Performance that must be included in the template.
 // a la:
-//			{{ related_forms.Rank.management_form }}
-//			{{ related_forms.Performance.management_form }}
+//			{{ form.related_forms.Rank.management_form }}
+//			{{ form.related_forms.Performance.management_form }}
 // and these contain hidden fields with known names (defined in the header above).
 ///
 // Given an embracing div element, this will find the relevant management form fields 
@@ -1192,12 +1193,44 @@ function applySessionToRow(session, row, table_type) {
     	    const player_copy 	= getWidget(row, name_player_copy);// This is a copy of the player we need to keep of player (see header for details)
     	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting, a dango field for generic processing
     		
-            rid.value 	 = entry_id < rids.length   ? rids[entry_id] 	 	: "";
-            rank.value 	 = rid.value in ranks 	 	? ranks[rid.value] 	 	: Number(entry_id)+1;
-            player.value = rid.value in players		? players[rid.value] 	: "";	                               
-            pid.value 	 = player.value in pids 	? pids[player.value] 	: "";
-            weight.value = player.value in weights 	? weights[player.value] : 1;	                               
-            player_copy.value = player.value;
+    	    const rank_id 	    = entry_id < rids.length ? rids[entry_id] 	: "";
+    	    const player_id 	= rank_id in players 	 ? players[rank_id] : "";
+    	    
+            rid.value 	 = rank_id
+            rank.value 	 = rank_id in ranks 	? ranks[rank_id] 	 : Number(entry_id)+1;
+            player.value = rank_id in players	? players[rank_id] 	 : "";	                               
+            pid.value 	 = player_id in pids 	? pids[player_id] 	 : "";
+            weight.value = player_id in weights ? weights[player_id] : 1;	                               
+            player_copy.value = player_id;
+            
+            // Populating the select2 widget form django-auto-complete-light is not so
+            // trivial, and taken from here: 
+            // 		https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
+            if (rid.value in players) {
+	            const select2_player = $("#"+player.id, row)
+	            const url = player_selector_url.replace(/\d+$/, player_id)
+	            $.ajax({
+	                type: 'GET',
+	                url: url
+	            }).then(function (data) {
+	                // create the option and append to Select2
+	                var option = new Option(data, player_id, true, true);
+	                select2_player.append(option).trigger('change');
+	
+	                // manually trigger the `select2:select` event
+	                select2_player.trigger({
+	                    type: 'select2:select',
+	                    params: {
+	                        data: data
+	                    }
+	                });
+	            });            
+            }
+            
+//            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
+//            $("#"+player.id, row).append(newOption)
+//            $("#"+player.id, row).trigger('change');
+            const a = 1;
     	}
     	break;
     		
@@ -1664,8 +1697,11 @@ function insertAfter(newNode, referenceNode) {
     referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
 }
 
-function $$(id) {
+function $$(id, context) {
 //  return document.getElementById(id);
-//  or using jQuery:
-    return $('#'+	id)[0];
+//  or using jQuery (with an optional context for finding elements not in the document yet): but in that context
+	if (context == undefined)
+		return $('#'+	id)[0];
+	else
+		return $('#'+	id, context)[0];
 }

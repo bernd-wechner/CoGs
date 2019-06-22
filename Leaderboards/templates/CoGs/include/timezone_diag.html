@@ -19,9 +19,9 @@
 		<th>Time</th>
     </tr><tr>
         <td nowrap>Javascript</td>
-        <td nowrap><script>document.write(debug_tz.name());</script></td>
-        <td nowrap><script>document.write(debug_offset);</script></td>
-        <td nowrap><script>document.write(debug_date_time);</script></td>           
+        <td nowrap id="JS-tz-name-JS"></td>
+        <td nowrap id="JS-tz-offset-JS"></td>
+        <td nowrap id="JS-time-JS"></td>           
     </tr><tr>
         <td nowrap>Django Naive</td>
         <td nowrap>{{naive_timezone}}</td>
@@ -56,6 +56,13 @@
         <td nowrap colspan=2 align=right>timezone None:</td>
         <td nowrap>{% timezone None %}{% now "DATETIME_FORMAT" %}{% endtimezone %}</td>
     </tr><tr>
-        <td colspan=0><script>document.write(RELOADED?"A Timezone Reload <b>was forced</b>!":"<b>No</b> Timezone Reload was forced!")</script></td>
+        <td colspan=0 id="JS-RELOADED-JS"></td>
     </tr></table>
-</div>	    
+</div>
+
+<script>
+	document.getElementById('JS-tz-name-JS').innerHTML = debug_tz.name();
+	document.getElementById('JS-tz-offset-JS').innerHTML = debug_offset;
+	document.getElementById('JS-time-JS').innerHTML = debug_date_time;
+	document.getElementById('JS-RELOADED-JS').innerHTML = RELOADED?"A Timezone Reload <b>was forced</b>!":"<b>No</b> Timezone Reload was forced!";
+</script>

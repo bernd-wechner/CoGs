@@ -121,25 +121,27 @@
 	// TODO: add datetimepicker to these
 	// TODO: ignore options who have no value! Don't add them to fopts.
 	// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
-  	function CollectFilterField(index, value) {
-  		const field = $(value);
-  		console.log("CollectFilterField: " + field);
-  		
-  		const opt = field.prop('name');
-  		
-  		let val = null;
-  		if (field.is("input"))
-  			val = field.val();
-  		else if (field.is("select"))
-  			val = field.find(":selected").val();
-
-		if (val != 'None' && val != "")
-			fopts.push(opt + "=" + val);
-  	}
 	
  	function filter_url_opts() {
 		const widgetid = "session_filtering_widget";
 		let fopts = [];
+
+	  	function CollectFilterField(index, value) {
+	  		const field = $(value);
+	  		console.log("CollectFilterField: " + field);
+	  		
+	  		const opt = field.prop('name');
+	  		
+	  		let val = null;
+	  		if (field.is("input"))
+	  			val = field.val();
+	  		else if (field.is("select"))
+	  			val = field.find(":selected").val();
+	
+			if (val != 'None' && val != "")
+				fopts.push(opt + "=" + val);
+	  	}
+
 		$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
 		return fopts;
  	}

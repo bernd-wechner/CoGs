@@ -1,35 +1,36 @@
-import re
+import re, json
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
-import json
-import pytz
-import sys
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
-from cuser.middleware import CuserMiddleware
-
-#from collections import OrderedDict
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
-from django_generic_view_extensions.util import  datetime_format_python_to_PHP, class_from_string
+from django_generic_view_extensions.util import class_from_string
+from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.debug import print_debug 
 
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, NEVER
-#from django import forms
+from cuser.middleware import CuserMiddleware
+
+from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
+from .leaderboards import leaderboard_options, leaderboard_cache, NameSelections, LinkSelections 
+
 from django.db.models import Count, Q
-#from django.db.models.fields import DateField 
 from django.shortcuts import render
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
+from django.utils.formats import localize
+from django.utils.timezone import is_aware, make_aware, activate, localtime
 from django.http import HttpResponse
-from django.http.response import HttpResponseRedirect
-from django.urls import reverse #, resolve
+#from django.http.response import HttpResponseRedirect
+from django.urls import reverse, reverse_lazy  #, resolve
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
-from django.utils.dateparse import parse_datetime
+from django.forms.models import ModelChoiceIterator, ModelMultipleChoiceField
 from django.conf import settings
-from django.utils.timezone import get_default_timezone, get_default_timezone_name, get_current_timezone, get_current_timezone_name, localtime, is_aware, make_aware, make_naive, activate
-from django.utils.formats import localize
+
+from dal import autocomplete
+
 from numpy import rank
 
 #TODO: Add account security, and test it
@@ -48,13 +49,6 @@ def get_aware_datetime(date_str):
 
 def is_registrar(user):
     return user.groups.filter(name='registrars').exists()
-
-def fix_time_zone(dt):
-    UTC = pytz.timezone('UTC')
-    if not dt is None and dt.tzinfo == None:
-        return UTC.localize(dt)
-    else:
-        return dt
 
 #===============================================================================
 # Form processing specific to CoGs
@@ -355,7 +349,21 @@ def html_league_options(session):
         options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
-def extra_context_provider(self):
+def html_selector(model, id, default=0, placeholder="", attrs={}):
+    '''
+    Returns an HTML string for a model selector. 
+    :param model:    The model to provide a selector widget for
+    :param session:  The session dictionary (to look for League filters)
+    '''
+    url = reverse_lazy('autocomplete_all', kwargs={"model": model.__name__, "field_name": model.selector_field})
+    field = ModelMultipleChoiceField(model.objects.all())
+        
+    widget = autocomplete.ModelSelect2Multiple(url=url, attrs={**attrs, "class": "multi_selector", "id": id, "data-placeholder": placeholder, "data-theme": "bootstrap"})    
+    widget.choices = ModelChoiceIterator(field)
+        
+    return widget.render(model.__name__, default)
+
+def extra_context_provider(self, context={}):
     '''
     Returns a dictionary for extra_context with CoGs specific items 
     
@@ -375,39 +383,42 @@ def extra_context_provider(self):
     Note: self.initial has been populated by the fields specfied in the models inherit_fields 
     attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
     '''
-    context = {}
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""
      
     context['league_options'] = html_league_options(self.request.session)
+    context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
     
     if model_name == 'session':
-        if "game" in getattr(self, 'initial', {}):
-            Default = self.initial["game"]
+        # if an object is provided in self.object use that 
+        if hasattr(self, "object") and self.object and hasattr(self.object, "game") and self.object.game:
+                game = self.object.game
+                
+        # Else use the forms initial game, but
+        # self.form doesn't exist when we get here, 
+        # the form is provided in the context however
+        elif 'form' in context and "game" in getattr(context['form'], 'initial', {}):
+            game = context['form'].initial["game"]
+            
+            # initial["game"] could be a Game object or a PK
+            if isinstance(game , int):
+                try:
+                    game  = Game.objects.get(pk=game)
+                except:
+                    game = Game()
         else:
-            Default = Game()
+            game = Game()
         
-        context['game_individual_play'] = json.dumps(Default.individual_play)
-        context['game_team_play'] = json.dumps(Default.team_play)
-        context['game_min_players'] = Default.min_players
-        context['game_max_players'] = Default.max_players
-        context['game_min_players_per_team'] = Default.min_players_per_team
-        context['game_max_players_per_team'] = Default.max_players_per_team
-        
-        # Object overrides the defaults above 
-        if hasattr(self, "object"):
-            session = self.object
-                    
-            if session:
-                game = session.game
-                if game:
-                    context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
-                    context['game_team_play'] = json.dumps(game.team_play)
-                    context['game_min_players'] = game.min_players
-                    context['game_max_players'] = game.max_players
-                    context['game_min_players_per_team'] = game.min_players_per_team
-                    context['game_max_players_per_team'] = game.max_players_per_team
-    
+        if game:
+            context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
+            context['game_team_play'] = json.dumps(game.team_play)
+            context['game_min_players'] = game.min_players
+            context['game_max_players'] = game.max_players
+            context['game_min_players_per_team'] = game.min_players_per_team
+            context['game_max_players_per_team'] = game.max_players_per_team    
+        else:
+            raise ValueError("Session form needs a game even if it's the default game")
+            
     return context
 
 def save_league_filters(session, league):
@@ -470,17 +481,28 @@ class view_Login(LoginViewExtended):
         username = self.request.POST["username"]
         try:
             user = User.objects.get(username=username)
-            preferred_league = user.player.league
+                        
+            # We have to lose a leaderboard cache after a login as 
+            # privacy setting change and lots of player name fields
+            # in particular will be missing data in the cache that
+            # is now available to the logged in user. This us 
+            # unfortunate and theremay be a better way:
+            # TODO: rather that deleting the cache, we could
+            #       rebuild only the names in the leaderboards 
+            #       but that would be some fiddly code.
+            del self.request.session["leaderboard_cache"]
             
-            if preferred_league:
-                save_league_filters(form.request.session, preferred_league.pk)
+            if hasattr(user, 'player') and user.player:
+                preferred_league = user.player.league
+                
+                if preferred_league:
+                    save_league_filters(form.request.session, preferred_league.pk)
                     
         except user.DoesNotExist:
             pass
         
         return response
                           
-
 class view_Add(LoginRequiredMixin, CreateViewExtended):
     # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
@@ -535,156 +557,6 @@ class view_Detail(DetailViewExtended):
 
 # Define defaults for the view inputs 
 
-class leaderboard_options:
-    league = ALL_LEAGUES        # Restrict to games played by specified League
-    player = ALL_PLAYERS        # Restrict to games played by specified Player
-    game = ALL_GAMES            # Restrict to specified Game
-    num_games = 5               # List only this many games (most popular ones)
-    num_days = 1                # For impact Quick Views only, return impact of last session of this length in days
-    as_at = None                # Do everything as if it were this time now (pretend it is now as_at)
-    changed_since = NEVER       # Show only leaderboards that changed since this date 
-    compare_with = None         # Compare with this many historic leaderboards
-    compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was he latest one then)
-    compare_till = None         # Include comparisons only up to this date           
-    details = False             # Show session details atop each boards (about the session that produced that board)
-    analysis_pre = False        # Show the TrueSkill Pre-session analysis 
-    analysis_post = False       # Show the TrueSkill Post-session analysis 
-    highlight_players = True    # Highlight the players that played the last session of this game (the one that produced this leaderboard)
-    highlight_changes = True    # Highlight changes between historic snapshots
-    cols = 4                    # Display boards in this many columns (ignored when comparing with historic boards)
-    names = 'complete'          # Render player names like this
-    links = 'CoGs'              # Link games and players to this target
-    
-    @property
-    def as_dict(self):
-        me = sys._getframe().f_code.co_name
-        d = {}
-        for attr in [a for a in dir(self) if not a.startswith('__')]:
-            if attr != me:
-                val = getattr(self, attr)
-                if isinstance(val, datetime):
-                    val = val.strftime(settings.DATETIME_INPUT_FORMATS[0])
-                elif not isinstance(val, str):
-                    try:
-                        val = json.dumps(val)
-                    except TypeError:
-                        val = str(val)
-                
-                d[attr] = val
-                
-        return d
-    
-def get_leaderboard_options(request):
-    lo = leaderboard_options()
-    if 'league' in request.GET:
-        lo.league = request.GET['league']
-        
-    if 'player' in request.GET:
-        lo.player = request.GET['player']
-        
-    if 'game' in request.GET:        
-        lo.game = request.GET['game']
-    
-    if 'num_games' in request.GET and request.GET['num_games'].isdigit():
-        lo.num_games = int(request.GET["num_games"])
-
-    if 'num_days' in request.GET and request.GET['num_days'].isdigit():
-        lo.num_days = int(request.GET["num_days"])
-
-    if 'as_at' in request.GET:
-        lo.as_at = fix_time_zone(parser.parse(request.GET['as_at']))
-                                 
-    if 'changed_since' in request.GET:
-        lo.changed_since = fix_time_zone(parser.parse(request.GET['changed_since']))
-
-    if 'compare_with' in request.GET and request.GET['compare_with'].isdigit():
-        lo.compare_with = int(request.GET['compare_with'])
-
-    if 'compare_back_to' in request.GET:                                         
-        lo.compare_back_to = fix_time_zone(parser.parse(request.GET['compare_back_to']))
-
-    if 'compare_till' in request.GET:        
-        lo.compare_till = fix_time_zone(parser.parse(request.GET['compare_till']))    
-        
-    if 'details' in request.GET:
-        lo.details = json.loads(request.GET['details'].lower())     
-
-    if 'analysis_pre' in request.GET:
-        lo.analysis_pre = json.loads(request.GET['analysis_pre'].lower())     
-
-    if 'analysis_post' in request.GET:
-        lo.analysis_post = json.loads(request.GET['analysis_post'].lower())     
-
-    if 'highlight_players' in request.GET:
-        lo.highlight_players = json.loads(request.GET['highlight_players'].lower())
-         
-    if 'highlight_changes' in request.GET:
-        lo.highlight_changes = json.loads(request.GET['highlight_changes'].lower())
-    
-    if 'cols' in request.GET:
-        lo.cols = request.GET['cols']
-        
-    if 'names' in request.GET:
-        lo.names = request.GET['names']
-    
-    if 'links' in request.GET: 
-        lo.links = request.GET['links']
-    
-#     # TODO: Bail with an error message
-#     # TODO: Do consistency checks on all the dates submitted
-#     if league != ALL_LEAGUES and not League.objects.filter(pk=league).exists():
-#         pass
-#     if player != ALL_PLAYERS and not Player.objects.filter(pk=player).exists():
-#         pass
-#     if game != ALL_GAMES and not Game.objects.filter(pk=game).exists():
-#         pass    
-    
-    return lo
-
-def get_leaderboard_titles(lo):
-    # TODO: Make this more robust against illegal PKs. The whole view should be graceful if sent a bad league or player.
-    try:
-        P = Player.objects.get(pk=lo.player)
-    except:
-        P = None
-
-    try:
-        L = League.objects.get(pk=lo.league)
-    except:
-        L = None
-        
-    # Format the page title
-    if lo.player == ALL_PLAYERS:
-        if lo.league == ALL_LEAGUES:
-            title = "Global Leaderboards"
-        else:
-            title = "Leaderboards for the {} league".format(L)
-    else:
-        if lo.league == ALL_LEAGUES:
-            title = "Leaderboards for {}".format(P)
-        else:
-            title = "Leaderboards for {} in the {} league".format(P, L)        
-
-    default = leaderboard_options()
-    
-    subtitle = []
-    if lo.as_at != default.as_at:
-        subtitle.append("as at {}".format(localize(localtime(lo.as_at))))
-
-    if lo.changed_since != default.changed_since:
-        subtitle.append("changed after {}".format(localize(localtime(lo.changed_since))))
-
-    if lo.compare_back_to != default.compare_back_to:
-        time = "that same time" if lo.compare_back_to == lo.changed_since else localize(localtime(lo.compare_back_to))
-        subtitle.append("compared back to the leaderboard as at {}".format(time))
-    elif lo.compare_with != default.compare_with:
-        subtitle.append("compared up to with {} prior leaderboards".format(lo.compare_with))
-
-    if lo.compare_till != default.compare_till:
-        subtitle.append("compared up to the leaderboard as at {}".format(localize(localtime(lo.compare_till))))
-        
-    return (title, "<BR>".join(subtitle))
-
 def view_Leaderboards(request): 
     '''
     The raison d'etre of the whole site, this view presents the leaderboards. 
@@ -692,46 +564,333 @@ def view_Leaderboards(request):
     # Fetch the leaderboards
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
-    lo = get_leaderboard_options(request)
+    session_filter = request.session.get('filter',{})
+    lo = leaderboard_options(session_filter, request.GET)    
+    default = leaderboard_options(session_filter)
     
-    default = leaderboard_options()
+    (title, subtitle) = lo.titles()
     
-    (title, subtitle) = get_leaderboard_titles(lo)
-
-    # Get list of leagues, (pk, name) tuples.
-    leagues = [(ALL_LEAGUES, 'ALL')] 
-    leagues += [(x.pk, str(x)) for x in League.objects.all()]
-
-    # Get list of players, (pk, name) tuples.
-    players = [(ALL_PLAYERS, 'ALL')] 
-    if lo.league == ALL_LEAGUES:
-        players += [(x.pk, str(x)) for x in Player.objects.all()]    
-    else:   
-        players += [(x.pk, str(x)) for x in Player.objects.filter(leagues__pk=lo.league)]
-
-    # Get list of games, (pk, name) tuples.
-    games = [(ALL_GAMES, 'ALL')] 
-    if lo.league == ALL_LEAGUES:
-        games += [(x.pk, str(x)) for x in Game.objects.all()]    
-    else:   
-        games += [(x.pk, str(x)) for x in Game.objects.filter(leagues__pk=lo.league)]
-            
+    # selectthe widget defaults
+    leagues = lo.game_leagues if lo.game_leagues else request.session.get('filter',{}).get('league', [])
+    players = lo.game_players if lo.game_players else lo.players
+    games = lo.games
+    
     c = {'title': title,
          'subtitle': subtitle,
-         'options': lo.as_dict,
-         'defaults': default.as_dict,
+         
+         # For use in Javascript
+         'options': json.dumps(lo.as_dict()),         
+         'defaults': json.dumps(default.as_dict()),   
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
-         'leagues': json.dumps(leagues, cls=DjangoJSONEncoder),
-         'players': json.dumps(players, cls=DjangoJSONEncoder),
-         'games': json.dumps(games, cls=DjangoJSONEncoder),
+         
+         # For us in templates
+         'leaderboard_options': lo,
+
+         # Dicts for dropdowns
+         'name_selections': NameSelections,
+         'link_selections': LinkSelections,
+         
+         # Widgets to use in the form
+         'widget_leagues': html_selector(League, "leagues", leagues, ALL_LEAGUES),
+         'widget_players': html_selector(Player, "players", players, ALL_PLAYERS),
+         'widget_games': html_selector(Game, "games", games, ALL_GAMES),
+         'widget_media': autocomplete.Select2().media,
+         
+         # Time and timezone info
          'now': timezone.now(),        
          'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
 
+
 #===============================================================================
 # AJAX providers
+#===============================================================================
+
+def ajax_Leaderboards(request, raw=False):
+    '''
+    A view that returns a JSON string representing requested leaderboards.
+    
+    This is used with raw=True as well by view_Leaderboards to get the leaderboard data,
+    not JSON encoded.
+    
+    Should only validly be called from view_Leaderboards when a view is rendered
+    or as an AJAX call when requesting a leaderboard refresh because the player name 
+    presentation for example has changed. 
+    
+    Caution: This does not have any way of adjusting the context that the original 
+    view received, so any changes to leaderboard content that warrant an update to 
+    the view context (for example to display the nature of a filter) should be coming
+    through view_Leaderboards (which delivers context to the page). 
+    
+    The returned leaderboards are in the following rather general structure of
+    lists within lists. Some are tuples in the Python which when JSONified for
+    the template become lists (arrays) in Javascript. This data structure is central
+    to interaction with the front-end template for leaderboard rendering.
+    
+    Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier2)
+           One tuple per game in the leaderboard presentation that
+            
+    Tier2: A list of five value tuples (date_time, plays[game], sessions[game], session_detail, Tier3)
+           One tuple for each leaderboard snapshot for that game, being basically session details 
+           
+    Tier3: A list of six value tuples (player.pk, player.BGGname, player.name, rating.trueskill_eta, rating.plays, rating.victories)
+           One tuple per player on that leaderboard
+    
+    Tier1 is the header for a particular game
+
+    Tier2 is a list of leaderboard snapshots as at the date_time. In the default rendering and standard
+    view, this should be a list with one entry, and date_time of the last play as the timestamp. That 
+    would indicate a structure that presents the leaderboards for now. These could be filtered of course 
+    (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
+    The play count and session count for that game up to that time are in this tuple too.   
+    
+    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order.
+    
+    Links to games and players in the leaderboard are built in the template, wrapping a player name in
+    a link to nothing or a URL based on player.pk or player.BGGname as per the request.
+    '''
+    
+    # Fetch the options submitted (and the defaults)
+    session_filter = request.session.get('filter',{})
+    lo = leaderboard_options(session_filter, request.GET)
+    
+    # Create a page title, based on the leaderboard options (lo).
+    (title, subtitle) = lo.titles()
+    
+    # Get the cache if available
+    #
+    # It should contain leaderboard snapshots already produced.
+    # Each snapshot is uniquely identified by the session.pk 
+    # that it belongs to. And so we can store them in cache in 
+    # a dict keyed on session.pk
+    lb_cache = request.session.get("leaderboard_cache", {}) 
+    
+    # Fetch the queryset of games that thes options specify
+    # This is lazy and should not have caused a database hit just return an unevaluated queryset 
+    games = lo.games_queryset()
+    
+    #######################################################################################################
+    ## FOR ALL THE GAMES WE SELECTED build a leaderboard (with any associated snapshots)
+    #######################################################################################################
+    print_debug(f"Preparing leaderboards for {len(games)} games.")     
+    leaderboards = []
+    for game in games:
+        print_debug(f"Preparing leaderboard for: {game}")     
+
+        # FIXME: Here is a sweet spot. Some or all sessions are available in the
+        #        cache already. We need the session only for:
+        #
+        #  1) it's datetime - cheap
+        #  2) to build the three headerrs
+        #     a) session player list     - cheap
+        #     b) analisys pre            - expensive
+        #     c) analysis post           - expensive
+        #
+        # We want to know if the session is already in a cached snapshot.
+        #
+        # FIXME: For that it's best to use PK, so we want to put Session.PK into
+        #        the snapshot tuple!        
+        
+        boards = lo.snapshot_queryset(game)
+        
+        if boards:
+            #######################################################################################################
+            ## BUILD EACH SNAPSHOT BOARD - from the sessions we recorded in "boards"
+            #######################################################################################################
+            #
+            # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure 
+            # now. That is assemble the actualy leaderbards after each of the collected sessions.
+            
+            print_debug(f"\tPreparing {len(boards)} boards/snapshots.")     
+            
+            # We want to build a list of snapshots to add to the leaderboards list
+            snapshots = []
+            
+            # We keep a dictionary of previous ranks for each player by PK so we can can
+            # insert them into the leaderboardd, enabling the client to highlight rank 
+            # changes from snapshot to snapshot. 
+            previous_rank = {}
+            
+            # For each board/snapshot of this game ...
+            # In temporral order so we can construct the "previous rank" 
+            # element on the fly, but we're reverse it back when we add the 
+            # collected snapshots to the leaderboards list.        
+            for board in reversed(boards):
+                # IF as_at is now, the first time should be the last session time for the game 
+                # and thus should translate to the same as what's in the Rating model. 
+                # TODO: Perform an integrity check around that and indeed if it's an ordinary
+                #       leaderboard presentation check on performance between asat=time (which 
+                #       reads Performance) and asat=None (which reads Rating).
+                # TODO: Consider if performance here improves with a prefetch or such noting that
+                #       game.play_counts and game.session_list might run faster with one query rather 
+                #       than two.
+                
+                # FIXME: Here is the sweet spot.
+                #        From here we build a snapshot tuple. This is what we can find in the cache rather 
+                #        than build so it boils down here to getting the snapshot from chache or building 
+                #        it. 
+                
+                print_debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
+
+                # First fetch the global (unfiltered) snapshot for this board/session
+                if board.pk in lb_cache:
+                    full_snapshot = lb_cache[board.pk]
+                else:
+                    full_snapshot = board.leaderboard_snapshot()
+                    if full_snapshot:
+                        lb_cache[board.pk] = full_snapshot
+
+                # TODO, consider not relying on a firm index here, either providing 
+                # indexes as a an enumeration or using a dict? snapshot would habe 
+                # to be turned into a tuple or lsit of dict values to be inserted into
+                # a the leaderboards tuple for this game though. Unless the whole 
+                # structure moved more toward dicts (and dicts passed well as JSON 
+                # to context and AJAX callers?
+                #
+                # Alternately make snapshots  class with attrs? What are the 
+                # consequences of that for caching, JSONifying to context and 
+                # AJAX callers?
+                print_debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
+                
+                # Then filter and annotate it in context of lo
+                if full_snapshot:
+                    lb = full_snapshot[8]
+                    
+                    snapshot = lo.apply(full_snapshot)
+                    lbf = snapshot[8]
+
+                    print_debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
+            
+                    # Counts supplied in the full_snapshot are global and we want to constrain them to
+                    # the leagues in question.
+                    #
+                    # Playcounts are always across all the leagues specified.
+                    #   if we filter games on any leagues, the we list games played by any of the leagues
+                    #        and play count across all the leagues makes sense.
+                    #   if we filter games on all leagues, then list only games played by all the leagues present
+                    #        and it still makes sense to list a playcount across all those leagues.
+                    
+                    counts = game.play_counts(leagues=lo.game_leagues, asat=board.date_time)                    
+                    
+                    # We add the previous rank if available to each players tuple in the leaderboard
+                    if lbf and previous_rank:
+                        for p in range(len(lbf)):
+                            player_tuple = lbf[p]
+                            pk = player_tuple[1]
+                            if pk in previous_rank:
+                                lbf[p] = player_tuple + (previous_rank[pk],)
+
+                    
+                    # snapshot 0 and 1 are the session PK and localized time
+                    # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
+                    # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
+                    # snapshot 8 is the leaderboard (a tuple of player tuples
+                    # The HTML header and analyses use flex player naming and expect client side to render 
+                    # appropriately. See Player.name() for flexi naming standard.
+                    snapshot = (snapshot[0:2] 
+                             +  (counts['total'], counts['sessions']) 
+                             +  snapshot[4:8] 
+                             +  (lbf,))
+                                    
+                    # Clear and rebuild the previouse_rank dictionary with this boards' lb values
+                    # We use the wholeleaderboard hear (lb) not the player filtered leaderboard (lbf)
+                    previous_rank = {}
+                    for p in lb:
+                        rank = p[0]
+                        pk = p[1]
+                        previous_rank[pk] = rank
+                        
+                    snapshots.append(snapshot)                
+
+            # For this game we now have all the snapshots and we can save a game tuple
+            # to the leaderboards list. We must have at least one snapshot, because we
+            # ignored all games with 0 recorded sessions already in buiulding our list 
+            # games. So if we don't have any something really bizarre has happened/  
+            assert len(snapshots) > 0, "Internal error: Game was in list for which no leaderboard snapshot was found. It should not have been in the list."
+
+            # We reverse the snapshots back to newest first oldest last                                
+            snapshots.reverse()
+            
+            # Then build the game tuple with all its snapshots
+            leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
+
+    request.session["leaderboard_cache"] = lb_cache
+
+    # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
+    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))
+
+def ajax_Game_Properties(request, pk):
+    '''
+    A view that returns the basic game properties needed by the Session form to make sensible rendering decisions.
+    '''
+    game = Game.objects.get(pk=pk)
+    
+    props = {'individual_play': game.individual_play, 
+             'team_play': game.team_play,
+             'min_players': game.min_players,
+             'max_players': game.max_players,
+             'min_players_per_team': game.min_players_per_team,
+             'max_players_per_team': game.max_players_per_team
+             }
+      
+    return HttpResponse(json.dumps(props))
+
+def ajax_List(request, model):
+    '''
+    Support AJAX rendering of lists of objects on the list view. 
+    
+    To achieve this we instantiate a view_List and fetch its queryset then emit its html view. 
+    ''' 
+    view = view_List()
+    view.request = request
+    view.kwargs = {'model':model}
+    view.get_queryset()
+    
+    view_url = reverse("list", kwargs={"model":view.model.__name__})
+    json_url = reverse("get_list_html", kwargs={"model":view.model.__name__})
+    html = view.as_html()
+    
+    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
+     
+    return HttpResponse(json.dumps(response))
+
+def ajax_Detail(request, model, pk):
+    '''
+    Support AJAX rendering of objects on the detail view. 
+    
+    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
+    ''' 
+    view = view_Detail()
+    view.request = request
+    view.kwargs = {'model':model, 'pk': pk}
+    view.get_object()
+    
+    view_url = reverse("view", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
+    json_url = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
+    html = view.as_html()
+    
+    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
+
+    # Add object browser details if available. Should be added by DetailViewExtended    
+    if hasattr(view, 'object_browser'):
+        response['object_browser'] = view.object_browser
+        
+        if view.object_browser[0]:
+            response['json_URL_prior'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[0]})
+        else:
+            response['json_URL_prior'] = response['json_URL']
+             
+        if view.object_browser[1]:
+            response['json_URL_next'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[1]})
+        else:
+            response['json_URL_next'] = response['json_URL']
+     
+    return HttpResponse(json.dumps(response))
+
+#===============================================================================
+# Some POST information receivers
 #===============================================================================
 
 def receive_ClientInfo(request):
@@ -804,249 +963,9 @@ def receive_DebugMode(request):
            
     return HttpResponse()
 
-def ajax_Leaderboards(request, raw=False):
-    '''
-    A view that returns a JSON string representing requested leaderboards.
-    
-    This is used with raw=True as well view_Leaderboards to get the leaderboard data.
-    
-    Should only validly be called from view_Leaderboards when a view is rendered
-    or as an AJAX call when requesting a leaderboard refresh because the player name 
-    presentation for example has changed. 
-    
-    Caution: This does not have any way of adjusting the context that the original 
-    view received, so any changes to leaderboard content that warrant an update to 
-    the view context (for example to display the nature of a filter) should be coming
-    through view_Leaderboards (which delivers context to the page). 
-    
-    The returned leaderboards are in the following rather general structure of
-    lists within lists. Some are tuples in the Python which when JSONified for
-    the template become lists (arrays) in Javascript. This data structure is central
-    to interaction with the front-end template for leaderboard rendering.
-    
-    Tier1: A list of four value tuples (game.pk, game.BGGid, game.name, Tier2)  
-    Tier2: A list of five value tuples (date_time, plays[game], sessions[game], session_detail, Tier3)
-    Tier3: A list of six value tuples (player.pk, player.BGGname, player.name, rating.trueskill_eta, rating.plays, rating.victories)
-    
-    Tier1 is the header for a particular game
-
-    Tier2 is a list of leaderboard snapshots as at the date_time. In the default rendering and standard
-    view, this should be a list with one entry, and date_time of the last play as the timestamp. That 
-    would indicate a structure that presents the leaderboards for now. These could be filtered of course 
-    (be a subset of all leaderboards in the database) by whatever filtering the view otherwise supports.
-    The play count and session count for that game up to that time are in this tuple too.   
-    
-    Tier3 is the leaderboard for that game, a list of players with their trueskill ratings in rank order.
-    
-    Links to games and players in the leaderboard are built in the template, wrapping a player name in
-    a link to nothing or a URL based on player.pk or player.BGGname as per the request.
-    '''
-    # Start a filter rolling
-
-    lo = get_leaderboard_options(request)
-
-    default = leaderboard_options()
-    
-    # TODO: Challenge, implement num_games. Need to order games in the query rather than after if possible. Explore.
-    #
-    # Query thoughts:
-    #
-    # Session.objects.filter(game=game).count()
-    # Performace.objects.filter(session_game=game).count()
-    #
-    # Game.objects.filter(gfilter).annotate(session_count=Count('sessions').annotate(performance_count=Count('sessions_performances')
-
-    # Process the impact quick view 
-    if ("impact" in request.GET):
-        sfilter = Q()
-        if lo.league != ALL_LEAGUES:
-            sfilter &= Q(league__pk=lo.league)
-
-        if lo.player != ALL_PLAYERS:
-            sfilter &= Q(performances__player__pk=lo.player)
-        
-        S = Session.objects.filter(sfilter).order_by("-date_time")
-        latest_session = S[0] if S.count() > 0 else None
-
-        if not latest_session is None:
-            date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-            lo.changed_since = date - timedelta(days=lo.num_days)
-            lo.compare_back_to = lo.changed_since
-            lo.num_games = 0
-   
-    (title, subtitle) = get_leaderboard_titles(lo)
-      
-    # Start the query with an ordered list of all games (lazy, only the SQL created)     
-    games = Game.objects.all().annotate(session_count=Count('sessions',distinct=True)).annotate(play_count=Count('sessions__performances',distinct=True)).order_by('-play_count','-session_count')
-
-    # Then build a filter on that sorted list
-    gfilter = Q()
-    # TODO: Consider supporting multi-selects on all these and using __in set filters
-    if lo.league != ALL_LEAGUES:
-        gfilter &= Q(sessions__league__pk=lo.league)
-    if lo.player != ALL_PLAYERS:
-        gfilter &= Q(sessions__performances__player__pk=lo.player)
-    if lo.changed_since != NEVER:
-        gfilter &= Q(sessions__date_time__gte=lo.changed_since)
-    if lo.game != ALL_GAMES: 
-        gfilter &= Q(pk=lo.game)
-        
-    games = games.filter(gfilter).distinct()
-    
-    if lo.num_games > 0:
-        games = games[:lo.num_games]
-    
-    leaderboards = []
-    for game in games:
-        if lo.league == ALL_LEAGUES or game.leagues.filter(pk=lo.league).exists():
-            # Let's build a list of board times for Tier2 that we want to present, as specified in the request
-            # These should reflect the session time stamps at which that leaderboard came to be. We bundle a 
-            # session_detail string with each time stamp.
-            boards = []
-            
-            sfilter = Q(game=game)
-            if not lo.as_at is None:
-                sfilter &= Q(date_time__lte=lo.as_at)
-                
-            S = Session.objects.filter(sfilter).order_by("-date_time")
-            latest_session = S[0] if S.count() > 0 else None
-                
-            # Fetch the time of the last session in the window (changed_since -to- as_at)
-            # That will capture the leaderboard as at that time, but of course only if
-            # it changed since the requested time, else not. 
-            if latest_session:
-                last_time = latest_session.date_time
-                if (lo.changed_since == default.changed_since or last_time > lo.changed_since) and (lo.as_at == default.as_at or last_time <= lo.as_at):
-                    boards.append(latest_session)
-            
-            # If we have a current leaderboard in the time window (changed_since -to- as_at)
-            # then we may also want to include its history if requested by:
-            #  compare_back_to, compare_til or compare_with
-            if len(boards) > 0:
-                if (not lo.compare_with is None) or (not lo.compare_back_to is None):
-                    sfilter = Q(game=game)
-                    
-                    if lo.compare_till is None:
-                        sfilter &= Q(date_time__lt=latest_session.date_time)
-                    else:
-                        sfilter &= Q(date_time__lte=lo.compare_till)
-    
-                    if not lo.compare_back_to is None:
-                        # we want to include, if it exists, the last session prior to compare_back_to
-                        # As a comparison board for the last snapshot. So it has a reference.
-                        ref_session = Session.objects.filter(sfilter & Q(date_time__lt=lo.compare_back_to)).order_by('-date_time')[:1]
-
-                        # Of course if there is no session prior to compare_back_to, we can't do that
-                        count = ref_session.count()
-                        if count == 0:
-                            sfilter &= Q(date_time__gte=lo.compare_back_to)
-                        elif count == 1:
-                            sfilter &= Q(date_time__gte=ref_session[0].date_time)
-                        else:
-                            raise ValueError("Internal error: Illegal count of reference sessions.")
-                        
-                    last_sessions = Session.objects.filter(sfilter).order_by("-date_time")
-                    
-                    if not lo.compare_with is None and lo.compare_with < last_sessions.count():
-                        last_sessions = last_sessions[:lo.compare_with]
-    
-                    for s in last_sessions:
-                        boards.append(s)
-
-            snapshots = []            
-            for board in boards:            
-                # IF as_at is now, the first time should be the last session time for the game 
-                # and thus should translate to the same as what's in the Rating model. 
-                # TODO: Perform an integrity check around that and indeed if it's an ordinary
-                #       leaderboard presentation check on performance between asat=time (which reads Performance)
-                #       and asat=None (which reads Rating).
-                # TODO: Consider if performance here improves with a prefetch or such noting that
-                #       game.play_counts and game.session_list might run faster with one query rather 
-                #       than two.
-                time = board.date_time
-                players = [p.pk for p in board.players]            
-                detail = board.leaderboard_header(lo.names)
-                analysis = board.leaderboard_analysis(lo.names)
-                analysis_after = board.leaderboard_analysis_after(lo.names)
-                lb = game.leaderboard(league=lo.league, asat=time, names=lo.names, indexed=True)
-                if not lb is None:
-                    counts = game.play_counts(league=lo.league, asat=time)                    
-                    snapshot = (localize(localtime(time)), counts['total'], counts['sessions'], players, detail, analysis, analysis_after, lb)
-                    snapshots.append(snapshot)
-
-            if len(snapshots) > 0:                    
-                leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
-
-    # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
-    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict, leaderboards)))
-
-def ajax_Game_Properties(request, pk):
-    '''
-    A view that returns the basic game properties needed by the Session form to make sensible rendering decisions.
-    '''
-    game = Game.objects.get(pk=pk)
-    
-    props = {'individual_play': game.individual_play, 
-             'team_play': game.team_play,
-             'min_players': game.min_players,
-             'max_players': game.max_players,
-             'min_players_per_team': game.min_players_per_team,
-             'max_players_per_team': game.max_players_per_team
-             }
-      
-    return HttpResponse(json.dumps(props))
-
-def ajax_List(request, model):
-    '''
-    Support AJAX rendering of lists of objects on the list view. 
-    
-    To achieve this we instantiate a view_List and fetch its queryset then emit its html view. 
-    ''' 
-    view = view_List()
-    view.request = request
-    view.kwargs = {'model':model}
-    view.get_queryset()
-    
-    view_url = reverse("list", kwargs={"model":view.model.__name__})
-    json_url = reverse("get_list_html", kwargs={"model":view.model.__name__})
-    html = view.as_html()
-    
-    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
-     
-    return HttpResponse(json.dumps(response))
-
-def ajax_Detail(request, model, pk):
-    '''
-    Support AJAX rendering of objects on the detail view. 
-    
-    To achieve this we instantiate a view_Detail and fetch the object then emit its html view. 
-    ''' 
-    view = view_Detail()
-    view.request = request
-    view.kwargs = {'model':model, 'pk': pk}
-    view.get_object()
-    
-    view_url = reverse("view", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
-    json_url = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.obj.pk})
-    html = view.as_html()
-    
-    response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
-
-    # Add object browser details if available. Should be added by DetailViewExtended    
-    if hasattr(view, 'object_browser'):
-        response['object_browser'] = view.object_browser
-        
-        if view.object_browser[0]:
-            response['json_URL_prior'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[0]})
-        else:
-            response['json_URL_prior'] = response['json_URL']
-             
-        if view.object_browser[1]:
-            response['json_URL_next'] = reverse("get_detail_html", kwargs={"model":view.model.__name__,"pk": view.object_browser[1]})
-        else:
-            response['json_URL_next'] = response['json_URL']
-     
-    return HttpResponse(json.dumps(response))
+#===============================================================================
+# Some general function based views
+#===============================================================================
 
 def view_About(request):
     '''
@@ -1072,6 +991,10 @@ def view_Inspect(request, model, pk):
     result = getattr(o, "inspector", "{} has no 'inspector' property implemented.".format(model))   
     c = {"title": "{} Inspector".format(model), "inspector": result}
     return render(request, 'CoGs/view_inspector.html', context=c)
+
+#===============================================================================
+# Some Developement tools (Should not be on the production site)
+#===============================================================================
 
 def view_CheckIntegrity(request):
     '''

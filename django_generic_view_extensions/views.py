@@ -20,7 +20,7 @@ These Extensions aim at providing primarily two things:
 
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
-#Python imports
+# Python imports
 import datetime
 
 # Django imports
@@ -34,12 +34,13 @@ from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 from django.http.request import QueryDict
-from django.forms.models import fields_for_model
+from django.forms.models import fields_for_model, ModelChoiceField, ModelMultipleChoiceField
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # 3rd Party package imports (dependencies)
 from url_filter.filtersets import ModelFilterSet
 from cuser.middleware import CuserMiddleware
+from dal import autocomplete
 
 # Package imports
 from .util import app_from_object, class_from_string
@@ -47,10 +48,11 @@ from .html import list_html_output, object_html_output, object_as_html, object_a
 from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context, add_debug_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
-from .model import collect_rich_object_fields, inherit_fields
+from .model import collect_rich_object_fields, inherit_fields, add_related
 from .debug import print_debug
-from .forms import save_related_forms
+from .forms import get_related_forms, save_related_forms
 from .filterset import format_filterset, is_filter_field 
+
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -90,10 +92,10 @@ def get_filterset(self):
         for f in session["filter"]:
             if f in priorities:
                 p = priorities[f]
-                highest = len(p)    # Initial value, one greater than the largest index in the list  
+                highest = len(p)  # Initial value, one greater than the largest index in the list  
                 for i, field in enumerate(reversed(p)):
                     if is_filter_field(model, field):
-                        highest = len(p)- i - 1
+                        highest = len(p) - i - 1
                         
                 # If we found one or more fields in the priority list that are 
                 # filterable we must now have the highest priority one, we replace 
@@ -131,13 +133,16 @@ def get_filterset(self):
     else:
         return None
 
+
 def get_ordering(self):
     if (self.format.ordering):
         return self.format.ordering.split(',')              
     else:
         return getattr(self.model._meta, 'ordering', None)
 
+
 class LoginViewExtended(LoginView):
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_timezone_context(self, context)
@@ -149,16 +154,19 @@ class LoginViewExtended(LoginView):
         form.request.session['timezone'] = form.request.POST['timezone']        
         return response         
 
+
 class TemplateViewExtended(TemplateView):
     '''
     An extension of the basic TemplateView for a home page on the site say (not related to any model)
     which provides some extra context if desired in a manner compatible with the other Extended Views
     '''
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_timezone_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
+
 
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
@@ -170,7 +178,7 @@ class ListViewExtended(ListView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
 
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
@@ -213,7 +221,7 @@ class ListViewExtended(ListView):
         add_filter_context(self, context)
         add_ordering_context(self, context)
         add_debug_context(self, context)
-        context["total"] =  self.model.objects.all().count        
+        context["total"] = self.model.objects.all().count        
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
@@ -231,7 +239,7 @@ class DetailViewExtended(DetailView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
     
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
@@ -276,11 +284,9 @@ class DetailViewExtended(DetailView):
             self.kwargs["pk"] = self.pk                             
         else:
             self.obj = get_object_or_404(self.model, pk=self.pk)
-
         
         # Add this information to the view (so it's available in the context).
         self.object_browser = neighbours        
-
         
         self.format = get_object_display_format(self.request.GET)
         
@@ -300,6 +306,7 @@ class DetailViewExtended(DetailView):
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context  
 
+
 class DeleteViewExtended(DeleteView):
     '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
     # HTML formatters stolen straight form the Django ModelForm class
@@ -308,7 +315,7 @@ class DeleteViewExtended(DeleteView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
 
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
@@ -356,6 +363,7 @@ class DeleteViewExtended(DeleteView):
 # Session objects anyhow and the Team, Rank, Perfromance and related objects will not even
 # be available on production menues, only for the admin for drilling down and debugging.
 
+
 class CreateViewExtended(CreateView):
     '''
     A CreateView which makes the model and the related_objects it defines available 
@@ -375,17 +383,15 @@ class CreateViewExtended(CreateView):
     
     Both call get_queryset() in order to obtain the model from the returned queryset, if it's not
     defined in self.model. And so we could define self.model and self.fields in one place. But it 
-    is a little odd and confusing to think of get_queryset() for a CreaetView, so here we avoid 
+    is a little odd and confusing to think of get_queryset() for a CreateView, so here we avoid 
     that convenience and confusions.
     
-    NOTE: We do also includ a form_valid() override. This is important because in the standard
+    NOTE: We do also include a form_valid() override. This is important because in the standard
     Django post/form_valid pair, post does not save, form_valid does. If we defer to the Django 
     form_valid it goes and saves the form again. This doesn't create a new copy on creates as it
     happens as by that point self.instance already has a PK thanks to the save here in post() but
     it is an unnecessary repeat save all the same.
     '''
-
-    # TODO: the form needs to use combo boxes for list select values like Players in a Session. You have to be able to type and find a player with a pattern match so to speak. The list can get very very long you see. 
 
     def get_context_data(self, *args, **kwargs):
         '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
@@ -400,14 +406,68 @@ class CreateViewExtended(CreateView):
         CuserMiddleware.set_user(self.request.user)
 
         # Note that the super.get_context_data initialises the form with get_initial
-        context = super().get_context_data(*args, **kwargs)
+        context = super().get_context_data(*args, **kwargs)  # This calls get_form()
 
         # Now add some context extensions ....
         add_model_context(self, context, plural=False, title='New')
         add_timezone_context(self, context)
         add_debug_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        if callable(getattr(self, 'extra_context_provider', None)): 
+            context.update(self.extra_context_provider(context))
+        
         return context
+
+    def get_form(self):
+        model = self.model
+        selector = getattr(model, "selector_field", None)        
+
+        form = super().get_form()  # This calls get_initial
+        
+        for field in form.fields.values():
+            if isinstance(field, ModelChoiceField):
+                field_model = field.queryset.model
+                selector = getattr(field_model, "selector_field", None)
+                if not selector is None:
+                    url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                    if isinstance(field, ModelMultipleChoiceField):
+                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                    else:
+                        field.widget = autocomplete.ModelSelect2(url=url)
+
+                    field.widget.choices = field.choices
+
+        if len(add_related(model)) > 0:
+            if len(getattr(self.request, 'POST', [])) > 0:
+                form_data = self.request.POST
+            elif len(getattr(self.request, 'GET', [])) > 0:
+                form_data = self.request.GET
+            else:
+                form_data = None
+              
+            if isinstance(getattr(self, "object", None), model):
+                db_object = self.object
+            else:
+                db_object = None
+                    
+            related_forms = get_related_forms(model, form_data, db_object)
+            
+            for related_form in related_forms.values():
+                for field in related_form.fields.values():
+                    if isinstance(field, ModelChoiceField):
+                        field_model = field.queryset.model
+                        selector = getattr(field_model, "selector_field", None)
+                        if not selector is None:
+                            url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                            if isinstance(field, ModelMultipleChoiceField):
+                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                            else:
+                                field.widget = autocomplete.ModelSelect2(url=url)
+                            
+                            field.widget.choices = field.choices
+                            
+            form.related_forms = related_forms
+
+        return form  
 
     def get_initial(self):
         '''
@@ -415,25 +475,22 @@ class CreateViewExtended(CreateView):
         with initial values.
         '''
         initial = super().get_initial()
-        
+         
         try:
             # TODO: Consider geting the last object created by the logged in user instead of the last object created
             last = self.model.objects.latest()
         except ObjectDoesNotExist:
             last = None
-            
+             
         for field_name in inherit_fields(self.model):
             field_value = getattr(last, field_name)
             if (isinstance(field_value, datetime.datetime)):
                 initial[field_name] = field_value + getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
             else:
                 initial[field_name] = field_value
-        
-        # Set the view property so context handlers (below) can see it
-        self.initial = initial
-            
+         
         return initial 
-
+    
     def post(self, request, *args, **kwargs):
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
@@ -516,6 +573,7 @@ class CreateViewExtended(CreateView):
 #         response = self.render_to_response(context)
 #         return response
 
+
 class UpdateViewExtended(UpdateView):
     '''
     An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.
@@ -529,7 +587,7 @@ class UpdateViewExtended(UpdateView):
           And on a POST request it just calls post(). So we set up self.model and self.object in 
           get_object() for GET requests and post() for POST requests. 
     '''
-    
+
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
         self.pk = self.kwargs['pk']
@@ -557,11 +615,64 @@ class UpdateViewExtended(UpdateView):
         context = super().get_context_data(*args, **kwargs)
 
         # Now add some context extensions ....
-        add_model_context(self, context, plural=False, title='New')
+        add_model_context(self, context, plural=False, title='Edit')
         add_timezone_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        if callable(getattr(self, 'extra_context_provider', None)): 
+            context.update(self.extra_context_provider(context))
         return context
 
+    def get_form(self):
+        model = self.model
+        selector = getattr(model, "selector_field", None)        
+
+        form = super().get_form()  # This calls get_initial
+        
+        for field in form.fields.values():
+            if isinstance(field, ModelChoiceField):
+                field_model = field.queryset.model
+                selector = getattr(field_model, "selector_field", None)
+                if not selector is None:
+                    url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                    if isinstance(field, ModelMultipleChoiceField):
+                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                    else:
+                        field.widget = autocomplete.ModelSelect2(url=url)
+                        
+                    field.widget.choices = field.choices
+
+        if len(add_related(model)) > 0:
+            if len(getattr(self.request, 'POST', [])) > 0:
+                form_data = self.request.POST
+            elif len(getattr(self.request, 'GET', [])) > 0:
+                form_data = self.request.GET
+            else:
+                form_data = None
+              
+            if isinstance(getattr(self, "object", None), model):
+                db_object = self.object
+            else:
+                db_object = None
+                    
+            related_forms = get_related_forms(model, form_data, db_object)
+            
+            for related_form in related_forms.values():
+                for field in related_form.fields.values():
+                    if isinstance(field, ModelChoiceField):
+                        field_model = field.queryset.model
+                        selector = getattr(field_model, "selector_field", None)
+                        if not selector is None:
+                            url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                            if isinstance(field, ModelMultipleChoiceField):
+                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                            else:
+                                field.widget = autocomplete.ModelSelect2(url=url)
+                            
+                            field.widget.choices = field.choices
+                            
+            form.related_forms = related_forms
+
+        return form  
+        
     def post(self, request, *args, **kwargs):
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
@@ -637,7 +748,86 @@ class UpdateViewExtended(UpdateView):
             else:
                 return self.form_invalid(self.form)
              
-
     def form_valid(self, form):
         """If the form is valid, redirect to the supplied URL."""
         return HttpResponseRedirect(self.get_success_url())
+
+#===============================================================================
+# An Autocomplete view
+#
+# Can of course be tuned and refined. Here's a tutorial:
+#
+# https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
+#===============================================================================
+
+
+class ajax_Autocomplete(autocomplete.Select2QuerySetView):
+    '''
+    Support AJAX fetching of option lists for the django-autocomplte-light widgets.
+    They provide a query string in self.q. 
+    
+    urls.py can route a URL to here such that this:
+    
+    reverse_lazy('autocomplete', kwargs={"model": name_of_model, "field_name": name_of_field})
+    
+    lands here. Which in Django 2.1 should look like:
+    
+    path('autocomplete/<model>/<field_name>', ajax_autocomplete.as_view(), {'app': 'name_of_app_model_is_in'}, name='autocomplete'),    
+    
+    it returns a queryset and will use a model provided list or a default one.
+    '''
+
+    def get_queryset(self):
+        self.model = class_from_string(self.kwargs['app'], self.kwargs['model'])
+        self.field_name = self.kwargs.get('field_name', None)
+        self.field_operation = self.kwargs.get('field_operation', "istartswith")
+        self.selector_field = getattr(self.model, "selector_field", None)
+        self.selector_queryset = getattr(self.model, "selector_queryset", None)
+        
+        if self.field_operation == "in":
+            self.field_value = self.q.split(",")
+        else:
+            self.field_value = self.q
+        
+        # If this is false then self.selector_queryset is permitted to do pre-filtering
+        # (which could be based on any othe rcriteria, like session stored filters for example)
+        # If it is true it is denied this permission.
+        self.select_from_all = self.kwargs.get('all', False)
+
+        # use the model's selectoprovided selector_queryset if available
+        if self.field_name and self.field_name == self.selector_field and callable(self.selector_queryset):
+            qs = self.selector_queryset(self.field_value, self.request.session, self.select_from_all)
+        else:
+            qs = self.model.objects.all()
+            
+            if self.q:                
+                qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
+
+        return qs
+
+    
+def ajax_Selector(request, app, model, pk):
+    '''
+    Support AJAX fetching of a select box text for a given pk.
+    
+    Specificially in support of a django-autocomplte-light select2 widget that 
+    we may need to provide with initial data in javascript that builds formsets 
+    dynamically from supplied data. 
+    
+    Expects models to provide a selector_field attribute. 
+    ''' 
+    Model = class_from_string(app, model)
+    
+    selector = ""
+    if getattr(Model, "selector_field", None):
+        try:
+            Object = Model.objects.get(pk=pk)        
+            selector_field = getattr(Object, "selector_field", "")
+            # Use the selector_field if possible, fall back on a basic 
+            # string representation of Object.
+            selector = getattr(Object, selector_field, str(Object))
+        except:
+            # If we fail to find an Object, fail silently.
+            pass
+        
+    return HttpResponse(selector)

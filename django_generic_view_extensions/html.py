@@ -22,9 +22,11 @@ from django.utils.safestring import mark_safe
 
 # Package imports
 from . import FIELD_LINK_CLASS, NONE 
-from .util import isListValue, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth, time_str
+from .util import isListValue, isDictionary, isPRE, emulatePRE, indentVAL, getApproximateArialStringWidth
+from .datetime import time_str
 from .options import list_display_format, object_display_format, object_display_modes, flt, osf, odm, odf, lmf
 from .filterset import format_filterset
+from django_generic_view_extensions.debug import print_debug
 
 
 def fmt_str(obj, safe=False):
@@ -71,9 +73,9 @@ def fmt_str(obj, safe=False):
                 valstr = fmt_str(item)
                 lines.append(valstr)
                  
-            if not re.match(csv_delim, valstr, ref.IGNORECASE) is None:
+            if re.match(csv_delim, valstr, ref.IGNORECASE):
                 containsdelim = True            
-            if not re.match(r'<br>', valstr, ref.IGNORECASE) is None:
+            if re.match(r'<br>', valstr, ref.IGNORECASE):
                 multilineval = True
          
         if containsdelim or multilineval:
@@ -111,12 +113,16 @@ def odm_str(obj, fmt, safe=False):
         fmt.link (which both object_display_modes and list_display_format provide)
         an OSF (Object Summary Format) which it pilfers from fmt.sum_format or fmt.elements based on the provided fmt 
     '''    
-    
+    odm  = object_display_modes()
     if type(fmt) == object_display_modes:
         OSF = fmt.sum_format
+        OLV = fmt.list_values
+        CharLim = fmt.char_limit
         LT = fmt.link
     elif type(fmt) == list_display_format:
         OSF = fmt.elements
+        OLV = None
+        CharLim = None
         LT = fmt.link
 
     # Rich and Detail views on an object are responsible for their own linking.
@@ -152,8 +158,30 @@ def odm_str(obj, fmt, safe=False):
             strobj = html.escape(obj.__verbose_str__())
         else: 
             strobj = fmt_str(obj, safe)
-    else:
+    else:        
+        if OLV == odm.as_table:
+            Wrap = ("<table>", "</table>")
+            wrap = ("<tr><td>", "</td></tr>")
+        elif OLV == odm.as_ul:
+            Wrap = ("<ul>", "</ul>")
+            wrap = ("<li>", "</li>")
+        elif OLV == odm.as_p:
+            Wrap = ("", "")
+            wrap = ("<p>", "</p>")
+        elif OLV == odm.as_br:
+            Wrap = ("", "")
+            wrap = ("", "<br>")
+        else:
+            Wrap = None
+            wrap = None
+        
         strobj = fmt_str(obj, safe)
+        
+        if Wrap and isListValue(obj) and len(strobj) > CharLim:
+            if isDictionary(obj):
+                strobj = Wrap[0] + wrap[0] + f"{wrap[1]}{wrap[0]}".join([f"{fmt_str(k, safe)}: {fmt_str(v, safe)}" for k, v in obj.items()]) + wrap[1] + Wrap[1]
+            else:
+                strobj = Wrap[0] + wrap[0] + f"{wrap[1]}{wrap[0]}".join([fmt_str(o, safe) for o in obj]) + wrap[1] + Wrap[1]
     
     return Awrapper.format(strobj) 
 

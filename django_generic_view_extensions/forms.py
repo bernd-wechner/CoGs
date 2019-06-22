@@ -512,104 +512,107 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
     # tree so to speak. 
     for rf in related_forms:
         rm = related_forms[rf].Meta.model
-            
-        print_debug(f"\n{debug_prefix}Processing {rm._meta.object_name}: add_related={add_related(rm)}")
+        
+        print_debug(f"\n{debug_prefix}Processing {rm._meta.object_name}: add_related={add_related(rm)} ")
         
         # add generic related forms (with no object) to provide easy access to 
         # the related empty form and field widgets in the context. Instance forms
         # are added later for each related object. 
-        related_forms[rf].related_forms = get_related_forms(rm, model_history=model_history+[model])
-        print_debug(f"{debug_prefix}Got {len(related_forms[rf].related_forms)} generic forms related to {rm._meta.object_name}: {list(related_forms[rf].related_forms.keys())}")
+        if add_related(rm):
+            related_forms[rf].related_forms = get_related_forms(rm, model_history=model_history+[model])
+            print_debug(f"{debug_prefix}Got {len(related_forms[rf].related_forms)} generic forms related to {rm._meta.object_name}: {list(related_forms[rf].related_forms.keys())}")
         
-        # add instance_forms for each instance (of the related form)
-        if hasattr(related_forms[rf], "field_data") and rm._meta.pk.attname in related_forms[rf].field_data:
-            related_forms[rf].instance_forms = {}
-
-            # Ordering is important here as field_data which are lists are in an order and should all be in the same order
-            # So we need to observe and respect the order of pk values in field_data when creating instance lists of related values
-            pk_list = []                   # Keep an ordered list of the PKs as the dictionary "instance_forms" loses order
-            pk_attr = rm._meta.pk.attname  # Get the name of the primary key attribute
-
-            # Create the instance_forms, that is one related_forms object per related instance  
-            pk_placeholder = 0
+            # add instance_forms for each instance (of the related form)
+            if hasattr(related_forms[rf], "field_data") and rm._meta.pk.attname in related_forms[rf].field_data:
+                related_forms[rf].instance_forms = {}
+    
+                # Ordering is important here as field_data which are lists are in an order and should all be in the same order
+                # So we need to observe and respect the order of pk values in field_data when creating instance lists of related values
+                pk_list = []                   # Keep an ordered list of the PKs as the dictionary "instance_forms" loses order
+                pk_attr = rm._meta.pk.attname  # Get the name of the primary key attribute
+    
+                # Create the instance_forms, that is one related_forms object per related instance  
+                pk_placeholder = 0
+                
+                # To loop easily, we need a list of pks 
+                # but it may be in field_data as a single pk not a list so build a list if it's not a list.
+                pks = related_forms[rf].field_data[pk_attr]
+                pks = pks if isinstance(pks, list) else [pks] 
+                print_debug(f"{debug_prefix}Processing {rm._meta.object_name}: instance PKs={pks}")
+    
+                for pk in pks:
+                    if pk is None:
+                        ph = 'PK_{}'.format(pk_placeholder)
+                        pk_placeholder += 1
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK=None so using a placeholder PK={ph}")
+                    else:
+                        ph = pk
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}")
+                    pk_list.append(ph)
+                                                            
+                    if not pk is None:
+                        o = rm.objects.get(pk=pk)
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got object from DB: {o}")
+                    else:
+                        i = len(pk_list)-1
+                        fields = {}
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field_data : {related_forms[rf].field_data.items()}")                    
+                        for field, values in related_forms[rf].field_data.items():
+                            f = rm._meta.get_field(field)
+                            print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field: {field}, i: {i}, values[i]: {values[i]}, f: {f}, f.is_relation: {f.is_relation}")
+                            if values[i] is None:
+                                val = None
+                            elif f.is_relation:
+                                m = f.related_model
+                                print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. related_model: {m}, one_to_one: {f.one_to_one}, many_to_one: {f.many_to_one}, one_to_many: {f.one_to_many}, many_to_many: {f.many_to_many}")
+                                if f.one_to_one or f.many_to_one:
+                                    val = m.objects.get(pk=values[i])
+                                elif f.one_to_many or f.many_to_many:
+                                    # TODO: Test this, could fail, untested code!
+                                    val = m.objects.filter(pk__in=values[i]) 
+                            else:
+                                val = values[i]
+                            
+                            # I know this bombs when a many_to_many field with val None is added to fields
+                            # TODO: Check this works for many_to_many fields when val is not None! 
+                            # To do this edit a team play session and put a break here on save. Should land
+                            # here with a many to many with a val.   
+                            if not ((f.one_to_many or f.many_to_many) and val is None):    
+                                fields[field] = val
+                            
+                        print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Building object from field_data : {fields}")
+                        o = rm(**fields)
+                        print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Built object from field_data : {o}")
+                    
+                    # Earlier we added a generic empty related form, now we add a specific one for each instance populated with
+                    # data avalable.
+                    instance_forms = get_related_forms(rm, form_data=form_data, db_object=o, model_history=model_history+[model])
+                    instance_forms.object = o
+                    
+                    if not instance_forms is None:               
+                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got {len(instance_forms)} related instance forms: {list(instance_forms.keys())}.")
+                        related_forms[rf].instance_forms[ph] = instance_forms
+                            
+            # Finally, for ease of use in the template context 
+            # add field_data for all the instance related fields as well
+            # TODO: Why do we populate field_data only for Player not for Rank?
+            if hasattr(related_forms[rf],"instance_forms"):
+                print_debug(f"{debug_prefix}Building field_data for model={rm._meta.object_name}, PKs={pk_list}")
+                for pk in pk_list: # Walk the ordered list of PKs
+                    print_debug(f"{debug_prefix}Found {len(related_forms[rf].instance_forms[pk])} instance forms: {list(related_forms[rf].instance_forms[pk].keys())} related to {rf} PK={pk}")
+                    for form in related_forms[rf].instance_forms[pk]:
+                        if hasattr(related_forms[rf].instance_forms[pk][form], "field_data") and len(related_forms[rf].instance_forms[pk][form].field_data) > 0:
+                            print_debug(f"{debug_prefix}Adding field data to instance form of model={form} related to {rf} PK={pk}")
+                            for ro_field in related_forms[rf].instance_forms[pk][form].field_data:
+                                ro_field_name = form + "__" + ro_field
+                                ro_field_value = related_forms[rf].instance_forms[pk][form].field_data[ro_field]
+                                if not ro_field_name in related_forms[rf].field_data:
+                                    related_forms[rf].field_data[ro_field_name] = []
+                                related_forms[rf].field_data[ro_field_name].append(ro_field_value)
+                                print_debug("f{debug_prefix}Added {ro_field_name}={ro_field_value}")                           
+        else:
+            print_debug(f"{debug_prefix}No related forms to build.")
             
-            # To loop easily, we need a list of pks 
-            # but it may be in field_data as a single pk not a list so build a list if it's not a list.
-            pks = related_forms[rf].field_data[pk_attr]
-            pks = pks if isinstance(pks, list) else [pks] 
-            print_debug(f"{debug_prefix}Processing {rm._meta.object_name}: instance PKs={pks}")
-
-            for pk in pks:
-                if pk is None:
-                    ph = 'PK_{}'.format(pk_placeholder)
-                    pk_placeholder += 1
-                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK=None so using a placeholder PK={ph}")
-                else:
-                    ph = pk
-                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}")
-                pk_list.append(ph)
-                                                        
-                if not pk is None:
-                    o = rm.objects.get(pk=pk)
-                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got object from DB: {o}")
-                else:
-                    i = len(pk_list)-1
-                    fields = {}
-                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field_data : {related_forms[rf].field_data.items()}")                    
-                    for field, values in related_forms[rf].field_data.items():
-                        f = rm._meta.get_field(field)
-                        print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Checking field: {field}, i: {i}, values[i]: {values[i]}, f: {f}, f.is_relation: {f.is_relation}")
-                        if values[i] is None:
-                            val = None
-                        elif f.is_relation:
-                            m = f.related_model
-                            print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. related_model: {m}, one_to_one: {f.one_to_one}, many_to_one: {f.many_to_one}, one_to_many: {f.one_to_many}, many_to_many: {f.many_to_many}")
-                            if f.one_to_one or f.many_to_one:
-                                val = m.objects.get(pk=values[i])
-                            elif f.one_to_many or f.many_to_many:
-                                # TODO: Test this, could fail, untested code!
-                                val = m.objects.filter(pk__in=values[i]) 
-                        else:
-                            val = values[i]
-                        
-                        # I know this bombs when a many_to_many field with val None is added to fields
-                        # TODO: Check this works for many_to_many fields when val is not None! 
-                        # To do this edit a team play session and put a break here on save. Should land
-                        # here with a many to many with a val.   
-                        if not ((f.one_to_many or f.many_to_many) and val is None):    
-                            fields[field] = val
-                        
-                    print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Building object from field_data : {fields}")
-                    o = rm(**fields)
-                    print_debug("{debug_prefix}{rm._meta.object_name} PK={ph}. Built object from field_data : {o}")
-                
-                # Earlier we added a generic empty related form, now we add a specific one for each instance populated with
-                # data avalable.
-                instance_forms = get_related_forms(rm, form_data=form_data, db_object=o, model_history=model_history+[model])
-                instance_forms.object = o
-                
-                if not instance_forms is None:               
-                    print_debug(f"{debug_prefix}{rm._meta.object_name} PK={ph}. Got {len(instance_forms)} related instance forms: {list(instance_forms.keys())}.")
-                    related_forms[rf].instance_forms[ph] = instance_forms
-                        
-        # Finally, for ease of use in the template context 
-        # add field_data for all the instance related fields as well
-        # TODO: Why do we populate field_data only for Player not for Rank?
-        if hasattr(related_forms[rf],"instance_forms"):
-            print_debug(f"{debug_prefix}Building field_data for model={rm._meta.object_name}, PKs={pk_list}")
-            for pk in pk_list: # Walk the ordered list of PKs
-                print_debug(f"{debug_prefix}Found {len(related_forms[rf].instance_forms[pk])} instance forms: {list(related_forms[rf].instance_forms[pk].keys())} related to {rf} PK={pk}")
-                for form in related_forms[rf].instance_forms[pk]:
-                    if hasattr(related_forms[rf].instance_forms[pk][form], "field_data") and len(related_forms[rf].instance_forms[pk][form].field_data) > 0:
-                        print_debug(f"{debug_prefix}Adding field data to instance form of model={form} related to {rf} PK={pk}")
-                        for ro_field in related_forms[rf].instance_forms[pk][form].field_data:
-                            ro_field_name = form + "__" + ro_field
-                            ro_field_value = related_forms[rf].instance_forms[pk][form].field_data[ro_field]
-                            if not ro_field_name in related_forms[rf].field_data:
-                                related_forms[rf].field_data[ro_field_name] = []
-                            related_forms[rf].field_data[ro_field_name].append(ro_field_value)
-                            print_debug("f{debug_prefix}Added {ro_field_name}={ro_field_value}")                           
-
     print_debug(f"{debug_prefix}Done with get_related_forms({model._meta.object_name})")
     print_debug(f"{debug_prefix}=================================================================\n")
     return related_forms            

@@ -3,18 +3,23 @@
 <head>
 	{% load staticfiles %}
 	<title>{% block title %}{% endblock %}</title>
+	
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/default.css' %}" />
 	<link rel="icon" href="{% static 'favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
+	
+	{% block styles %}{% endblock %}
 
 	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css"/ >
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css">
 	
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
+{#	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>#}
 
 	<script>
 		//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
@@ -49,11 +54,11 @@
 		}
 		
 		function setting_changed(event) {
-			// Django provides (and demands if the server implemts it) Cross Site Request Forgery (CSRF) protection 
-			// Django proveds us with a csrf_token which it wants to see in a POST submission or it will reject it.
+			// Django provides (and demands, if the server implements it) Cross Site Request Forgery (CSRF) protection 
+			// Django provides us with a csrf_token which it wants to see in a POST submission or it will reject it.
 			// This how Django knows the POST came from this form here and not some other submitter. 
-			// The token comes as a HTML hidden form element, and we're building out own POST submission so
-			// need to extract the name and value and compose a URI (Uniform Resource Identifer).			
+			// The token comes as a HTML hidden form element, and we're building our own POST submission so
+			// need to extract the name and value and compose a URI (Uniform Resource Identifer).
 			const CSRF_name = CSRF_field.match( /name="(.*?)"/ )[1];
 			const CSRF_value = CSRF_field.match( /value="(.*?)"/ )[1];
 			const CSRF_uri = CSRF_name + "="  + encodeURI(CSRF_value);
@@ -93,6 +98,7 @@
 			}
 		}
 	</script>
+	
 	{% block startscript %}{% endblock %}	
 </head>
 
@@ -139,7 +145,8 @@
 		        <div id="league_selector" style="margin: 0 auto;">League:
 					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
 						{{league_options|safe}}
-					</select>				
+					</select>
+{#					{{league_widget|safe}}#}
 		        </div>
 		        <div id="login" style="float: right; margin-right:50px;">
 					{% if user.is_authenticated %}
@@ -202,7 +209,7 @@
 	    <!-- END Content -->
 	
 	    {% block footer %}
-	    
+
 	    <!-- DEBUG: debug is the settings.DEBUG flag and session["debug_mode"] flag -->
 	    {% if debug or debug_mode %}
 			{% include "CoGs/include/timezone_diag.html" %}

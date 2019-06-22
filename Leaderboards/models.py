@@ -33,7 +33,9 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.util import time_str
+from django_generic_view_extensions.datetime import time_str
+from django_generic_view_extensions.debug import print_debug 
+from _ctypes import ArgumentError
 
 # CoGs Leaderboard Server Data Model
 #
@@ -53,9 +55,9 @@ FLOAT_TOLERANCE = 0.0000000000001           # Tolerance used for comparing float
 NEVER = pytz.utc.localize(datetime.min)     # Used for times to indicat if there is no last play or victory that has a time
 
 # Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
-ALL_LEAGUES = "GLOBAL"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
-ALL_PLAYERS = "EVERYONE"                    # A reserved key for leaderboard filtering representing all players
-ALL_GAMES = "ALL"                           # A reserved key for leaderboard filtering representing all games
+ALL_LEAGUES = "Global"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
+ALL_PLAYERS = "Everyone"                    # A reserved key for leaderboard filtering representing all players
+ALL_GAMES = "All Games"                     # A reserved key for leaderboard filtering representing all games
 
 #===============================================================================
 # The support models, that store all the play records that are needed to
@@ -463,7 +465,7 @@ class League(AdminModel):
     All Leagues share the same global and game Trueskill settings, so that a
     meaningful global leaderboard can be reported for any game across all leagues.
     '''
-    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex='^{}$'.format(ALL_LEAGUES), message=u'{} is a reserved league name'.format(ALL_LEAGUES), code='reserved', inverse_match=True)])
+    name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex=f'^{ALL_LEAGUES}$', message=f'{ALL_LEAGUES} is a reserved league name', code='reserved', inverse_match=True)])
     
     manager = models.ForeignKey('Player', verbose_name='Manager', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
 
@@ -490,8 +492,11 @@ class League(AdminModel):
     @property_method
     def leaderboard(self, game=None):
         '''
-        Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
-        specified game or if no game is provided, a dictionary of such lists keyed on game.
+        Return an ordered list of (player, rating, plays, victories) tuples that represents 
+        the leaderboard for a specified game or if no game is provided, a dictionary of such 
+        lists keyed on game.
+        
+        # TODO: consider as_at support
         '''
         if game is None:
             lb = {}
@@ -506,9 +511,35 @@ class League(AdminModel):
                 lb.append((str(r.player), r.trueskill_eta, r.plays, r.victories))
                 
         return lb
+        
+    selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, query="", session={}, all=False):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: It's a bit odd to filter leagues on league. Might consider instead to filter
+                #       one related leagues, that is the more complex question, for a selected league,
+                #       itself and all leagues that share one or players with this league. These are
+                #       conceivably related fields.
+                qs = qs.filter(pk=league)
+        
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+        
+        return qs
     
     add_related = None
-    def __unicode__(self): return self.name
+    
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (manager: {})".format(self, self.manager)
@@ -699,11 +730,16 @@ class Player(PrivacyMixIn, AdminModel):
         that game.
         '''
         positions = {}
-        
-        positions[ALL_LEAGUES] = {}
+
         played = [] if self.games_played is None else self.games_played
-        for game in played:
-            positions[ALL_LEAGUES][game] = self.leaderboard_position(game, ALL_LEAGUES)
+
+        # Include a GLOBAL league only if this player is in more than one league, else
+        # Global is identical to their one league anyhow. 
+        multiple_leagues = self.leagues.all().count() > 1
+        if multiple_leagues:
+            positions[ALL_LEAGUES] = {}
+            for game in played:
+                positions[ALL_LEAGUES][game] = self.leaderboard_position(game)
         
         for league in self.leagues.all():
             positions[league] = {}
@@ -714,17 +750,22 @@ class Player(PrivacyMixIn, AdminModel):
 
     @property
     def leaderboards_winning(self) -> list:
-        '''
+        '''        
         Returns a dictionary of leagues, each value being a list of games this player
         is winning the leaderboard on. 
         '''
         result = {}
-        
-        result[ALL_LEAGUES] = []
+
         played = [] if self.games_played is None else self.games_played
-        for game in played:
-            if self.is_at_top_of_leaderbard(game, ALL_LEAGUES):
-                result[ALL_LEAGUES].append(game)
+        
+        # Include a GLOBAL league only if this player is in more than one league, else
+        # Global is identical to their one league anyhow. 
+        multiple_leagues = self.leagues.all().count() > 1
+        if multiple_leagues:
+            result[ALL_LEAGUES] = []
+            for game in played:
+                if self.is_at_top_of_leaderbard(game):
+                    result[ALL_LEAGUES].append(game)
         
         for league in self.leagues.all():
             result[league] = []
@@ -748,9 +789,19 @@ class Player(PrivacyMixIn, AdminModel):
     def name(self, style):
         '''
         Renders the players name in a nominated style
-        :param style: Supports "nick", "full", "complete"
-        '''
-        return self.complete_name if style == "complete" else self.full_name if style == "full" else self.name_nickname if style == "nick" else "Anonymous"        
+        :param style: Supports "nick", "full", "complete", "flexi"
+        
+        flexi is a special request to return {pk, nick, full, complete} 
+        empowering the caller to choose the name style later. This is
+        ideally to allow a client to choose rendering in Javascript
+        rather than fixing the rendering at server side.
+        '''        
+        # TODO: flexi has touse a delimeter that cannot be in a name and that should be enforced (names have them escaped
+        return (self.name_nickname if style == "nick" 
+           else self.full_name if style == "full" 
+           else self.complete_name if style == "complete" 
+           else f"{{{self.pk},{self.name_nickname},{self.full_name},{self.complete_name}}}" if style == "flexi" 
+           else "Anonymous")
 
     def rating(self, game):
         '''
@@ -764,16 +815,14 @@ class Player(PrivacyMixIn, AdminModel):
             raise ValueError("Database error: more than one rating for {} at {}".format(self.name_nickname, game.name))
         return r
     
-    def leaderboard_position(self, game, league):
-        lb = game.leaderboard(league, indexed=True)
-        position = 1
+    def leaderboard_position(self, game, leagues=[]):
+        lb = game.leaderboard(leagues, simple=False)
         for entry in lb:
-            if entry[0] == self.pk:
-                return position
-            position += 1
+            if entry[1] == self.pk:
+                return entry[0]
     
-    def is_at_top_of_leaderbard(self, game, league):
-        return self.leaderboard_position(game, league) == 1
+    def is_at_top_of_leaderbard(self, game, leagues=[]):
+        return self.leaderboard_position(game, leagues) == 1
     
     def last_play(self, game):
         '''
@@ -791,8 +840,33 @@ class Player(PrivacyMixIn, AdminModel):
 
         return NEVER if (plays is None or plays.count() == 0) else plays[0] 
 
+    selector_field = "name_nickname"
+    @classmethod
+    def selector_queryset(cls, query="", session={}, all=False):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: Should really respect s['filter_priorities'] as the list view does.
+                qs = qs.filter(leagues=league)
+        
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+
+        qs = qs.annotate(play_count=Count('performances')).order_by("-play_count")
+        
+        return qs
+    
     add_related = None
-    def __unicode__(self): return u'{}'.format(self.name_nickname)
+    
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u'{} {} ({})'.format(self.name_personal, self.name_family, self.name_nickname)
@@ -859,18 +933,23 @@ class Game(AdminModel):
         '''
         Returns a list of sessions that played this game. Across all leagues.        
         '''
-        return self.session_list(ALL_LEAGUES)        
+        return self.session_list()
 
     @property
     def league_sessions(self) -> dict:
         '''
         Returns a dictionary keyed on league, with a list of sessions that played this game as the value.        
         '''
-        return self.session_list()
+        leagues = League.objects.all()
+        sl = {}
+        sl[ALL_LEAGUES] = self.session_list()
+        for league in leagues:
+            sl[league] = self.session_list(league)
+        return sl
 
     @property
     def global_plays(self) -> dict:
-        return self.play_counts(ALL_LEAGUES)        
+        return self.play_counts()
 
     @property
     def league_plays(self) -> dict:
@@ -883,7 +962,12 @@ class Game(AdminModel):
             players: is a count of players who played this game at least once
             session: is a count of the number of sessions this game has been played
         '''
-        return self.play_counts()
+        leagues = League.objects.all() 
+        pc = {}
+        pc[ALL_LEAGUES] = self.play_counts()
+        for league in leagues:
+            pc[league] = self.play_counts(league)
+        return pc
 
     @property
     def league_leaderboards(self) -> dict:
@@ -894,8 +978,13 @@ class Game(AdminModel):
         Each leaderboard is an ordered list of (player,rating, plays) tuples 
         for the league.  
         '''
-        return self.leaderboard()
-    
+        leagues = League.objects.all()
+        lb = {}
+        lb[ALL_LEAGUES] = self.leaderboard()
+        for league in leagues:
+            lb[league] = self.leaderboard(league)
+        return lb
+
     @property
     def global_leaderboard(self) -> list:
         '''
@@ -905,8 +994,16 @@ class Game(AdminModel):
         
         The leaderboard for a specific league is available through the leaderboard method.
         '''
-        return self.leaderboard(ALL_LEAGUES)
-    
+        return self.leaderboard()
+
+#     @property
+#     def global_leaderboard2(self) -> dict:
+#         '''
+#         Should be same as global_leaderboards but by another means. A test of the query only
+#         '''
+#         leagues = list(League.objects.all().values_list('pk', flat=True))
+#         return self.leaderboard(leagues)
+   
     @property
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
@@ -919,18 +1016,23 @@ class Game(AdminModel):
             return None
     
     @property_method
-    def last_performance(self, league=ALL_LEAGUES, player=ALL_PLAYERS, asat=None) -> object:
+    def last_performances(self, leagues=[], players=[], asat=None) -> object:
         '''
-        Returns the last performance at this game (optionally as at a given date time) for
-        a player or all players in a specified league or all players in all leagues. 
+        Returns the last performances at this game (optionally as at a given date time) for
+        a player or all players in specified leagues or all players in all leagues (if no 
+        leagues specified). 
         
         Returns a Performance queryset. 
+        
+        :param leagues:The league or leagues to consider when finding the last_performances. All leagues considered if none specified.
+        :param player: The player or players to consider when finding the last_performances. All players considered if none specified.
+        :param asat: Optionally, the last performance as at this date/time
         '''
         pfilter = Q(session__game=self) 
-        if league != ALL_LEAGUES:
-            pfilter &= Q(player__leagues=league)
-        if player != ALL_PLAYERS:
-            pfilter &= Q(player=player)
+        if leagues:
+            pfilter &= Q(player__leagues__in=leagues)
+        if players:
+            pfilter &= Q(player__in=players)
         if not asat is None:
             pfilter &= Q(session__date_time__lte=asat)
         
@@ -940,7 +1042,7 @@ class Game(AdminModel):
         pfilter = Q(
             session__date_time=Subquery(
                 (Performance.objects
-                    .filter(Q(player=OuterRef('player')) & pfilter)
+                    .filter(Q(player__in=OuterRef('player')) & pfilter)
                     .values('player')
                     .annotate(max_date=Max('session__date_time'))
                     .values('max_date')[:1]
@@ -951,79 +1053,97 @@ class Game(AdminModel):
         return Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
 
     @property_method
-    def session_list(self, league=None, asat=None) -> list:
+    def session_list(self, leagues=[], asat=None) -> list:
         '''
-        Returns a list of sessions that played this game. Useful for counting or traversing.        
+        Returns a list of sessions that played this game. Useful for counting or traversing.
 
-        Such a list is returned for the specified league or as the value in a dictionary 
-        keyed on league if no league is specified, with the reserved key ALL_LEAGUES containing 
-        the global play counts. 
-        
-        If league is ALL_LEAGUES this returns the session list for ALL_LEAGUES which is distinct
-        form the dictionary of such session lists that is returned if no league is specified.  
+        Such a list is returned for the specified league or leagues or for all leagues if 
+        none are specified.
         
         Optionally can provide the list of sessions played as at a given date time. 
+        
+        :param leagues: Returns sessions played considering the specified league or leagues or all leagues if none is specified.
+        :param asat: Optionally returns the sessions played as at a given date
         '''
-        if league is None:
-            sl = {}
-            leagues = League.objects.filter(games=self)
-            sl[ALL_LEAGUES] = self.session_list(ALL_LEAGUES, asat)                
-            for league in leagues:
-                sl[league] = self.session_list(league, asat)
-            return sl          
-        elif asat is None:
-            if league == ALL_LEAGUES:
+        # If a single league was provided make a list with one entry.
+        if not isinstance(leagues, list):
+            if leagues:
+                leagues = [leagues]
+            else:
+                leagues = []
+
+        # We can accept leagues as League instances or PKs but want a PK list for the queries.
+        for l in range(0, len(leagues)):
+            if isinstance(leagues[l], League):
+                leagues[l] = leagues[l].pk
+            elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
+                raise ValueError(f"Unexpected league: {leagues[l]}.")
+
+        if asat is None:
+            if leagues:
+                return Session.objects.filter(game=self, league__in=leagues)
+            else:    
                 return Session.objects.filter(game=self)
-            else:    
-                return Session.objects.filter(game=self, league=league)
         else:
-            if league == ALL_LEAGUES:
-                return Session.objects.filter(game=self, date_time__lte=asat)
+            if leagues:
+                return Session.objects.filter(game=self, league__in=leagues, date_time__lte=asat)
             else:    
-                return Session.objects.filter(game=self, league=league, date_time__lte=asat)
+                return Session.objects.filter(game=self, date_time__lte=asat)
 
     @property_method
-    def play_counts(self, league=None, asat=None) -> list:
+    def play_counts(self, leagues=[], asat=None) -> list:
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
-            total: is the sum of all the individual player counts (so a count of total play experiences)
-            max: is the largest play count of any player
-            average: is the average play count of all players who've played at least once
-            players: is a count of players who played this game at least once
+            total:    is the sum of all the individual player counts (so a count of total play experiences)
+            max:      is the largest play count of any player
+            average:  is the average play count of all players who've played at least once
+            players:  is a count of players who played this game at least once
             sessions: is a count of the number of sessions this game has been played
-            
-        Such a dictionary is returned for the specified league or as the value in a dictionary 
-        keyed on league if no league is specified, with the reserved key ALL_LEAGUES containing 
-        the global play counts.
         
-        Optionally can provide the count of plays as at a given date time. 
+        leagues can be a single league (a pk) or a list of leagues (pks).        
+        We always return the playcount across all the listed leagues.
+        
+        If no leagues are specified returns the play_counts for all leagues.
+      
+        Optionally can provide the count of plays as at a given date time as well. 
+
+        :param leagues: Returns playcounts considering the specified league or leagues or all leagues if none is specified.
+        :param asat: Optionally returns the play counts as at a given date
         '''
-        if league is None:
-            pc = {}
-            leagues = League.objects.filter(games=self)
-            pc[ALL_LEAGUES] = self.play_counts(ALL_LEAGUES, asat)                
-            for league in leagues:
-                pc[league] = self.play_counts(league, asat)
-        elif asat is None:
-            if league == ALL_LEAGUES:
+        # If a single league was provided make a list with one entry.
+        if not isinstance(leagues, list):
+            if leagues:
+                leagues = [leagues]
+            else:
+                leagues = []
+
+        # We can accept leagues as League instances or PKs but want a PK list for the queries.
+        for l in range(0, len(leagues)):
+            if isinstance(leagues[l], League):
+                leagues[l] = leagues[l].pk
+            elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
+                raise ValueError(f"Unexpected league: {leagues[l]}.")
+            
+        if asat is None:
+            if leagues:
+                ratings = Rating.objects.filter(game=self, player__leagues__in=leagues)
+            else:
                 ratings = Rating.objects.filter(game=self)
-            else:    
-                ratings = Rating.objects.filter(game=self, player__leagues=league)
 
             pc = ratings.aggregate(total=Sum('plays'), max=Max('plays'), average=Avg('plays'), players=Count('plays'))
             for key in pc:
                 if pc[key] is None:
                     pc[key] = 0
                     
-            pc['sessions'] = self.session_list(league).count()
+            pc['sessions'] = self.session_list(leagues).count()
         else:
             # Can't use the Ratings model as that stores current ratings (and play counts). Instead use the Performance
             # model which records ratings (and play counts) after every game session and the sessions have a date/time
             # so the information can be extracted therefrom.
-            if league == ALL_LEAGUES:
-                performances = self.last_performance(asat=asat)
+            if leagues:
+                performances = self.last_performances(leagues=leagues, asat=asat)
             else:
-                performances = self.last_performance(league=league, asat=asat)
+                performances = self.last_performances(asat=asat)
 
             # The play_number of the last performance is the play count at that time.
             pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
@@ -1031,62 +1151,125 @@ class Game(AdminModel):
                 if pc[key] is None:
                     pc[key] = 0
                     
-            pc['sessions'] = self.session_list(league, asat=asat).count()
+            pc['sessions'] = self.session_list(leagues, asat=asat).count()
                 
         return pc
 
     @property_method
-    def leaderboard(self, league=None, asat=None, names="complete", indexed=False) -> list:
+    def leaderboard(self, leagues=[], asat=None, names="nick", simple=True) -> list:
         '''
-        Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for a
-        specified league, or for all leagues if None is specified. As at a given date/time if such is specified,
+        Return an ordered list of (player, rating, plays, victories) tuples that represents the leaderboard for 
+        specified leagues, or for all leagues if None is specified. As at a given date/time if such is specified,
         else, as at now (latest or current, leaderboard).
         
-        :param league:    Show only players in this league if specified, else in any league
+        :param leagues:   Show only players in any of these leagues if specified, else in any league (a single league or a list of leagues)
         :param asat:      Show the leaderboard as it was at this time rather than now, if specified
         :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options. 
-        :param indexed:   if True adds some ancillary player player info to each row returned (PK and BGGname of the player) 
-        '''      
-        if league is None:
-            lb = {}
-            leagues = League.objects.filter(games=self)
-            lb[ALL_LEAGUES] = self.leaderboard(ALL_LEAGUES, asat, names, indexed)                
-            for league in leagues:
-                lb[league] = self.leaderboard(league, asat, names, indexed) 
-        elif asat is None:
-            # If a league is specified we don't want to see people from other leagues
-            # on this leaderboard, only players from the nominated league.  
-            lb_filter = Q(game=self)
-            if league != ALL_LEAGUES:
-                lb_filter = lb_filter & Q(player__leagues=league)
+        :param simple     Defaults to Tue and is designed for the simple property method and a simple view
+                          of a games leaderboard.
+                          
+                          if False a more complex tuple is returned on each row of the board empowering
+                          the caller and a view to do some filtering with the data provided.
+                          Designed for use by a leaderboard view that wants to 
+                                present leaderboards with links to player info (on-site - PK, or at BGG)
+                                present the mu and sigma in a ToolTip or other annotation
+                                present alternate name formats (default tupe has complete, we include nick and full in prepend).
+                                filter player lists based on activity (last_play) or league membership (league PKs).
+                          If annotated is requested we ignore leaques and names (filtering and name renderig handled by caller) 
+        '''  
+        # If a single league was provided make a list with one entry.
+        if not isinstance(leagues, list):
+            if leagues:
+                leagues = [leagues]
+            else:
+                leagues = []                
+
+        print_debug(f"\t\tBuilding leaderboard for {self.name}.")
                 
-            # These come pre-sorted by -eta (so in the right order for the leaderboard).
-            # (descending skill rating). The Rating model ensures this
-            ratings = Rating.objects.filter(lb_filter)
-        
-            # Now build a leaderboard from all the ratings for players (in this league) at this game. 
-            lb = []
-            for r in ratings:
-                name = r.player.name(names)
-                lb_entry = (name, r.trueskill_eta, r.plays, r.victories) 
-                if indexed:
-                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
-                lb.append(lb_entry)
-        else: # Build leaderboard as at a given time as specified
+        # If a complex  leaderboard is requested we ignore "names" and the caller
+        # must perform name formatting (we provide all formats in the tuple). But 
+        # we ignore it vehemently, it's a programming error to invoke this method 
+        # with "names" and not simple ...
+        if not simple and names != "nick":
+            raise ArgumentError("Game.leaderboards requested with annotations. Expected no names submitted but got: {names}")                        
+            
+        # We can accept leagues as League instances or PKs but want a PK list for the queries.
+        for l in range(0, len(leagues)):
+            if isinstance(leagues[l], League):
+                leagues[l] = leagues[l].pk
+            elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
+                raise ValueError(f"Unexpected league: {leagues[l]}.")
+
+        print_debug(f"\t\tValidated leagues")
+            
+        if asat:
+            # Build leaderboard as at a given time as specified
             # Can't use the Ratings model as that stores current ratings. Instead use the Performance
             # model which records ratings after every game session and the sessions have a date/time
             # so the information can be extracted therefrom. These are returned in order -eta as well
             # so in the right order for a leaderboard (descending skill rating)
-            ratings = self.last_performance(league=league, asat=asat) 
+            if leagues:
+                # Get the last performances for all players in the specified leagues
+                ratings = self.last_performances(leagues=leagues, asat=asat) 
+            else:
+                # Get the last performances for all players in all leagues
+                ratings = self.last_performances(asat=asat)
+        else:
+            # If leagues are specified we don't want to see people from other leagues
+            # on this leaderboard, only players from the nominated leagues.  
+            lb_filter = Q(game=self)
+            if leagues:
+                # TODO: FIXME: This is bold. player__leagues is a set, and leagues is a set
+                # Does this yield the intersection or not?
+                lb_filter = lb_filter & Q(player__leagues__in=leagues)
+                
+            # These come pre-sorted by -eta (so in the right order for the leaderboard).
+            # (descending skill rating). The Rating model ensures this
+            ratings = Rating.objects.filter(lb_filter).distinct()        
+                 
+        print_debug(f"\t\tBuilt ratings queryset.")
+        
+        # Now build a leaderboard from all the ratings for players (in this league) at this game. 
+        lb = []
+        for i, r in enumerate(ratings):
+            # r may be a Rating object or a Performance object. They both have a player
+            # but other metadata is specific. So we fetch them based on their accessibility
+            if isinstance(r, Rating):
+                trueskill_eta = r.trueskill_eta
+                trueskill_mu = r.trueskill_mu
+                trueskill_sigma = r.trueskill_sigma
+                plays = r.plays
+                victories = r.victories
+                last_play = r.last_play
+            elif isinstance(r, Performance):
+                trueskill_eta = r.trueskill_eta_after
+                trueskill_mu = r.trueskill_mu_after
+                trueskill_sigma = r.trueskill_sigma_after
+                plays = r.rating.plays
+                victories = r.rating.victories
+                last_play = r.rating.last_play
+            else:
+                raise ValueError(f"Progamming error in Game.leaderboard().")
+            
+            if simple:
+                lb_entry = (r.player.name(names), trueskill_eta, plays, victories) 
+            else:
+                lb_entry = (i+1,
+                            r.player.pk, 
+                            r.player.BGGname, 
+                            r.player.name('nick'), 
+                            r.player.name('full'),
+                            r.player.name('complete'),
+                            trueskill_eta, 
+                            trueskill_mu, 
+                            trueskill_sigma, 
+                            plays, 
+                            victories,                                
+                            last_play, 
+                            [l.pk for l in r.player.leagues.all()])
+            lb.append(lb_entry)
 
-            # Now build a leaderboard from all the ratings for players (in this league) at this game ... 
-            lb = []
-            for r in ratings:
-                name = r.player.name(names)
-                lb_entry = (name, r.trueskill_eta_after, r.play_number, r.victory_count) 
-                if indexed:
-                    lb_entry = (r.player.pk, r.player.BGGname) + lb_entry
-                lb.append(lb_entry)
+        print_debug(f"\t\tBuilt leaderboard.")
                             
         return None if len(lb) == 0 else lb
 
@@ -1108,9 +1291,34 @@ class Game(AdminModel):
             # a rating object as at a specific date/time
             # TODO: Implement
             pass  
+
+    selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, query="", session={}, all=False):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                qs = qs.filter(leagues=league)         
+        
+        if query:
+            # TODO: Should really respect s['filter_priorities'] as the list view does.
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+
+        qs = qs.annotate(play_count=Count('sessions')).order_by("-play_count")
+               
+        return qs
             
     add_related = None
-    def __unicode__(self): return self.name
+
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u'{} (plays {}-{})'.format(self.name, self.min_players, self.max_players)    
@@ -1161,8 +1369,31 @@ class Location(AdminModel):
     def link_internal(self) -> str:
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
+    selector_field = "name"
+    @classmethod    
+    def selector_queryset(cls, query="", session={}, all=False):
+        '''
+        Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
+        :param cls: Our class (so we can build a queryset on it to return)
+        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param s: The request session (if there's a filter recorded there we honor it)
+        '''
+        qs = cls.objects.all()
+
+        if not all:
+            league = session.get('filter',{}).get('league', None)
+            if league:
+                # TODO: Should really respect s['filter_priorities'] as the list view does.
+                qs = qs.filter(leagues=league)
+        
+        if query:
+            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+        
+        return qs
+    
     add_related = None
-    def __unicode__(self): return self.name
+
+    def __unicode__(self): return getattr(self, self.selector_field)
     def __str__(self): return self.__unicode__()
     def __verbose_str__(self): 
         return u"{} (used by: {})".format(self.__str__(), ", ".join(list(self.leagues.all().values_list('name', flat=True))))
@@ -1307,14 +1538,12 @@ class Session(TimeZoneMixIn, AdminModel):
         order. Useful for traversing a list of all players in a session
         irrespective of the structure of teams or otherwise.
         
-        # TODO: Fix so it works with team sesssion!
         '''
         players = set()
-        ranks = Rank.objects.filter(session=self.id)
+        performances = Performance.objects.filter(session=self.pk)
         
-        for rank in ranks:
-            for player in rank.players:
-                players.add(player)
+        for performance in performances:
+            players.add(performance.player)
                 
         return players
 
@@ -1520,7 +1749,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         TODO: This should really be in the trueskill package
         '''
-        # Ranks.performance returns a (mu, sigma) tuple for the rankers
+        # Rank.performance returns a (mu, sigma) tuple for the ranker
         # TrueSkill modeled performance. And the expected ranking is
         # ranking by expected performance which is mu of the performance.
         rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
@@ -1774,7 +2003,7 @@ class Session(TimeZoneMixIn, AdminModel):
             if self.team_play:
                 # Teams we can render with the default format
                 # TODO: Check this, they should also respect 
-                #  link   name_style for members and linking of 
+                #  link and name_style for members and linking of 
                 #     members names when listed!  
                 ranker = field_render(r.team, flt.template)
                 data.append((r.team.pk, None))
@@ -1785,7 +2014,7 @@ class Session(TimeZoneMixIn, AdminModel):
                 ranker = field_render(r.player, flt.template, osf.template)
                 
                 # Replace the player name template item with the formatted name of the player
-                ranker = re.sub(r'{{Player\.{}}}'.format(r.player.pk),r.player.name(name_style),ranker)
+                ranker = re.sub(fr'{{Player\.{r.player.pk}}}', r.player.name(name_style), ranker)
                 
                 # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view 
                 PK = r.player.pk
@@ -1800,7 +2029,7 @@ class Session(TimeZoneMixIn, AdminModel):
                     eperf = perf[0] # mu
                     
             if eperf:
-                tip = "<span class='tooltiptext'>Expected performance (teeth)</span>"
+                tip = "<span class='tooltiptext' style='width: 600%;'>Expected performance (teeth)</span>"
                 ranker += " (<div class='tooltip'>{:.1f}{}</div>)".format(eperf, tip)                                    
             
             if use_rank:
@@ -1822,7 +2051,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (detail, data)
         
-    def leaderboard_header(self, name_style):
+    def leaderboard_header(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
@@ -1847,13 +2076,13 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (detail, data)         
 
-    def leaderboard_analysis(self, name_style):
+    def leaderboard_analysis(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
         It includes an analysis of the session. 
         
-        This comes in two parts, a templates, and ancillary data.
+        This comes in two parts, a template, and ancillary data.
         
         The template is HTML with placeholders for the ancillary data.
         
@@ -1864,24 +2093,24 @@ class Session(TimeZoneMixIn, AdminModel):
         
         Format is as follows:
         
-        1) An ordered list of players as a the prediction
-        # TODO 2) A confidence in the prediction (some measure of probability) 
+        1) An ordered list of players as the prediction
+        2) A confidence in the prediction (a measure of probability)
         3) A quality measure of that prediction
                 
         :param name_style: Must be supplied
         '''
         (ordered_ranks, confidence) = self.predicted_ranking
         
-        tip_sure = "<span class='tooltiptext'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
-        tip_accu = "<span class='tooltiptext'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
-        detail = u"Predicted ranking (<div class='tooltip'>{:.0%} sure{}</div>, <div class='tooltip'>{:.0%} accurate){}</div>: <br><br>".format(confidence, tip_sure, self.prediction_quality, tip_accu)
+        tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality:.0%} accurate){tip_accu}</div>: <br><br>"
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
         
         detail += ol
         
         return (mark_safe(detail), data)
     
-    def leaderboard_analysis_after(self, name_style):
+    def leaderboard_analysis_after(self, name_style="flexi"):
         '''
         Returns a HTML header that can be used on leaderboards.
 
@@ -1899,17 +2128,59 @@ class Session(TimeZoneMixIn, AdminModel):
         Format is as follows:
         
         1) An ordered list of players as a the prediction
-        # TODO 2) A confidence in the prediction (some measure of probability) 
+        2) A confidence in the prediction (some measure of probability)
         3) A quality measure of that prediction
                 
         :param name_style: Must be supplied
         '''
-        (ordered_ranks, confidence) = self.predicted_ranking_after        
-        detail = u"Post-session predicted ranking ({:.0%} sure, {:.0%} accurate): <br><br>".format(confidence, self.prediction_quality_after)
+        (ordered_ranks, confidence) = self.predicted_ranking_after
+
+        tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
+        tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
+        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality_after:.0%} accurate){tip_accu}</div>: <br><br>"
         (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
         detail += ol
         
         return (mark_safe(detail), data)                  
+
+    def leaderboard_snapshot(self):
+        '''
+        Prepares a leaderboard snapshot for passing to a view for rendering. 
+        
+        A snapshot is defined by a tuple with these entries in order:
+        
+        session.pk, 
+        session.date_time (in local time), 
+        session.game.play_counts()['total'], 
+        session.game.play_counts()['sessions'], 
+        session.players() (as a list of pks), 
+        session.leaderboard_header(), 
+        session.leaderboard_analysis(), 
+        session.leaderboard_analysis_after(), 
+        game.leaderboard()
+        '''        
+        # Get the leaderboard asat the time of this board.
+        # We request an annotated version which supplies us with the information 
+        # needed for player filtering and renderig, the leaderboard returned is 
+        # complete (no league filter applied, or name rendering options supplied).
+        # It will be up to the view to filter players as desired and select the 
+        # name format at render time.
+        lb = self.game.leaderboard(asat=self.date_time, simple=False)
+        
+        counts = self.game.play_counts(asat=self.date_time)
+
+        # Build the snapshot tuple
+        snapshot = (self.pk, 
+                    localize(localtime(self.date_time)),
+                    counts['total'], 
+                    counts['sessions'], 
+                    [p.pk for p in self.players], 
+                    self.leaderboard_header(), 
+                    self.leaderboard_analysis(), 
+                    self.leaderboard_analysis_after(), 
+                    lb)
+        
+        return snapshot
    
     def previous_sessions(self, player):
         '''
