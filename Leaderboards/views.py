@@ -363,7 +363,7 @@ def html_selector(model, id, default=0, placeholder="", attrs={}):
         
     return widget.render(model.__name__, default)
 
-def extra_context_provider(self):
+def extra_context_provider(self, context={}):
     '''
     Returns a dictionary for extra_context with CoGs specific items 
     
@@ -383,7 +383,6 @@ def extra_context_provider(self):
     Note: self.initial has been populated by the fields specfied in the models inherit_fields 
     attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
     '''
-    context = {}
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""
      
@@ -391,32 +390,35 @@ def extra_context_provider(self):
     context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
     
     if model_name == 'session':
-        if "game" in getattr(self, 'initial', {}):
-            Default = self.initial["game"]
+        # if an object is provided in self.object use that 
+        if hasattr(self, "object") and self.object and hasattr(self.object, "game") and self.object.game:
+                game = self.object.game
+                
+        # Else use the forms initial game, but
+        # self.form doesn't exist when we get here, 
+        # the form is provided in the context however
+        elif 'form' in context and "game" in getattr(context['form'], 'initial', {}):
+            game = context['form'].initial["game"]
+            
+            # initial["game"] could be a Game object or a PK
+            if isinstance(game , int):
+                try:
+                    game  = Game.objects.get(pk=game)
+                except:
+                    game = Game()
         else:
-            Default = Game()
+            game = Game()
         
-        context['game_individual_play'] = json.dumps(Default.individual_play)
-        context['game_team_play'] = json.dumps(Default.team_play)
-        context['game_min_players'] = Default.min_players
-        context['game_max_players'] = Default.max_players
-        context['game_min_players_per_team'] = Default.min_players_per_team
-        context['game_max_players_per_team'] = Default.max_players_per_team
-        
-        # Object overrides the defaults above 
-        if hasattr(self, "object"):
-            session = self.object
-                    
-            if session:
-                game = session.game
-                if game:
-                    context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
-                    context['game_team_play'] = json.dumps(game.team_play)
-                    context['game_min_players'] = game.min_players
-                    context['game_max_players'] = game.max_players
-                    context['game_min_players_per_team'] = game.min_players_per_team
-                    context['game_max_players_per_team'] = game.max_players_per_team
-    
+        if game:
+            context['game_individual_play'] = json.dumps(game.individual_play) # Python True/False, JS true/false 
+            context['game_team_play'] = json.dumps(game.team_play)
+            context['game_min_players'] = game.min_players
+            context['game_max_players'] = game.max_players
+            context['game_min_players_per_team'] = game.min_players_per_team
+            context['game_max_players_per_team'] = game.max_players_per_team    
+        else:
+            raise ValueError("Session form needs a game even if it's the default game")
+            
     return context
 
 def save_league_filters(session, league):

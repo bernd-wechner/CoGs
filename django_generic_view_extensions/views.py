@@ -20,7 +20,7 @@ These Extensions aim at providing primarily two things:
 
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
-#Python imports
+# Python imports
 import datetime
 
 # Django imports
@@ -52,6 +52,7 @@ from .model import collect_rich_object_fields, inherit_fields, add_related
 from .debug import print_debug
 from .forms import get_related_forms, save_related_forms
 from .filterset import format_filterset, is_filter_field 
+
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -91,10 +92,10 @@ def get_filterset(self):
         for f in session["filter"]:
             if f in priorities:
                 p = priorities[f]
-                highest = len(p)    # Initial value, one greater than the largest index in the list  
+                highest = len(p)  # Initial value, one greater than the largest index in the list  
                 for i, field in enumerate(reversed(p)):
                     if is_filter_field(model, field):
-                        highest = len(p)- i - 1
+                        highest = len(p) - i - 1
                         
                 # If we found one or more fields in the priority list that are 
                 # filterable we must now have the highest priority one, we replace 
@@ -132,13 +133,16 @@ def get_filterset(self):
     else:
         return None
 
+
 def get_ordering(self):
     if (self.format.ordering):
         return self.format.ordering.split(',')              
     else:
         return getattr(self.model._meta, 'ordering', None)
 
+
 class LoginViewExtended(LoginView):
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_timezone_context(self, context)
@@ -150,16 +154,19 @@ class LoginViewExtended(LoginView):
         form.request.session['timezone'] = form.request.POST['timezone']        
         return response         
 
+
 class TemplateViewExtended(TemplateView):
     '''
     An extension of the basic TemplateView for a home page on the site say (not related to any model)
     which provides some extra context if desired in a manner compatible with the other Extended Views
     '''
+
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
         add_timezone_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
+
 
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
@@ -171,7 +178,7 @@ class ListViewExtended(ListView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
 
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
@@ -214,9 +221,10 @@ class ListViewExtended(ListView):
         add_filter_context(self, context)
         add_ordering_context(self, context)
         add_debug_context(self, context)
-        context["total"] =  self.model.objects.all().count        
+        context["total"] = self.model.objects.all().count        
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
+
 
 class DetailViewExtended(DetailView):
     '''
@@ -231,7 +239,7 @@ class DetailViewExtended(DetailView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
     
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
@@ -276,7 +284,6 @@ class DetailViewExtended(DetailView):
             self.kwargs["pk"] = self.pk                             
         else:
             self.obj = get_object_or_404(self.model, pk=self.pk)
-
         
         # Add this information to the view (so it's available in the context).
         self.object_browser = neighbours        
@@ -299,6 +306,7 @@ class DetailViewExtended(DetailView):
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context  
 
+
 class DeleteViewExtended(DeleteView):
     '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
     # HTML formatters stolen straight form the Django ModelForm class
@@ -307,7 +315,7 @@ class DeleteViewExtended(DeleteView):
     as_ul = object_as_ul
     as_p = object_as_p
     as_br = object_as_br
-    as_html = object_as_html # Chooses one of the first three based on request parameters
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
 
     # Override properties with values passed as arguments from as_view()
     def __init__(self, **kwargs):
@@ -355,6 +363,7 @@ class DeleteViewExtended(DeleteView):
 # Session objects anyhow and the Team, Rank, Perfromance and related objects will not even
 # be available on production menues, only for the admin for drilling down and debugging.
 
+
 class CreateViewExtended(CreateView):
     '''
     A CreateView which makes the model and the related_objects it defines available 
@@ -397,13 +406,14 @@ class CreateViewExtended(CreateView):
         CuserMiddleware.set_user(self.request.user)
 
         # Note that the super.get_context_data initialises the form with get_initial
-        context = super().get_context_data(*args, **kwargs) # This calls get_form()
+        context = super().get_context_data(*args, **kwargs)  # This calls get_form()
 
         # Now add some context extensions ....
         add_model_context(self, context, plural=False, title='New')
         add_timezone_context(self, context)
         add_debug_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        if callable(getattr(self, 'extra_context_provider', None)): 
+            context.update(self.extra_context_provider(context))
         
         return context
 
@@ -411,7 +421,7 @@ class CreateViewExtended(CreateView):
         model = self.model
         selector = getattr(model, "selector_field", None)        
 
-        form = super().get_form() # This calls get_initial
+        form = super().get_form()  # This calls get_initial
         
         for field in form.fields.values():
             if isinstance(field, ModelChoiceField):
@@ -480,7 +490,7 @@ class CreateViewExtended(CreateView):
                 initial[field_name] = field_value
          
         return initial 
-
+    
     def post(self, request, *args, **kwargs):
         if self.request.POST.get("debug_post_data", "off") == "on":
             html = "<table>"   
@@ -563,6 +573,7 @@ class CreateViewExtended(CreateView):
 #         response = self.render_to_response(context)
 #         return response
 
+
 class UpdateViewExtended(UpdateView):
     '''
     An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.
@@ -606,14 +617,15 @@ class UpdateViewExtended(UpdateView):
         # Now add some context extensions ....
         add_model_context(self, context, plural=False, title='Edit')
         add_timezone_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        if callable(getattr(self, 'extra_context_provider', None)): 
+            context.update(self.extra_context_provider(context))
         return context
 
     def get_form(self):
         model = self.model
         selector = getattr(model, "selector_field", None)        
 
-        form = super().get_form() # This calls get_initial
+        form = super().get_form()  # This calls get_initial
         
         for field in form.fields.values():
             if isinstance(field, ModelChoiceField):
@@ -748,6 +760,7 @@ class UpdateViewExtended(UpdateView):
 # https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
 #===============================================================================
 
+
 class ajax_Autocomplete(autocomplete.Select2QuerySetView):
     '''
     Support AJAX fetching of option lists for the django-autocomplte-light widgets.
@@ -763,6 +776,7 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
     
     it returns a queryset and will use a model provided list or a default one.
     '''
+
     def get_queryset(self):
         self.model = class_from_string(self.kwargs['app'], self.kwargs['model'])
         self.field_name = self.kwargs.get('field_name', None)
@@ -790,6 +804,7 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
                 qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
 
         return qs
+
     
 def ajax_Selector(request, app, model, pk):
     '''

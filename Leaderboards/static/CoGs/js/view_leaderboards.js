@@ -508,8 +508,7 @@ function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_z
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 function show_url() { window.history.pushState("","", url_leaderboards.replace(/\/$/, "") + URLopts(null)); }
 
-var REQUEST = new XMLHttpRequest();
-REQUEST.onreadystatechange = function () {
+function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
 		// the request is complete, parse data 
 		var response = JSON.parse(this.responseText);
@@ -533,6 +532,9 @@ REQUEST.onreadystatechange = function () {
 	}
 };
 
+const REQUEST = new XMLHttpRequest();
+REQUEST.onreadystatechange = got_new_leaderboards;
+	
 function refetchLeaderboards(event) {
 	var url = url_json_leaderboards + URLopts(event.target.id);
 
