@@ -17,11 +17,31 @@
 {#   while enforcing some rules locally in the UI for convenience with JS. The rules can be summarised as follows:   #}
 
 <section class="leaderboard_options">
-	<div class="lbl_view">View: <img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'></div>
+	<div class="lbl_view">View:</div>
 	<div class="lbl_basic">using:</div>
 	<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
 	
-	<div class="lo_buttons"><input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);"></div>
+	<div class="lo_buttons">
+		<button type="button" class="button_left" id="btnLoad"  onclick="refetchLeaderboards();">Reload</button>
+		<button type="button" class="button_left" id="btnAllLeaderboards" onclick="">All Leaderboards</button>
+		<button type="button" class="button_left" id="btnEventImpact" onclick="">Impact of Last Event</button>
+		
+		<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
+			<img src="{% static 'copy.png' %}"  class='img_button'>
+			<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span?
+		</button>
+
+	  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
+			<img src="{% static 'link_fat.png' %}"  class='img_button'>
+			<span class="tooltiptext">Copy Static URL</span?
+	  	</button>
+
+	  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
+			<img src="{% static 'link_thin.png' %}" class='img_button'>		
+			<span class="tooltiptext">Copy URL</span?
+	  	</button>
+	</div>	
+	
 	<div class="lo_basic">
 		<select id="cols" oninput='DrawTables("tblLB");'>
 		  <option>1</option>
@@ -77,6 +97,11 @@
 	</div>	
 	
 	<section class="lo_advanced">
+		<div class="button_apply">
+			<button type="button" id='btnApply' onclick="refetchLeaderboards();">Apply</button> 
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'>
+		</div>
+	
 		<div class="label_filtering">Filtering:</div>
 		<div class="filter_games">Games:</div>
 		<div class="intro_games">Display leaderboards</div>
@@ -141,7 +166,7 @@
 			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_changed_since', '.exclusive_group1'); copy_if_empty(this,'#compare_back_to');">
 	  	</div>
 	  
-	  	<div class="filter_games_session">
+	  	<div class="filter_games_event">
 			<input type="checkbox" id="chk_num_days" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1')" > 
 			<label for="chk_num_days">for games played in the last session of  
 			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '.exclusive_group1'); mirror(this,'#num_days_ev');"> 
@@ -239,19 +264,13 @@
 			<label for="chk_num_days_ev">leaderboards back to the start of the last game session of 
 			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'num_days_ev', 'no_evolution'); mirror(this,'#num_days');">
 			days duration</label>
-	  	</div>
-	
-	  	<div class="button_copy"><button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> </div>
-	  	<div class="label_copy"> leaderboards to clipboard </div>
-	
-	  	<div class="button_url"> <button type="button" id='btnShowURL' onclick="show_url();">Show</button> </div> 	
-	  	<div class="label_url"> URL</div>
+	  	</div>	  	
 	</section>	
 </section>
 
 {#	PAGE HEADER #}
 
-<h3><label id='lblTotalCount'></label><label id='lblSnapCount' style='margin-left:1ch'></label></h3>
+<h3><span id='lblTotalCount'></span> <span id='lblSnapCount'></span></h3>
 
 {# THE LEADERBOARDS! - Placeholder filled by Javascript rendered of the template or ajax provided data #}
 		

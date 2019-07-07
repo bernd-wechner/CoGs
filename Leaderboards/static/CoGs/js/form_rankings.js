@@ -89,7 +89,7 @@ function OnLoad(event) {
 	
 	// Add a listener to the game selector (so that the form can adapt to the properties of the newly selected game)
 	const game_selector = $("#"+id_prefix+"game");
-	game_selector .on("change", switchGame);
+	game_selector.on("change", switchGame);
 	
 	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form 
 	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out

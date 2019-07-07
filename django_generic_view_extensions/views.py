@@ -532,9 +532,9 @@ class CreateViewExtended(CreateView):
          
                         print_debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
-                    # TODO: Report INtergityErrors too
+                    # TODO: Report IntergityErrors too
                     # TODO: if error_dict refers to a non field this crashes, find what the criterion
-                    #       in add_error is and then if it's a field tat doesn't match this criteron 
+                    #       in add_error is and then if it's a field that doesn't match this criteron 
                     #       do somethings sensible. We may be able to attach errors to the formsets too!
                     for field, errors in e.error_dict.items():
                         for error in errors:
@@ -720,7 +720,7 @@ class UpdateViewExtended(UpdateView):
          
                         print_debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
-                    # TODO: Report INtergityErrors too
+                    # TODO: Report IntegrityErrors too
                     # TODO: if error_dict refers to a non field this crashes, find what the criterion
                     #       in add_error is and then if it's a field tat doesn't match this criteron 
                     #       do somethings sensible. We may be able to attach errors to the formsets too!

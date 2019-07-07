@@ -11,7 +11,7 @@
 # After restoring with pgadmin4 will need to:
 #
 # 1) Consider publishing code base if needed
-# 2) Restart the uwsgi service.
+# 2) Restart the uwsgi service (sudo service uwsgi start)
 #
 # This produces a lot of messy tracing/diagnostic output for now. 
  

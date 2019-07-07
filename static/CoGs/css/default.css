@@ -1,4 +1,5 @@
-@CHARSET "UTF-8";
+@charset "utf-8";
+/* CSS Document */
 
 body {
     font-family: Arial, Helvetica, sans-serif;
@@ -22,6 +23,54 @@ body {
     text-decoration: underline;
 }
 
+
+/* 
+	This is a bug fix of sorts. The DAL select2 widgets take a visble moment to render, before which 
+	the standard HTML selct widget is visible. The style difference is so glarring this jolts visually
+	
+	Following advice here: 
+		https://stackoverflow.com/questions/29849666/counteract-a-bootstrap-select2-rendering-delay
+		
+	we apply a style to underlying selct widget that mimics the coming style from DAL so the change 
+	is less jarring. In the ideal we'd get it exact, but that's a problem to solve another day. For 
+	now this is pretty close visually.
+	
+	Width is the big unknown here. DAL seems to put thes eodd px widths on the widgets and well, I 
+	picked one of the form fields to tune this to, but they are not all the same. DAL can't be 
+	calculating this server side surely and it must be done in Javascript.
+*/
+.ModelChoiceField {
+  color: #444;
+  background-color: #FFF;
+  border: 1px solid #AAA;
+  border-radius: 4px;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-block;
+  height: 28px;
+  width: 426.91px;
+  font: unset;
+}
+
+.select2-container {
+    color: Black;
+}
+
+/* .select2-search__field { */
+/* 	line-height: 1 !important; */
+/* } */
+
+/* .select2-search__field, */
+/* .select2-selection__rendered */
+/* .select2-search--inline, */
+/* .select2-container--bootstrap,  */
+/* .select2-selection--multiple, */
+/* { */
+/*     line-height: 1 !important; */
+/* 	height: 16px !important; */
+/*     min-height: 16px !important; */
+/* } */
+ 
 p {
 	margin-top:0;
 }
@@ -34,6 +83,19 @@ ul, ol {
 
 li {
 	margin-bottom:0;
+}
+
+/* A simple override to kill margins and padding on an element */
+.tight
+{
+  padding: 0 !important;
+  margin: 0 !important;
+  border-spacing: 0 !important;
+}
+
+/* A simple override to force an element to consume space  */
+.greedy {
+    width: 100% !important;
 }
 
 th {
@@ -146,7 +208,7 @@ table.options
 	border-width: 1px 1px 1px 1px;
 }
 
-td.options
+td.options, th.options
 {
 	margin: 0;
 	
@@ -162,9 +224,9 @@ td.options
 	border-width: 0 0 0 0;
 }
 
-td.options.indent
+td.options.indent, th.options.indent
 {
-	padding-left: +20px;
+	padding-left: 5ch !important;
 }
 
 table.results {
@@ -173,15 +235,7 @@ table.results {
     border-collapse: collapse;
 }
 
-th.results {
-    padding: 5px;
-    border-style: solid;
-    border-width: 1px;
-    border-color: black;
-    border-spacing: 0px;
-}
-
-td.results {
+td.results, th.results {
     padding: 5px;
     border-style: solid;
     border-width: 1px;
@@ -191,129 +245,18 @@ td.results {
 
 td.label {
     padding-right: 30px;
-    text-wrap: none;
+    white-space: nowrap;
 }
 
 td.note {
     padding-left: 30px;
-    text-wrap: none;
+    white-space: nowrap;
 }
 
-table.leaderboard
-{
-	margin-right: 10px;
-	border-color: #600;
-	border-style: solid;
-	border-width: 0 0 1px 1px;
-	border-collapse: collapse;
-	border-spacing: 10px;
-}
-
-th.leaderboard, td.leaderboard
-{
-	border-color: #600;
-	border-style: solid;
-	margin: 0;
-	padding: 4px;
-	border-width: 1px 1px 0 0;
-	white-space: nowrap;
-}
-
-th.leaderboard.normal, td.leaderboard.normal
-{
-	background-color: #FFF7F0;
-	font-weight: normal;
-}
-
-td.leaderboard.highlight_off
-{
-	background-color: #FFF7F0;
-}
-
-td.leaderboard.highlight_on
-{
-	background-color: #FFE0E0 !important;
-}
-
-leaderboard.emphasis_off
-{
-	font-weight: normal;
-}
-
-td.leaderboard.emphasis_on
-{
-	font-weight: bold !important;
-}
-
-table.leaderboard.wrapper 
-{
-	border-style: none;
-	margin: 10px;
-}
-
-td.leaderboard.wrapper 
-{
-	vertical-align: top;
-	background-color: transparent;
-	border-style: none;
-	padding-left: 0;
-	padding-right: 15px;
-}
-
-/* A simple override to kill margins and padding on an element */
-.tight
-{
-  padding: 0 !important;
-  margin: 0 !important;
-  border-spacing: 0 !important;
-}
-
-/* A simple override to force an element to consume space  */
-.greedy {
-    width: 100% !important;
-}
 
 /* DateTimeFields should be wide enough for the date_time formats in use */
 .DateTimeField {
-	width: 18ch;
-}
-
-/* ToolTip support */
-.tooltip {
-    position: relative;
-    display: inline-block;
-}
-
-.tooltip .tooltiptext {
-    visibility: hidden;
-    background-color: #555;
-    color: #fff;
-    text-align: center;
-    border-radius: 6px;
-    padding: 10px;
-    position: absolute;
-    z-index: 1;
-    bottom: 125%;
-    left: 50%;
-    margin-left: -60px;
-    opacity: 0;
-    transition: opacity 0.3s;
-}
-
-.tooltip .tooltiptext::after {
-    content: "";
-    position: absolute;
-    top: 100%;
-    left: 50%;
-    margin-left: -5px;
-    border-width: 5px;
-    border-style: solid;
-    border-color: #555 transparent transparent transparent;
-}
-
-.tooltip:hover .tooltiptext {
-    visibility: visible;
-    opacity: 1;
+	width: 22ch;
 }
 
 div.inspector th,
@@ -321,4 +264,3 @@ div.inspector td
 { 
 	vertical-align: top;
 } 
-

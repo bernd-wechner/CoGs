@@ -85,6 +85,8 @@ def add_timezone_context(view, context):
     context['django_timezone'] = str(django_dt.tzinfo)
     context['django_utcoffset'] = django_dt.tzinfo._utcoffset
     
+    return context
+    
 def add_format_context(view, context):
     '''
     Add some useful context information to views that reveal information about the
@@ -191,6 +193,8 @@ def add_filter_context(view, context):
             
         context["filters_specs"] = filters_specs        
         context["filters_query"] = sqlparse.format(str(view.filterset.filter().query), reindent=True, keyword_case='upper')        
+        
+    return context
 
 def add_ordering_context(view, context):
     '''
@@ -215,6 +219,8 @@ def add_ordering_context(view, context):
         context["ordering_default"] = "ordering=" + ",".join(view.model._meta.ordering)        
     else:   
         context["ordering_default"] = ""
+        
+    return context
 
 def add_debug_context(view, context):
     '''
@@ -224,3 +230,5 @@ def add_debug_context(view, context):
     :param context:
     '''
     context['debug_mode'] = view.request.session.get("debug_mode", False)
+    
+    return context

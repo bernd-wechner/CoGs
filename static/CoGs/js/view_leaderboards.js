@@ -25,14 +25,58 @@ String.prototype.boolean = function() {
         throw new Error ("string.boolean(): Cannot convert string to boolean.");
     }
   };
+  
+function selectElementContents(el) {
+      let body = document.body, range, sel;
+      if (document.createRange && window.getSelection) {
+          range = document.createRange();
+          sel = window.getSelection();
+          sel.removeAllRanges();
+          try {
+              range.selectNodeContents(el);
+              sel.addRange(range);
+          } catch (e) {
+              range.selectNode(el);
+              sel.addRange(range);
+          }
+      } else if (body.createTextRange) {
+          range = body.createTextRange();
+          range.moveToElementText(el);
+          range.select();
+      }
+}
+
+function copyStringToClipboard(str) {
+   let el = document.createElement('textarea');
+   el.value = str;
+   el.setAttribute('readonly', '');
+   el.style = {position: 'absolute', left: '-9999px'};
+   document.body.appendChild(el);
+   el.select();
+   document.execCommand('copy');
+   document.body.removeChild(el);
+}  
+
+function copyElementToClipboard(JQelement) {
+	   let el = JQelement.clone().get(0);
+	   el.setAttribute('readonly', '');
+	   el.style = {position: 'absolute', left: '-9999px'};
+	   document.body.appendChild(el);
+	   selectElementContents(el);
+	   document.execCommand('copy');
+       document.body.removeChild(el);
+}  
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
 function get_and_report_metrics(LB) {
-	var snapshots = 0; 
+	let snapshots = 0; 
+
+	// Globals that we'll set here
 	boardcount = LB.length;
 	maxshots = 0;
 	totalshots = 0;
-	for (var g=0; g<boardcount; g++) {
+	
+	for (let g=0; g<boardcount; g++) {
 		snapshots = LB[g][3].length;
 		totalshots += snapshots;
 		if (snapshots > maxshots) maxshots = snapshots;
@@ -41,117 +85,420 @@ function get_and_report_metrics(LB) {
 	lblTotalCount = document.getElementById("lblTotalCount");
 	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
 	
-	if (totalshots > boardcount) {
-		lblSnapCount = document.getElementById("lblSnapCount");
-		lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
-	}
+	lblSnapCount = document.getElementById("lblSnapCount");
+	lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
+	lblSnapCount.style.display = (totalshots > boardcount) ? "inline" : "none";
 }
 
 // But on first load we have leaderboards that were provided through context, so process those now 
 get_and_report_metrics(leaderboards);
 
-//Report the snapshot count
+// An initialiser for Select2 widgets used. Alas not so trivial to set
+// as descrribed here: 
+//   https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
+function Select2Init(selector, values) {
+	const selected = selector.val();
+	let changed = false;
 
-function InitControls(options) {
-	$('#num_games').val(options.num_games);
-	$('#num_days').val(options.num_days);
-
-	$('#selCols').val(options.cols);
-	$('#selNames').val(options.names);	
-	$('#selLinks').val(options.links);
+	for (let i = 0; i < values.length; i++)
+		if (selected.indexOf(values[i].toString()) < 0) changed = true;
 	
-	$('#chkHighlightPlayers').prop('checked', options.highlight_players.boolean())
-	$('#chkHighlightChanges').prop('checked', options.highlight_changes.boolean())
-	$('#chkSessionDetails').prop('checked', options.details.boolean());
-	$('#chkSessionAnalysisPre').prop('checked', options.analysis_pre.boolean());
-	$('#chkSessionAnalysisPost').prop('checked', options.analysis_post.boolean());
-
-	$('#as_at').val(options.as_at == defaults.as_at ? '' : options.as_at);
-	$('#changed_since').val(options.changed_since == defaults.changed_since ? '' : options.changed_since);
-	$('#compare_with').val(options.compare_with == defaults.compare_with ? '' : options.compare_with);
-	$('#compare_back_to').val(options.compare_back_to == defaults.compare_back_to ? '' : options.compare_back_to);
-	$('#compare_till').val(options.compare_till == defaults.compare_till ? '' : options.compare_till);
+	if (changed) {
+		selector.val(null).trigger('change');
+		$.ajax({
+		    type: 'GET',
+		    url: url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + values
+		}).then(function (data) {
+			// data arrives in JSON like:
+			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
+				
+			for (let i=0; i<data.results.length; i++) {
+			    // create the option and append to Select2
+			    var option = new Option(data.results[i].text, data.results[i].id, true, true);
+			    selector.append(option).trigger('change');
+			}
 	
-	//Populate the League selector
-	var select = $('#selLeague');                        
-	select.find('option').remove();    
-	var league_choices = "";
-	for (var i = 0, len = leagues.length; i < len; i++) {
-		pair = leagues[i];
-		league_choices += '<option value=' + pair[0] + (pair[0] == options.league ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(league_choices);
-	
-	//Populate the Player selector
-	var select = $('#selPlayer');                        
-	select.find('option').remove();    
-	var player_choices = "";
-	for (var i = 0, len = players.length; i < len; i++) {
-		pair = players[i];
-		player_choices += '<option value=' + pair[0] + (pair[0] == options.player ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(player_choices);
-	
-	//Populate the Game selector
-	var select = $('#selGame');                        
-	select.find('option').remove();    
-	var game_choices = "";
-	for (var i = 0, len = games.length; i < len; i++) {
-		pair = games[i];
-		game_choices += '<option value=' + pair[0] + (pair[0] == options.game ? ' selected ' : '') + '>' + pair[1] + '</option>';
-	}	
-	select.append(game_choices);
-	
-	//Configure the Copy Button
-	var copybutton = document.getElementById("btnCopy");
-	var clipboard = new ClipboardJS(copybutton);
-	
-	//What to do when the copy button is clicked 
-	clipboard.on('success', function(e) {
-		const copy_div = document.getElementById('tblLB_naked');
-		e.clearSelection();
-		copy_div.parentNode.removeChild(copy_div);
-	});	
+		    // manually trigger the `select2:select` event
+		    selector.trigger({
+		        type: 'select2:select',
+		        params: {
+		            data: data
+		        }
+		    });
+		});
+	}
 }
 
-function URLopts(element) {
-	var opts = []
-	var val;
-
-	// Options shared by all reload paths
+function InitControls(options) {
+	// We'll follow the same order as Leaderboards.views.leaderboard_options
+	// This takes those same options provided in context (or from an ajx call) 
+	// as "options" and initialises the controls on the page. 
 	
-	val = $('#selCols :selected').val(); if (val != defaults.cols) opts.push("cols="+encodeURIComponent(val));	
-	val = $('#selNames :selected').val(); if (val != defaults.names) opts.push("names="+encodeURIComponent(val));	
-	val = $('#selLinks :selected').val(); if (val != defaults.links) opts.push("links="+encodeURIComponent(val));	
+	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
+	$("input[name=evolution_selection][value="+options.evolution_selection+"]").prop('checked', true);
 
-	val = $('#selLeague :selected').val(); if (val != defaults.league) opts.push("league="+encodeURIComponent(val));	
-	val = $('#selPlayer :selected').val(); if (val != defaults.player) opts.push("player="+encodeURIComponent(val));	
+	// Then we populate all the Game selectors, starting with the three multiselectors
+	// footnote: The league selector could be populated from game_leagues or player_leagues
+	//           though they should typically be identical anyhow (albeit not guaranteed to 
+	//			 be. If roundtripping from this form they will be, but a URL GET request can
+	//			 specify separate lists. We'll priritise game_leagues here.
+	Select2Init($('#games'), options.games)
+	Select2Init($('#leagues'), options.game_leagues)
+	Select2Init($('#players'), options.game_players)
+	
+	// Get the list of enabled options
+	const enabled = options.enabled;
+	
+	// special case if neither compare_with nor compare_back_to are enabled we
+	// want to specificallye enable no_evolution. If we check it first a 
+	// subsequent check on compare_with or compare_back_to will uncheck it as
+	// they are radio buttons.
+	$("#chk_no_evolution").prop('checked', true);
 
-	val = $('#chkSessionDetails').is(":checked"); if (val != defaults.details.boolean()) opts.push("details="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPre').is(":checked"); if (val != defaults.analysis_pre.boolean()) opts.push("analysis_pre="+encodeURIComponent(val));
-	val = $('#chkSessionAnalysisPost').is(":checked"); if (val != defaults.analysis_post.boolean()) opts.push("analysis_post="+encodeURIComponent(val));
-	val = $('#chkHighlightPlayers').is(":checked"); if (val != defaults.highlight_players.boolean()) opts.push("highlight_players="+encodeURIComponent(val));
-	val = $('#chkHighlightChanges').is(":checked"); if (val != defaults.highlight_changes.boolean()) opts.push("highlight_changes="+encodeURIComponent(val));
+		// and set all the checkboxes they map to:
+	for (i = 0; i < enabled.length; i++) {		
+		const opt = enabled[i];
 
-	val = $('#as_at').val(); if (val != '') opts.push("as_at="+encodeURIComponent(val));
+		// compare_back_to is a special option because we share it 
+		// between two radio buttons base on its value (int or date)
+		const chk = (opt == "compare_back_to" && Number.isInteger(options.compare_back_to))
+					? "#chk_num_days_ev"
+				    : "#chk_" + opt;
 
-	if (element == "btnImpact") {
-		opts.push("impact");
-		opts.push("num_days="+encodeURIComponent($('#num_days').val()));
-		opts.push("num_games=0");
+		$(chk).prop('checked', true).trigger('input');
+	} 	
+		
+	// Then the rest of the game selectors
+	$('#num_games').val(options.num_games);         // Mirror of #num_games_latest
+	$('#num_games_latest').val(options.num_games);  // Mirror of #num_games
+	$('#changed_since').val(options.changed_since);
+	$('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
+	$('#num_days_ev').val(options.num_days);  		// Mirror of num_days
+
+	// Then the player selectors
+	$('#num_players_top').val(options.num_players_top);
+	$('#num_players_above').val(options.num_players_above);
+	$('#num_players_below').val(options.num_players_below);
+	$('#min_plays').val(options.min_plays);
+	$('#played_since').val(options.played_since);
+	
+	// Then the persepective option
+	$('#as_at').val(options.as_at);
+
+	// Then the snapshot selectors
+	$('#compare_with').val(options.compare_with);
+	
+	if (Number.isInteger(options.compare_back_to))
+		$('#num_days_ev').val(options.compare_back_to);
+	else
+		$('#compare_back_to').val(options.compare_back_to);
+		
+	// The the content formatting options
+	$('#chk_highlight_players').prop('checked', options.highlight_players)
+	$('#chk_highlight_changes').prop('checked', options.highlight_changes)
+	$('#chk_highlight_selected').prop('checked', options.highlight_selected)
+	
+	$('#names').val(options.names);	
+	$('#links').val(options.links);
+
+	// Then the extra info options for leaderboard headers
+	$('#chk_details').prop('checked', options.details);
+	$('#chk_analysis_pre').prop('checked', options.analysis_pre);
+	$('#chk_analysis_post').prop('checked', options.analysis_post);
+
+	// Then the leaderboard screen layout options
+	$('#cols').val(options.cols);
+
+	// If we made the options static we want to copy them to address bare and copy.paste buffer
+	if (options.made_static) { show_url();}		
+}
+
+function is_enabled(checkbox_id) {
+	return $("input[id='"+checkbox_id+"']").is(":checked");
+}
+
+function encodeList(list) {
+	return encodeURIComponent(list).replace(/%2C/g, ",");
+}
+
+function encodeDateTime(datetime) {
+	// We communicate datetimes in the ISO 8601 format:
+	// 	https://en.wikipedia.org/wiki/ISO_8601
+	// but in URLS they turn into an ugly mess. If we make a few simple URL safe
+	// substitutions and unmake them at the server end all is good, and URLs become 
+	// legible approximations to ISO 8601.
+	//
+	// Of note:
+	//
+	// + is a standard way to encode a space in URL. Though encodeURIComponent opts for %20.
+	//   we can use + safely and it arrives at server as a space.
+	//
+	// : is encoded as %3A. It turns out : is not a recommended URL character and a 
+	//   reserved character, but it does transport fine at least on Chrome tests. 
+	//   Still we can substitue - for it and that is safe legible char already in
+	//   use on the dates and can be decoded back to : by the server.
+	//
+	// The Timezone is introduced by + or -
+	//
+	// - travels unhindered. Is a safe URL character.
+	// + is encoded as %2B, but we can encode it with + which translates to a 
+	//   space at the server, but known we did this it can decdoe the space back 
+	//   to +. 
+	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
+}
+
+function URLopts(make_static) {
+	// The opposite so to speal of InitControls() here we read those same conrols and prepare
+	// URL options for self same to submit an AJAX request for updates (or simply display on
+	// the address bar if desired)
+	//
+	// Again we'll follow the same order as in InitControls and Leaderboards.views.leaderboard_options
+	// but in the URL we will only include values that deviate form the defaults (in the interests of
+	// brevity and efficiency. Also, the broader game and evolution only submitting options relevant 
+	// to that option (again, for brevity and efficiency)
+	
+	// Start with the method selectors
+	//
+	// While not used, these are nice ways to collect sets of enabled checkboxes:
+	//
+	// let filter_games = [];
+	// $("input[class='filter_games']:checked").each(function(){ filter_games.push(this.id); });
+	//	
+	// let filter_players = [];
+	// $("input[class='filter_players']:checked").each(function(){ filter_players.push(this.id); });;
+		
+	// For the radio buttons we just fetch the selected value
+	const evolution_selection = $("input[name='evolution_selection']:checked").val();
+	
+	// Then get the values of the three multiselect game specifierd
+	const games = $('#games').val().join(",");
+	const leagues = $('#leagues').val().join(",");
+	const players = $('#players').val().join(",");
+	
+	// Then the rest of the game selectors
+	const num_games = $('#num_games').val();
+	const num_games_latest = $('#num_games_latest').val();
+	const changed_since = $("#changed_since").val();
+	const num_days = $('#num_days').val();
+	const num_days_ev = $('#num_days_ev').val();
+	
+	// Then the player selectors
+	const num_players_top = $('#num_players_top').val();
+	const num_players_above = $('#num_players_above').val();
+	const num_players_below = $('#num_players_below').val();
+	const min_plays = $('#min_plays').val();
+	const played_since = $('#played_since').val();
+	
+	// Then the perspective and snapshot selectors
+	const as_at = $('#as_at').val();
+	const compare_with = $('#compare_with').val();
+	const compare_back_to = $('#compare_back_to').val();
+	
+	// The the content formatting options
+	const highlight_players  = $('#chk_highlight_players').is(":checked");
+	const highlight_changes  = $('#chk_highlight_changes').is(":checked");
+	const highlight_selected = $('#chk_highlight_selected').is(":checked");
+
+	// Then the extra info options for leaderboard headers
+	const details = $('#chk_details').is(":checked");
+	const analysis_pre = $('#chk_analysis_pre').is(":checked");
+	const analysis_post = $('#chk_analysis_post').is(":checked");	
+	
+	const names = $('#names').val();	
+	const links = $('#links').val();
+
+	// Then the leaderboard screen layout options
+	const cols = $('#cols').val();
+	
+	// Now push everything selectively onto opts keeping them to a minimum
+	// by: 
+	//
+	// a) ignoring selected values that have no supporting data (option 
+	//    selected but supporting input not completed and 
+	// b) ignoring those whose selected values are identical to the defaults 
+	//    that can be ignored (inferred by the server) which is not all those
+	//    that have defaults.
+	let opts = [];
+
+	// Start with the game filters:	
+	//
+	// TODO: Add a Location filter, so we can narrow sessions down to games
+	//       played at a given location.
+	// TODO: Implement Tourneys and a Tourney filter.  
+	if (is_enabled("chk_games_ex") && games)
+		// An exclusive list of games if we asked for them.
+		opts.push("games_ex="+encodeList(games));
+	
+	if (is_enabled("chk_games_in") && games)
+		// An inclusive list of games if we asked for them.
+		opts.push("games_in="+encodeList(games));
+
+	if (is_enabled("chk_top_games") && num_games)
+		// We submit num_games with an integer to enable this option. 
+		// If num_games is not submited or 0, the server should not 
+		// consider a top_games request in force.  
+		opts.push("top_games="+encodeURIComponent(num_games));
+
+	if (is_enabled("chk_latest_games") && num_games_latest)
+		// We submit num_games with an integer to enable this option. 
+		// If num_games is not submited or 0, the server should not 
+		// consider a latest_games request in force.  
+		opts.push("latest_games="+encodeURIComponent(num_games_latest));	
+	
+	const league_list = encodeList(leagues);
+	// We submit the list of leagues only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. The defaults should include
+	// game_league_any = preferred_league from the session filter and that should
+	// see the chk_game_league_any checked when we initControls.
+	if (is_enabled("chk_game_leagues_any") && leagues)
+		opts.push("game_leagues_any="+league_list);	
+	else if (is_enabled("chk_game_leagues_all") && leagues)
+		opts.push("game_leagues_all="+league_list);
+
+	const player_list = encodeList(players);		
+	// We submit the list of players only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. 		
+	if (is_enabled("chk_game_players_any") && players)
+		opts.push("game_players_any="+player_list);
+	else if (is_enabled("chk_game_players_all") && players)
+		opts.push("game_players_all="+player_list);
+
+	if (is_enabled("chk_changed_since") && changed_since)
+		// We submit changed_since with a date/time. If it's not submitted
+		// or submitted as an empty string then the server should not be
+		// enforcing a game_activity filter on games.
+		opts.push("changed_since="+encodeDateTime(changed_since));			
+	
+	if (is_enabled("chk_num_days") && num_days)
+		// We submit session_games as the length of the session in days, only if
+		// it's checked and a value is provided. Server side can take presence of
+		// the option as request to enforce it and should not enforce the filter
+		// if it's absent. This is a special filter which finds the last session
+		// of any game played (in the filtered list above) from now or as_at
+		// and subtracts num_days and returns the games played in that window
+		// of days. Used to get quick results on a games night or weekend or
+		// other event. 
+		opts.push("num_days="+encodeURIComponent(num_days));
+	
+	// Then the player filters:
+	if (is_enabled("chk_players_ex") && players)
+		// If we want to show only selected players (exclusive).
+		opts.push("players_ex="+player_list);			
+	
+	if (is_enabled("chk_players_in") && players)
+		// If we want to forecfully include selected players.
+		opts.push("players_in="+player_list);			
+
+	if (is_enabled("chk_num_players_top") && num_players_top)
+		// If we want to show only the top n players on every leaderboard this is the
+		// option. As ever, the server should take submission of the option as a request
+		// to filter players by it, and absence as a request not to apply that filter.
+		opts.push("num_players_top="+encodeURIComponent(num_players_top));		
+		
+	if (is_enabled("chk_num_players_above") && num_players_above) 
+		// If a player list is provided a further option of showing a number
+		// of players above any selected player. As usual submitted only if
+		// enabled and a value provided and lack of submission asks server
+		// not to display any.
+		opts.push("num_players_above="+encodeURIComponent(num_players_above));		
+		
+	if (is_enabled("chk_num_players_below") && num_players_below)	
+		// If a player list is provided a further option of showing a number
+		// of players below any selected player. As usual submitted only if
+		// enabled and a value provided and lack of submission asks server
+		// not to display any.
+		opts.push("num_players_below="+encodeURIComponent(num_players_below));		
+		
+	if (is_enabled("chk_min_plays") && min_plays)
+		// We submit a request to show only players who have played at least a 
+		// certain number of times on the leaderboard. This a means of filtering
+		// out the players who've only played once or twice from the crowd.
+		// Submitting a number requests they be filtered out, not submitting it
+		// asks server not to filter players based on play count. 
+		opts.push("min_plays="+encodeURIComponent(min_plays));		
+		
+	if (is_enabled("chk_played_since") && played_since)
+		// We submit also if request an option to filter on recent activity. 
+		// Basically a way to say, we want to filter out anyone who hasn't 
+		// played a game in the last period of interest, to grab a leaderboard
+		// of currently active players.
+		opts.push("played_since="+encodeDateTime(played_since));		
+		
+	// We submit the list of leagues only if an any or all request is in place and
+	// we use the name of the request to flag how to use the list. But it's one or
+	// the other and if neither is present no league list is submitted and no league
+	// filter should be applied at server end. The defaults should include
+	// player_league_any = preferred_league from the session filter and that should
+	// see the chk_player_league_any checked when we initControls.
+	if (is_enabled("chk_player_leagues_any") && leagues)
+		opts.push("player_leagues_any="+league_list);
+	if (is_enabled("chk_player_leagues_all") && leagues) 
+		opts.push("player_leagues_all="+league_list);			
+	
+	// Then the perspective option	
+	if (as_at)
+		// We submit the the persepective request (pretend the submitted date is 'now', basically)
+		opts.push("as_at="+encodeDateTime(as_at))
+
+	// And the evolution option
+	switch(evolution_selection) {
+	  // Evolution asks each leaderboard to be presented ith one or more historic leaderboards 
+	  // so we can see the change in the leaderboards each session produces (the default 
+	  // leaderboard is of course the one current (now or as_at). But in this case only one
+	  // option makes sense. The default is of course "none" and we submit nothing if that is 
+	  // selected.
+	  case "compare_with":
+		  	if (compare_with)
+		  		// We submit a number of past session to compare the current one with
+		  		opts.push("compare_with="+encodeURIComponent(compare_with));
+			break;
+	  case "compare_back_to":
+		  	if (compare_back_to)
+		  		// We submit a a date to compare back to. We want to compare back to the last
+		  		// session before this date as it created the leaderboard in effect at this date.
+		  		// TODO: Check the server does this.
+		  		opts.push("compare_back_to="+encodeDateTime(compare_back_to));
+		    break;
+	  case "num_days_ev":
+		  	if (num_days_ev)
+		  		// The partner to the game filter above is a back to request which asks to show
+		  		// all the leaderboard evolution during that game session. So should present
+		  		// the leaderboard in effect when that session started and one after each game
+		  		// session in that broader session (not we use the term session to denote the
+		  		// play of one game and recording of its results or alternately the play of a load
+		  		// of games over a day or days ...).
+		  		//
+		  		// We encode the number of days in the back to request as a plain int, as opposed
+		  		// to a date/time and this is how the server knows it's a session relative request.
+		  		opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
+		    break;
 	}
-	else if (element == "btnAllLeaderboards") {
-		opts.push("num_games=0");
-	}
-	else {
-		val = $('#num_games').val(); if (val != '') opts.push("num_games="+encodeURIComponent(val));
-		val = $('#selGame').find(":selected").val(); if (val != defaults.game) opts.push("game="+encodeURIComponent(val));	
-		val = $('#changed_since').val(); if (val != '') opts.push("changed_since="+encodeURIComponent(val));
-		val = $('#compare_with').val(); if (val != '') opts.push("compare_with="+encodeURIComponent(val));
-		val = $('#compare_back_to').val(); if (val != '') opts.push("compare_back_to="+encodeURIComponent(val));
-		val = $('#compare_till').val(); if (val != '') opts.push("compare_till="+encodeURIComponent(val));
-	}
+	
+	// Then the content formatting options
+	// These have valid defaults, on or off, and we only have to submit deviations from that default. 
+	if (highlight_players != defaults.highlight_players) opts.push("highlight_players="+encodeURIComponent(highlight_players));
+	if (highlight_changes != defaults.highlight_changes) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
+	if (highlight_selected != defaults.highlight_selected) opts.push("highlight_selected="+encodeURIComponent(highlight_changes));
+	
+	if (names != defaults.names) opts.push("names="+encodeURIComponent(names));
+	if (links != defaults.links) opts.push("links="+encodeURIComponent(links));
 
+	// Then the extra info options for leaderboard headers
+	// These too have valid defaults, on or off, and we only have to submit deviations from that default. 
+	if (details != defaults.details) opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre != defaults.analysis_pre) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (analysis_post != defaults.details) opts.push("analysis_post="+encodeURIComponent(analysis_post));
+
+	// Then the leaderboard screen layout options
+	// This also has a valid default, and we only have to submit deviations from that default. 
+	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
+	
+	if (make_static) { opts.push("make_static"); }
+		
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
 
@@ -167,50 +514,42 @@ function LabelButton(element) {
 	$('#'+element).val(label);
 }
 
-function toggle_options() {
-	current = $(".toggle")[0].style.visibility;
-	if (current == "collapse") 
-		$(".toggle").css('visibility', 'visible'); 
+function toggle_visibility(class_name, visible_style) {
+	current = $("."+class_name)[0].style.display;
+	if (current == visible_style) 
+		$("."+class_name).css('display', 'none');		
 	else
-		$(".toggle").css('visibility', 'collapse');		
+		$("."+class_name).css('display', visible_style);
+	$('.multi_selector').trigger('change');
 }
 
-function toggle_filters() {
-	current = $(".toggle")[0].style.display;
-	if (current == "none")
-		$(".toggle").css('display', 'table-row');
+function toggle_highlights(highlight_type, checkbox) {
+	const tag = "highlight_" + highlight_type;
+
+	const tag_on = tag + "_on"; 
+	const tag_off = tag + "_off"; 
+		
+	if (checkbox.checked)
+		$(".leaderboard."+tag_off).removeClass(tag_off).addClass(tag_on);
 	else
-		$(".toggle").css('display', 'none');		
+		$(".leaderboard."+tag_on).removeClass(tag_on).addClass(tag_off);
 }
 
-function toggle_player_highlights() {
-	if (document.getElementById("chkHighlightPlayers").checked)
-		$(".leaderboard.emphasis_off").removeClass('emphasis_off').addClass('emphasis_on');
-	else
-		$(".leaderboard.emphasis_on").removeClass('emphasis_on').addClass('emphasis_off');
-}
+// Some simple one-liner functions to handle input events
+function blank_zero(me) { if (me.value == 0) me.value = ""; }
+function check_check(me, boxes, unboxes) { $(boxes).prop('checked', Boolean(me.value)); if (unboxes && Boolean(me.value)) { $(unboxes).not(boxes).prop('checked', false);} }
+function check_radio(me, name, value, fallback) { $("input[name='"+name+"'][value='"+(me.value?value:fallback)+"']").prop("checked",true); }
+function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked', false); }
+function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
+function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function toggle_change_highlights() {
-	if (document.getElementById("chkHighlightChanges").checked)
-		$(".leaderboard.highlight_off").removeClass('highlight_off').addClass('highlight_on');
-	else
-		$(".leaderboard.highlight_on").removeClass('highlight_on').addClass('highlight_off');
-}
+function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(url); }
+function show_url_static() { refetchLeaderboards(true); }
 
-function copy_if_empty(from, to) {
-	if ($(to).val() == '') $(to).val($(from).val());
-}
-
-function show_url() {
-	var url = url_leaderboards + URLopts(null);
-	window.history.pushState("","", url);
-}
-
-var REQUEST = new XMLHttpRequest();
-REQUEST.onreadystatechange = function () {
+function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
 		// the request is complete, parse data 
-		var response = JSON.parse(this.responseText);
+		const response = JSON.parse(this.responseText);
 
 		// Capture response in leaderboards
 		$('#title').html(response[0]); 
@@ -231,96 +570,106 @@ REQUEST.onreadystatechange = function () {
 	}
 };
 
-function refetchLeaderboards(event) {
-	var url = url_json_leaderboards + URLopts(event.target.id);
-
+const REQUEST = new XMLHttpRequest();
+REQUEST.onreadystatechange = got_new_leaderboards;
+	
+function refetchLeaderboards(make_static) {
+	const url = url_json_leaderboards + URLopts(make_static);
+	
 	$("#reloading_icon").css("visibility", "visible");
 
 	REQUEST.open("GET", url, true);
 	REQUEST.send(null);
 }
 
-function prepare_target()  {
-	const copy_table = document.createElement('TABLE');
-	copy_table.id = "tblLB_naked";
-
-	const copy_div = document.createElement('DIV');
-	copy_div.id = 'divLB_naked'
-	copy_div.style.position = 'absolute';
-	copy_div.style.left = '-99999px';
-	
-	// Alas the Div gets swallowed by the clipboards code somehow, 
-	// as does any div I wrap the table in. Meaning I can't find a way 
-	// to copy with an overflow:auto div. I spent ages experimenting with 
-	// no success,
-	
-	// Some tests:
-	// Chromium: Just copies the table
-	// Firefox: copies the div
-	// Arora: copies nothing (low end browser)
-	// Web: copies only the table
-	
-	copy_div.appendChild(copy_table);		// Put the table in the wrapping div
-	document.body.appendChild(copy_div);	// Put the copy div into the document
-	
-	DrawTables(copy_table.id, "BGG");
-}
-
 //Function to draw one leaderboard table
 function LBtable(LB, snapshot, links) {
-//	A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
-//	Snapshots is a list of lists which have five values: Date time string, count of plays, count of sessions, session details and Leaderboard
-//	Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
+//  LB is specific to one game and is a data structure that contains one board per snapshot, 
+// 	and each board is a list of players.
+//  In LB:
+//		First tier has just four values: Game PK, Game BGGid, Game name, Snapshots
+//		Second tier is Snapshots which is is a list of five values tuples: Date time string, count of plays, count of sessions, session details and Leaderboard
+//		Leaderboard is the third tier which is a list of tuples which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
 
+	// Column Indices in LB[3]:
+	const iPKgame = 0;
+	const iBGGid = 1;
+	const iGameName = 2;
+	const iSnapshots = 3;
+
+	// The name format to use
+	const name_choice  = $("#names").val();
+	
 	// Extract the data we need
-	var pkg = LB[0];
-	var BGGid = LB[1];
-	var game = LB[2];
+	const pkg = LB[iPKgame];
+	const BGGid = LB[iBGGid];
+	const game = LB[iGameName];
 
 	// This MUST align with the way ajax_Leaderboards() bundles up leaderboards
+	// which in turn relies on Game.leaderboard to provide its tuples.
+	//
 	// Rather a complex structure that may benefit from some naming (rather than
-	// being a list of lists of lists of lists look at named object properties.
-	var date_time = LB[3][snapshot][0]
-	var play_count = LB[3][snapshot][1];
-	var session_count =LB[3][snapshot][2];
-	var session_players = LB[3][snapshot][3];
-	var session_details_html = LB[3][snapshot][4][0];
-	var session_details_data = LB[3][snapshot][4][1];
-	var session_analysis_pre_html = LB[3][snapshot][5][0];
-	var session_analysis_pre_data = LB[3][snapshot][5][1];
-	var session_analysis_post_html = LB[3][snapshot][6][0];
-	var session_analysis_post_data = LB[3][snapshot][6][1];
-	var player_list = LB[3][snapshot][7];
-	var player_prev = (snapshot+1<LB[3].length) ? LB[3][snapshot+1][7] : null; 
-
+	// being a list of lists of lists of lists. Must explore how dictionaries map
+	// into Javascript at some stage and consider a reimplementation.
+	
+	// Column Indices in LB[iSnapshots]:
+	// index 0 holds the session PK, not needed here 
+	// (unless we want to put a link to the session somewhere later I guess).
+	const iDateTime            = 1;
+	const iPlayCount           = 2;
+	const iSessionCount        = 3;
+	const iSessionPlayers      = 4;
+	const iSessionDetails      = 5;
+	const iSessionAnalysisPre  = 6;
+	const iSessionAnalysisPost = 7;
+	const iPlayerList          = 8;
+		
+	// HTML values are let not const because we'll wrap selective contents with links later	
+	// HTML values come paired with data values (which are ordered player list)
+	const date_time                  = LB[iSnapshots][snapshot][iDateTime]
+	const play_count                 = LB[iSnapshots][snapshot][iPlayCount];
+	const session_count              = LB[iSnapshots][snapshot][iSessionCount];
+	const session_players            = LB[iSnapshots][snapshot][iSessionPlayers];
+	let   session_details_html       = LB[iSnapshots][snapshot][iSessionDetails][0];
+	const session_details_data       = LB[iSnapshots][snapshot][iSessionDetails][1];
+	let   session_analysis_pre_html  = LB[iSnapshots][snapshot][iSessionAnalysisPre][0];
+	const session_analysis_pre_data  = LB[iSnapshots][snapshot][iSessionAnalysisPre][1];
+	let   session_analysis_post_html = LB[iSnapshots][snapshot][iSessionAnalysisPost][0];
+	const session_analysis_post_data = LB[iSnapshots][snapshot][iSessionAnalysisPost][1];
+	const player_list                = LB[iSnapshots][snapshot][iPlayerList];
+	
+	// Get the index of the last snapshot, as that one is special
+	// for now it means at least we can't highlight rank changes on that snapshot
+	const last_snapshot = LB[iSnapshots].length - 1;
 	
 	// Create the Game link based on the requested link target
-	var linkGameCoGs = url_view_Game.replace('00',pkg);
-	var linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
-	var linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
+	const linkGameCoGs = url_view_Game.replace('00',pkg);
+	const linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
+	const linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
 
 	// Fix the session detail and analysis headers which were provided with templated links
-	var linkPlayerCoGs = url_view_Player.replace('00','{ID}');
-	var linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
-	var linkTeamCoGs = url_view_Team.replace('00','{ID}');
+	let linkPlayerCoGs = url_view_Player.replace('00','{ID}');
+	let linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
+	let linkTeamCoGs = url_view_Team.replace('00','{ID}');
 	
-	var linkRanker = {};
+	let linkRanker = {};
 	linkRanker["Player"] = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
 	linkRanker["Team"] = links == "CoGs" ? linkTeamCoGs : links == "BGG" ?  null : null;
 
 	// Build a map of PK to BGGid for all rankers
 	// Note, session_details_data, session_analysis_pre_data and session_analysis_post_data perforce
 	// contain the same map (albeit in a different order) so we can use just one of them to build the map. 
-	var linkRankerID = {}
-	for (var r = 0; r < session_details_data.length; r++) {
-		var PK = session_details_data[r][0];
-		var BGGname = session_details_data[r][1];
+	let linkRankerID = {}
+	for (let r = 0; r < session_details_data.length; r++) {
+		const PK = session_details_data[r][0];
+		const BGGname = session_details_data[r][1];
 		
 		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
 	}
 
 	// A regex replacer which has as args first the matched string then each of the matched subgroups
-	// The subgroups we expect for a leaderboard header template is klass, model, id and then the text.
+	// The subgroups we expect for a link update to the HTML headers are 
+	// klass, model, id and then the text.
 	// This is a function that the following replace() functions pass matched groups to and is tasked
 	// with returning a the replacement string. 
 	function fix_template_link(match, klass, model, id, txt) {
@@ -332,10 +681,30 @@ function LBtable(LB, snapshot, links) {
 		}
 	}
 	
-	// Fix the HTML of the headers
+	// Fix the links in the HTML headers
+	// An example: {link.field_link.Player.1}Bernd{link_end}
 	session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 	session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
+		
+	// A regex replacer which has as args first the matched string then each of the matched subgroups
+	// The subgroups we expect from name update to the HTML headers are:
+	// pk, nick, full, complete
+	// We don't actually need the PK, it's just there.
+	function fix_template_name(match, pk, nick, full, complete) {
+	    switch (name_choice) {
+	      case "nick": return nick;
+	      case "full": return full;
+	      case "complete": return complete;
+	      default: throw new Error ("Illegal name selector.");
+	    }
+	}
+
+	// Fix the names in the HTML headers
+	// An example: "{1,Bernd,Bernd <Hidden>,Bernd <Hidden> (Bernd)}"
+	session_details_html = session_details_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
+	session_analysis_pre_html = session_analysis_pre_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
+	session_analysis_post_html = session_analysis_post_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
 	
 	var table = document.createElement('TABLE');
 	table.className = 'leaderboard'
@@ -351,6 +720,7 @@ function LBtable(LB, snapshot, links) {
 	var tableHead = document.createElement('THEAD');
 	table.appendChild(tableHead);	    
 
+	// #############################################################
 	// First Header Row
 
 	var tr = document.createElement('TR');
@@ -360,12 +730,13 @@ function LBtable(LB, snapshot, links) {
 	var content;
 	if (linkGame) {
 		content = document.createElement('a');
-		content.setAttribute("style", "text-decoration: none; color: inherit; font-weight: bold; font-size: 120%;");
+		content.setAttribute("style", "text-decoration: none; color: inherit;");
 		content.href = linkGame;
 		content.innerHTML = game;
 	} else {
-		content = document.createTextNode(game);
-	}   
+		content = document.createTextNode(game);		
+	}
+	th.setAttribute("style", "font-weight: bold; font-size: 120%;");	
 	th.appendChild(content);
 	th.colSpan = 2;
 	th.className = 'leaderboard normal'
@@ -380,7 +751,7 @@ function LBtable(LB, snapshot, links) {
 	if (links == "CoGs") {
 		content = document.createElement('a');
 		content.setAttribute("style", "text-decoration: none; color: inherit;");
-		content.href =  url_list_Sessions + "?game=" + pkg; 
+		content.href =  url_list_Sessions + "?rich&no_menus&index&game=" + pkg; 
 		content.innerHTML = sessions;
 	} else {
 		content = document.createTextNode(sessions);
@@ -392,9 +763,10 @@ function LBtable(LB, snapshot, links) {
 		th.style.textAlign = 'center';
 	tr.appendChild(th);
 	
+	// #############################################################
 	// Second (optional) Header Row (session details if requested)
 
-	var details = document.getElementById("chkSessionDetails").checked;
+	var details = document.getElementById("chk_details").checked;
 	
 	if (details) {
 		var tr = document.createElement('TR');
@@ -419,9 +791,10 @@ function LBtable(LB, snapshot, links) {
 		tr.appendChild(th);		
 	}
 
+	// #############################################################
 	// Third Header Row
 
-	var analysis_pre = document.getElementById("chkSessionAnalysisPre").checked;
+	var analysis_pre = document.getElementById("chk_analysis_pre").checked;
 
 	if (analysis_pre) {
 		var tr = document.createElement('TR');
@@ -434,139 +807,234 @@ function LBtable(LB, snapshot, links) {
 		tr.appendChild(td);
 	}
 
+	// #############################################################
 	// Fourth Header Row
 
-	var analysis_post = document.getElementById("chkSessionAnalysisPost").checked;
+	var analysis_post = document.getElementById("chk_analysis_post").checked;
 
 	if (analysis_post) {
-		var tr = document.createElement('TR');
+		let tr = document.createElement('TR');
 		tableHead.appendChild(tr);
 
-		var td = document.createElement('TD');
+		let td = document.createElement('TD');
 		td.innerHTML = session_analysis_post_html;
 		td.colSpan = 5;
 		td.className = 'leaderboard normal'
 		tr.appendChild(td);
 	}
 
+	// #############################################################
 	// Fifth Header Row
 
-	var tr = document.createElement('TR');
+	tr = document.createElement('TR');
 	tableHead.appendChild(tr);
 
-	var th = document.createElement('TH');
+	th = document.createElement('TH');
+	th.style.textAlign = 'center';
 	th.appendChild(document.createTextNode("Rank"));
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
-	var th = document.createElement('TH');
+	th = document.createElement('TH');
 	th.appendChild(document.createTextNode("Player"));
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
-	var th = document.createElement('TH');
+	th = document.createElement('TH');
+	th.style.textAlign = 'center';
 	th.appendChild(document.createTextNode("Teeth"));
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
-	var th = document.createElement('TH');
+	th = document.createElement('TH');
+	th.style.textAlign = 'center';
 	th.appendChild(document.createTextNode("Plays"));
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
-	var th = document.createElement('TH');
+	th = document.createElement('TH');
+	th.style.textAlign = 'center';
 	th.appendChild(document.createTextNode("Victories"));
 	th.className = 'leaderboard normal'
-		tr.appendChild(th);
+	tr.appendChild(th);
 
-	// Body
+	// #############################################################
+	// The Body
 
-	var highlight_players = document.getElementById("chkHighlightPlayers").checked;
-	var highlight_changes = document.getElementById("chkHighlightChanges").checked;
+	const highlight_players = document.getElementById("chk_highlight_players").checked;
+	const highlight_changes = document.getElementById("chk_highlight_changes").checked;
+	const highlight_selected = document.getElementById("chk_highlight_selected").checked;
+	
+	const selected_players = options.players;  // A list of string ids
 
-	var tableBody = document.createElement('TBODY');
+	const tableBody = document.createElement('TBODY');
 	table.appendChild(tableBody);
 
-	for (var i = 0; i < player_list.length; i++) {
-		var tr = document.createElement('TR');
+	for (let i = 0; i < player_list.length; i++) {
+		const tr = document.createElement('TR');
 		tableBody.appendChild(tr);
 
+		// Column Indices in player_list[i]:
+		//  0 is the rank 
+		// 	1 and 2 are the PK and BGGname,
+		// 	3, 4 and 5 are the nickname, full name and complete name of the player respectively
+		// 	6, 7, and 8 are Trueskill eta, mu and sigma
+		// 	9 and 10 are play count and victory count
+		const iRank = 0;
+		const iPK = 1;
+		const iBGGname = 2;
+		const iNickName = 3;
+		const iFullName = 4;
+		const iCompleteName = 5;
+		const iEta = 6;
+		const iMu = 7;
+		const iSigma = 8;
+		const iPlays = 9;
+		const iWins = 10;
+		// 11 and 12 are last_play and player_leagues respectively not used here
+		const iRankPrev = 13;   
+		
 		td_class = 'leaderboard normal';
-		var this_player = i<player_list.length ? player_list[i][0] : null; 
-		if (highlight_players && session_players.indexOf(this_player) >= 0)
-			td_class += ' emphasis_on'; 
-		if (highlight_changes && player_prev) {
-			var prev_player = i<player_prev.length ? player_prev[i][0] : null;
-			if (this_player != prev_player)
-				td_class += ' highlight_on';
+		
+		const this_player = player_list[i][iPK]; 
+		
+		// session_players is the list of players in the game session that 
+		// resulted in this leaderboard snapshot.
+		if (session_players.indexOf(this_player) >= 0)
+			td_class += highlight_players ? ' highlight_players_on' : ' highlight_players_off'; 
+
+		// session_players is the list of players selected in the multiselect player
+		// selector box.
+		if (selected_players.indexOf(this_player.toString()) >= 0)
+			td_class += highlight_selected ? ' highlight_selected_on' : ' highlight_selected_off'; 
+
+		// On all but the last snapshot we can render rank change highlights
+		if (snapshot < last_snapshot) {
+			const rank      = player_list[i][iRank];
+			const prev_rank = player_list[i][iRankPrev];
+			
+			if (rank != prev_rank)
+				td_class += highlight_changes ? ' highlight_changes_on' : ' highlight_changes_off';
 		}
 
-		// The Rank column
-		var td = document.createElement('TD');
-		td.style.textAlign = 'center';
-		td.className = td_class;
-		td.appendChild(document.createTextNode(i+1));  // Rank
-		tr.appendChild(td);
+		const pkp = player_list[i][iPK];
+		const BGGname = player_list[i][iBGGname];
+		const rating  = player_list[i][iEta]
+		const mu  = player_list[i][iMu]
+		const sigma  = player_list[i][iSigma]
+		const plays  = player_list[i][iPlays]
+		const wins  = player_list[i][iWins]
+		const play_count  = player_list[i][iPlays]
+		const victory_count  = player_list[i][iWins]
 
-		// The remaining columns
-		// 0 and 1 are the PK and BGGname, 2 to 5 are the leaderboard data
-		for (var j = 2; j < 6; j++) {
-			var td = document.createElement('TD');
-			td.className = td_class;
+		const linkPlayerCoGs = url_view_Player.replace('00',pkp);
+		const linkPlayerBGG = BGGname ? "https:\/\/boardgamegeek.com/user/" + BGGname : null;
+		const linkPlayer = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
+		
+		//###########################################################################
+		// The RANK column
+		const rank = player_list[i][iRank]
+		
+		const td_rank = document.createElement('TD');
+		td_rank.style.textAlign = 'center';
+		td_rank.className = td_class;
+		td_rank.appendChild(document.createTextNode(rank));
+		tr.appendChild(td_rank);
 
-			var pkp = player_list[i][0];
-			var BGGname = player_list[i][1];
-
-			var linkPlayerCoGs = url_view_Player.replace('00',pkp);
-			var linkPlayerBGG = BGGname ? "https:\/\/boardgamegeek.com/user/" + BGGname : null;
-			var linkPlayer = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
-
-			var val = player_list[i][j]
-
-			if (j==3) { val = val.toFixed(1) }				// Teeth
-			if (j!=2) { td.style.textAlign = 'center'; }	// ! Player
-
-			// Add Links
-			var content;
-			if ((linkPlayer && j==2) || (links == "CoGs" && (j==4 || j==5))) {
-				content = document.createElement('a');
-				content.setAttribute("style", "text-decoration: none; color: inherit;");
-				if (j==2) {   // Player Name
-					content.href =  linkPlayer; 
-				} else if (j==4) { // Play Count
-					content.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";  
-				} else if (j==5) { // Victory Count
-					// FIXME: What link can get victories in teams as well?
-					//        And are team victories listed in the victory count at all?
-					//        url_filters can only be ANDs I think, so this hard for team
-					//        victories. One way is if Performance has a field is_victory
-					//        that can be filtered on. Currently has a property that returns this
-					content.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";;  
-				}
-				content.innerHTML = val;
-			} else {
-				content = document.createElement('span');  // Need a span to make it bold on a player filter match
-				var text = document.createTextNode(val);
-				content.appendChild(text); 
-			}
-
-			if (j==2 && pkp==options.player) {
-				content.style.fontWeight = 'bold';
-			}
-
-			td.appendChild(content);
-			tr.appendChild(td);
+		//###########################################################################
+		// The PLAYER column
+		const chosen_name = name_choice == 'nick' ? player_list[i][iNickName]
+		                  : name_choice == 'full' ? player_list[i][iFullName]
+			        	  : name_choice == 'complete' ? player_list[i][iCompleteName]
+		                  : "ERROR";		
+		
+		const td_player = document.createElement('TD');
+		td_player.className = td_class;
+		
+		if (linkPlayer) {
+			const a_player = document.createElement('a');
+			a_player.setAttribute("style", "text-decoration: none; color: inherit;");				
+			a_player.href =  linkPlayer; 
+			a_player.innerHTML = chosen_name;
+			td_player.appendChild(a_player);
+		} else {
+			td_player.innerHTML = chosen_name;
 		}
+
+		tr.appendChild(td_player);
+
+		//###########################################################################
+		// The TEETH/RATING column
+
+		const fixed_rating = rating.toFixed(1);
+		const fixed_mu = mu.toFixed(1);
+		const fixed_sigma = sigma.toFixed(1);
+
+		const td_rating = document.createElement('TD');
+		td_rating.className = td_class;
+		td_rating.style.textAlign = 'center'
+		
+		const div_rating = document.createElement('div');
+		div_rating.setAttribute("class", "tooltip");
+		div_rating.innerHTML = fixed_rating;
+		
+		const tt_rating = document.createElement('span');
+		tt_rating.className = "tooltiptext";
+		tt_rating.style.width='400%'
+		tt_rating.innerHTML = "	&mu;=" + fixed_mu + " &sigma;=" + fixed_sigma; 
+		
+		div_rating.appendChild(tt_rating);
+		td_rating.appendChild(div_rating);
+		tr.appendChild(td_rating);		
+		
+		//###########################################################################
+		// The PLAY COUNT column
+		
+		const td_plays = document.createElement('TD');
+		td_plays.className = td_class;
+		td_plays.style.textAlign = 'center'
+		
+		const a_plays = document.createElement('a');
+		a_plays.setAttribute("style", "text-decoration: none; color: inherit;");				
+		a_plays.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index"; 
+		a_plays.innerHTML = plays;
+
+		td_plays.appendChild(a_plays);
+		tr.appendChild(td_plays);
+		
+		//###########################################################################
+		// The WIN COUNT column
+		
+		const td_wins = document.createElement('TD');
+		td_wins.className = td_class;
+		td_wins.style.textAlign = 'center'
+		
+		// FIXME: What link can get victories in teams as well?
+		//        And are team victories listed in the victory count at all?
+		//        url_filters can only be ANDs I think, so this hard for team
+		//        victories. One way is if Performance has a field is_victory
+		//        that can be filtered on. Currently has a property that returns 
+		// 	      this. Can url_filter filter on properties? Via Annotations on 
+		//        a query? 
+		
+		const a_wins = document.createElement('a');
+		a_wins.setAttribute("style", "text-decoration: none; color: inherit;");				
+		a_wins.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";; 
+		a_wins.innerHTML = wins;
+
+		td_wins.appendChild(a_wins);
+		tr.appendChild(td_wins);
 	}
+		
 	return table;
 }
 
 //Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly the jQuery forms $('#selLinks) and $('#selCols) fails here. Not sure why. 
-	var selLinks = document.getElementById("selLinks");	
-	var selCols = document.getElementById("selCols");
-	var cols = parseInt(selCols.options[selCols.selectedIndex].text);
+	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure why. 
+	const selLinks = document.getElementById("links");	
+	const selCols = document.getElementById("cols");
+	let cols = parseInt(selCols.options[selCols.selectedIndex].text);	
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 

@@ -25,14 +25,58 @@ String.prototype.boolean = function() {
         throw new Error ("string.boolean(): Cannot convert string to boolean.");
     }
   };
+  
+function selectElementContents(el) {
+      let body = document.body, range, sel;
+      if (document.createRange && window.getSelection) {
+          range = document.createRange();
+          sel = window.getSelection();
+          sel.removeAllRanges();
+          try {
+              range.selectNodeContents(el);
+              sel.addRange(range);
+          } catch (e) {
+              range.selectNode(el);
+              sel.addRange(range);
+          }
+      } else if (body.createTextRange) {
+          range = body.createTextRange();
+          range.moveToElementText(el);
+          range.select();
+      }
+}
+
+function copyStringToClipboard(str) {
+   let el = document.createElement('textarea');
+   el.value = str;
+   el.setAttribute('readonly', '');
+   el.style = {position: 'absolute', left: '-9999px'};
+   document.body.appendChild(el);
+   el.select();
+   document.execCommand('copy');
+   document.body.removeChild(el);
+}  
+
+function copyElementToClipboard(JQelement) {
+	   let el = JQelement.clone().get(0);
+	   el.setAttribute('readonly', '');
+	   el.style = {position: 'absolute', left: '-9999px'};
+	   document.body.appendChild(el);
+	   selectElementContents(el);
+	   document.execCommand('copy');
+       document.body.removeChild(el);
+}  
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they arrive
 function get_and_report_metrics(LB) {
-	var snapshots = 0; 
+	let snapshots = 0; 
+
+	// Globals that we'll set here
 	boardcount = LB.length;
 	maxshots = 0;
 	totalshots = 0;
-	for (var g=0; g<boardcount; g++) {
+	
+	for (let g=0; g<boardcount; g++) {
 		snapshots = LB[g][3].length;
 		totalshots += snapshots;
 		if (snapshots > maxshots) maxshots = snapshots;
@@ -41,10 +85,9 @@ function get_and_report_metrics(LB) {
 	lblTotalCount = document.getElementById("lblTotalCount");
 	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
 	
-	if (totalshots > boardcount) {
-		lblSnapCount = document.getElementById("lblSnapCount");
-		lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
-	}
+	lblSnapCount = document.getElementById("lblSnapCount");
+	lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
+	lblSnapCount.style.display = (totalshots > boardcount) ? "inline" : "none";
 }
 
 // But on first load we have leaderboards that were provided through context, so process those now 
@@ -122,7 +165,7 @@ function InitControls(options) {
 					? "#chk_num_days_ev"
 				    : "#chk_" + opt;
 
-		$(chk).prop('checked', true);	
+		$(chk).prop('checked', true).trigger('input');
 	} 	
 		
 	// Then the rest of the game selectors
@@ -165,17 +208,9 @@ function InitControls(options) {
 
 	// Then the leaderboard screen layout options
 	$('#cols').val(options.cols);
-	
-	//Configure the Copy Button
-	const copybutton = document.getElementById("btnCopy");
-	const clipboard = new ClipboardJS(copybutton);
-	
-	//What to do when the copy button is clicked 
-	clipboard.on('success', function(e) {
-		const copy_div = document.getElementById('tblLB_naked');
-		e.clearSelection();
-		copy_div.parentNode.removeChild(copy_div);
-	});	
+
+	// If we made the options static we want to copy them to address bare and copy.paste buffer
+	if (options.made_static) { show_url();}		
 }
 
 function is_enabled(checkbox_id) {
@@ -212,7 +247,7 @@ function encodeDateTime(datetime) {
 	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
 }
 
-function URLopts(element) {
+function URLopts(make_static) {
 	// The opposite so to speal of InitControls() here we read those same conrols and prepare
 	// URL options for self same to submit an AJAX request for updates (or simply display on
 	// the address bar if desired)
@@ -461,8 +496,9 @@ function URLopts(element) {
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from that default. 
 	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
-
-	// Join the opts and return them 
+	
+	if (make_static) { opts.push("make_static"); }
+		
 	return (opts.length > 0) ? "?" + opts.join("&") : "";
 }
 
@@ -506,12 +542,14 @@ function check_radio(me, name, value, fallback) { $("input[name='"+name+"'][valu
 function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked', false); }
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
-function show_url() { window.history.pushState("","", url_leaderboards.replace(/\/$/, "") + URLopts(null)); }
+
+function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(url); }
+function show_url_static() { refetchLeaderboards(true); }
 
 function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
 		// the request is complete, parse data 
-		var response = JSON.parse(this.responseText);
+		const response = JSON.parse(this.responseText);
 
 		// Capture response in leaderboards
 		$('#title').html(response[0]); 
@@ -535,39 +573,13 @@ function got_new_leaderboards() {
 const REQUEST = new XMLHttpRequest();
 REQUEST.onreadystatechange = got_new_leaderboards;
 	
-function refetchLeaderboards(event) {
-	var url = url_json_leaderboards + URLopts(event.target.id);
-
+function refetchLeaderboards(make_static) {
+	const url = url_json_leaderboards + URLopts(make_static);
+	
 	$("#reloading_icon").css("visibility", "visible");
 
 	REQUEST.open("GET", url, true);
 	REQUEST.send(null);
-}
-
-function prepare_target()  {
-	const copy_table = document.createElement('TABLE');
-	copy_table.id = "tblLB_naked";
-
-	const copy_div = document.createElement('DIV');
-	copy_div.id = 'divLB_naked'
-	copy_div.style.position = 'absolute';
-	copy_div.style.left = '-99999px';
-	
-	// Alas the Div gets swallowed by the clipboards code somehow, 
-	// as does any div I wrap the table in. Meaning I can't find a way 
-	// to copy with an overflow:auto div. I spent ages experimenting with 
-	// no success,
-	
-	// Some tests:
-	// Chromium: Just copies the table
-	// Firefox: copies the div
-	// Arora: copies nothing (low end browser)
-	// Web: copies only the table
-	
-	copy_div.appendChild(copy_table);		// Put the table in the wrapping div
-	document.body.appendChild(copy_div);	// Put the copy div into the document
-	
-	DrawTables(copy_table.id, "BGG");
 }
 
 //Function to draw one leaderboard table

@@ -23,6 +23,35 @@ body {
     text-decoration: underline;
 }
 
+
+/* 
+	This is a bug fix of sorts. The DAL select2 widgets take a visble moment to render, before which 
+	the standard HTML selct widget is visible. The style difference is so glarring this jolts visually
+	
+	Following advice here: 
+		https://stackoverflow.com/questions/29849666/counteract-a-bootstrap-select2-rendering-delay
+		
+	we apply a style to underlying selct widget that mimics the coming style from DAL so the change 
+	is less jarring. In the ideal we'd get it exact, but that's a problem to solve another day. For 
+	now this is pretty close visually.
+	
+	Width is the big unknown here. DAL seems to put thes eodd px widths on the widgets and well, I 
+	picked one of the form fields to tune this to, but they are not all the same. DAL can't be 
+	calculating this server side surely and it must be done in Javascript.
+*/
+.ModelChoiceField {
+  color: #444;
+  background-color: #FFF;
+  border: 1px solid #AAA;
+  border-radius: 4px;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: inline-block;
+  height: 28px;
+  width: 426.91px;
+  font: unset;
+}
+
 .select2-container {
     color: Black;
 }
