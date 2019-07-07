@@ -8,21 +8,19 @@
 {% endblock %}
 
 {% block content %}
-{{ widget_media }}
-<script>
-	$.fn.select2.defaults.set( "theme", "bootstrap" );
-</script>
-
 {#   A pile of options for leaderboards that will try populate a structure in the backend - Leaderboards.views.leaderboard_options#}
 {#   while enforcing some rules locally in the UI for convenience with JS. The rules can be summarised as follows:   #}
-
 <section class="leaderboard_options">
 	<div class="lbl_view">View:</div>
 	<div class="lbl_basic">using:</div>
 	<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
 	
 	<div class="lo_buttons">
-		<button type="button" class="button_left" id="btnLoad"  onclick="refetchLeaderboards();">Reload</button>
+		<button type="button" class="button_left tooltip" id="btnLoad"  onclick="refetchLeaderboards();">
+			<img src="{% static 'reload.png' %}"  class='img_button'>
+			<span class="tooltiptext">Reload leaderboards</span?
+		</button>
+		
 		<button type="button" class="button_left" id="btnAllLeaderboards" onclick="">All Leaderboards</button>
 		<button type="button" class="button_left" id="btnEventImpact" onclick="">Impact of Last Event</button>
 		
@@ -55,13 +53,13 @@
 		<label for="cols">columns</label>,
 		
 		<label for="names">player</label> 
-			<select id="names" oninput="DrawTables('tblLB');">
+			<select id="names" class="name_format_selector" oninput="DrawTables('tblLB');">
 				{% for v, l in name_selections.items %}
 				  <option value="{{ v }}">{{ l }}</option>
 				{% endfor %}			  
 			</select>
 
-		<label for="links">and linking game and player names to</label>
+		<label for="links" class="link_target_selector" >and linking game and player names to</label>
 			<select id="links" oninput="DrawTables('tblLB');">
 				{% for v, l in link_selections.items %}
 				  <option value="{{ v }}">{{ l }}</option>
@@ -113,10 +111,10 @@
 		<div class="selectors_multi">
 		    <div class="label_games">Games(s)</div>
 		    <div class="select_games">{{ widget_games }}</div>
-		    <div class="label_leagues">League(s)</div>
-		    <div class="select_leagues">{{ widget_leagues }}</div>
 		    <div class="label_players">Players(s)</div>
 		    <div class="select_players">{{ widget_players }}</div>
+		    <div class="label_leagues">League(s)</div>
+		    <div class="select_leagues">{{ widget_leagues }}</div>
 		</div>
 	  
 		{#	Game Filters	#}

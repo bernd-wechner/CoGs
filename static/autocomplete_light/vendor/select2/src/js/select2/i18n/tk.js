@@ -1,37 +1,36 @@
 define(function () {
-  // Vietnamese
+  // Turkmen
   return {
+    errorLoading: function (){
+      return 'Netije ýüklenmedi.';
+    },
     inputTooLong: function (args) {
       var overChars = args.input.length - args.maximum;
 
-      var message = 'Vui lòng nhập ít hơn ' + overChars + ' ký tự';
-
-      if (overChars != 1) {
-        message += 's';
-      }
+      var message = overChars + ' harp bozuň.';
 
       return message;
     },
     inputTooShort: function (args) {
       var remainingChars = args.minimum - args.input.length;
 
-      var message = 'Vui lòng nhập nhiều hơn ' + remainingChars + ' ký tự';
+      var message = 'Ýene-de iň az ' + remainingChars + ' harp ýazyň.';
 
       return message;
     },
     loadingMore: function () {
-      return 'Đang lấy thêm kết quả…';
+      return 'Köpräk netije görkezilýär…';
     },
     maximumSelected: function (args) {
-      var message = 'Chỉ có thể chọn được ' + args.maximum + ' lựa chọn';
+      var message = 'Diňe ' + args.maximum + ' sanysyny saýlaň.';
 
       return message;
     },
     noResults: function () {
-      return 'Không tìm thấy kết quả';
+      return 'Netije tapylmady.';
     },
     searching: function () {
-      return 'Đang tìm…';
+      return 'Gözlenýär…';
     }
   };
 });

@@ -34,13 +34,6 @@
 	float: right; 
 	margin-left: 0.5em;}
 
-.img_button {
-    height: 16px;
-    padding: 0;
-    margin: 0;
-    vertical-align: bottom;
-}
-
 button:hover { cursor: pointer; }
 
 .lo_buttons { grid-area: lo_buttons; width: 100%; }

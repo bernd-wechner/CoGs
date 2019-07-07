@@ -24,6 +24,13 @@ body {
 }
 
 
+.img_button {
+    height: 14px;  /* Should match default button height - TODO: is there a better way? */
+    padding: 0;
+    margin: 0;
+    vertical-align: bottom;
+}
+
 /* 
 	This is a bug fix of sorts. The DAL select2 widgets take a visble moment to render, before which 
 	the standard HTML selct widget is visible. The style difference is so glarring this jolts visually
@@ -39,17 +46,32 @@ body {
 	picked one of the form fields to tune this to, but they are not all the same. DAL can't be 
 	calculating this server side surely and it must be done in Javascript.
 */
-.ModelChoiceField {
-  color: #444;
-  background-color: #FFF;
-  border: 1px solid #AAA;
+.ModelChoiceField, #select_game_right, #select_game_below {
+  display: inline;
+  cursor: pointer;
+
+  color: #555A5F;				/* Matches text color to DAL's */
+  background-color: #FFFFFF;    /* Matches nbox inside color to DAL's */
+  
+  /* Matches border to that of DAL's */
+  border: 1px solid;
+  border-color: #CCCCCC;
   border-radius: 4px;
   box-sizing: border-box;
-  cursor: pointer;
-  display: inline-block;
+  
+  font: unset;        /* Removes all default font stuff */
+  font-size: 14px;    /* Sets font to same size as DAL's */
+  padding-left: 16px; /* Moves text to right some to match DAL's */
+  /*margin-top: -1px;   /* Moves the whole select boxx down 1 pixel to match DAL's */
+   
   height: 28px;
-  width: 426.91px;
-  font: unset;
+  width: 426.91px;    /* Hard to know how wide the Select2 will be */
+}
+
+#select_game_right, #select_game_below {
+	padding-top: 5px;
+	position: relative;
+	bottom: -3px;
 }
 
 .select2-container {

@@ -112,3 +112,5 @@ venv.bak/
 Backups/
 
 test\.out
+
+Debugging/

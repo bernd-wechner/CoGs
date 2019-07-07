@@ -2,12 +2,16 @@
 {% load staticfiles %}
 {% load filters %}
 {% block title %}{{ title }}{% endblock %}
-{% block content %}
 
 {% block styles %}
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
 {% endblock %}
 
+{% block startscript %}
+	<script>const reload_icon = "{% static 'reload.png' %}";</script>
+{% endblock %}
+
+{% block content %}
 <p>
 <a href="{% url 'list' model_name %}">[List]</a>
 </p>
@@ -26,6 +30,24 @@
 			</tr>	
 		{% endif %}		    
 	</table>
+
+{#<script>#}
+{#	// Putting an ordinary select beside and below the game selector to try and match styles		#}
+{#	const game_selector = $("#id_game");#}
+{#	const selector1 = `<select id="select_game_right"><option>COGZ</option></select>`;#}
+{#	const selector2 = `<select id="select_game_below"><option>COGZ</option></select>`;#}
+{#	game_selector.closest("td").children().wrap( "<div style='white-space: nowrap; margin-bottom:5px;' id='game_div'></div>" )#}
+{#	game_selector.after(selector1);#}
+{#	$("#game_div").after(selector2);#}
+	
+{#	// Putting an ordinary select beside and below the leagues selector to try and match styles		#}
+{#	const leagues_selector = $("#id_leagues");#}
+{#	const selector3 = `<select multiple id="select_leagues_right"><option>Hobart</option></select>`;#}
+{#	const selector4 = `<select multiple id="select_leagues_below"><option>Hobart</option></select>`;#}
+{#	leagues_selector.closest("td").children().wrap( "<div style='white-space: nowrap; margin-bottom:5px;' id='leagues_div'></div>" )#}
+{#	leagues_selector.after(selector3);#}
+{#	$("#leagues_div").after(selector4);#}
+{#</script>#}
 
 	{% comment %}
 		Sessions are very particular and perhaps the most complicated object we use and hence teh cmost complicated form we have to drive it

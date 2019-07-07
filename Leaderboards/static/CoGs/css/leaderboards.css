@@ -34,13 +34,6 @@
 	float: right; 
 	margin-left: 0.5em;}
 
-.img_button {
-    height: 16px;
-    padding: 0;
-    margin: 0;
-    vertical-align: bottom;
-}
-
 button:hover { cursor: pointer; }
 
 .lo_buttons { grid-area: lo_buttons; width: 100%; }
@@ -118,16 +111,19 @@ button:hover { cursor: pointer; }
   display: grid;
   grid-area: selectors_multi;
   
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(2, auto);
   grid-auto-rows: min-content;
   grid-column-gap: 10px;
   grid-row-gap: 0px;  
   grid-template-areas: 
-  	"label_games  label_leagues  label_players" 
-  	"select_games select_leagues select_players";
+  	"label_games        ."  
+  	"select_games       ."
+  	"label_players      label_leagues     "
+  	"select_players     select_leagues    ";
 }
 
 .label_filtering { grid-area: label_filtering; font-weight: bold !important; }
+
 .filter_games { grid-area: filter_games; font-weight: bold !important; }
 .intro_games { grid-area: intro_games; margin-left: 2ch;}
 .filter_players { grid-area: filter_players; font-weight: bold !important; }

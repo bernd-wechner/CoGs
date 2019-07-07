@@ -388,6 +388,9 @@ def extra_context_provider(self, context={}):
      
     context['league_options'] = html_league_options(self.request.session)
     context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
+
+    # Make  DAL media available to templates
+    context['dal_media'] = str(autocomplete.Select2().media)
     
     if model_name == 'session':
         # if an object is provided in self.object use that 
@@ -592,10 +595,10 @@ def view_Leaderboards(request):
          'link_selections': LinkSelections,
          
          # Widgets to use in the form
+         'dal_media': autocomplete.Select2().media,
          'widget_leagues': html_selector(League, "leagues", leagues, ALL_LEAGUES),
          'widget_players': html_selector(Player, "players", players, ALL_PLAYERS),
          'widget_games': html_selector(Game, "games", games, ALL_GAMES),
-         'widget_media': autocomplete.Select2().media,
          
          # Time and timezone info
          'now': timezone.now(),        
