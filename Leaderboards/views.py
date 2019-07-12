@@ -498,8 +498,9 @@ class view_Login(LoginViewExtended):
             
             if hasattr(user, 'player') and user.player:
                 preferred_league = user.player.league
-                
+                                
                 if preferred_league:
+                    form.request.session["preferred_league"] = preferred_league.pk
                     save_league_filters(form.request.session, preferred_league.pk)
                     
         except user.DoesNotExist:
@@ -579,6 +580,18 @@ def view_Leaderboards(request):
     players = lo.game_players if lo.game_players else lo.players
     games = lo.games
     
+    # Get the preferred league id and lable
+    pl_id = request.session.get("preferred_league", 0)
+    
+    if pl_id:
+        try:
+            pl_lbl = League.objects.values_list('name', flat=True).get(pk=pl_id)
+        except League.DoesNotExist:
+            pl_lbl = ""
+            pl_id = 0
+    else:
+        pl_lbl = ""
+            
     c = {'title': title,
          'subtitle': subtitle,
          
@@ -587,7 +600,7 @@ def view_Leaderboards(request):
          'defaults': json.dumps(default.as_dict()),   
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          
-         # For us in templates
+         # For use in templates
          'leaderboard_options': lo,
 
          # Dicts for dropdowns
@@ -602,7 +615,10 @@ def view_Leaderboards(request):
          
          # Time and timezone info
          'now': timezone.now(),        
-         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
+         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0]),
+         
+         # The preferred league if any
+         'preferred_league': [pl_id, pl_lbl]
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)

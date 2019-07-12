@@ -129,15 +129,14 @@ function Select2Init(selector, values) {
 	}
 }
 
-function InitControls(options) {
+function dval(value, def) { return value !== undefined ? value : def; }
+
+function InitControls(options) {	
 	// We'll follow the same order as Leaderboards.views.leaderboard_options
 	// This takes those same options provided in context (or from an ajx call) 
 	// as "options" and initialises the controls on the page. 
 	
-	// Start with the method selectors (radio button selection is little different in JQuery, to other widgets)
-	$("input[name=evolution_selection][value="+options.evolution_selection+"]").prop('checked', true);
-
-	// Then we populate all the Game selectors, starting with the three multiselectors
+	// Populate all the multi selectors
 	// footnote: The league selector could be populated from game_leagues or player_leagues
 	//           though they should typically be identical anyhow (albeit not guaranteed to 
 	//			 be. If roundtripping from this form they will be, but a URL GET request can
@@ -145,19 +144,19 @@ function InitControls(options) {
 	Select2Init($('#games'), options.games)
 	Select2Init($('#leagues'), options.game_leagues)
 	Select2Init($('#players'), options.game_players)
+
+	// ===================================================================================
+	// Initialise the content options
+	// ===================================================================================
 	
 	// Get the list of enabled options
 	const enabled = options.enabled;
 	
-	// special case if neither compare_with nor compare_back_to are enabled we
-	// want to specificallye enable no_evolution. If we check it first a 
-	// subsequent check on compare_with or compare_back_to will uncheck it as
-	// they are radio buttons.
-	$("#chk_no_evolution").prop('checked', true);
-
-		// and set all the checkboxes they map to:
-	for (i = 0; i < enabled.length; i++) {		
-		const opt = enabled[i];
+	const check_box_filters = options.game_filters.concat(options.player_filters);
+	
+	// and set all the checkboxes they map to:
+	for (i = 0; i < check_box_filters.length; i++) {
+		const opt = check_box_filters[i];
 
 		// compare_back_to is a special option because we share it 
 		// between two radio buttons base on its value (int or date)
@@ -165,7 +164,7 @@ function InitControls(options) {
 					? "#chk_num_days_ev"
 				    : "#chk_" + opt;
 
-		$(chk).prop('checked', true).trigger('input');
+		$(chk).prop('checked', enabled.includes(opt)).trigger('input');
 	} 	
 		
 	// Then the rest of the game selectors
@@ -182,33 +181,73 @@ function InitControls(options) {
 	$('#min_plays').val(options.min_plays);
 	$('#played_since').val(options.played_since);
 	
-	// Then the persepective option
-	$('#as_at').val(options.as_at);
+	//FIXME: Options beyond here need to respond to shortcut button requests.
+	// If the option was removed from the options dict we should disable it
+	// here!
+	
+	// ========================================================================
+	// The perspective option
+	$('#as_at').val(options.as_at);  	// undefined is fine here.
 
-	// Then the snapshot selectors
-	$('#compare_with').val(options.compare_with);
+	// ========================================================================
+	// Evolution options are driven by radio buttons (one only). And so we want to set the 
+	// right radio button so to speak. We base this on the specified options.
+	let evolution_selection = "no_evolution";
+	if (options.compare_with) 
+		evolution_selection = "compare_with";
+	else if (options.compare_back_to && Number.isInteger(options.compare_back_to))
+		evolution_selection = "num_days_ev";
+	else if (options.compare_back_to)
+		evolution_selection = "compare_back_to";
 	
-	if (Number.isInteger(options.compare_back_to))
-		$('#num_days_ev').val(options.compare_back_to);
+	$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
+	
+	// Then set the values in the Evolution selection area. The defaults are fine
+	// here if the options were deleteted by a shortcut button using override_content
+	// because it is the radio button that does the selecting anyhow. and the minimal
+	// content is selected above where we set the radio content.
+	// Note that we are for historic snapshots minimizing the defaults for a a shortcut
+	// button that uses override_content. For the game and player filters conversely
+	// we maximized the view (all games and all players and no hostroic snapshots is
+	// the position we aim for).
+	$('#compare_with').val(dval(options.compare_with, defaults.compare_with));
+	
+	// compare_back_to is in fact a content option we simply recycle here
+	const cbt = dval(options.compare_back_to, defaults.compare_back_to); 
+	if (Number.isInteger(cbt))
+		$('#num_days_ev').val(cbt);
 	else
-		$('#compare_back_to').val(options.compare_back_to);
-		
-	// The the content formatting options
-	$('#chk_highlight_players').prop('checked', options.highlight_players)
-	$('#chk_highlight_changes').prop('checked', options.highlight_changes)
-	$('#chk_highlight_selected').prop('checked', options.highlight_selected)
+		$('#compare_back_to').val(cbt);
 	
-	$('#names').val(options.names);	
-	$('#links').val(options.links);
+	// ===================================================================================
+	// Initialise the presentation options
+	// ===================================================================================
+	
+	// We use dval to return a minimalist option if that option is undefined
+	// we expect that to be the case for any shortcut button that uses the 
+	// override_presentation flag and doesn't set explicit values (to override it with)
+	// We want to use minimalist (disabled like) version not the defaults that the server
+	// provides in this case.
+	
+	// The the content formatting options
+	$('#chk_highlight_players').prop('checked', dval(options.highlight_players, false))
+	$('#chk_highlight_changes').prop('checked', dval(options.highlight_changes, false))
+	$('#chk_highlight_selected').prop('checked', dval(options.highlight_selected, false))
+	
+	$('#names').val(dval(options.names, "nick"));	
+	$('#links').val(dval(options.links, "none"));
 
 	// Then the extra info options for leaderboard headers
-	$('#chk_details').prop('checked', options.details);
-	$('#chk_analysis_pre').prop('checked', options.analysis_pre);
-	$('#chk_analysis_post').prop('checked', options.analysis_post);
+	$('#chk_details').prop('checked', dval(options.details, false));
+	$('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
+	$('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
 
 	// Then the leaderboard screen layout options
-	$('#cols').val(options.cols);
+	$('#cols').val(dval(options.cols, 1));
 
+	// Add the shortcut buttons
+	AddShortcutButtons()	
+	
 	// If we made the options static we want to copy them to address bare and copy.paste buffer
 	if (options.made_static) { show_url();}		
 }
@@ -248,15 +287,23 @@ function encodeDateTime(datetime) {
 }
 
 function URLopts(make_static) {
-	// The opposite so to speal of InitControls() here we read those same conrols and prepare
+	// The opposite so to speal of InitControls() here we read those same controls and prepare
 	// URL options for self same to submit an AJAX request for updates (or simply display on
-	// the address bar if desired)
+	// the address bar if desired). 
+	//
+	// make_static: just passes the same request to server to return the options more
+	//              static than we submit them. Mainly to do with latest event options
+	//              which will come back as pinned dates.
 	//
 	// Again we'll follow the same order as in InitControls and Leaderboards.views.leaderboard_options
 	// but in the URL we will only include values that deviate form the defaults (in the interests of
 	// brevity and efficiency. Also, the broader game and evolution only submitting options relevant 
 	// to that option (again, for brevity and efficiency)
 	
+	// DEPRECATED code
+	// Left it here as a pro forma should we want to do something similar it illusrates 
+	// a neat way to use jQuery to loop over classes of controls.
+	//
 	// Start with the method selectors
 	//
 	// While not used, these are nice ways to collect sets of enabled checkboxes:
@@ -310,20 +357,20 @@ function URLopts(make_static) {
 	// Then the leaderboard screen layout options
 	const cols = $('#cols').val();
 	
-	// Now push everything selectively onto opts keeping them to a minimum
-	// by: 
-	//
-	// a) ignoring selected values that have no supporting data (option 
-	//    selected but supporting input not completed and 
-	// b) ignoring those whose selected values are identical to the defaults 
-	//    that can be ignored (inferred by the server) which is not all those
-	//    that have defaults.
-	let opts = [];
+	// Now push all the selected option onto opts. 
+	// Always start with "no_defaults" as the defaults were used 
+	// to populate the controls when the page loaded. So if they've
+	// been changed, we want to change them. The server should not
+	// be using defaults on our AJAX request (they are just for 
+	// initial page load) 
+	let opts = ["no_defaults"];
 
 	// Start with the game filters:	
 	//
-	// TODO: Add a Location filter, so we can narrow sessions down to games
-	//       played at a given location.
+	// TODO: Add a Location filter, so we can narrow 
+	//		 sessions down to games played at a given 
+	//	     location.
+	//
 	// TODO: Implement Tourneys and a Tourney filter.  
 	if (is_enabled("chk_games_ex") && games)
 		// An exclusive list of games if we asked for them.
@@ -336,7 +383,7 @@ function URLopts(make_static) {
 	if (is_enabled("chk_top_games") && num_games)
 		// We submit num_games with an integer to enable this option. 
 		// If num_games is not submited or 0, the server should not 
-		// consider a top_games request in force.  
+		// consider a top_games request in force. 
 		opts.push("top_games="+encodeURIComponent(num_games));
 
 	if (is_enabled("chk_latest_games") && num_games_latest)
@@ -476,9 +523,8 @@ function URLopts(make_static) {
 		  		// to a date/time and this is how the server knows it's a session relative request.
 		  		opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
 		    break;
-	}
+	}		
 	
-	// Then the content formatting options
 	// These have valid defaults, on or off, and we only have to submit deviations from that default. 
 	if (highlight_players != defaults.highlight_players) opts.push("highlight_players="+encodeURIComponent(highlight_players));
 	if (highlight_changes != defaults.highlight_changes) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
@@ -495,23 +541,126 @@ function URLopts(make_static) {
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from that default. 
-	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));
-	
+	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));		
+
 	if (make_static) { opts.push("make_static"); }
-		
-	return (opts.length > 0) ? "?" + opts.join("&") : "";
+	
+	return "?" + opts.join("&");
 }
 
-function LabelButton(element) {
-	var opts = []
+// TODO: We should fetch definitions from the database
+// or better said, they should be delivered with eladerboards, based on the 
+// user logged on, with a default set for annonymous users.
+// For now just hard coding a set of defaults.
+
+// The 0th element is ignored, nominally there to represent the Reload button and because we prefer our shortcut buttons to number from 1
+let shortcut_buttons = [null]; 
+
+// TODO: The aim here is to provide programable shortcut buttons. The general gist is
+// that we've defined an array structure here, and we would have a default set for 
+// anonymous users and for logged in users we'd get it passed in with the AJAX leaderboards 
+// request or in the template on page load (as we do leaderboards), for the logged in user.
+// TODO: We need to code up a means of saving options. My thought is on the Advanced Options 
+// drop down, deside the Apply button is a "Save As Shortcut" button, and beside it some 
+// controls, an int selector that runs 1 to the current number of buttons plus one (so we can 
+// overwrite a given slot or create new one, and two checkboxes, one for override_content, and 
+// one for override_presentation, and then a name which should support template items like:
+// {league} for the preferred league
+// {leagues} for the selected league(s) - properly formated as "a,b,c and/or d"
+// {players} for the selected player(s) - properly formated as "a,b,c and/or d"
+// {games} for the selected game(s) - properly formated as "a,b,c and d"
+// and of course when we add them {tourneys} and {locations} as well.
+//
+// These need to be saved to a Django model which is keyed on user and button ID (number)
+// and possibly with context (leaderboards) so in future we can support programmable 
+// buttons on other views too.  
+
+function GetShortcutButtons() {
+	// Start afresh
+	shortcut_buttons = [null];
 	
-	val = $('#selPlayer :selected').text(); if (val != $('#selPlayer option:first').text()) opts.push(val);	
-	val = $('#selLeague :selected').text(); if (val != $('#selLeague option:first').text()) opts.push("the " + val + " league");
+	shortcut_buttons.push(["All leaderboards", true, false, {"enabled": []}]);
+
+	if (preferred_league[0])
+		shortcut_buttons.push([`All ${preferred_league[1]} leaderboards`, true, false, 
+			{"enabled": ["player_leagues_any", "game_leagues_any"], 
+			 "game_leagues": [preferred_league[0]]
+			}]);
+
+	shortcut_buttons.push(["Impact of last games night", true, false, 
+		{"enabled": ["num_days", "compare_back_to"], 
+	     "num_days": 1,
+	     "compare_back_to": 1
+		}]);
+
+	if (preferred_league[0])
+		shortcut_buttons.push([`Impact of last ${preferred_league[1]} games night`, true, false,  
+			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
+			 "game_leagues": [preferred_league[0]],
+		     "num_days": 1,
+		     "compare_back_to": 1
+			}]);
 	
-	qual = " for " + opts.join(" in ");
-	label = "All Leaderboards" + (opts.length > 0 ? qual : "");
+	return shortcut_buttons;
+}
+
+function AddShortcutButtons() {
+	shortcut_buttons = GetShortcutButtons();
 	
-	$('#'+element).val(label);
+	for (let id=1; id<shortcut_buttons.length; id++) {
+		let label = shortcut_buttons[id][0];
+		let button = $("#btnShortcut"+id);
+
+		// If the button exists, just relabel it.
+		if (button.length) {
+			button.value = label;
+			
+		// Else add a new button. 
+		} else {
+			$(".lo_shortcuts").append(`<button type="button" class="button_left" id="btnShortcut${id}" onclick="ShortcutButton(this)">${label}</button>`)
+		}
+	}		
+}
+
+function ShortcutButton(button) {
+	const matches = button.id.match(/btnShortcut(\d+)/);
+	const id = matches ? matches[1] : null;
+	
+	// null or 0 will return with no action
+	if (!id) return; 
+
+	// if not in legal range return as well
+	if (id < 1 || id > shortcut_buttons.length) return;
+	
+	const def = shortcut_buttons[id];
+	
+	const override_content      = def[1];  // If true, override existing content options, else augment them
+	const override_presentation = def[2];  // If true, override existing presentation options, else augment them
+	const opts                  = def[3];  // The options to apply
+
+	// Respect the two override flags when set, by deleting  
+	// any options there may be in the respective category.
+	if (override_content) 
+		for (let opt of options.content_options)
+			delete options[opt]
+
+	if (override_presentation) 
+		for (let opt of options.presentation_options)
+			delete options[opt]
+	
+	// We replace the options that the shortcut button demands
+	// TODO: We should consider if any others need changing! 
+	// Might be OK if enabled is simply overwritten. But maybe
+	// not, the parser server side may not look at enabled, but 
+	// look at other submissions. Needs diagnosis.
+	for (let [ key, value ] of Object.entries(opts))
+		options[key] = value;
+
+	// Reinitalise all the filter controls
+	InitControls(options)
+
+	// Reload the leaderboards (first argument is make_static)
+	refetchLeaderboards(false);
 }
 
 function toggle_visibility(class_name, visible_style) {

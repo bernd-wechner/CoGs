@@ -16,32 +16,36 @@
 	<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
 	
 	<div class="lo_buttons">
-		<button type="button" class="button_left tooltip" id="btnLoad"  onclick="refetchLeaderboards();">
-			<img src="{% static 'reload.png' %}"  class='img_button'>
-			<span class="tooltiptext">Reload leaderboards</span?
-		</button>
-		
-		<button type="button" class="button_left" id="btnAllLeaderboards" onclick="">All Leaderboards</button>
-		<button type="button" class="button_left" id="btnEventImpact" onclick="">Impact of Last Event</button>
-		
-		<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
-			<img src="{% static 'copy.png' %}"  class='img_button'>
-			<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span?
-		</button>
-
-	  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
-			<img src="{% static 'link_fat.png' %}"  class='img_button'>
-			<span class="tooltiptext">Copy Static URL</span?
-	  	</button>
-
-	  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
-			<img src="{% static 'link_thin.png' %}" class='img_button'>		
-			<span class="tooltiptext">Copy URL</span?
-	  	</button>
+		<div class="lo_reload">
+			<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchLeaderboards();">
+				<img src="{% static 'reload.png' %}"  class='img_button'>
+				<span class="tooltiptext">Reload leaderboards</span?
+			</button>
+		</div>
+			
+		<div class="lo_shortcuts">
+		</div>
+			
+		<div class="lo_utils">
+			<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
+				<img src="{% static 'copy.png' %}"  class='img_button'>
+				<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span?
+			</button>
+	
+		  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
+				<img src="{% static 'link_fat.png' %}"  class='img_button'>
+				<span class="tooltiptext">Copy Static URL</span?
+		  	</button>
+	
+		  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
+				<img src="{% static 'link_thin.png' %}" class='img_button'>		
+				<span class="tooltiptext">Copy URL</span?
+		  	</button>
+		</div>	
 	</div>	
 	
 	<div class="lo_basic">
-		<select id="cols" oninput='DrawTables("tblLB");'>
+		<select id="cols" oninput='DrawTables("tblLB");' style="margin-bottom: 5px;">
 		  <option>1</option>
 		  <option>2</option>
 		  <option>3</option>
@@ -278,9 +282,11 @@
 
 {% block startscript %}
 <script>
+	let preferred_league = {{ preferred_league|safe }};
+
 	// Nab the options and their defaults from context
-	var options = {{ options|safe }};
-	var defaults = {{ defaults|safe }};
+	let options = {{ options|safe }};
+	let defaults = {{ defaults|safe }};
 
 	// The big one! Leaderboards. This is a structure of lists within lists
 	// Games, Snapshots and Players in that order. 
@@ -298,26 +304,26 @@
 	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
 	// up to and including the snapshot at as_at or now if as_at isn't specified.  
 	
-	var leaderboards = {{leaderboards|safe}};
+	let leaderboards = {{leaderboards|safe}};
 	
 	/// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that
 	// the code in the included .js file can see.  
 	
 	// Note the initial value of various controls on the view
-	value_date_format = "{{default_datetime_input_format}}";
+	let value_date_format = "{{default_datetime_input_format}}";
 		
 	// And some URLs
-	url_leaderboards = "{% url 'leaderboards' %}";
-	url_json_leaderboards = "{% url 'json_leaderboards' %}"
+	let url_leaderboards = "{% url 'leaderboards' %}";
+	let url_json_leaderboards = "{% url 'json_leaderboards' %}"
 	
-	url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
-	url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
-	url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
-	url_list_Sessions = "{% url 'list' 'Session'%}";
+	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
+	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
+	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_list_Sessions = "{% url 'list' 'Session'%}";
 	
 	// A URL for the Select2 widgets (initilising them is a little involved)
-	url_selector = "{% url 'autocomplete_flexible' '__MODEL__' 'pk' 'in' %}"		
+	let url_selector = "{% url 'autocomplete_flexible' '__MODEL__' 'pk' 'in' %}"		
 </script>
 {% endblock %}
 

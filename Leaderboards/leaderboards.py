@@ -9,6 +9,7 @@ from django.db.models import Q, F, ExpressionWrapper, DateTimeField, Count, Subq
 from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime 
+from plotly.presentation_objs.presentation_objs import Presentation
 
 if settings.DEBUG:
     from django.db import connection
@@ -46,10 +47,9 @@ def is_number(s):
     in as float values.
     '''
     try:
-        val = float(s)
+        float(s)
         return True
     except ValueError:
-        val = None
         return False
 
 class leaderboard_options:
@@ -134,34 +134,22 @@ class leaderboard_options:
     
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
+
+    # Devide the options into two groups, content and presentation. 
+    content_options = game_filters \
+                    | player_filters \
+                    | perspective_options \
+                    | evolution_options
+                    
+    presentation_options = formatting_options \
+                         | info_options \
+                         | layout_options
     
-    # ALL the options, a set against whcih we can filter incoming requests to 
+    # ALL the options, a set against which we can filter incoming requests to 
     # weed out all the things that don't matter, or to asses if the request is in
     # fact one that includes any leaderboard options or not.
-    all_options = game_filters \
-                | player_filters \
-                | perspective_options \
-                | evolution_options \
-                | formatting_options \
-                | info_options \
-                | layout_options
-
-    # leaderboards can take a little while to collate, particulalry over large number sof games
-    # it's very noticeable. We want to cache the boards once created and then differenticate 
-    # between options that can be implemeted using an exisitng cache, and those that cannot,
-    # that will require the cache be updated in some way.
-    
-    # These options are cache safe, if only these change we can rebuild leaderboards from
-    # the cache alone.   
-    cache_safe_options = player_filters | formatting_options | info_options | layout_options
-
-    # These options may or may not demand a database search. Basicallyc hanging these options
-    # allows us to exploit the cahce in part or completely depending on how they chanhge. 
-    cache_exploting_options = game_filters | evolution_options
-    
-    # These options invalidate the cache if they change
-    cache_invalidating_options = perspective_options
-    
+    all_options = content_options | presentation_options
+   
     # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.          
     
@@ -225,7 +213,7 @@ class leaderboard_options:
     # Options that determine which snapshots to present for each selected game (above)
     # A snapshot being the leaderboard immediately after a given session.
     # Only one of these can be respected at a time,    
-    # compare_back_to is special, it can take one two types of valu:
+    # compare_back_to is special, it can take one two types of value:
     #    a) a datetime, in which case it encodes a datetime back to which we'd like to have snapshots
     #    b) an integer or float, in which case  it encodes num_days above basically, the length of the last event looking back from as_at which is used to determine a date_time for the query.
     compare_with = 1            # Compare with this many historic leaderboards
@@ -275,7 +263,7 @@ class leaderboard_options:
             self.enabled.add(option)
         else:
             self.enabled.discard(option)
-        
+
     def __init__(self, session={}, request={}):
         '''
         Build a leaderboard options instance populated with options froma request dictionary
@@ -346,10 +334,35 @@ class leaderboard_options:
             if item in self.all_options:
                 have_options = True 
                 break
-            
-        if have_options:
+        
+        # If any options are specified in the request we ignore the defaults that
+        # are enabled and start with nothing enabled. We support one special request
+        # that does nothing more and nothing less than to force this start with a clean
+        # slate: "nodefaults". This is designed so that the inital view loaded has 
+        # nice defaults, but the AJAX requests to update leaderboards have a way of 
+        # saying that no options are set! So basically just show us ALL the 
+        # leaderboards completely! If someon explicitly disables the default options
+        # on the web page (that it should display because we prodvide leaderboard_options
+        # in the context for page load and in the JSON delivered to AJAX requesters), 
+        # the page has some way of saying this is not option explicitly, do not use 
+        # defaults. As soon as one option is specified normally that won't be needed,
+        # but if no options are specified, it is needed to start with an empty set of
+        # enabled options here.     
+        if have_options or "no_defaults" in request:
             self.enabled = set()
-
+            
+        # A very special case for the two snapshot options. They are not enabled
+        # like the filters. There are two, compare_with and compare_back_to only
+        # one of which can't should be set. We can only respect one. So if we get 
+        # on in the request we should anull the other.
+        #
+        # If both are supplied we need of course to ignore one. Matters no which, 
+        # but only one can be respected 
+        if "compare_back_to" in request:
+            self.compare_with = 0
+        elif "compare_with" in request:
+            self.compare_back_to = None
+            
         # Keeping the same order as the properties above and recommended for
         # form fields and the JS processor of those field ...
         
@@ -708,8 +721,11 @@ class leaderboard_options:
         if 'make_static' in request:
             self.make_static()
             self.made_static = True
+            
+        if settings.DEBUG:
+            print_debug(f"Enabled leaderboard options: {self.enabled}")                         
 
-    def player_filters(self):
+    def has_player_filters(self):
         '''
         Returns True if any player filters are enabled, else False
         '''
@@ -794,7 +810,7 @@ class leaderboard_options:
         # pushing on candidates as we find them.
         
         # If any player filters are specified, list only the players that pass the criteria the options specify
-        if self.player_filters():                    
+        if self.has_player_filters():                    
             lbf = []   # A player-filtered version of leaderboard 
 
             for p in leaderboard:
@@ -864,7 +880,7 @@ class leaderboard_options:
         d = {}
         
         # Ignore internal attributes (startng with __) and methods (callable)
-        for attr in [a for a in dir(self) if not a.startswith('__')]:
+        for attr in [a for a in dir(self) if not a.startswith('__')]:            
             val = getattr(self, attr)
 
             # Don't include methods or enums or dicts

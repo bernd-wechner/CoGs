@@ -15,11 +15,26 @@
 	grid-column-gap: 15px;
 	grid-row-gap: 5px;  
 	grid-template-areas:
-	  	"lbl_view   lo_buttons    lo_buttons"
-	  	".          lbl_basic     lo_basic"
-	  	".          lbl_advanced  lo_visibility"
-	  	".          lo_advanced   lo_advanced"
+	  	"lbl_view   lo_buttons    lo_buttons    "
+	  	".          lbl_basic     lo_basic      "
+	  	".          lbl_advanced  lo_visibility "
+	  	".          lo_advanced   lo_advanced   "
 }
+
+.lo_buttons {
+	grid-area: lo_buttons; 
+	display: grid;
+	grid-template-columns: min-content 1fr min-content;
+	grid-auto-rows: min-content;
+	grid-column-gap: 5px;
+	grid-template-areas: "lo_reload   lo_shortcuts    lo_utils"
+}
+
+.lo_reload    { grid-area: lo_reload; }
+.lo_shortcuts { grid-area: lo_shortcuts; }
+.lo_utils     { grid-area: lo_shortcuts; }
+
+.lo_basic   { grid-area: lo_basic; }
 
 .lbl_view     { grid-area: lbl_view; 	 font-weight: bold !important; }
 .lbl_basic    { grid-area: lbl_basic; 	 font-weight: bold !important; }
@@ -28,16 +43,15 @@
 .button_left { 
 	float: left; 
 	margin-right: 0.5em;
+	margin-bottom: 5px;
 }
 
 .button_right { 
 	float: right; 
-	margin-left: 0.5em;}
+	margin-left: 0.5em;
+}
 
 button:hover { cursor: pointer; }
-
-.lo_buttons { grid-area: lo_buttons; width: 100%; }
-.lo_basic   { grid-area: lo_basic; }
 
 .lo_visibiity {
   	display: grid;
