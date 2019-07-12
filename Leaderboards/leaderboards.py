@@ -9,7 +9,6 @@ from django.db.models import Q, F, ExpressionWrapper, DateTimeField, Count, Subq
 from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime 
-from plotly.presentation_objs.presentation_objs import Presentation
 
 if settings.DEBUG:
     from django.db import connection
