@@ -33,9 +33,9 @@ could improve below, and improve it!
 
     ```
     sudo apt install postgresql pgadmin3
-    sudo apt install python3 python3-pip python3-django python3-django-extensions python3-psycopg2 python3-yaml 
+    sudo apt install python3 python3-pip
     sudo apt install git
-    sudo -H pip3 install wheel trueskill scipy json-datetime tzlocal django-timezone-field django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil django-reset-migrations 
+    sudo -H pip3 install wheel trueskill scipy json-datetime tzlocal psycopg2 pyyaml django django-extensions django-timezone-field django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil django-reset-migrations 
     sudo -H pip3 install Django==2.1.1 
     ```
 		

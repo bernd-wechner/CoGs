@@ -88,8 +88,17 @@ function OnLoad(event) {
 	team_switch.addEventListener('click', switchMode)
 	
 	// Add a listener to the game selector (so that the form can adapt to the properties of the newly selected game)
-	const game_selector = $$(id_prefix+"game");
-	game_selector.addEventListener('change', switchGame)
+	const game_selector = $("#"+id_prefix+"game");
+	game_selector.on("change", switchGame);
+	
+	// DAL is flakey with the above change event handle. While sorting this I need a way to
+	// manually involke it so we add a button beside it.
+//	const target = "$('#" + game_selector[0].id + "')[0]";
+//	const button = `<button type="button" class="tooltip" id="btnLoad" onclick="${target}.dispatchEvent(new Event('change'));" style="margin-left: 1ch; bottom:-2px;">
+//					<img src="${reload_icon}"  class="img_button" style="height: 18px;">
+//					<span class="tooltiptext">Switch game</span>
+//				    </button>`;
+//	game_selector.after(button);	
 	
 	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form 
 	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out

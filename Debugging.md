@@ -53,3 +53,30 @@ leaderboard in particular needs a mode or another method that doesn't filter on 
 the leaderboards view needs ...
 
 TO FIX: When selecting a game in the session form, the new select2 control is great, but when the new game is selected we need to fetch the game info and update bounds of the num players box. Not happening. Entered Citadels and couldn't do more than 4 players.
+
+Thoughts on Tourneys:
+
+List of games: many to many (1 or more games)
+Optional list of leagues: many to many - considered subscribers, making it easier to find the tourneys a league plays
+Optional list of players: many to many - considered subscribers, making it easier to find the tourneys a player plays
+
+Reason for optional lists of subscribers is that implicit membership through the games (to leagues and players) could be a huge superset of the people actually interested in the tourney.
+Even if you got the implicit lists of leagues/players that touch all the games in the tourney.
+
+Also consider adding Events.
+
+Events would have:
+
+name
+location (optional, could be a global event, and also locations could be narrow or broad)
+start date_time
+end date_time
+
+Tourneys then also have
+
+optional list of events: many to many
+
+a possible future exists where phones can with location services, notice participation in an event (and ask about it), and could then notify re: tourneys underway.
+
+
+Rami

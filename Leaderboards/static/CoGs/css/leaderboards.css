@@ -15,18 +15,43 @@
 	grid-column-gap: 15px;
 	grid-row-gap: 5px;  
 	grid-template-areas:
-	  	"lbl_view   lo_buttons    lo_buttons"
-	  	".          lbl_basic     lo_basic"
-	  	".          lbl_advanced  lo_visibility"
-	  	".          lo_advanced   lo_advanced"
+	  	"lbl_view   lo_buttons    lo_buttons    "
+	  	".          lbl_basic     lo_basic      "
+	  	".          lbl_advanced  lo_visibility "
+	  	".          lo_advanced   lo_advanced   "
 }
+
+.lo_buttons {
+	grid-area: lo_buttons; 
+	display: grid;
+	grid-template-columns: min-content 1fr min-content;
+	grid-auto-rows: min-content;
+	grid-column-gap: 5px;
+	grid-template-areas: "lo_reload   lo_shortcuts    lo_utils"
+}
+
+.lo_reload    { grid-area: lo_reload; }
+.lo_shortcuts { grid-area: lo_shortcuts; }
+.lo_utils     { grid-area: lo_shortcuts; }
+
+.lo_basic   { grid-area: lo_basic; }
 
 .lbl_view     { grid-area: lbl_view; 	 font-weight: bold !important; }
 .lbl_basic    { grid-area: lbl_basic; 	 font-weight: bold !important; }
 .lbl_advanced { grid-area: lbl_advanced; font-weight: bold !important; white-space: nowrap !important;}
 
-.lo_buttons { grid-area: lo_buttons; }
-.lo_basic   { grid-area: lo_basic; }
+.button_left { 
+	float: left; 
+	margin-right: 0.5em;
+	margin-bottom: 5px;
+}
+
+.button_right { 
+	float: right; 
+	margin-left: 0.5em;
+}
+
+button:hover { cursor: pointer; }
 
 .lo_visibiity {
   	display: grid;
@@ -59,6 +84,8 @@
 	grid-row-gap: 5px;  
 
 /* TODO: A location filter, a tourneys filter */
+/* TODO: Add a Player selector which "players in current snapshot" and one "players in any snapshot" */
+
 	grid-template-areas:
 		"label_filtering   selectors_multi         selectors_multi              selectors_multi              selectors_multi"
 		"label_filtering   filter_games            filter_games                 filter_games                 filter_games"
@@ -71,7 +98,7 @@
 		"label_filtering   .                       filter_games_top_n           filter_games_top_n           filter_games_top_n"
 		"label_filtering   .                       filter_games_latest_n        filter_games_latest_n        filter_games_latest_n"
 		"label_filtering   .                       filter_games_played_since    filter_games_played_since    filter_games_played_since"
-		"label_filtering   .                       filter_games_session         filter_games_session         filter_games_session"
+		"label_filtering   .                       filter_games_event         	filter_games_event         	 filter_games_event"
 		"label_filtering   .                       filter_games_selected_in     filter_games_selected_in     filter_games_selected_in"
 		"label_filtering   filter_players          filter_players               filter_players               filter_players"
 		"label_filtering   intro_players           intro_players                intro_players                intro_players"
@@ -90,8 +117,7 @@
 		"label_evolution   .                       select_evolution_n_prior     select_evolution_n_prior     select_evolution_n_prior"
 		"label_evolution   .                       select_evolution_back_to     select_evolution_back_to     select_evolution_back_to"
 		"label_evolution   .                       select_evolution_session     select_evolution_session     select_evolution_session"
-		"button_copy       label_copy              label_copy                   label_copy                   label_copy"
-		"button_url        label_url               label_url                    label_url                    label_url";  
+		"button_apply      button_apply            .                            .                            ."
 }
 
 
@@ -99,16 +125,19 @@
   display: grid;
   grid-area: selectors_multi;
   
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(2, auto);
   grid-auto-rows: min-content;
   grid-column-gap: 10px;
   grid-row-gap: 0px;  
   grid-template-areas: 
-  	"label_games  label_leagues  label_players" 
-  	"select_games select_leagues select_players";
+  	"label_games        ."  
+  	"select_games       ."
+  	"label_players      label_leagues     "
+  	"select_players     select_leagues    ";
 }
 
 .label_filtering { grid-area: label_filtering; font-weight: bold !important; }
+
 .filter_games { grid-area: filter_games; font-weight: bold !important; }
 .intro_games { grid-area: intro_games; margin-left: 2ch;}
 .filter_players { grid-area: filter_players; font-weight: bold !important; }
@@ -134,7 +163,7 @@
 .filter_games_league_all { grid-area: filter_games_league_all; }
 .filter_games_player_any { grid-area: filter_games_player_any; }
 .filter_games_player_all { grid-area: filter_games_player_all; }
-.filter_games_session { grid-area: filter_games_session; }
+.filter_games_event { grid-area: filter_games_event; }
 
 .filter_players_selected_ex { grid-area: filter_players_selected_ex; }
 .filter_players_selected_in { grid-area: filter_players_selected_in; }
@@ -154,12 +183,7 @@
 .select_evolution_back_to { grid-area: select_evolution_back_to; }
 .select_evolution_session { grid-area: select_evolution_session; }
 
-.button_copy { grid-area: button_copy; }
-.label_copy { grid-area: label_copy; }
-
-.button_url { grid-area: button_url; }
-.label_url { grid-area: label_url; }
-
+.button_apply { grid-area: button_apply; }
 
 /* LEADERBOARD TABLES */
 

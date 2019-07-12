@@ -32,6 +32,11 @@ class AdminModel(models.Model):
     last_edited_on = models.DateTimeField('Time of Last Edit', editable=False, null=True)
     last_edited_on_tz = TimeZoneField('Time of Last Edit, Timezone', default=settings.TIME_ZONE, editable=False)
     
+    # A flag for bypassing admin field updates. This is used for adminstrative
+    # tasks, like database maintenance and rebuilds where we want to save things
+    # but conserve the record of actual user edits etc.
+    __bypass_admin__ = False
+    
     def update_admin_fields(self):
         '''
         Update the CoGs admin fields on an object (whenever it is saved).
@@ -60,7 +65,8 @@ class AdminModel(models.Model):
                 self.created_on_tz = str(get_current_timezone())
                 
     def save(self, *args, **kwargs):
-        self.update_admin_fields()
+        if not self.__bypass_admin__:
+            self.update_admin_fields()
         super().save(*args, **kwargs)
                 
     class Meta:

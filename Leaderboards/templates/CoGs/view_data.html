@@ -2,6 +2,11 @@
 {% load staticfiles %}
 {% load filters %}
 {% block title %}{{title}}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+{% endblock %}
+
 {% block content %}
 
 {% if view %}

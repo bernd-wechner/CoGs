@@ -1,13 +1,18 @@
-import enum, json, sys
+import enum, json, sys, numbers
 
 from collections import OrderedDict
 from dateutil import parser
 from datetime import datetime, timedelta
 
 from django.conf import settings
-from django.db.models import Q, F, Count, Subquery, OuterRef
+from django.db.models import Q, F, ExpressionWrapper, DateTimeField, Count, Subquery, OuterRef, Window
+from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime 
+from plotly.presentation_objs.presentation_objs import Presentation
+
+if settings.DEBUG:
+    from django.db import connection
 
 from django_generic_view_extensions.datetime import fix_time_zone
 from django_generic_view_extensions.queryset import top, get_SQL
@@ -35,6 +40,17 @@ LinkSelections = OrderedDict((("none", "nowhere"),
 NameSelection             = enum.Enum("NameSelection", NameSelections)
 LinkSelection             = enum.Enum("LinkSelection", LinkSelections)
 
+def is_number(s):
+    '''
+    A simple test to on strig s to see if it's a number or not, for float values
+    notable leaderboard_options.num_days and compare_back_to. Which can both come
+    in as float values.
+    '''
+    try:
+        float(s)
+        return True
+    except ValueError:
+        return False
 
 class leaderboard_options:
     '''
@@ -118,34 +134,22 @@ class leaderboard_options:
     
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
+
+    # Devide the options into two groups, content and presentation. 
+    content_options = game_filters \
+                    | player_filters \
+                    | perspective_options \
+                    | evolution_options
+                    
+    presentation_options = formatting_options \
+                         | info_options \
+                         | layout_options
     
-    # ALL the options, a set against whcih we can filter incoming requests to 
+    # ALL the options, a set against which we can filter incoming requests to 
     # weed out all the things that don't matter, or to asses if the request is in
     # fact one that includes any leaderboard options or not.
-    all_options = game_filters \
-                | player_filters \
-                | perspective_options \
-                | evolution_options \
-                | formatting_options \
-                | info_options \
-                | layout_options
-
-    # leaderboards can take a little while to collate, particulalry over large number sof games
-    # it's very noticeable. We want to cache the boards once created and then differenticate 
-    # between options that can be implemeted using an exisitng cache, and those that cannot,
-    # that will require the cache be updated in some way.
-    
-    # These options are cache safe, if only these change we can rebuild leaderboards from
-    # the cache alone.   
-    cache_safe_options = player_filters | formatting_options | info_options | layout_options
-
-    # These options may or may not demand a database search. Basicallyc hanging these options
-    # allows us to exploit the cahce in part or completely depending on how they chanhge. 
-    cache_exploting_options = game_filters | evolution_options
-    
-    # These options invalidate the cache if they change
-    cache_invalidating_options = perspective_options
-    
+    all_options = content_options | presentation_options
+   
     # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.          
     
@@ -189,7 +193,7 @@ class leaderboard_options:
     game_leagues = []           # Restrict to games played by specified Leagues (any or all based on enabled option)
     game_players = []           # Restrict to games played by specified players (any or all based on enabled option)
     changed_since = None        # Show only leaderboards that changed since this date
-    num_days = 1                # List only games played in the last num_days_gs long session (also used for snapshot defintion) 
+    num_days = 1                # List only games played in the last num_days long event (also used for snapshot definition) 
 
     # Options that determing which players are listed in the leadrboards
     # These options, like the game selectors, above provide defaults with which to 
@@ -209,9 +213,9 @@ class leaderboard_options:
     # Options that determine which snapshots to present for each selected game (above)
     # A snapshot being the leaderboard immediately after a given session.
     # Only one of these can be respected at a time,    
-    # compare_back_to is special, it can take one two types of valu:
+    # compare_back_to is special, it can take one two types of value:
     #    a) a datetime, in which case it encodes a datetime back to which we'd like to have snapshots
-    #    b) an integer, in which case  it encoudes num_days above basically, the length of the last session loking back from as_at which is used to determine a date_time for the query.
+    #    b) an integer or float, in which case  it encodes num_days above basically, the length of the last event looking back from as_at which is used to determine a date_time for the query.
     compare_with = 1            # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was the latest one then)
 
@@ -239,6 +243,9 @@ class leaderboard_options:
     # and use the players list.
     trace = []                  # A list of players to draw trace arrows for from snapshot to snapshot
     
+    # A flag back to client to tell it that we made these opts static on request
+    made_static = False
+    
     def is_enabled(self, option):
         '''
         A convenient method to check if an option should be applied, returning True 
@@ -256,7 +263,7 @@ class leaderboard_options:
             self.enabled.add(option)
         else:
             self.enabled.discard(option)
-        
+
     def __init__(self, session={}, request={}):
         '''
         Build a leaderboard options instance populated with options froma request dictionary
@@ -327,10 +334,35 @@ class leaderboard_options:
             if item in self.all_options:
                 have_options = True 
                 break
-            
-        if have_options:
+        
+        # If any options are specified in the request we ignore the defaults that
+        # are enabled and start with nothing enabled. We support one special request
+        # that does nothing more and nothing less than to force this start with a clean
+        # slate: "nodefaults". This is designed so that the inital view loaded has 
+        # nice defaults, but the AJAX requests to update leaderboards have a way of 
+        # saying that no options are set! So basically just show us ALL the 
+        # leaderboards completely! If someon explicitly disables the default options
+        # on the web page (that it should display because we prodvide leaderboard_options
+        # in the context for page load and in the JSON delivered to AJAX requesters), 
+        # the page has some way of saying this is not option explicitly, do not use 
+        # defaults. As soon as one option is specified normally that won't be needed,
+        # but if no options are specified, it is needed to start with an empty set of
+        # enabled options here.     
+        if have_options or "no_defaults" in request:
             self.enabled = set()
-
+            
+        # A very special case for the two snapshot options. They are not enabled
+        # like the filters. There are two, compare_with and compare_back_to only
+        # one of which can't should be set. We can only respect one. So if we get 
+        # on in the request we should anull the other.
+        #
+        # If both are supplied we need of course to ignore one. Matters no which, 
+        # but only one can be respected 
+        if "compare_back_to" in request:
+            self.compare_with = 0
+        elif "compare_with" in request:
+            self.compare_back_to = None
+            
         # Keeping the same order as the properties above and recommended for
         # form fields and the JS processor of those field ...
         
@@ -461,18 +493,18 @@ class leaderboard_options:
 
             self.__enable__('changed_since', self.changed_since)
 
-        # A request for a session impact presentaton comes in the form 
-        # of session_games = num_days, where num bays flags the length 
-        # of session to look for. We record it in self.num_days to flag 
-        # that this is what we want to the processor. Other filters of 
-        # course may impact on this and reduce the number of games, which
-        # can in fact be handy if say the games of a long and busy games 
-        # event are logged and could produce a large number of boards. 
-        # But for an average games night, probably makes little sense 
+        # A request for an event impact presentaton comes in the form 
+        # of num_days, where num yays flags the length of the event to 
+        # look for (looknig back from now or as_at). We record it in 
+        # self.num_days to flag that this is what we want to the processor. 
+        # Other filters of  course may impact on this and reduce the number 
+        # of games, which can in fact be handy if say the games of a long and 
+        # busy games  event are logged and could produce a large number of 
+        # boards. But for an average games night, probably makes little sense 
         # and has little utility. 
         self.__needs_enabling__.add('num_days')          
-        if 'num_days' in request and request['num_days'].isdigit():
-            self.num_days = int(request["num_days"])
+        if 'num_days' in request and is_number(request['num_days']):
+            self.num_days = float(request["num_days"])
             self.__enable__('num_days', self.num_days)
 
         ##################################################################
@@ -628,8 +660,8 @@ class leaderboard_options:
             self.__enable__('compare_back_to', False)                            
             
         elif 'compare_back_to' in request:
-            if request['compare_back_to'].isdigit():
-                self.compare_back_to = int(request['compare_back_to'])
+            if is_number(request['compare_back_to']):
+                self.compare_back_to = float(request['compare_back_to'])
             else:
                 try:
                     self.compare_back_to = fix_time_zone(parser.parse(decodeDateTime(request['compare_back_to'])))
@@ -684,7 +716,16 @@ class leaderboard_options:
         if 'trace' in request:
             self.trace = request['trace'].split(",")
 
-    def player_filters(self):
+        # A special option which isn't an option per se. If passed in we make
+        # the provided options as static as we can with self.make_static()            
+        if 'make_static' in request:
+            self.make_static()
+            self.made_static = True
+            
+        if settings.DEBUG:
+            print_debug(f"Enabled leaderboard options: {self.enabled}")                         
+
+    def has_player_filters(self):
         '''
         Returns True if any player filters are enabled, else False
         '''
@@ -769,7 +810,7 @@ class leaderboard_options:
         # pushing on candidates as we find them.
         
         # If any player filters are specified, list only the players that pass the criteria the options specify
-        if self.player_filters():                    
+        if self.has_player_filters():                    
             lbf = []   # A player-filtered version of leaderboard 
 
             for p in leaderboard:
@@ -831,111 +872,6 @@ class leaderboard_options:
                 
         return leaderboard_snapshot[0:8] + (lbf,) 
 
-    def needs_db(self, cache_options):
-        '''
-        TODO: Reconsider any need for this! It may be redundant!
-        
-        Given a cached copy of self, returns true if we need to use the database.
-        If false the cache alone contains all the info we need to build leaderboards
-        
-        This relates to game filters, evolution options and the perspective option. 
-        Basically if the new game specifications are a subset of the cached ones 
-        and the evolution options are subset of cached ones and the perspective is 
-        unchanged, we can use the cache alone. 
-        
-        But also if a cahce invalidating option changes, we need the db.
-        '''
-        def is_subset(options, attribute = None):
-            if not attribute and isinstance(options, str):
-                attribute = options
-            if not isinstance(options, list):
-                options = [options]
-                
-            set_then = set()
-            enabled_then = set([o for o in options if cache_options.is_enabled(o)])
-            if enabled_then:
-                set_then = set(getattr(cache_options, attribute))
-
-            set_now = set()
-            enabled_now = set([o for o in options if cache_options.is_enabled(o)])
-            if enabled_now:
-                set_now = set(getattr(self, attribute))
-
-            return enabled_now == enabled_then and set_now.issubset(set_then) 
-
-        def is_lower(options, attribute=None):
-            if not attribute and isinstance(options, str):
-                attribute = options
-            if not isinstance(options, list):
-                options = [options]
-                
-            option_then = sys.maxsize
-            enabled_then = set([o for o in options if cache_options.is_enabled(o)])
-            if enabled_then:
-                option_then = getattr(cache_options, attribute)
-
-            option_now = option_then
-            enabled_now = set([o for o in options if cache_options.is_enabled(o)])
-            if enabled_now:
-                option_now = getattr(self, attribute)
-                               
-            return enabled_now == enabled_then and option_now <= option_then
-            
-        def is_later(option, attribute=None):
-            if not attribute:
-                attribute = option
-                
-            option_then = datetime.min
-            if cache_options.is_enabled(option):
-                option_then = getattr(cache_options, attribute)
-
-            option_now = option_then
-            if self.is_enabled(option):
-                option_now = getattr(self, attribute)
-                               
-            return option_now >= option_then
-
-        def is_different(option, attribute=None):
-            if not attribute:
-                attribute = option
-                
-            option_then = None
-            if cache_options.is_enabled(option):
-                option_then = getattr(cache_options, attribute)
-
-            option_now = option_then
-            if self.is_enabled(option):
-                option_now = getattr(self, attribute)
-                               
-            return option_now != option_then
-
-        # First we examine all the game filters 
-        games_are_subset = is_subset("games")
-        games_leagues_are_subset = is_subset(["game_leagues_any", "game_leagues_all"], "game_leagues")
-        games_players_are_subset = is_subset(["game_players_any", "game_players_all"], "game_players")
-        num_games_is_lower = is_lower(["top_games", "latest_games"], "num_games")
-        num_days_is_lower = is_lower("num_days")        
-        changed_since_is_later = is_later("changed_since")
-        
-        games_need_db = not all([games_are_subset, 
-                                 games_leagues_are_subset,
-                                 games_players_are_subset,
-                                 num_games_is_lower,
-                                 num_days_is_lower,
-                                 changed_since_is_later])
-
-        # Then the evolutiion requests 
-        compare_with_is_lower = is_lower("compare_with")
-        compare_back_to_is_later = is_later("compare_back_to")
-
-        evo_needs_db = not all([compare_with_is_lower, 
-                                compare_back_to_is_later])
-
-        # Finally, a change in perspective comletely invalidates the cache
-        as_at_changed = is_different("as_at")        
-
-        return games_need_db or evo_needs_db or as_at_changed
-    
     def as_dict(self):
         '''
         Produces a dictionary of JSONified option values which can be passed to context
@@ -944,7 +880,7 @@ class leaderboard_options:
         d = {}
         
         # Ignore internal attributes (startng with __) and methods (callable)
-        for attr in [a for a in dir(self) if not a.startswith('__')]:
+        for attr in [a for a in dir(self) if not a.startswith('__')]:            
             val = getattr(self, attr)
 
             # Don't include methods or enums or dicts
@@ -965,6 +901,62 @@ class leaderboard_options:
         
         return d
 
+    def last_session_time(self):
+        '''
+        Returns a lazy Queryset that when evaluated produces the date_time of the 
+        last session played given the current options sepcifying league and perspective.
+        This is irrespective of the game, and is intended for the given league or leagues
+        to retrun the last time of any activity as a reference for most recent event
+        calculation.
+        '''
+        if settings.DEBUG:
+            queries_before = len(connection.queries)
+            
+        s_filter = Q()
+        
+        # Restrict the list based on league memberships
+        if self.is_enabled('game_leagues_any'):
+            s_filter = Q(league__pk__in=self.game_leagues) 
+        elif self.is_enabled('game_leagues_all'):
+            for pk in self.game_leagues:
+                s_filter &= Q(league__pk=pk)
+                
+        # Respect the perspective request
+        if self.is_enabled('as_at'):
+            s_filter &= Q(date_time__lte=self.as_at)
+            
+        session_times = Session.objects.filter(s_filter).values('date_time').order_by("-date_time")
+        latest_session_time = top(session_times, 1)
+        
+        if settings.DEBUG:
+            queries_after = len(connection.queries)
+
+            print_debug("last_session_time:")
+            
+            if queries_after == queries_before:
+                print_debug("\tSQL is still LAZY")
+                print_debug(f"\t{get_SQL(latest_session_time)}")
+            else:
+                print_debug("\tSQL was evaluated!")
+                print_debug(f"\t{connection.queries[-1]['sql']}")
+        
+        return latest_session_time
+
+    def last_event_start_time(self, delta_days, as_ExpressionWrapper=True):
+        '''
+        Returns an Expression that can be used in filtering sessions that is the date_time 
+        of the ostensible start of the event. Being the date_time of the last session this 
+        league or these leugues playered less the number of days provided as an in the value
+        delta_days. This could self.num_days for the game filtering or self.compare_back_to 
+        for snapshot capture.
+        '''
+        if as_ExpressionWrapper:
+            lest = ExpressionWrapper(Subquery(self.last_session_time()) - timedelta(days=delta_days), output_field=DateTimeField())
+        else:
+            lest = self.last_session_time()[0]['date_time'] - timedelta(days=delta_days)
+            
+        return lest
+
     def games_queryset(self):
         '''
         Returns a QuerySet of games that these options select (self.game_filters drives this) 
@@ -979,6 +971,9 @@ class leaderboard_options:
         # Sort them by default in descending order of play_count then session_count (measures
         # of popularity in the specified leagues).
         
+        if settings.DEBUG:
+            queries_before = len(connection.queries)
+        
         g_filter = Q()
         s_filter = Q()
         
@@ -989,21 +984,27 @@ class leaderboard_options:
         
         # Restrict the list based on league memberships
         if self.is_enabled('game_leagues_any'):
-            s_filter = Q(league__pk__in=self.game_leagues) 
             g_filter = Q(sessions__league__pk__in=self.game_leagues) 
+            s_filter = Q(league__pk__in=self.game_leagues) 
         elif self.is_enabled('game_leagues_all'):
             for pk in self.game_leagues:
-                s_filter &= Q(league__pk=pk)
                 g_filter &= Q(sessions__league__pk=pk)
+                s_filter &= Q(league__pk=pk)
+
+        # Respect the perspective request when finding last_play of a game 
+        # as in last_play before as_at
+        if self.is_enabled('as_at'):
+            s_filter &= Q(date_time__lte=self.as_at)
                 
         # We sort them by a measure of popularity (within the selected leagues)
         #
-        # TODO: Inspect this well and ensure it is giving session_count and play_count within
-        #       the leagues specified! Methinks it does. But do some real empirical tests
+        # TODO: last_play is within the specified leagues (via s_filter)
+        #       session_count and play_count are not. They need to be.
+        
         latest_session = top(Session.objects.filter(s_filter).filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
-        session_count = Count('sessions',distinct=True)
-        play_count = Count('sessions__performances',distinct=True)
+        session_count = Count('sessions', distinct=True)
+        play_count = Count('sessions__performances', distinct=True)
 
         games = (Game.objects.filter(g_filter)
                              .annotate(last_play=last_play)
@@ -1036,44 +1037,13 @@ class leaderboard_options:
         gfilter = or_filters
 
         if self.is_enabled('num_days'):
-            # We model "session impact" by selecting games played between 
-            # as_at and changed_since as follows:
-            #
-            # For the specified leagues we find the last session of any
-            # game they played. Then we look back num_days and we include
-            # all the games played in that num_days window (that have 
-            # recorded sessions in that window). 
-    
-            # Start with a league filter on the sessions
-            # TODO: Test this any/all implementation well
-            if self.is_enabled('game_leagues_any'):
-                sfilter = Q(league__pk__in=self.game_leagues) 
-            elif self.is_enabled('game_leagues_all'): 
-                sfilter = Q()
-                for pk in self.game_leagues:
-                    sfilter &= Q(league__pk=pk)
-            else: 
-                sfilter = Q()
-            
-            # Respect the perspective request (i.e. ignore all sessions after as_at)
-            if self.is_enabled('as_at'):
-                sfilter &= Q(date_time__lte=self.as_at)
-            
-            # Get most recent session these leagues played 
-            latest_session = Session.objects.filter(sfilter).order_by("-date_time").first()
-    
-            # If we have one then 
-            if latest_session:
-                date = latest_session.date_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=1)
-                changed_since = date - timedelta(days=self.num_days)        
-    
-                # Now add to the game a demand that the game's been played (has sessions) since then  
-                gfilter &= Q(sessions__date_time__gte=changed_since)
+            reference_time = self.last_event_start_time(self.num_days)
+            gfilter &= Q(sessions__date_time__gte=reference_time )
 
-                # And let's not forget to limit it to games with sessions played before
-                # self.as_at if that perspective is enabled.
-                if self.is_enabled('as_at'):
-                    gfilter &= Q(sessions__date_time__lte=self.as_at)
+            # And let's not forget to limit it to games with sessions played before
+            # self.as_at if that perspective is enabled.
+            if self.is_enabled('as_at'):
+                gfilter &= Q(sessions__date_time__lte=self.as_at)
 
         # Choose the ordering in preparation for a top n filter    
         if self.is_enabled('latest_games'):
@@ -1102,7 +1072,16 @@ class leaderboard_options:
                                 ).order_by(*order_games_by)
                                         
         if settings.DEBUG:
-            print_debug("GAME SELECTOR:\n" + get_SQL(filtered_games))
+            queries_after = len(connection.queries)
+
+            print_debug("GAME SELECTOR:")
+            
+            if queries_after == queries_before:
+                print_debug("\tSQL is still LAZY")
+                print_debug(f"\t{get_SQL(filtered_games)}")
+            else:
+                print_debug("\tSQL was evaluated!")
+                print_debug(f"\t{connection.queries[-1]['sql']}")
             
             print_debug("SELECTED GAMES:")
             for game in filtered_games:
@@ -1132,6 +1111,9 @@ class leaderboard_options:
                
         We build a QeurySet of the sessions after which we want the leaderboard snapshots.        
         '''
+        if settings.DEBUG:
+            queries_before = len(connection.queries)
+        
         # Start our Session filter with sessions for the game in question
         sfilter = Q(game=game)
         
@@ -1139,55 +1121,74 @@ class leaderboard_options:
         # This game may be played by different leagues 
         # and we're not interested in their sessions
         # TODO: TEST this all/any implementation!
-        gl_filter = None
         if self.is_enabled('game_leagues_any'):
-            gl_filter = Q(league__pk__in=self.game_leagues)
+            sfilter &= Q(league__pk__in=self.game_leagues)
         elif self.is_enabled('game_leagues_all'):
-            # TODO: =self.game_Leagues is a list of PKs. May need tobe a list of queryset of leagues?
-            gl_filter = Q()
             for pk in self.game_leagues:
-                gl_filter &= Q(league__pk=pk)
+                sfilter &= Q(league__pk=pk)
 
-        if gl_filter:
-            sfilter &= gl_filter
-        
         # Respect the perspective request
         if self.is_enabled('as_at'):
             sfilter &= Q(date_time__lte=self.as_at)
+
+        # At this stage we have sfilter (a filter on sessions that
+        #   Specifies a game
+        #   Respects and league constraints specified
+        #   Respects any perspective constraint supplied
 
         if (self.no_evolution()):
             # Just get the latest session, one snapshot only
             sessions = top(Session.objects.filter(sfilter).order_by("-date_time"), 1)
         else:
+            extra_session = None
+            
+            sessions = Session.objects.all()
+            
             # Respect the evolution options where enabled
             if self.is_enabled('compare_back_to'):
-                if isinstance(self.compare_back_to, int):
-                    # This encodes a number of days prior the last session these leagues played
-                    #
-                    # To make that possible we need to know the datetime of the last session 
-                    # these leagues played. That we can do in a Subquery.
-                    #
-                    # A perfect example of just this is here:
-                    #    https://docs.djangoproject.com/en/2.2/ref/models/expressions/#subquery-expressions
-                    #    >>> newest = Comment.objects.filter(post=OuterRef('pk')).order_by('-created_at')
-                    #    >>> Post.objects.annotate(newest_commenter_email=Subquery(newest.values('email')[:1]))                 
-                    latest_session = top(Session.objects.filter(gl_filter).order_by("-date_time"), 1)
-                    
-                    # TODO: This is a wild guess and needs testing. I foresee issues.
-                    #       timedelta is python, and we may need a DB expression fo taking of num_days!
-                    #       The F() expression may not even be available on latest_session!
-                    sfilter &= Q(date_time__gte=F(Subquery(latest_session.date_time)) - timedelta(days=self.num_days)) 
-                else:
-                    # This encodes a simple datetime back to which to compare 
-                    sfilter &= Q(date_time__gt=self.compare_back_to)
+                # We want one extra session, the one just before the reference time.
+                # This is a new QuerySet which we'll Union with the main one. We
+                # want to find it just before we restrict sfilter as we'd like to
+                # respect sfilter to date. It specified a game at least, possibly 
+                # league constraints on the sessions and a perspective constraint.                                
+                if self.is_enabled('compare_back_to'):
+                    if isinstance(self.compare_back_to, numbers.Real):
+                        reference_time = self.last_event_start_time(self.compare_back_to)
+                    elif isinstance(self.compare_back_to, datetime):
+                        reference_time = self.compare_back_to
+                    else:
+                        reference_time = None
+
+                if reference_time:
+                    extra_session = top(sessions.filter(sfilter & Q(date_time__lt = reference_time)), 1)
+                    sfilter &= Q(date_time__gte = reference_time)
             
             # Then order the sessions in reverse date_time order  
-            sessions = Session.objects.filter(sfilter).order_by("-date_time")
+            sessions =  sessions.filter(sfilter).order_by("-date_time")
+            
+            if extra_session:
+                sessions = sessions.union(extra_session).order_by("-date_time")
     
             # Keep on respecting the evolution options where enabled
             if self.is_enabled('compare_with'):
                 # This encodes a number of sessions so the top n on the temporally ordered
-                sessions = top(sessions, 1+self.compare_with)                    
+                sessions = top(sessions, 1+self.compare_with)
+                
+        if settings.DEBUG:
+            queries_after = len(connection.queries)
+
+            print_debug("SNAPSHOT SELECTOR:")
+            
+            if queries_after == queries_before:
+                print_debug("\tSQL is still LAZY")
+                print_debug(f"\t{get_SQL(sessions)}")
+            else:
+                print_debug("\tSQL was evaluated!")
+                print_debug(f"\t{connection.queries[-1]['sql']}")
+                
+            print_debug("SELECTED SNAPSHOTS:")
+            for session in sessions:
+                print_debug(f"\t{session.date_time}")
 
         return sessions
             
@@ -1239,11 +1240,15 @@ class leaderboard_options:
             subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
     
         if self.is_enabled("compare_back_to"):
-            if isinstance(self.compare_back_to, int):
+            if isinstance(self.compare_back_to, numbers.Real):
                 time = f"before the last game session of {self.compare_back_to} days"
-            else:
+            elif isinstance(self.compare_back_to, datetime):
                 time = "that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
-            subtitle.append(f"compared back to the leaderboard as at {time}")
+            else:
+                time = None
+                
+            if time:
+                subtitle.append(f"compared back to the leaderboard as at {time}")
         elif self.is_enabled("compare_with"):
             subtitle.append(f"compared up to with {self.compare_with} prior leaderboards")
     
@@ -1252,49 +1257,35 @@ class leaderboard_options:
             
         return (title, "<BR>".join(subtitle))
 
-class leaderboard_cache:
-    '''
-    Stores a cache of calculated leaderboards, along with the options used to
-    dertived them and provides some methods for using the cache sensibly.
-    '''
-    
-    options = None
-    leaderboards = []
-    
-    game_status = enum.Enum("game_status", ["ALL", "SOME", "NONE"])
-    
-    def __init__(self, options, leaderboards):
-        self.options = options
-        self.leaderboards = leaderboards
+    def make_static(self):
+        '''
+        Make the relative leaderboard_options more static. Specifically the event based ones.
         
-    def games(self, options=None):
-        if options:
-            games = OrderedDict()
-        else:
-            games = []
+        It's hard to secure a perfectlys tatic leaderboards link becasue anything could change
+        in the database over time, players come and go, games come and go whatever, there are
+        just too many variables and the closes we could get really is to store the cache that
+        is currently stored in the session in a more persistent database table with an ID. 
+        
+        But can't see much need for that yet. Right now the main aim is that we can rapidly 
+        get the impact of the last evert (prior to as_at) but produce a link that uses 
+        fixed reference times rather than the relative so they can be used in comms and 
+        have lasting relevance.
+       
+        TODO: add a button to top row on leaderboards page which is of a chain link, and when 
+        clicked, resubmits current view via this, returning a static rendition of it.
+        
+        TODO: add a button beside it to show the link in the Address bar (get it out of advanced).
+        Need a clear icon for that. Could be an eye with some hint of a URLness to it?
+        
+        Both can have excellent ToolTips of course.
+        '''
+        
+        # Map self.num_days to self.changed_since
+        if self.is_enabled('num_days'):
+            self.changed_since = self.last_event_start_time(self.num_days, as_ExpressionWrapper=False)            
+            self.__enable__('changed_since', True)
+            self.__enable__('num_days', False)
             
-        for game_tuple in self.leaderboards:
-            pk = game_tuple[0]
-            if options:
-                # We have 3 categories for the supplied options:
-                #
-                #   The cache has everything we need on this game
-                #       This happens if the game is in cache
-                #       and all the requested evo snapshots are too.
-                # 
-                #   The cache has some of what we need on this game
-                #        This happens when the game is in cahce but 
-                #        only some of the requested evo snapshots are
-                #        the caller will need to construct the rest from 
-                #        database 
-                #
-                #   The caches has nothing on this game
-                #        The game is not in the cache
-                #
-                # Can we do this wouth DB checks?
-                games[pk] = 0 
-            else:
-                games.append(pk)
-        
-        return games
-    
+        # Map self.compare_back_to number to self.compare_back_to datetime
+        if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
+            self.compare_back_to = self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False)            

@@ -12,7 +12,7 @@ from django_generic_view_extensions.debug import print_debug
 from cuser.middleware import CuserMiddleware
 
 from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
-from .leaderboards import leaderboard_options, leaderboard_cache, NameSelections, LinkSelections 
+from .leaderboards import leaderboard_options, NameSelections, LinkSelections 
 
 from django.db.models import Count, Q
 from django.shortcuts import render
@@ -388,6 +388,9 @@ def extra_context_provider(self, context={}):
      
     context['league_options'] = html_league_options(self.request.session)
     context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
+
+    # Make  DAL media available to templates
+    context['dal_media'] = str(autocomplete.Select2().media)
     
     if model_name == 'session':
         # if an object is provided in self.object use that 
@@ -490,12 +493,14 @@ class view_Login(LoginViewExtended):
             # TODO: rather that deleting the cache, we could
             #       rebuild only the names in the leaderboards 
             #       but that would be some fiddly code.
-            del self.request.session["leaderboard_cache"]
+            if "leaderboard_cache" in self.request.session:
+                del self.request.session["leaderboard_cache"]
             
             if hasattr(user, 'player') and user.player:
                 preferred_league = user.player.league
-                
+                                
                 if preferred_league:
+                    form.request.session["preferred_league"] = preferred_league.pk
                     save_league_filters(form.request.session, preferred_league.pk)
                     
         except user.DoesNotExist:
@@ -575,6 +580,18 @@ def view_Leaderboards(request):
     players = lo.game_players if lo.game_players else lo.players
     games = lo.games
     
+    # Get the preferred league id and lable
+    pl_id = request.session.get("preferred_league", 0)
+    
+    if pl_id:
+        try:
+            pl_lbl = League.objects.values_list('name', flat=True).get(pk=pl_id)
+        except League.DoesNotExist:
+            pl_lbl = ""
+            pl_id = 0
+    else:
+        pl_lbl = ""
+            
     c = {'title': title,
          'subtitle': subtitle,
          
@@ -583,7 +600,7 @@ def view_Leaderboards(request):
          'defaults': json.dumps(default.as_dict()),   
          'leaderboards': json.dumps(leaderboards, cls=DjangoJSONEncoder),
          
-         # For us in templates
+         # For use in templates
          'leaderboard_options': lo,
 
          # Dicts for dropdowns
@@ -591,14 +608,17 @@ def view_Leaderboards(request):
          'link_selections': LinkSelections,
          
          # Widgets to use in the form
+         'dal_media': autocomplete.Select2().media,
          'widget_leagues': html_selector(League, "leagues", leagues, ALL_LEAGUES),
          'widget_players': html_selector(Player, "players", players, ALL_PLAYERS),
          'widget_games': html_selector(Game, "games", games, ALL_GAMES),
-         'widget_media': autocomplete.Select2().media,
          
          # Time and timezone info
          'now': timezone.now(),        
-         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0])
+         'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0]),
+         
+         # The preferred league if any
+         'preferred_league': [pl_id, pl_lbl]
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
@@ -651,6 +671,10 @@ def ajax_Leaderboards(request, raw=False):
     Links to games and players in the leaderboard are built in the template, wrapping a player name in
     a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
+
+    # For DEBUGGING    
+    # if "leaderboard_cache" in request.session:
+    #     del request.session["leaderboard_cache"]    
     
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter',{})
@@ -737,6 +761,7 @@ def ajax_Leaderboards(request, raw=False):
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
+                    print_debug(f"\tFound it in cache!")                     
                 else:
                     full_snapshot = board.leaderboard_snapshot()
                     if full_snapshot:
@@ -1066,9 +1091,42 @@ def view_UnwindToday(request):
     
     return HttpResponse(html)
 
+def rebuild_play_and_victory_counts():
+    '''
+    Performance objects contain play and victory counts which are therer for efficiency.
+    But if they ever go awry, they can be rebuild from recorded session data and this
+    function does that across the whole database.
+    '''
+    sessions = Session.objects.all().order_by('date_time')
+    
+    print(f"Rebuilding perfomance play and victory counts for {sessions.count()} sessions.", flush=True)
+
+    for session in sessions:
+        for performance in session.performances.all():
+            if performance.pk == 900:
+                print("Gotcha.", flush=True)
+            
+            previous_performance = performance.previous_play
+
+            if previous_performance:
+                performance.play_number = previous_performance.play_number + 1
+                performance.victory_count = previous_performance.victory_count + 1 if performance.is_victory else previous_performance.victory_count
+            else:
+                performance.play_number = 1
+                performance.victory_count = 1 if performance.is_victory else 0
+            
+            performance.__bypass_admin__ = True
+            performance.save()
+            print(f"Fixed performance {performance.id} in session {session.id} having play_number {performance.play_number} and victory_count {performance.victory_count} for {performance.player} at game {performance.game}.", flush=True)
+            
+    print("Done.", flush=True)
+    
+
 from django.apps import apps
 def view_Fix(request):
 
+    rebuild_play_and_victory_counts()
+    
 # DONE: Used this to create Performance objects for existing Rank objects
 #     sessions = Session.objects.all()
 #
@@ -1079,6 +1137,10 @@ def view_Fix(request):
 #             performance.session = rank.session
 #             performance.player = rank.player
 #             performance.save()
+
+    # Found a Performance corruption that needed fixing, a play_number was wrong
+    # Quick rebuild of them all!
+
 
 # Test the rank property of the Performance model
 #     table = '<table border=1><tr><th>Performance</th><th>Rank</th></tr>'
@@ -1097,53 +1159,53 @@ def view_Fix(request):
     # Subsequent to this we want to walk through every model and fix the Created and Modified datetime as well
     
     # Session times
-    sessions = Session.objects.all()
-    
-    activate('Australia/Hobart')
-
-    # Did this on dev database. Seems to have worked a charm.
-    for session in sessions:
-        dt_raw = session.date_time
-        dt_local = localtime(dt_raw)
-        error = dt_local.tzinfo._utcoffset
-        dt_new = dt_raw - error
-        dt_new_local = localtime(dt_new)
-        print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
-        session.date_time = dt_new_local
-        session.save()
-        
-    # The rating model has two DateTimeFields that are wrong in the same way, but thee can be fixed by rebuilding ratings.
-    pass  
-        
-    # Now for every model that we have that derives from AdminModel we need to updated we have two fields:
-    #     created_on
-    #     last_edited_on
-    # That we need to tweak the same way.
-    
-    # We can do this by looping all our models and checking for those fields.  
-    models = apps.get_app_config('Leaderboards').get_models()
-    for model in models:
-        if hasattr(model, 'created_on') or hasattr(model, 'last_edited_on'):
-            for obj in model.objects.all():
-                if hasattr(obj, 'created_on'): 
-                    dt_raw = obj.created_on
-                    dt_local = localtime(dt_raw)
-                    error = dt_local.tzinfo._utcoffset
-                    dt_new = dt_raw - error
-                    dt_new_local = localtime(dt_new)
-                    print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
-                    obj.created_on = dt_new_local 
-
-                if hasattr(obj, 'last_edited_on'): 
-                    dt_raw = obj.last_edited_on
-                    dt_local = localtime(dt_raw)
-                    error = dt_local.tzinfo._utcoffset
-                    dt_new = dt_raw - error
-                    dt_new_local = localtime(dt_new)
-                    print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
-                    obj.last_edited_on = dt_new_local
-                
-                obj.save()
+#     sessions = Session.objects.all()
+#     
+#     activate('Australia/Hobart')
+# 
+#     # Did this on dev database. Seems to have worked a charm.
+#     for session in sessions:
+#         dt_raw = session.date_time
+#         dt_local = localtime(dt_raw)
+#         error = dt_local.tzinfo._utcoffset
+#         dt_new = dt_raw - error
+#         dt_new_local = localtime(dt_new)
+#         print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#         session.date_time = dt_new_local
+#         session.save()
+#         
+#     # The rating model has two DateTimeFields that are wrong in the same way, but thee can be fixed by rebuilding ratings.
+#     pass  
+#         
+#     # Now for every model that we have that derives from AdminModel we need to updated we have two fields:
+#     #     created_on
+#     #     last_edited_on
+#     # That we need to tweak the same way.
+#     
+#     # We can do this by looping all our models and checking for those fields.  
+#     models = apps.get_app_config('Leaderboards').get_models()
+#     for model in models:
+#         if hasattr(model, 'created_on') or hasattr(model, 'last_edited_on'):
+#             for obj in model.objects.all():
+#                 if hasattr(obj, 'created_on'): 
+#                     dt_raw = obj.created_on
+#                     dt_local = localtime(dt_raw)
+#                     error = dt_local.tzinfo._utcoffset
+#                     dt_new = dt_raw - error
+#                     dt_new_local = localtime(dt_new)
+#                     print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     obj.created_on = dt_new_local 
+# 
+#                 if hasattr(obj, 'last_edited_on'): 
+#                     dt_raw = obj.last_edited_on
+#                     dt_local = localtime(dt_raw)
+#                     error = dt_local.tzinfo._utcoffset
+#                     dt_new = dt_raw - error
+#                     dt_new_local = localtime(dt_new)
+#                     print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     obj.last_edited_on = dt_new_local
+#                 
+#                 obj.save()
         
 #     for session in sessions:
 #         dt_raw = session.date_time

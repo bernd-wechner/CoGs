@@ -309,6 +309,10 @@ class Rating(RatingModel):
                 is_latest = False
         
         if is_latest or feign_latest:
+            # Trickle admin bypass down 
+            if self.__bypass_admin__:
+                session.__bypass_admin__ = True                    
+            
             # Get the session impact (records results in database Performance objects)
             impact = session.calculate_trueskill_impacts()    
             
@@ -338,6 +342,10 @@ class Rating(RatingModel):
                     r.last_victory = session.date_time
                 # else leave r.last_victory unchanged
                 
+                # Trickle admin bypass down 
+                if self.__bypass_admin__:
+                    r.__bypass_admin__ = True                    
+                    
                 r.save()
         else:
             # One or more players have ratings recorded based on sessions played after the provided session.
@@ -383,6 +391,11 @@ class Rating(RatingModel):
         # Start timer and counter
         # Copy all ratings to Backup_Rating
         
+        # Bypass admin field updates for a rating rebuild
+        self.__bypass_admin__ = True
+
+        print("Rebuilding all leaderboard ratings...", flush=False)
+
         self.objects.all().delete()
         sessions = Session.objects.all().order_by('date_time')
         
@@ -390,6 +403,8 @@ class Rating(RatingModel):
         for s in sessions:
             print(s.pk, s.date_time, s.game.name, flush=False)
             self.update(s, feign_latest=True)
+            
+        print("Done.", flush=False)
 
         # Stop timer
         # Update the  entry in Rebuild_Log with performance results
@@ -2247,7 +2262,7 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         Returns the Performance object for the nominated player in this session
         '''
-        assert player != None, "Coding error: Cannot fetch the performance of 'no player'."
+        assert player != None, f"Coding error: Cannot fetch the performance of 'no player'. Session pk: {self.pk}"
         performances = self.performances.filter(player=player)
         assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={} sql={}".format(len(performances), self.pk, player.pk, performances.query)
         return performances[0]
@@ -2299,13 +2314,17 @@ class Session(TimeZoneMixIn, AdminModel):
                 RGs.append(RG)
                 for player in team.players.all():
                     performance = self.performance(player)
+                    if self.__bypass_admin__:
+                        performance.__bypass_admin__ = True
                     performance.initialise(save)
                     RG[player.pk] = trueskill.Rating(mu=performance.trueskill_mu_before, sigma=performance.trueskill_sigma_before)
                     Weights[(len(RGs) - 1, player.pk)] = performance.partial_play_weighting
                 Ranking.append(int(rank.split('.')[0]))                   
         else:
-            for rank, player in self.ranked_players.items():
+            for rank, player in self.ranked_players.items():                
                 performance = self.performance(player)
+                if self.__bypass_admin__:
+                    performance.__bypass_admin__ = True
                 performance.initialise(save)
                 RGs.append({player.pk: trueskill.Rating(mu=performance.trueskill_mu_before, sigma=performance.trueskill_sigma_before)})
                 Weights[(len(RGs) - 1, player.pk)] = performance.partial_play_weighting
@@ -2360,6 +2379,9 @@ class Session(TimeZoneMixIn, AdminModel):
                     previous_trueskill_eta_before = performance.trueskill_eta_before 
                     performance.trueskill_eta_before = performance.trueskill_mu_before - TSS.mu0 / TSS.sigma0 * performance.trueskill_sigma_before
                     assert isclose(performance.trueskill_eta_before, previous_trueskill_eta_before, abs_tol=FLOAT_TOLERANCE), "Integrity error: suspiscious change in a TrueSkill rating." 
+                    
+                    if self.__bypass_admin__:
+                        performance.__bypass_admin__ = True
                     
                     performance.save()
             return

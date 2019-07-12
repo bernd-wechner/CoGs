@@ -8,22 +8,44 @@
 {% endblock %}
 
 {% block content %}
-{{ widget_media }}
-<script>
-	$.fn.select2.defaults.set( "theme", "bootstrap" );
-</script>
-
 {#   A pile of options for leaderboards that will try populate a structure in the backend - Leaderboards.views.leaderboard_options#}
 {#   while enforcing some rules locally in the UI for convenience with JS. The rules can be summarised as follows:   #}
-
 <section class="leaderboard_options">
-	<div class="lbl_view">View: <img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'></div>
+	<div class="lbl_view">View:</div>
 	<div class="lbl_basic">using:</div>
 	<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
 	
-	<div class="lo_buttons"><input type="button" id="btnLeaderboards" value="Leaderboards" onclick="refetchLeaderboards(event);"></div>
+	<div class="lo_buttons">
+		<div class="lo_reload">
+			<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchLeaderboards();">
+				<img src="{% static 'reload.png' %}"  class='img_button'>
+				<span class="tooltiptext">Reload leaderboards</span?
+			</button>
+		</div>
+			
+		<div class="lo_shortcuts">
+		</div>
+			
+		<div class="lo_utils">
+			<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
+				<img src="{% static 'copy.png' %}"  class='img_button'>
+				<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span?
+			</button>
+	
+		  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
+				<img src="{% static 'link_fat.png' %}"  class='img_button'>
+				<span class="tooltiptext">Copy Static URL</span?
+		  	</button>
+	
+		  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
+				<img src="{% static 'link_thin.png' %}" class='img_button'>		
+				<span class="tooltiptext">Copy URL</span?
+		  	</button>
+		</div>	
+	</div>	
+	
 	<div class="lo_basic">
-		<select id="cols" oninput='DrawTables("tblLB");'>
+		<select id="cols" oninput='DrawTables("tblLB");' style="margin-bottom: 5px;">
 		  <option>1</option>
 		  <option>2</option>
 		  <option>3</option>
@@ -35,13 +57,13 @@
 		<label for="cols">columns</label>,
 		
 		<label for="names">player</label> 
-			<select id="names" oninput="DrawTables('tblLB');">
+			<select id="names" class="name_format_selector" oninput="DrawTables('tblLB');">
 				{% for v, l in name_selections.items %}
 				  <option value="{{ v }}">{{ l }}</option>
 				{% endfor %}			  
 			</select>
 
-		<label for="links">and linking game and player names to</label>
+		<label for="links" class="link_target_selector" >and linking game and player names to</label>
 			<select id="links" oninput="DrawTables('tblLB');">
 				{% for v, l in link_selections.items %}
 				  <option value="{{ v }}">{{ l }}</option>
@@ -77,6 +99,11 @@
 	</div>	
 	
 	<section class="lo_advanced">
+		<div class="button_apply">
+			<button type="button" id='btnApply' onclick="refetchLeaderboards();">Apply</button> 
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'>
+		</div>
+	
 		<div class="label_filtering">Filtering:</div>
 		<div class="filter_games">Games:</div>
 		<div class="intro_games">Display leaderboards</div>
@@ -88,10 +115,10 @@
 		<div class="selectors_multi">
 		    <div class="label_games">Games(s)</div>
 		    <div class="select_games">{{ widget_games }}</div>
-		    <div class="label_leagues">League(s)</div>
-		    <div class="select_leagues">{{ widget_leagues }}</div>
 		    <div class="label_players">Players(s)</div>
 		    <div class="select_players">{{ widget_players }}</div>
+		    <div class="label_leagues">League(s)</div>
+		    <div class="select_leagues">{{ widget_leagues }}</div>
 		</div>
 	  
 		{#	Game Filters	#}
@@ -141,7 +168,7 @@
 			<input class="DateTimeField" id="changed_since" type="text" onchange="check_check(this, '#chk_changed_since', '.exclusive_group1'); copy_if_empty(this,'#compare_back_to');">
 	  	</div>
 	  
-	  	<div class="filter_games_session">
+	  	<div class="filter_games_event">
 			<input type="checkbox" id="chk_num_days" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1')" > 
 			<label for="chk_num_days">for games played in the last session of  
 			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '.exclusive_group1'); mirror(this,'#num_days_ev');"> 
@@ -239,19 +266,13 @@
 			<label for="chk_num_days_ev">leaderboards back to the start of the last game session of 
 			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'num_days_ev', 'no_evolution'); mirror(this,'#num_days');">
 			days duration</label>
-	  	</div>
-	
-	  	<div class="button_copy"><button type="button" id='btnCopy' onclick="prepare_target();" data-clipboard-target="#tblLB_naked">Copy</button> </div>
-	  	<div class="label_copy"> leaderboards to clipboard </div>
-	
-	  	<div class="button_url"> <button type="button" id='btnShowURL' onclick="show_url();">Show</button> </div> 	
-	  	<div class="label_url"> URL</div>
+	  	</div>	  	
 	</section>	
 </section>
 
 {#	PAGE HEADER #}
 
-<h3><label id='lblTotalCount'></label><label id='lblSnapCount' style='margin-left:1ch'></label></h3>
+<h3><span id='lblTotalCount'></span> <span id='lblSnapCount'></span></h3>
 
 {# THE LEADERBOARDS! - Placeholder filled by Javascript rendered of the template or ajax provided data #}
 		
@@ -261,9 +282,11 @@
 
 {% block startscript %}
 <script>
+	let preferred_league = {{ preferred_league|safe }};
+
 	// Nab the options and their defaults from context
-	var options = {{ options|safe }};
-	var defaults = {{ defaults|safe }};
+	let options = {{ options|safe }};
+	let defaults = {{ defaults|safe }};
 
 	// The big one! Leaderboards. This is a structure of lists within lists
 	// Games, Snapshots and Players in that order. 
@@ -281,26 +304,26 @@
 	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
 	// up to and including the snapshot at as_at or now if as_at isn't specified.  
 	
-	var leaderboards = {{leaderboards|safe}};
+	let leaderboards = {{leaderboards|safe}};
 	
 	/// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that
 	// the code in the included .js file can see.  
 	
 	// Note the initial value of various controls on the view
-	value_date_format = "{{default_datetime_input_format}}";
+	let value_date_format = "{{default_datetime_input_format}}";
 		
 	// And some URLs
-	url_leaderboards = "{% url 'leaderboards' %}";
-	url_json_leaderboards = "{% url 'json_leaderboards' %}"
+	let url_leaderboards = "{% url 'leaderboards' %}";
+	let url_json_leaderboards = "{% url 'json_leaderboards' %}"
 	
-	url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
-	url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
-	url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
-	url_list_Sessions = "{% url 'list' 'Session'%}";
+	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
+	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
+	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_list_Sessions = "{% url 'list' 'Session'%}";
 	
 	// A URL for the Select2 widgets (initilising them is a little involved)
-	url_selector = "{% url 'autocomplete_flexible' '__MODEL__' 'pk' 'in' %}"		
+	let url_selector = "{% url 'autocomplete_flexible' '__MODEL__' 'pk' 'in' %}"		
 </script>
 {% endblock %}
 
