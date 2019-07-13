@@ -616,9 +616,12 @@ def view_Leaderboards(request):
          # Time and timezone info
          'now': timezone.now(),        
          'default_datetime_input_format': datetime_format_python_to_PHP(settings.DATETIME_INPUT_FORMATS[0]),
-         
+
          # The preferred league if any
-         'preferred_league': [pl_id, pl_lbl]
+         'preferred_league': [pl_id, pl_lbl],
+         
+         # Debug mode
+         'debug_mode': request.session.get("debug_mode", False)         
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)

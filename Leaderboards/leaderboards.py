@@ -175,7 +175,7 @@ class leaderboard_options:
     # intelligently (to return True always for option that don't
     # need enabling and only if enabled for those that do, which 
     # makes checking whether an option is to be applied easy.
-    __needs_enabling__ = set()
+    need_enabling = set()
            
     # Now we defione the attributes that back these options up.
     # NOTE: These attributes are not self-standing so to speak but  
@@ -250,7 +250,7 @@ class leaderboard_options:
         A convenient method to check if an option should be applied, returning True 
         for those that always apply and the enabled status for those that need enabling.
         '''
-        return option in self.enabled if option in self.__needs_enabling__ else True
+        return option in self.enabled if option in self.need_enabling else True
     
     def __enable__(self, option, true_false):
         '''
@@ -378,8 +378,8 @@ class leaderboard_options:
         # those games (inclusive). The option specifies the context and 
         # only one of them can be specified at a time with any sense. 
         games = None
-        self.__needs_enabling__.add('games_ex')          
-        self.__needs_enabling__.add('games_in')
+        self.need_enabling.add('games_ex')          
+        self.need_enabling.add('games_in')
         for suffix in ("ex", "in"):
             if f'games_{suffix}' in request:        
                 games = request[f'games_{suffix}'].split(",")  
@@ -400,8 +400,8 @@ class leaderboard_options:
         # some measure of popularity or the latest play times - 
         # ideally within the selected leagues (i.e. global popularity 
         # is of no interest to a given league or leagues) 
-        self.__needs_enabling__.add('top_games')          
-        self.__needs_enabling__.add('latest_games')          
+        self.need_enabling.add('top_games')          
+        self.need_enabling.add('latest_games')          
         if 'top_games' in request and request['top_games'].isdigit():
             self.num_games = int(request["top_games"])
             self.__enable__('top_games', self.num_games)            
@@ -415,8 +415,8 @@ class leaderboard_options:
         # specifying an empty valye of either to avoid applying
         # the sessioni default, an explicit rewuest for no
         # league filtering     
-        self.__needs_enabling__.add('game_leagues_any')          
-        self.__needs_enabling__.add('game_leagues_all')
+        self.need_enabling.add('game_leagues_any')          
+        self.need_enabling.add('game_leagues_all')
         preferred_league = None          
         if 'game_leagues_any' in request:
             if request['game_leagues_any']:
@@ -456,8 +456,8 @@ class leaderboard_options:
         # perforce be be ignored here). With this list we request
         # to see leaderboards for games play by any of the listed
         # players, or those played by all of the listed players. 
-        self.__needs_enabling__.add('game_players_any')          
-        self.__needs_enabling__.add('game_players_all')          
+        self.need_enabling.add('game_players_any')          
+        self.need_enabling.add('game_players_all')          
         if 'game_players_any' in request:
             players = request['game_players_any'].split(",")
         elif 'game_players_all' in request:
@@ -483,7 +483,7 @@ class leaderboard_options:
         # If a date is submitted (and parses validly) this asks us to list only
         # games that have a recorded play session after that date (exclude games 
         # not played since them).
-        self.__needs_enabling__.add('changed_since')          
+        self.need_enabling.add('changed_since')          
         if 'changed_since' in request:
             try:
                 self.changed_since = fix_time_zone(parser.parse(decodeDateTime(request['changed_since'])))
@@ -501,7 +501,7 @@ class leaderboard_options:
         # busy games  event are logged and could produce a large number of 
         # boards. But for an average games night, probably makes little sense 
         # and has little utility. 
-        self.__needs_enabling__.add('num_days')          
+        self.need_enabling.add('num_days')          
         if 'num_days' in request and is_number(request['num_days']):
             self.num_days = float(request["num_days"])
             self.__enable__('num_days', self.num_days)
@@ -517,8 +517,8 @@ class leaderboard_options:
         # (inclusive). The option specifies the context and only one of 
         # them can be specified at a time with any sense. 
         players = None
-        self.__needs_enabling__.add('players_ex')
-        self.__needs_enabling__.add('players_in')
+        self.need_enabling.add('players_ex')
+        self.need_enabling.add('players_in')
         for suffix in ("ex", "in"):
             if f'players_{suffix}' in request:        
                 players = request[f'players_{suffix}'].split(",")  
@@ -546,7 +546,7 @@ class leaderboard_options:
         # Then an option to discard all but the top num_players of each board
         # As the starting point. Other options can add players of course, this 
         # is not exclusive of other player selecting options.
-        self.__needs_enabling__.add('num_players_top')          
+        self.need_enabling.add('num_players_top')          
         if 'num_players_top' in request and request['num_players_top'].isdigit():
             self.num_players_top = int(request["num_players_top"])
             self.__enable__('num_players_top', self.num_players_top)                            
@@ -554,12 +554,12 @@ class leaderboard_options:
         # Here we're requesting to provide context to the self.players that
         # are showing on the list. We may want to see a player or two or more 
         # above and/or below them. 
-        self.__needs_enabling__.add('num_players_above')          
+        self.need_enabling.add('num_players_above')          
         if 'num_players_above' in request and request['num_players_above'].isdigit():
             self.num_players_above = int(request["num_players_above"])
             self.__enable__('num_players_above', self.num_players_above)                            
 
-        self.__needs_enabling__.add('num_players_below')          
+        self.need_enabling.add('num_players_below')          
         if 'num_players_below' in request and request['num_players_below'].isdigit():
             self.num_players_below = int(request["num_players_below"])
             self.__enable__('num_players_below', self.num_players_below)                            
@@ -568,14 +568,14 @@ class leaderboard_options:
         
         # Now we request to include players who have played at least a 
         # few times.
-        self.__needs_enabling__.add('min_plays')          
+        self.need_enabling.add('min_plays')          
         if 'min_plays' in request and request['min_plays'].isdigit():
             self.min_plays = int(request["min_plays"])
             self.__enable__('min_plays', self.min_plays)                            
 
         # Now we request to include only players who have played the game
         # recently enough ... 
-        self.__needs_enabling__.add('played_since')          
+        self.need_enabling.add('played_since')          
         if 'played_since' in request:
             try:
                 self.played_since = fix_time_zone(parser.parse(decodeDateTime(request['played_since'])))
@@ -587,8 +587,8 @@ class leaderboard_options:
         # We support a league filter, as with games, and again with an any or all
         # logical operation requested. We also support reference values to the
         # possibly already supplied game_leagues_any or game_leagues_all.
-        self.__needs_enabling__.add('player_leagues_any')          
-        self.__needs_enabling__.add('player_leagues_all')          
+        self.need_enabling.add('player_leagues_any')          
+        self.need_enabling.add('player_leagues_all')          
         if 'player_leagues_any' in request:
             if request['player_leagues_any']:
                 leagues = request['player_leagues_any'].split(",")
@@ -632,7 +632,7 @@ class leaderboard_options:
             self.__enable__('player_leagues_all', False)
         
         # Now we capture the persepctive request if it provides a valid datetime
-        self.__needs_enabling__.add('as_at')          
+        self.need_enabling.add('as_at')          
         if 'as_at' in request:
             try:
                 self.as_at = fix_time_zone(parser.parse(decodeDateTime(request['as_at'])))
@@ -651,8 +651,8 @@ class leaderboard_options:
         # impact presentation where the session is chosed by looking back from the current 
         # leaderboard (latest or as_at) this many days and finding relevant snapshots in that
         # window.
-        self.__needs_enabling__.add('compare_with')          
-        self.__needs_enabling__.add('compare_back_to')          
+        self.need_enabling.add('compare_with')          
+        self.need_enabling.add('compare_back_to')          
         if 'compare_with' in request and request['compare_with'].isdigit():
             self.compare_with = int(request['compare_with'])            
             self.__enable__('compare_with', self.compare_with)                            
@@ -1196,8 +1196,25 @@ class leaderboard_options:
         Builds page title and subtitle based on these leaderboard options
         
         Returns them in a 2-tuple.
+        
+        Principles at play:
+        
+        In title:
+            Display Top or Latest count if set.
+        
+            Display a League filter if in effect, using LEagues, and truncating list down
+            to two entries and elipsis if possible.
+            
+            Display a Player Filter on same principle.
+            
+        In subtitle:
+            Display the perspective if any
+            Display the evolution options if any
+            
+        TODO: COnsider what happens on games_ex and players_ex 
         '''
         
+        # Build A Leagues intro string
         if self.is_enabled('game_leagues_any') or self.is_enabled('game_leagues_all'):
             L = League.objects.filter(pk__in=self.game_leagues)
             La = "any" if self.is_enabled('game_leagues_any') else "all"
@@ -1206,6 +1223,7 @@ class leaderboard_options:
             
         LA = f"{La} of the leagues" if len(L) > 1 else "the league" 
     
+        # Build A Players intro string
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
             P = Player.objects.filter(pk__in=self.game_players)
             Pa = "any" if self.is_enabled('game_players_any') else "all"
@@ -1214,12 +1232,31 @@ class leaderboard_options:
     
         PA = f"{Pa} of the players" if len(P) > 1 else "the player"  
         
-        l = ", ".join([l.name for l in L]) 
-        p = ", ".join([p.name_nickname for p in P]) 
+        # Build the list of leagues capping at two items with elipsis if more.
+        if len(L) == 1:
+            l = L[0].name
+        elif len(L) == 2:
+            l = f"{L[0].name} and {L[1].name}"
+        elif len(L) > 2:
+            l = f"{L[0].name}, {L[1].name} ..."
+        
+        # Build the list of leagues capping at two items with elipsis if more.
+        if len(P) == 1:
+            p = P[0].name_nickname 
+        elif len(L) == 2:
+            p = f"{P[0].name_nickname} and {P[1].name_nickname}"
+        elif len(L) > 2:
+            p = f"{P[0].name_nickname}, {P[1].name_nickname} ..."
+       
+        # Start the TITLE off with Top or Latest
+        if self.is_enabled('top_games'):
+            title = f"Top {self.num_games} "
+        elif self.is_enabled('latest_games'): 
+            title = f"Latest {self.num_games} "
+        else:
+            title = ""
                 
-        title = f"Top {self.num_games} " if self.is_enabled('num_games') else ""
-                
-        # Format the page title
+        # Add rest of TITLE
         if not P:
             if not L:
                 title += "Global Leaderboards"
@@ -1231,29 +1268,31 @@ class leaderboard_options:
             else:
                 title += f"Leaderboards for {PA} {p} in {LA} {l} "        
     
+        # Now a poerspective and evolution summary in the subtitle 
         subtitle = []
         if self.is_enabled("as_at"):
             subtitle.append(f"as at {localize(localtime(self.as_at))}")
     
-        if self.is_enabled("changed_since"):
+        if self.is_enabled("played_since"):
             subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
     
         if self.is_enabled("compare_back_to"):
             if isinstance(self.compare_back_to, numbers.Real):
-                time = f"before the last game session of {self.compare_back_to} days"
+                if self.compare_back_to == int(self.compare_back_to):
+                    cb = int(self.compare_back_to)
+                else:
+                    cb = self.compare_back_to
+                time = f"before the last event of {cb} days"
             elif isinstance(self.compare_back_to, datetime):
-                time = "that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
+                time = "at that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
             else:
                 time = None
                 
             if time:
-                subtitle.append(f"compared back to the leaderboard as at {time}")
+                subtitle.append(f"compared back to the leaderboard {time}")
         elif self.is_enabled("compare_with"):
-            subtitle.append(f"compared up to with {self.compare_with} prior leaderboards")
+            subtitle.append(f"compared with {self.compare_with} prior leaderboards")
     
-        if self.is_enabled("as_at"):
-            subtitle.append(f"compared up to the leaderboard as at {localize(localtime(self.as_at))}")
-            
         return (title, "<BR>".join(subtitle))
 
     def make_static(self):

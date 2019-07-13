@@ -189,10 +189,6 @@ function InitControls(options) {
 	$('#min_plays').val(options.min_plays);
 	$('#played_since').val(options.played_since);
 	
-	// FIXME: Options beyond here need to respond to shortcut button requests.
-	// If the option was removed from the options dict we should disable it
-	// here!
-	
 	// ========================================================================
 	// The perspective option
 	$('#as_at').val(options.as_at);  	// undefined is fine here.
@@ -619,6 +615,8 @@ function URLopts(make_static) {
 
 // The 0th element is ignored, nominally there to represent the Reload button
 // and because we prefer our shortcut buttons to number from 1
+// Global so that we can add them with one function and respond to them with 
+// another.
 let shortcut_buttons = [null]; 
 
 // TODO: The aim here is to provide programable shortcut buttons. The general
@@ -666,7 +664,8 @@ function GetShortcutButtons() {
 	shortcut_buttons.push(["Impact of last games night", true, false, 
 		{"enabled": ["num_days", "compare_back_to"], 
 	     "num_days": 1,
-	     "compare_back_to": 1
+	     "compare_back_to": 1,
+	     "num_players_top": 10 		     
 		}]);
 
 	if (preferred_league[0])
@@ -674,7 +673,8 @@ function GetShortcutButtons() {
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
 			 "game_leagues": [preferred_league[0]],
 		     "num_days": 1,
-		     "compare_back_to": 1
+		     "compare_back_to": 1,
+		     "num_players_top": 10 		     
 			}]);
 	
 	return shortcut_buttons;
@@ -710,12 +710,8 @@ function ShortcutButton(button) {
 	
 	const def = shortcut_buttons[id];
 	
-	const override_content      = def[1];  // If true, override existing
-											// content options, else augment
-											// them
-	const override_presentation = def[2];  // If true, override existing
-											// presentation options, else
-											// augment them
+	const override_content      = def[1];  // If true, override existing content options, else augment them
+	const override_presentation = def[2];  // If true, override existing presentation options, else augment them
 	const opts                  = def[3];  // The options to apply
 
 	// Respect the two override flags when set, by deleting
@@ -733,9 +729,11 @@ function ShortcutButton(button) {
 	// Might be OK if enabled is simply overwritten. But maybe
 	// not, the parser server side may not look at enabled, but
 	// look at other submissions. Needs diagnosis.
-	for (let [ key, value ] of Object.entries(opts))
+	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;
-
+		if (options.need_enabling.includes(key) && !options.enabled.includes(key)) 
+			options.enabled.push(key) 		
+	}
 	// Reinitalise all the filter controls
 	InitControls(options)
 
