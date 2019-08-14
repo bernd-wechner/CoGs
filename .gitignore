@@ -30,7 +30,6 @@ wheels/
 .installed.cfg
 *.egg
 MANIFEST
-/static/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -62,6 +61,9 @@ coverage.xml
 *.log
 local_settings.py
 db.sqlite3
+
+# Ignore the Django static collection produced when publishing
+static/
 
 # Flask stuff:
 instance/
@@ -117,3 +119,5 @@ test\.out
 Debugging/
 
 
+
+\.gitignore\.bak

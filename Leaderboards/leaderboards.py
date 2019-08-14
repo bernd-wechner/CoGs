@@ -1282,7 +1282,9 @@ class leaderboard_options:
                     cb = int(self.compare_back_to)
                 else:
                     cb = self.compare_back_to
-                time = f"before the last event of {cb} days"
+                
+                days = "day's" if cb == 1 else "days'" 
+                time = f"before the last event of {cb} {days} duration"
             elif isinstance(self.compare_back_to, datetime):
                 time = "at that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
             else:

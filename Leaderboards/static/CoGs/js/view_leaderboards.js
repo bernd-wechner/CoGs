@@ -770,7 +770,7 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(url); }
+function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
 function show_url_static() { refetchLeaderboards(true); }
 
 function got_new_leaderboards() {

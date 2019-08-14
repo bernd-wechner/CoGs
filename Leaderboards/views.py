@@ -621,7 +621,7 @@ def view_Leaderboards(request):
          'preferred_league': [pl_id, pl_lbl],
          
          # Debug mode
-         'debug_mode': request.session.get("debug_mode", False)         
+         'debug_mode': request.session.get("debug_mode", False)
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)

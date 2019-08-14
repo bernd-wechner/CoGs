@@ -276,9 +276,9 @@ class DetailViewExtended(DetailView):
             #        ordering not reliant on pk break ties. 
             if neighbours:
                 if 'next' in self.request.GET and not neighbours[1] is None:
-                    self.pk = self.object_browser[1]
+                    self.pk = neighbours[1]
                 elif 'prior' in self.request.GET and not neighbours[0] is None:
-                    self.pk = self.object_browser[0]
+                    self.pk = neighbours[0]
                                     
             self.obj = get_object_or_404(self.model, pk=self.pk)
             self.kwargs["pk"] = self.pk                             
