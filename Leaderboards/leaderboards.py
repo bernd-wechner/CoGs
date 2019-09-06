@@ -134,7 +134,7 @@ class leaderboard_options:
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
 
-    # Devide the options into two groups, content and presentation. 
+    # Divide the options into two groups, content and presentation. 
     content_options = game_filters \
                     | player_filters \
                     | perspective_options \
@@ -143,6 +143,8 @@ class leaderboard_options:
     presentation_options = formatting_options \
                          | info_options \
                          | layout_options
+    
+    admin_options = {'ignore_cache'}
     
     # ALL the options, a set against which we can filter incoming requests to 
     # weed out all the things that don't matter, or to asses if the request is in
@@ -236,6 +238,9 @@ class leaderboard_options:
 
     # Options for laying out leaderboards on screen 
     cols = 3                    # Display boards in this many columns (ignored when comparing with historic boards)
+
+    # Admin Options 
+    ignore_cache = False
     
     # NOT YET IMPLEMENTED
     # Consider: could be a list of players, could be a bool like hightlight_players
@@ -720,6 +725,11 @@ class leaderboard_options:
         if 'make_static' in request:
             self.make_static()
             self.made_static = True
+
+        ##################################################################
+        # ADMIN OPTIONS
+        if 'ignore_cache' in request:
+            self.ignore_cache = True
             
         if settings.DEBUG:
             print_debug(f"Enabled leaderboard options: {self.enabled}")                         

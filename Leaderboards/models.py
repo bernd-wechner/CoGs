@@ -1255,14 +1255,14 @@ class Game(AdminModel):
                 trueskill_sigma = r.trueskill_sigma
                 plays = r.plays
                 victories = r.victories
-                last_play = r.last_play
+                last_play = r.last_play               # TODO: last_play_tz? 
             elif isinstance(r, Performance):
                 trueskill_eta = r.trueskill_eta_after
                 trueskill_mu = r.trueskill_mu_after
                 trueskill_sigma = r.trueskill_sigma_after
-                plays = r.rating.plays
-                victories = r.rating.victories
-                last_play = r.rating.last_play
+                plays = r.play_number
+                victories = r.victory_count
+                last_play = r.session.date_time       # TODO: date_time_tz?   
             else:
                 raise ValueError(f"Progamming error in Game.leaderboard().")
             

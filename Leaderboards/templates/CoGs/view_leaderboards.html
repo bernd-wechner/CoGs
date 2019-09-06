@@ -71,7 +71,7 @@
 			</select>
 	</div>
 	
-	<div class="lo_visibiity">
+	<div class="lo_visibility">
 		<div class="lo_highlight_players">
 			<input type="checkbox" id="chk_highlight_players" oninput='toggle_highlights("players", this);'> 		
 			<label for="chk_highlight_players">Highlight players</label>
@@ -268,6 +268,12 @@
 			days duration</label>
 	  	</div>	  	
 	</section>	
+
+    {% if debug or debug_mode %}
+		<section class="lo_admin">
+			<input type="checkbox" id="chk_ignore_cache"> Ignore the leaderboard cache (rebuild all leaderboards)
+		</section>	
+    {% endif %}
 </section>
 
 {#	PAGE HEADER #}

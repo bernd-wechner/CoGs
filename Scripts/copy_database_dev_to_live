@@ -1,0 +1,68 @@
+#!/bin/bash
+# Back the dev database up, then restore it to the live
+# database.
+#
+# This is VERY dangerous. And will make a backup of the live
+# database on disk and in the postgres before we clobber it.
+#
+# The intent here is that we can run:
+#	copy_database_live_to_dev
+# then do diagnostics and fixes and if we need to 
+# run this script to make them live. 
+#
+# This produces a lot of messy tracing/diagnostic output for now. 
+
+# Find the source dir (we assume this script is living in a directory
+# just below the source directory for now like $source_dir/Scripts.
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+# Define the backup filename we will use
+# Follow this naming convention: 2019-07-05 CoGs Database.backup
+today=$(date +%Y-%m-%d)
+backup_file_live="$source_dir/Backups/$today CoGs Database - live.backup"
+backup_file_dev="$source_dir/Backups/$today CoGs Database - dev.backup"
+
+# Note: The passwords must be stored in ~/.pgpass for this server/port/database/user
+# 		Or this will prompt for one
+#       The custom format is designed for use with pg_restore
+
+# Back up the live database
+echo "Saving the live CoGs database to $backup_file_live..."
+pg_dump --host=arachne.lan --port=5432 --dbname="CoGs" --username=CoGs --format=custom > "$backup_file_live"
+echo "Saved the live CoGs database to $backup_file_live."
+
+# Back up the dev database
+echo "Saving the local CoGs database to $backup_file_dev..."
+pg_dump --host=localhost --port=5432 --dbname="CoGs" --username=CoGs --format=custom > "$backup_file_dev"
+echo "Saved the CoGs database to $backup_file_dev."
+
+# Stop the live site
+# Need root access to the webserver setup for this
+ssh root@arachne.lan "service uwsgi stop"
+
+# Define a suffix for old CoGs Database
+suffix=$(date +%s)
+
+# Note: The password must be store in ~/.pgpass for this server/port/database/user
+# 		Or this will prompt for one
+#		We need to use the postgres user to rename and recreate the CoGs database
+live_db="--host=arachne.lan --port=5432 --username=postgres"
+
+# Disconnect the processes using the CoGS database
+echo "Disconnecting users..."
+psql $live_db -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = 'CoGs';" > /dev/null 
+
+# Rename CoGs to CoGs_timestamp in the live database
+echo "Renaming database CoGs to CoGs_$suffix..."
+psql $live_db -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+
+# Recreate CoGs Database in the live database 
+echo "Recreating (empty) CoGs database..."
+psql $live_db -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+
+# Now restore the dev backup
+echo "Loading the local CoGs database on the live site..."
+pg_restore $live_db --dbname=CoGs "$backup_file_dev"
+
+# Restart the live site
+ssh root@arachne.lan "service uwsgi start"

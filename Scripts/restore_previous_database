@@ -11,7 +11,7 @@
 # integral state we want to restore a clean database again and it
 # proged a tedious process by hand through pgadmin4.   
 
-# Find the source dir (we assume this scrip is living in a directory
+# Find the source dir (we assume this script is living in a directory
 # just below the source directory for now like $source_dir/Scripts.
 source_dir=$(cd `dirname $0`/.. && pwd)
 
