@@ -22,7 +22,10 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     Given a model and pk that identify an object (model instance) will, given an ordering
     (defaulting to the models ordering) and optionally a filterset (from url_filter), will
     return a tuple that contains two PKs that of the prior and next neighbour in the list
-    either of all objects by that ordering or the filtered list (if a filterset is provided) 
+    either of all objects by that ordering or the filtered list (if a filterset is provided)
+    
+    :returns: a 4 tuple containing (prior_pk, next_pk, row_number, list_length)
+     
     :param model:        The model the object is an instance of
     :param pk:           The primary key of the model instance being considered
     :param filterset:    An optional filterset (see https://github.com/miki725/django-url-filter)
@@ -96,8 +99,8 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     #    https://code.djangoproject.com/ticket/24991
     #    https://code.djangoproject.com/ticket/17741
     #
-    # But this, it seems is the reliable method which involves dipping into Djangos 
-    # inards a litte (the SQL compiler)    
+    # But this, it seems is the reliable method which involves dipping into Django's 
+    # innards a litte (the SQL compiler)    
     sql, params = qs.query.get_compiler(using=qs.db).as_sql()
     
     # Now we wrap the SQL    
@@ -108,12 +111,12 @@ def get_neighbour_pks(model, pk, filterset=None, ordering=None):
     
     try:
         if ao:
-            if len(list(ao)) == 1:
+            if len(ao) == 1:
                 return (ao[0].neighbour_prior, ao[0].neighbour_next, ao[0].row_number, qs.count())
             else:
                 raise ValueError("Query error: object appears more than once in neighbour hunt.")
         else:
-            return (None, None)  # Means the pk does not exist
+            return (None,) * 4
     except:
-        return (None, None)
+        return (None,) * 4
         

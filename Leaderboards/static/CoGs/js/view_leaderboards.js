@@ -322,24 +322,6 @@ function URLopts(make_static) {
 	// brevity and efficiency. Also, the broader game and evolution only
 	// submitting options relevant
 	// to that option (again, for brevity and efficiency)
-	
-	// DEPRECATED code
-	// Left it here as a pro forma should we want to do something similar it
-	// illusrates
-	// a neat way to use jQuery to loop over classes of controls.
-	//
-	// Start with the method selectors
-	//
-	// While not used, these are nice ways to collect sets of enabled
-	// checkboxes:
-	//
-	// let filter_games = [];
-	// $("input[class='filter_games']:checked").each(function(){
-	// filter_games.push(this.id); });
-	//	
-	// let filter_players = [];
-	// $("input[class='filter_players']:checked").each(function(){
-	// filter_players.push(this.id); });;
 		
 	// For the radio buttons we just fetch the selected value
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
@@ -603,7 +585,11 @@ function URLopts(make_static) {
 	// that default.
 	if (cols != defaults.cols) opts.push("cols="+encodeURIComponent(cols));		
 
-	if (make_static) { opts.push("make_static"); }
+	if (make_static) opts.push("make_static"); 
+	
+	// Finally the admin options
+	const ignore_cache = $('#chk_ignore_cache').is(":checked");
+	if (ignore_cache) opts.push("ignore_cache");
 	
 	return "?" + opts.join("&");
 }
@@ -770,7 +756,7 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(url); }
+function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
 function show_url_static() { refetchLeaderboards(true); }
 
 function got_new_leaderboards() {

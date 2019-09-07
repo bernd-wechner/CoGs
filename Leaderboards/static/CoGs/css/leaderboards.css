@@ -19,6 +19,7 @@
 	  	".          lbl_basic     lo_basic      "
 	  	".          lbl_advanced  lo_visibility "
 	  	".          lo_advanced   lo_advanced   "
+	  	".          lo_admin      lo_admin      "
 }
 
 .lo_buttons {
@@ -53,7 +54,7 @@
 
 button:hover { cursor: pointer; }
 
-.lo_visibiity {
+.lo_visibility {
   	display: grid;
 	grid-area: lo_visibility;
   
@@ -120,6 +121,7 @@ button:hover { cursor: pointer; }
 		"button_apply      button_apply            .                            .                            ."
 }
 
+.lo_admin {	grid-area: lo_admin; }
 
 .selectors_multi {
   display: grid;

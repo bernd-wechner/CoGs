@@ -621,7 +621,7 @@ def view_Leaderboards(request):
          'preferred_league': [pl_id, pl_lbl],
          
          # Debug mode
-         'debug_mode': request.session.get("debug_mode", False)         
+         'debug_mode': request.session.get("debug_mode", False)
          }
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
@@ -692,7 +692,7 @@ def ajax_Leaderboards(request, raw=False):
     # Each snapshot is uniquely identified by the session.pk 
     # that it belongs to. And so we can store them in cache in 
     # a dict keyed on session.pk
-    lb_cache = request.session.get("leaderboard_cache", {}) 
+    lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {} 
     
     # Fetch the queryset of games that thes options specify
     # This is lazy and should not have caused a database hit just return an unevaluated queryset 
@@ -764,7 +764,7 @@ def ajax_Leaderboards(request, raw=False):
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    print_debug(f"\tFound it in cache!")                     
+                    print_debug(f"\t\tFound it in cache!")                     
                 else:
                     full_snapshot = board.leaderboard_snapshot()
                     if full_snapshot:

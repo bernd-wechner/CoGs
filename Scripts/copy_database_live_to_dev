@@ -1,0 +1,45 @@
+#!/bin/bash
+# Back the live database up, then restore it to the development
+# database.
+#
+# For use on the development machine to faciltate rapid 
+# import of a live databse for use in development.
+
+# Find the source dir (we assume this script is living in a directory
+# just below the source directory for now like $source_dir/Scripts.
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+# Define the backup filename we will use
+# Follow this naming convention: 2019-07-05 CoGs Database.backup
+backup_file="$source_dir/Backups/$(date +%Y-%m-%d) CoGs Database.backup"
+
+# Now back up the live database
+echo "Saving the live CoGs database to $backup_file..."
+
+# Note: The password must be store in ~/.pgpass for this server/port/database/user
+# 		Or this will prompt for one
+#       The custom format is designed for use with pg_restore
+pg_dump --host=arachne.lan --port=5432 --dbname=CoGs --username=CoGs --format=custom > "$backup_file"
+
+echo "Savied the CoGs database to $backup_file."
+
+# Disconnect the processes using the CoGS database
+echo "Disconnecting users..."
+sudo -u postgres psql -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = 'CoGs';" > /dev/null 
+
+# Define a suffix for old CoGs Database
+suffix=$(date +%s)
+
+# Rename CoGs to CoGs_timestamp
+echo "Renaming local database CoGs to CoGs_$suffix..."
+sudo -u postgres psql -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+
+# Recreate CoGs Database 
+echo "Recreating (empty) CoGs database..."
+sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+
+# Now restore the latest backup
+echo "Restoring local CoGs database from $backup_file..."
+sudo -u postgres pg_restore --dbname=CoGs "$backup_file"
+
+echo "Done."
