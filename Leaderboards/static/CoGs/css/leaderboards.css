@@ -25,15 +25,15 @@
 .lo_buttons {
 	grid-area: lo_buttons; 
 	display: grid;
-	grid-template-columns: min-content 1fr min-content;
+	grid-template-columns: min-content;
 	grid-auto-rows: min-content;
 	grid-column-gap: 5px;
-	grid-template-areas: "lo_reload   lo_shortcuts    lo_utils"
+	grid-template-areas: "lo_reload   lo_shortcuts  .  lo_utils"
 }
 
 .lo_reload    { grid-area: lo_reload; }
 .lo_shortcuts { grid-area: lo_shortcuts; }
-.lo_utils     { grid-area: lo_shortcuts; }
+.lo_utils     { grid-area: lo_utils; }
 
 .lo_basic   { grid-area: lo_basic; }
 
@@ -50,6 +50,7 @@
 .button_right { 
 	float: right; 
 	margin-left: 0.5em;
+	margin-bottom: 5px;
 }
 
 button:hover { cursor: pointer; }
