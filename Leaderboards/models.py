@@ -35,6 +35,7 @@ from django_generic_view_extensions.model import field_render, link_target_url, 
 from django_generic_view_extensions.decorators import property_method
 from django_generic_view_extensions.datetime import time_str
 from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.queryset import get_SQL
 from _ctypes import ArgumentError
 
 # CoGs Leaderboard Server Data Model
@@ -1057,7 +1058,7 @@ class Game(AdminModel):
         pfilter = Q(
             session__date_time=Subquery(
                 (Performance.objects
-                    .filter(Q(player__in=OuterRef('player')) & pfilter)
+                    .filter(Q(player=OuterRef('player')) & pfilter)
                     .values('player')
                     .annotate(max_date=Max('session__date_time'))
                     .values('max_date')[:1]

@@ -1194,6 +1194,16 @@ class leaderboard_options:
             else:
                 print_debug("\tSQL was evaluated!")
                 print_debug(f"\t{connection.queries[-1]['sql']}")
+            
+            # Attach a prefetch on related session objects to boost performance.
+            # On one trial of a full leaderboad generation I got this without the prefech:
+            # STATS:    Total Time:    36213.7 ms    Python Time:    25.0 ms    DB Time:    11.3 ms    Number of Queries:    8,339
+            # and this with the prefetch:
+            # STATS:    Total Time:    28444.2 ms    Python Time:    18.2 ms    DB Time:    10.3 ms    Number of Queries:    5,739
+            # and on a runw ith the leaderboard cache:
+            # STATS:    Total Time:     4448.4 ms    Python Time:     2.0 ms    DB Time:     2.4 ms    Number of Queries:    329
+            # Quite a saving, perhaps more to be gained yet.    
+            sessions = sessions.select_related('league', 'location', 'game').prefetch_related('performances', 'ranks')
                 
             print_debug("SELECTED SNAPSHOTS:")
             for session in sessions:
@@ -1221,7 +1231,7 @@ class leaderboard_options:
             Display the perspective if any
             Display the evolution options if any
             
-        TODO: COnsider what happens on games_ex and players_ex 
+        TODO: Consider what happens on games_ex and players_ex 
         '''
         
         # Build A Leagues intro string

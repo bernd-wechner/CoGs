@@ -31,7 +31,7 @@ from django.conf import settings
 
 from dal import autocomplete
 
-from numpy import rank
+#from numpy import rank
 
 #TODO: Add account security, and test it
 #TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
@@ -486,10 +486,10 @@ class view_Login(LoginViewExtended):
             user = User.objects.get(username=username)
                         
             # We have to lose a leaderboard cache after a login as 
-            # privacy setting change and lots of player name fields
+            # privacy settings change and lots of player name fields
             # in particular will be missing data in the cache that
-            # is now available to the logged in user. This us 
-            # unfortunate and theremay be a better way:
+            # is now available to the logged in user. This is 
+            # unfortunate and there may be a better way:
             # TODO: rather that deleting the cache, we could
             #       rebuild only the names in the leaderboards 
             #       but that would be some fiddly code.
@@ -675,9 +675,8 @@ def ajax_Leaderboards(request, raw=False):
     a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
 
-    # For DEBUGGING    
-    # if "leaderboard_cache" in request.session:
-    #     del request.session["leaderboard_cache"]    
+    if not settings.USE_LEADERBOARD_CACHE and "leaderboard_cache" in request.session:
+        del request.session["leaderboard_cache"]    
     
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter',{})
@@ -844,7 +843,8 @@ def ajax_Leaderboards(request, raw=False):
             # Then build the game tuple with all its snapshots
             leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
 
-    request.session["leaderboard_cache"] = lb_cache
+    if settings.USE_LEADERBOARD_CACHE:
+        request.session["leaderboard_cache"] = lb_cache
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

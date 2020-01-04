@@ -53,6 +53,17 @@ from .debug import print_debug
 from .forms import get_related_forms, save_related_forms
 from .filterset import format_filterset, is_filter_field 
 
+# import sys, os
+# print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+# # import pydevd;
+# # pydevd.settrace()
+# def trace_func(frame, event, arg):
+#     with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
+#         print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
+#     return trace_func
+#   
+# sys.settrace(trace_func)
+# print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -168,6 +179,7 @@ class TemplateViewExtended(TemplateView):
         return context
 
 
+import os;
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
     # Allowing us to present lists basically with the same flexibility as pre-formattted
@@ -182,6 +194,7 @@ class ListViewExtended(ListView):
 
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
+        #print_debug(f"Getting Queryset for List View. Process ID: {os.getpid()}.")
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
 

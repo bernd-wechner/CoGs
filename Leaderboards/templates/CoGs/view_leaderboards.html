@@ -1,5 +1,5 @@
 {% extends "CoGs/base.html" %}
-{% load staticfiles %}
+{% load static %}
 {% block title %}Leaderboards{% endblock %}
 
 {% block styles %}
@@ -19,7 +19,7 @@
 		<div class="lo_reload">
 			<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchLeaderboards();">
 				<img src="{% static 'reload.png' %}"  class='img_button'>
-				<span class="tooltiptext">Reload leaderboards</span?
+				<span class="tooltiptext">Reload leaderboards</span>
 			</button>
 		</div>
 			
@@ -29,17 +29,17 @@
 		<div class="lo_utils">
 			<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
 				<img src="{% static 'copy.png' %}"  class='img_button'>
-				<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span?
+				<span class="tooltiptext">Copy Leaderboards (for pasting elsewhere)</span>
 			</button>
 	
 		  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
 				<img src="{% static 'link_fat.png' %}"  class='img_button'>
-				<span class="tooltiptext">Copy Static URL</span?
+				<span class="tooltiptext">Copy Static URL</span>
 		  	</button>
 	
 		  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
 				<img src="{% static 'link_thin.png' %}" class='img_button'>		
-				<span class="tooltiptext">Copy URL</span?
+				<span class="tooltiptext">Copy URL</span>
 		  	</button>
 		</div>	
 	</div>	

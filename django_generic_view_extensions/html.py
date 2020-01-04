@@ -9,13 +9,13 @@ but also supporting numerous options that can be passed in through a request (vi
 # Python imports
 import html
 import re
+import six
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE.
 from datetime import datetime 
 
 # Django imports
 from django.conf import settings
 from django.urls import reverse
-from django.utils import six
 from django.utils.html import conditional_escape
 from django.utils.encoding import force_text
 from django.utils.safestring import mark_safe
