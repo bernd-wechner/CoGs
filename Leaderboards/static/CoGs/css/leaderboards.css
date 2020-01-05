@@ -55,7 +55,8 @@
 	margin-bottom: 5px;
 }
 
-button:hover { cursor: pointer; }
+button:hover:enabled { cursor: pointer; }
+button:hover:disabled { cursor: wait; }
 
 .lo_visibility {
   	display: grid;

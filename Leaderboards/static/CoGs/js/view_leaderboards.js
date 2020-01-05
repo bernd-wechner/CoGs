@@ -763,6 +763,10 @@ function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
 function show_url_static() { refetchLeaderboards(null, true); }
 
+function enable_submissions(yes_or_no) {
+	$("#leaderboard_options :input").prop("disabled", !yes_or_no);	
+}
+
 function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
 		// the request is complete, parse data
@@ -785,7 +789,10 @@ function got_new_leaderboards() {
 		
 		// Hide all the reloading icons we're supporting
 		$("#reloading_icon").css("visibility", "hidden");		
-		$("#reloading_icon_advanced").css("visibility", "hidden");		
+		$("#reloading_icon_advanced").css("visibility", "hidden");
+		
+		// Enable form elements again
+		enable_submissions(true);
 	}
 };
 
@@ -801,6 +808,9 @@ function refetchLeaderboards(reload_icon, make_static) {
 	
 	// Display the reloading icon requeste
 	$("#"+reload_icon).css("visibility", "visible");
+	
+	// Disable all the submission buttons
+	enable_submissions(false);
 
 	REQUEST.open("GET", url, true);
 	REQUEST.send(null);
