@@ -19,7 +19,7 @@ echo "Saving the live CoGs database to $backup_file..."
 # Note: The password must be store in ~/.pgpass for this server/port/database/user
 # 		Or this will prompt for one
 #       The custom format is designed for use with pg_restore
-sudo -u postgres pg_dump --host=arachne.lan --port=5432 --dbname=CoGs --username=CoGs --format=custom > "$backup_file"
+pg_dump --host=arachne.lan --port=5432 --dbname=CoGs --username=CoGs --format=custom > "$backup_file"
 echo "Saved the CoGs database to $backup_file."
 
 # Disconnect the processes using the CoGS database
@@ -39,6 +39,6 @@ sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
 
 # Now restore the latest backup
 echo "Restoring local CoGs database from $backup_file..."
-sudo -u postgres pg_restore --host=localhost --dbname=CoGs "$backup_file"
+pg_restore --host=localhost --dbname=CoGs --username=CoGs "$backup_file"
 
 echo "Done."
