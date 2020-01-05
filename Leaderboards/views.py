@@ -1,4 +1,4 @@
-import re, json
+import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
@@ -8,6 +8,7 @@ from django_generic_view_extensions.util import class_from_string
 from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
 from cuser.middleware import CuserMiddleware
 
@@ -570,8 +571,9 @@ def view_Leaderboards(request):
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
     session_filter = request.session.get('filter',{})
-    lo = leaderboard_options(session_filter, request.GET)    
-    default = leaderboard_options(session_filter)
+    tz = pytz.timezone(request.session.get("timezone", "UTC"))
+    lo = leaderboard_options(request.GET, session_filter, tz)
+    default = leaderboard_options(ufilter=session_filter)
     
     (title, subtitle) = lo.titles()
     
@@ -623,6 +625,9 @@ def view_Leaderboards(request):
          # Debug mode
          'debug_mode': request.session.get("debug_mode", False)
          }
+    
+    add_timezone_context(request, c)
+    add_debug_context(request, c)
     
     return render(request, 'CoGs/view_leaderboards.html', context=c)
 
@@ -680,7 +685,8 @@ def ajax_Leaderboards(request, raw=False):
     
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter',{})
-    lo = leaderboard_options(session_filter, request.GET)
+    tz = pytz.timezone(request.session.get("timezone", "UTC"))
+    lo = leaderboard_options(request.GET, session_filter, tz)
     
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = lo.titles()
@@ -693,8 +699,10 @@ def ajax_Leaderboards(request, raw=False):
     # a dict keyed on session.pk
     lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {} 
     
-    # Fetch the queryset of games that thes options specify
-    # This is lazy and should not have caused a database hit just return an unevaluated queryset 
+    # Fetch the queryset of games that these options specify
+    # This is lazy and should not have caused a database hit just return an unevaluated queryset
+    # Note: this respect the last event of n days request by constraining to games played
+    #       in the specified time frame and at the same location.  
     games = lo.games_queryset()
     
     #######################################################################################################
@@ -719,6 +727,11 @@ def ajax_Leaderboards(request, raw=False):
         # FIXME: For that it's best to use PK, so we want to put Session.PK into
         #        the snapshot tuple!        
         
+        # Note: the snapshot query does not constrain sessions to the same location as 
+        # as does the game query. once we have the games that were played at the event, 
+        # we're happy to include all sessions during the event regardless of where. The
+        # reason being that we want to see evoluton of the leaderboards during the event
+        # even if some people outside of the event are playing it and impacting the board.
         boards = lo.snapshot_queryset(game)
         
         if boards:

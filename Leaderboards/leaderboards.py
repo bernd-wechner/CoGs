@@ -1,11 +1,6 @@
-import enum, json, sys, numbers
-
-from collections import OrderedDict
-from dateutil import parser
-from datetime import datetime, timedelta
-
+# Django imports
 from django.conf import settings
-from django.db.models import Q, F, ExpressionWrapper, DateTimeField, Count, Subquery, OuterRef, Window
+from django.db.models import Q, F, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, Window
 from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime 
@@ -13,10 +8,19 @@ from django.utils.timezone import localtime
 if settings.DEBUG:
     from django.db import connection
 
-from django_generic_view_extensions.datetime import fix_time_zone
+# Django generic view extension imports
+from django_generic_view_extensions.datetime import fix_time_zone, UTC
 from django_generic_view_extensions.queryset import top, get_SQL
 from django_generic_view_extensions.debug import print_debug 
 
+# Python imports
+import enum, json, sys, numbers
+
+from collections import OrderedDict
+from dateutil import parser
+from datetime import datetime, timedelta
+
+# Local imports
 from Leaderboards.models import Game, League, Player, Session
 
 # Some useful enums to use in the options. Really just a way of encapsulating related 
@@ -41,8 +45,8 @@ LinkSelection             = enum.Enum("LinkSelection", LinkSelections)
 
 def is_number(s):
     '''
-    A simple test to on strig s to see if it's a number or not, for float values
-    notable leaderboard_options.num_days and compare_back_to. Which can both come
+    A simple test on a string to see if it's a number or not, for float values
+    notably leaderboard_options.num_days and compare_back_to. Which can both come
     in as float values.
     '''
     try:
@@ -101,8 +105,6 @@ class leaderboard_options:
                     'changed_since',             # Games played since self.changed_since
                     'num_days'}                  # Games played in the last event of self.num_days
     
-    # TODO: num_days events should be constrained to same location! And we start calling them events not sessions!
-        
     # Options that we accept that will filter the list of players presented on leaderboards 
     # (i.e. define the subset of all players that have played that game) 
     player_filters = {'players_ex',              # Exclusively the listed self.players  
@@ -268,17 +270,22 @@ class leaderboard_options:
         else:
             self.enabled.discard(option)
 
-    def __init__(self, session={}, request={}):
+    def __init__(self, urequest={}, ufilter={}, utz=UTC):
         '''
         Build a leaderboard options instance populated with options froma request dictionary
         (could be from request.GET or request.POST). If none is specified build with default 
         values, i.e.e do nothing here (defaults are specified in attribute declaratons above) 
         
-        :param session: a request.session.filter dictionary that spectified the session default.
-                        currently only 'league' is used to populate the options with a default
-                        league filter based on session preferences. Is extensible.
+        :param urequest: a user request, i.e. a request.GET or request.POST dictionary that
+                         contains options.
+         
+        :param ufilter: a user filter, i.e request.session.filter dictionary that spectifies 
+                        the session default. Currently only 'league' is used to populate the 
+                        options with a default league filter based on session preferences. 
+                        Is extensible.
                         
-        :param request: a request.GET or request.POST dictionary that contains options.
+        :param utz:      the users timezone. Only used to generating date_time strings where
+                         needed so that theya re int he users timezone when produced.
         '''
 
         def decodeDateTime(dt):
@@ -334,7 +341,7 @@ class leaderboard_options:
         # enabled list respect the incoming options instead.
         
         have_options = False
-        for item in request: 
+        for item in urequest: 
             if item in self.all_options:
                 have_options = True 
                 break
@@ -352,7 +359,7 @@ class leaderboard_options:
         # defaults. As soon as one option is specified normally that won't be needed,
         # but if no options are specified, it is needed to start with an empty set of
         # enabled options here.     
-        if have_options or "no_defaults" in request:
+        if have_options or "no_defaults" in urequest:
             self.enabled = set()
             
         # A very special case for the two snapshot options. They are not enabled
@@ -362,9 +369,9 @@ class leaderboard_options:
         #
         # If both are supplied we need of course to ignore one. Matters no which, 
         # but only one can be respected 
-        if "compare_back_to" in request:
+        if "compare_back_to" in urequest:
             self.compare_with = 0
-        elif "compare_with" in request:
+        elif "compare_with" in urequest:
             self.compare_back_to = None
             
         # Keeping the same order as the properties above and recommended for
@@ -386,8 +393,8 @@ class leaderboard_options:
         self.need_enabling.add('games_ex')          
         self.need_enabling.add('games_in')
         for suffix in ("ex", "in"):
-            if f'games_{suffix}' in request:        
-                games = request[f'games_{suffix}'].split(",")  
+            if f'games_{suffix}' in urequest:        
+                games = urequest[f'games_{suffix}'].split(",")  
                 ex_in = suffix 
                 break
 
@@ -407,11 +414,11 @@ class leaderboard_options:
         # is of no interest to a given league or leagues) 
         self.need_enabling.add('top_games')          
         self.need_enabling.add('latest_games')          
-        if 'top_games' in request and request['top_games'].isdigit():
-            self.num_games = int(request["top_games"])
+        if 'top_games' in urequest and urequest['top_games'].isdigit():
+            self.num_games = int(urequest["top_games"])
             self.__enable__('top_games', self.num_games)            
-        elif 'latest_games' in request and request['latest_games'].isdigit():
-            self.num_games = int(request["latest_games"])
+        elif 'latest_games' in urequest and urequest['latest_games'].isdigit():
+            self.num_games = int(urequest["latest_games"])
             self.__enable__('latest_games', self.num_games)            
 
         # We can acccept leagues in an any or all form but
@@ -423,18 +430,18 @@ class leaderboard_options:
         self.need_enabling.add('game_leagues_any')          
         self.need_enabling.add('game_leagues_all')
         preferred_league = None          
-        if 'game_leagues_any' in request:
-            if request['game_leagues_any']:
-                leagues = request['game_leagues_any'].split(",")
+        if 'game_leagues_any' in urequest:
+            if urequest['game_leagues_any']:
+                leagues = urequest['game_leagues_any'].split(",")
             else:
                 leagues = None
-        elif 'game_leagues_all' in request:
-            if request['game_leagues_all']:
-                leagues = request['game_leagues_all'].split(",")
+        elif 'game_leagues_all' in urequest:
+            if urequest['game_leagues_all']:
+                leagues = urequest['game_leagues_all'].split(",")
             else:
                 leagues = None
-        elif not request:
-            preferred_league = session.get('league', None)
+        elif not urequest:
+            preferred_league = ufilter.get('league', None)
             leagues = [preferred_league] if preferred_league else []
         else:
             leagues = None
@@ -448,8 +455,8 @@ class leaderboard_options:
 
             # We need to enable one of these for each of the three posible outcomes above,
             # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('game_leagues_any', self.game_leagues and ('game_leagues_any' in request or preferred_league))
-            self.__enable__('game_leagues_all', self.game_leagues and 'game_leagues_all' in request)
+            self.__enable__('game_leagues_any', self.game_leagues and ('game_leagues_any' in urequest or preferred_league))
+            self.__enable__('game_leagues_all', self.game_leagues and 'game_leagues_all' in urequest)
 
         # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:
@@ -463,10 +470,10 @@ class leaderboard_options:
         # players, or those played by all of the listed players. 
         self.need_enabling.add('game_players_any')          
         self.need_enabling.add('game_players_all')          
-        if 'game_players_any' in request:
-            players = request['game_players_any'].split(",")
-        elif 'game_players_all' in request:
-            players = request['game_players_all'].split(",")
+        if 'game_players_any' in urequest:
+            players = urequest['game_players_any'].split(",")
+        elif 'game_players_all' in urequest:
+            players = urequest['game_players_all'].split(",")
         else:
             players = [] # # Must be a a Falsey value
 
@@ -477,8 +484,8 @@ class leaderboard_options:
                 if Player.objects.all().filter(pk=player).exists():
                     self.game_players.append(player)
 
-            self.__enable__('game_players_any', self.game_players and 'game_players_any' in request)
-            self.__enable__('game_players_all', self.game_players and 'game_players_all' in request)
+            self.__enable__('game_players_any', self.game_players and 'game_players_any' in urequest)
+            self.__enable__('game_players_all', self.game_players and 'game_players_all' in urequest)
             
         # In case one or the other was enabled in the defaults above, if we lack any players we ensure they are both disabled
         else:
@@ -489,9 +496,9 @@ class leaderboard_options:
         # games that have a recorded play session after that date (exclude games 
         # not played since them).
         self.need_enabling.add('changed_since')          
-        if 'changed_since' in request:
+        if 'changed_since' in urequest:
             try:
-                self.changed_since = fix_time_zone(parser.parse(decodeDateTime(request['changed_since'])))
+                self.changed_since = fix_time_zone(parser.parse(decodeDateTime(urequest['changed_since'])))
             except:
                 self.changed_since = None # Must be a a Falsey value
 
@@ -507,8 +514,8 @@ class leaderboard_options:
         # boards. But for an average games night, probably makes little sense 
         # and has little utility. 
         self.need_enabling.add('num_days')          
-        if 'num_days' in request and is_number(request['num_days']):
-            self.num_days = float(request["num_days"])
+        if 'num_days' in urequest and is_number(urequest['num_days']) and not self.changed_since:
+            self.num_days = float(urequest["num_days"])
             self.__enable__('num_days', self.num_days)
 
         ##################################################################
@@ -525,8 +532,8 @@ class leaderboard_options:
         self.need_enabling.add('players_ex')
         self.need_enabling.add('players_in')
         for suffix in ("ex", "in"):
-            if f'players_{suffix}' in request:        
-                players = request[f'players_{suffix}'].split(",")  
+            if f'players_{suffix}' in urequest:        
+                players = urequest[f'players_{suffix}'].split(",")  
                 ex_in = suffix 
                 break
 
@@ -552,21 +559,21 @@ class leaderboard_options:
         # As the starting point. Other options can add players of course, this 
         # is not exclusive of other player selecting options.
         self.need_enabling.add('num_players_top')          
-        if 'num_players_top' in request and request['num_players_top'].isdigit():
-            self.num_players_top = int(request["num_players_top"])
+        if 'num_players_top' in urequest and urequest['num_players_top'].isdigit():
+            self.num_players_top = int(urequest["num_players_top"])
             self.__enable__('num_players_top', self.num_players_top)                            
        
         # Here we're requesting to provide context to the self.players that
         # are showing on the list. We may want to see a player or two or more 
         # above and/or below them. 
         self.need_enabling.add('num_players_above')          
-        if 'num_players_above' in request and request['num_players_above'].isdigit():
-            self.num_players_above = int(request["num_players_above"])
+        if 'num_players_above' in urequest and urequest['num_players_above'].isdigit():
+            self.num_players_above = int(urequest["num_players_above"])
             self.__enable__('num_players_above', self.num_players_above)                            
 
         self.need_enabling.add('num_players_below')          
-        if 'num_players_below' in request and request['num_players_below'].isdigit():
-            self.num_players_below = int(request["num_players_below"])
+        if 'num_players_below' in urequest and urequest['num_players_below'].isdigit():
+            self.num_players_below = int(urequest["num_players_below"])
             self.__enable__('num_players_below', self.num_players_below)                            
         
         # TODO: Can we support and/or combinations of min_plays, played_since and leagues_any/all?
@@ -574,16 +581,16 @@ class leaderboard_options:
         # Now we request to include players who have played at least a 
         # few times.
         self.need_enabling.add('min_plays')          
-        if 'min_plays' in request and request['min_plays'].isdigit():
-            self.min_plays = int(request["min_plays"])
+        if 'min_plays' in urequest and urequest['min_plays'].isdigit():
+            self.min_plays = int(urequest["min_plays"])
             self.__enable__('min_plays', self.min_plays)                            
 
         # Now we request to include only players who have played the game
         # recently enough ... 
         self.need_enabling.add('played_since')          
-        if 'played_since' in request:
+        if 'played_since' in urequest:
             try:
-                self.played_since = fix_time_zone(parser.parse(decodeDateTime(request['played_since'])))
+                self.played_since = fix_time_zone(parser.parse(decodeDateTime(urequest['played_since'])))
             except:
                 self.played_since = None  # Must be a a Falsey value        
 
@@ -594,18 +601,18 @@ class leaderboard_options:
         # possibly already supplied game_leagues_any or game_leagues_all.
         self.need_enabling.add('player_leagues_any')          
         self.need_enabling.add('player_leagues_all')          
-        if 'player_leagues_any' in request:
-            if request['player_leagues_any']:
-                leagues = request['player_leagues_any'].split(",")
+        if 'player_leagues_any' in urequest:
+            if urequest['player_leagues_any']:
+                leagues = urequest['player_leagues_any'].split(",")
             else:
                 leagues = None
-        elif 'player_leagues_all' in request:
-            if request['player_leagues_all']:
-                leagues = request['player_leagues_all'].split(",")
+        elif 'player_leagues_all' in urequest:
+            if urequest['player_leagues_all']:
+                leagues = urequest['player_leagues_all'].split(",")
             else:
                 leagues = None
-        elif not request:
-            preferred_league = session.get('league', None)
+        elif not urequest:
+            preferred_league = ufilter.get('league', None)
             leagues = [preferred_league] if preferred_league else []
         else:
             leagues = None
@@ -619,17 +626,17 @@ class leaderboard_options:
 
             # We need to enable one of these for each of the three posible outcomes above,
             # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in request or preferred_league))                            
-            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in request)                            
+            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in urequest or preferred_league))                            
+            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in urequest)                            
 
-        elif ('player_leagues_any' in request  or 'player_leagues_all' in request) and self.game_leagues:
+        elif ('player_leagues_any' in urequest  or 'player_leagues_all' in urequest) and self.game_leagues:
             # Already validated list of players
             self.player_leagues = self.game_leagues
 
             # We need to enable one of these for each of the three posible outcomes above,
             # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in request or preferred_league))                            
-            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in request)
+            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in urequest or preferred_league))                            
+            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in urequest)
         
         # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:                            
@@ -638,9 +645,9 @@ class leaderboard_options:
         
         # Now we capture the persepctive request if it provides a valid datetime
         self.need_enabling.add('as_at')          
-        if 'as_at' in request:
+        if 'as_at' in urequest:
             try:
-                self.as_at = fix_time_zone(parser.parse(decodeDateTime(request['as_at'])))
+                self.as_at = fix_time_zone(parser.parse(decodeDateTime(urequest['as_at'])))
             except:
                 self.as_at = None  # Must be a a Falsey value
                 
@@ -649,86 +656,95 @@ class leaderboard_options:
         ##################################################################
         # EVOLUTION OPTIONS
         #
-        # Now the evolution options. These are simpler as we can onjly specify one
+        # Now the evolution options. These are simpler as we can only specify one
         # method of selecting which snapshots to display. Compare_back_to is special
-        # beast though as we record it as an int or a datetime. The latter is an explict
-        # request back to time, and the former is a num_days request for a session
-        # impact presentation where the session is chosed by looking back from the current 
-        # leaderboard (latest or as_at) this many days and finding relevant snapshots in that
-        # window.
-        self.need_enabling.add('compare_with')          
-        self.need_enabling.add('compare_back_to')          
-        if 'compare_with' in request and request['compare_with'].isdigit():
-            self.compare_with = int(request['compare_with'])            
-            self.__enable__('compare_with', self.compare_with)                            
-            self.__enable__('compare_back_to', False)                            
+        # beast though as we record it as a number or a datetime. The latter is an explict
+        # request back to time, and the former is a number of days request for an event impact
+        # impact presentation that can work in concertn with num_days above. 
+        self.need_enabling.add('compare_with')
+        self.need_enabling.add('compare_back_to')
+        if 'compare_with' in urequest and urequest['compare_with'].isdigit():
+            self.compare_with = int(urequest['compare_with'])            
+            self.__enable__('compare_with', self.compare_with)
+            self.__enable__('compare_back_to', False)
             
-        elif 'compare_back_to' in request:
-            if is_number(request['compare_back_to']):
-                self.compare_back_to = float(request['compare_back_to'])
+        elif 'compare_back_to' in urequest:
+            if urequest['compare_back_to']:
+                # Now if it's a number we keept it as float and if it's a strig that parses
+                # as a date_time we keept it as a date_time.
+                if is_number(urequest['compare_back_to']):
+                    self.compare_back_to = float(urequest['compare_back_to'])
+                else:
+                    try:
+                        self.compare_back_to = fix_time_zone(parser.parse(decodeDateTime(urequest['compare_back_to'])))
+                    except:
+                        self.compare_back_to = None  # Must be a a Falsey value
+            # If compare_back_to is specificed without any value, it is taken
+            # to imply compare back to the changed_since time or the num_days 
+            # event specification if either is specified (only one is sensible
+            # at a time).  
             else:
-                try:
-                    self.compare_back_to = fix_time_zone(parser.parse(decodeDateTime(request['compare_back_to'])))
-                except:
-                    self.compare_back_to = None  # Must be a a Falsey value
+                if self.changed_since:
+                    self.compare_back_to = self.changed_since
+                elif self.num_days:
+                    self.compare_back_to = self.num_days
                     
-            self.__enable__('compare_back_to', self.compare_back_to)                            
-            self.__enable__('compare_with', False)                            
-                    
-
+            self.__enable__('compare_back_to', self.compare_back_to)
+            self.__enable__('compare_with', False)
+            
         ##################################################################
         # INFO OPTIONS
 
         # Options to include extra info in a leaderboard header
-        if 'details' in request:
-            self.details = json.loads(request['details'].lower()) # A boolean value is parsed
+        if 'details' in urequest:
+            self.details = json.loads(urequest['details'].lower()) # A boolean value is parsed
         # else use the default value     
     
-        if 'analysis_pre' in request:
-            self.analysis_pre = json.loads(request['analysis_pre'].lower()) # A boolean value is parsed     
+        if 'analysis_pre' in urequest:
+            self.analysis_pre = json.loads(urequest['analysis_pre'].lower()) # A boolean value is parsed     
     
-        if 'analysis_post' in request:
-            self.analysis_post = json.loads(request['analysis_post'].lower()) # A boolean value is parsed
+        if 'analysis_post' in urequest:
+            self.analysis_post = json.loads(urequest['analysis_post'].lower()) # A boolean value is parsed
     
         ##################################################################
         # HIGHLIGHT OPTIONS
 
         # Options for formatting the contents of a given leaderbaords 
-        if 'highlight_players' in request:
-            self.highlight_players = json.loads(request['highlight_players'].lower()) # A boolean value is parsed
+        if 'highlight_players' in urequest:
+            self.highlight_players = json.loads(urequest['highlight_players'].lower()) # A boolean value is parsed
              
-        if 'highlight_changes' in request:
-            self.highlight_changes = json.loads(request['highlight_changes'].lower()) # A boolean value is parsed
+        if 'highlight_changes' in urequest:
+            self.highlight_changes = json.loads(urequest['highlight_changes'].lower()) # A boolean value is parsed
 
-        if 'highlight_selected_players' in request:
-            self.highlight_selected_players = json.loads(request['highlight_selected_players'].lower()) # A boolean value is parsed
+        if 'highlight_selected_players' in urequest:
+            self.highlight_selected_players = json.loads(urequest['highlight_selected_players'].lower()) # A boolean value is parsed
         
         ##################################################################
         # FORMATTING OPTIONS
 
-        if 'names' in request:
-            self.names = NameSelection[request['names']]
+        if 'names' in urequest:
+            self.names = NameSelection[urequest['names']]
         
-        if 'links' in request: 
-            self.links = LinkSelection[request['links']]
+        if 'links' in urequest: 
+            self.links = LinkSelection[urequest['links']]
 
         # Options for laying out leaderboards on screen 
-        if 'cols' in request:
-            self.cols = request['cols']
+        if 'cols' in urequest:
+            self.cols = urequest['cols']
 
         # YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
-        if 'trace' in request:
-            self.trace = request['trace'].split(",")
+        if 'trace' in urequest:
+            self.trace = urequest['trace'].split(",")
 
         # A special option which isn't an option per se. If passed in we make
         # the provided options as static as we can with self.make_static()            
-        if 'make_static' in request:
-            self.make_static()
+        if 'make_static' in urequest:
+            self.make_static(ufilter, utz)
             self.made_static = True
 
         ##################################################################
         # ADMIN OPTIONS
-        if 'ignore_cache' in request:
+        if 'ignore_cache' in urequest:
             self.ignore_cache = True
             
         if settings.DEBUG:
@@ -910,13 +926,17 @@ class leaderboard_options:
         
         return d
 
-    def last_session_time(self):
+    def last_session_property(self, field):
         '''
-        Returns a lazy Queryset that when evaluated produces the date_time of the 
+        Returns a lazy Queryset that when evaluated produces the nominated property of the 
         last session played given the current options sepcifying league and perspective.
         This is irrespective of the game, and is intended for the given league or leagues
-        to retrun the last time of any activity as a reference for most recent event
-        calculation.
+        to return a property of the last activity as a reference for most recent event
+        calculatiuons.
+        
+        Two properties are interest in most recent event queries:
+            'date_time' - to find the date_time that the last gaming event ended.
+            'location'  - to find out where it was played 
         '''
         if settings.DEBUG:
             queries_before = len(connection.queries)
@@ -934,8 +954,8 @@ class leaderboard_options:
         if self.is_enabled('as_at'):
             s_filter &= Q(date_time__lte=self.as_at)
             
-        session_times = Session.objects.filter(s_filter).values('date_time').order_by("-date_time")
-        latest_session_time = top(session_times, 1)
+        properties = Session.objects.filter(s_filter).values(field).order_by("-date_time")
+        latest_property = top(properties, 1)
         
         if settings.DEBUG:
             queries_after = len(connection.queries)
@@ -944,27 +964,54 @@ class leaderboard_options:
             
             if queries_after == queries_before:
                 print_debug("\tSQL is still LAZY")
-                print_debug(f"\t{get_SQL(latest_session_time)}")
+                print_debug(f"\t{get_SQL(latest_property)}")
             else:
                 print_debug("\tSQL was evaluated!")
                 print_debug(f"\t{connection.queries[-1]['sql']}")
         
-        return latest_session_time
+        return latest_property
+
+    def last_event_end_time(self, as_ExpressionWrapper=True):
+        '''
+        Returns an Expression (that can be used in filtering sessions) that is the date_time 
+        of the ostensible end of the last gaming event. Being the date_time of the last 
+        session this league or these leagues played. 
+        '''
+        if as_ExpressionWrapper:
+            leet = ExpressionWrapper(Subquery(self.last_session_property('date_time')), output_field=DateTimeField())
+        else:
+            leet = self.last_session_property('date_time')[0]['date_time']
+            
+        return leet
 
     def last_event_start_time(self, delta_days, as_ExpressionWrapper=True):
         '''
-        Returns an Expression that can be used in filtering sessions that is the date_time 
-        of the ostensible start of the event. Being the date_time of the last session this 
-        league or these leugues playered less the number of days provided as an in the value
-        delta_days. This could self.num_days for the game filtering or self.compare_back_to 
-        for snapshot capture.
+        Returns an Expression (that can be used in filtering sessions) that is the date_time 
+        of the ostensible start of the last gaming event. Being the last_event_end_time as above)
+        less the value of delta_days. This could be self.num_days for the game filtering or 
+        self.compare_back_to for snapshot capture for example.
         '''
         if as_ExpressionWrapper:
-            lest = ExpressionWrapper(Subquery(self.last_session_time()) - timedelta(days=delta_days), output_field=DateTimeField())
+            lest = ExpressionWrapper(Subquery(self.last_session_property('date_time')) - timedelta(days=delta_days), output_field=DateTimeField())
         else:
-            lest = self.last_session_time()[0]['date_time'] - timedelta(days=delta_days)
+            lest = self.last_session_property('date_time')[0]['date_time'] - timedelta(days=delta_days)
             
         return lest
+
+    def last_event_location(self, as_ExpressionWrapper=True):
+        '''
+        Returns an Expression (that can be used in filtering sessions) that is the location 
+        of the event. Being the location of the last session this league or these leugues 
+        played less 
+        '''
+        if as_ExpressionWrapper:
+            # Note: that ForeignKey is an AutoField which is a class of IntegerField.
+            # So the output type of IntergerField is populated with the right SQL here.
+            lel = ExpressionWrapper(Subquery(self.last_session_property('location')), output_field=IntegerField())
+        else:
+            lel = self.last_session_property()[0]['location']
+            
+        return lel
 
     def games_queryset(self):
         '''
@@ -1046,8 +1093,13 @@ class leaderboard_options:
         gfilter = or_filters
 
         if self.is_enabled('num_days'):
-            reference_time = self.last_event_start_time(self.num_days)
-            gfilter &= Q(sessions__date_time__gte=reference_time )
+            # Find only games played on or after the event start time
+            est = self.last_event_start_time(self.num_days)
+            gfilter &= Q(sessions__date_time__gte=est)
+
+            # Find only games played at the event location 
+            el = self.last_event_location()
+            gfilter &= Q(sessions__location=el) 
 
             # And let's not forget to limit it to games with sessions played before
             # self.as_at if that perspective is enabled.
@@ -1097,7 +1149,7 @@ class leaderboard_options:
                 print_debug(f"\t{game.name}")
             
         return filtered_games
-  
+    
     def snapshot_queryset(self, game):
         '''
         Returns a QuerySet of the Session objects which which provide the foundation
@@ -1120,6 +1172,27 @@ class leaderboard_options:
                
         We build a QeurySet of the sessions after which we want the leaderboard snapshots.        
         '''
+        
+        def sessions_plus(sessions):
+            '''
+            Given a sessioons queryset adds the prefets needed to lower the query count later and boost 
+            performance a little.
+
+            On one trial of a full leaderboad generation I got this without the prefech:
+            STATS:    Total Time:    36213.7 ms    Python Time:    25.0 ms    DB Time:    11.3 ms    Number of Queries:    8,339
+            
+            and this with the prefetch:
+            STATS:    Total Time:    28444.2 ms    Python Time:    18.2 ms    DB Time:    10.3 ms    Number of Queries:    5,739
+            
+            and on a run with the leaderboard cache:
+            STATS:    Total Time:     4448.4 ms    Python Time:     2.0 ms    DB Time:     2.4 ms    Number of Queries:    329
+            
+            Quite a saving (even better of course from the cache). 
+            
+            :param sessions:
+            '''
+            return sessions.select_related('league', 'location', 'game').prefetch_related('performances', 'ranks')
+        
         if settings.DEBUG:
             queries_before = len(connection.queries)
         
@@ -1169,9 +1242,11 @@ class leaderboard_options:
                         reference_time = None
 
                 if reference_time:
-                    extra_session = top(sessions.filter(sfilter & Q(date_time__lt = reference_time)), 1)
+                    extra_session = top(sessions_plus(sessions.filter(sfilter & Q(date_time__lt = reference_time))), 1)
                     sfilter &= Q(date_time__gte = reference_time)
             
+            sessions = sessions_plus(sessions)
+
             # Then order the sessions in reverse date_time order  
             sessions =  sessions.filter(sfilter).order_by("-date_time")
             
@@ -1194,17 +1269,7 @@ class leaderboard_options:
             else:
                 print_debug("\tSQL was evaluated!")
                 print_debug(f"\t{connection.queries[-1]['sql']}")
-            
-            # Attach a prefetch on related session objects to boost performance.
-            # On one trial of a full leaderboad generation I got this without the prefech:
-            # STATS:    Total Time:    36213.7 ms    Python Time:    25.0 ms    DB Time:    11.3 ms    Number of Queries:    8,339
-            # and this with the prefetch:
-            # STATS:    Total Time:    28444.2 ms    Python Time:    18.2 ms    DB Time:    10.3 ms    Number of Queries:    5,739
-            # and on a runw ith the leaderboard cache:
-            # STATS:    Total Time:     4448.4 ms    Python Time:     2.0 ms    DB Time:     2.4 ms    Number of Queries:    329
-            # Quite a saving, perhaps more to be gained yet.    
-            sessions = sessions.select_related('league', 'location', 'game').prefetch_related('performances', 'ranks')
-                
+
             print_debug("SELECTED SNAPSHOTS:")
             for session in sessions:
                 print_debug(f"\t{session.date_time}")
@@ -1317,7 +1382,7 @@ class leaderboard_options:
     
         return (title, "<BR>".join(subtitle))
 
-    def make_static(self):
+    def make_static(self, ufilter={}, utz=UTC):
         '''
         Make the relative leaderboard_options more static. Specifically the event based ones.
         
@@ -1340,12 +1405,38 @@ class leaderboard_options:
         Both can have excellent ToolTips of course.
         '''
         
-        # Map self.num_days to self.changed_since
-        if self.is_enabled('num_days'):
-            self.changed_since = self.last_event_start_time(self.num_days, as_ExpressionWrapper=False)            
-            self.__enable__('changed_since', True)
-            self.__enable__('num_days', False)
-            
         # Map self.compare_back_to number to self.compare_back_to datetime
         if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
-            self.compare_back_to = self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False)            
+            self.compare_back_to = fix_time_zone(self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False), utz)            
+
+        # Map self.num_days to self.changed_since
+        if self.is_enabled('num_days'):
+            # Disable num_days option (which is relative to now and not static.
+            self.__enable__('num_days', False)
+            
+            # Enable the equivalent time window and evolution options
+            self.changed_since = fix_time_zone(self.last_event_start_time(self.num_days, as_ExpressionWrapper=False), utz)
+            self.__enable__('changed_since', True)
+            
+            self.as_at = fix_time_zone(self.last_event_end_time(as_ExpressionWrapper=False), utz)
+            self.__enable__('as_at', True)
+            
+            self.compare_back_to = self.changed_since
+            self.__enable__('compare_back_to', True)
+            
+        # If a user session filter is used, convert it toe xplicit static options
+        # Only league supported for now. If not leagues are explicti and preferred
+        # league is in place for the user (in the user session)
+        #
+        # Note: This is probably not needed. It operates in concert with the client
+        # side code that generates a statc URL from the returned options. We return
+        # an options"made_static" to let the client know we've done the server side 
+        # bit. The client side bit then build the URL from the leaderboard_options we 
+        # return.
+        if ufilter:
+            preferred_league = ufilter.get('league', None)
+            if preferred_league:
+                if not self.game_leagues:
+                    self.game_leagues = [preferred_league]
+                if not self.player_leagues:
+                    self.player_leagues = [preferred_league] 

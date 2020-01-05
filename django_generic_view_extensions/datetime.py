@@ -41,13 +41,17 @@ def time_str(date_time):
     #        Try the DATETIME_FORMAT 'D,  j M Y H:i'
     return localize(make_naive(localtime(date_time)))
 
-def fix_time_zone(dt):
+UTC = pytz.timezone('UTC')
+
+def fix_time_zone(dt, tz=UTC):
     '''
     A simple function that takes a datetime object and if it has no tzinfo will give it some 
     assuming its UTC.
     '''
-    UTC = pytz.timezone('UTC')
-    if not dt is None and dt.tzinfo == None:
-        return UTC.localize(dt)
-    else:
-        return dt
+    if not dt is None: 
+        if dt.tzinfo == None:
+            return tz.localize(dt)
+        elif dt.tzinfo != tz:
+            return dt.astimezone(tz)
+        
+    return dt

@@ -16,6 +16,10 @@
 	<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
 	
 	<div class="lo_buttons">
+		<div class="lo_reload_icon">
+			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
+		</div>
+		
 		<div class="lo_reload">
 			<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchLeaderboards();">
 				<img src="{% static 'reload.png' %}"  class='img_button'>
@@ -100,8 +104,8 @@
 	
 	<section class="lo_advanced">
 		<div class="button_apply">
-			<button type="button" id='btnApply' onclick="refetchLeaderboards();">Apply</button> 
-			<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;' align='right'>
+			<button type="button" id='btnApply' onclick="refetchLeaderboards('reloading_icon_advanced');">Apply</button> 
+			<img id='reloading_icon_advanced' src='{% static "Reload.apng" %}' style='horizontal-align: left; vertical-align: middle; visibility:hidden;'>
 		</div>
 	
 		<div class="label_filtering">Filtering:</div>
@@ -170,9 +174,9 @@
 	  
 	  	<div class="filter_games_event">
 			<input type="checkbox" id="chk_num_days" class="filter_games exclusive_group1" oninput="only_one(this, '#chk_games_ex, .exclusive_group1')" > 
-			<label for="chk_num_days">for games played in the last session of  
-			<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '.exclusive_group1'); mirror(this,'#num_days_ev');"> 
-			days duration</label> 
+			<label for="chk_num_days" class="tooltip">for games played in the last gaming event of  
+				<input type="number" id="num_days" min="0" class="Number" style="width: 5ch" onchange="blank_zero(this); check_check(this, '#chk_num_days', '.exclusive_group1'); mirror(this,'#num_days_ev');"> days duration
+				<span class="tooltiptext">The last gaming event ends with the latest game recorded that matches all other criteria, and includes games played at the same event as that game up to the specified number of days prior to it.</span>			 </label> 
 	  	</div>
 	  	
 		<div class="filter_games_selected_in">
@@ -263,9 +267,11 @@
 	
 	  	<div class="select_evolution_session">
 			<input type="radio" name="evolution_selection" value="num_days_ev" id="chk_num_days_ev"  class="evolution_selection">
-			<label for="chk_num_days_ev">leaderboards back to the start of the last game session of 
-			<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'num_days_ev', 'no_evolution'); mirror(this,'#num_days');">
-			days duration</label>
+			<label for="chk_num_days_ev" class="tooltip">leaderboards back to the start of the last gaming event of 
+				<input type="number" id="num_days_ev" min="0" class="Number" style="width: 5ch" oninput="blank_zero(this); check_radio(this, 'evolution_selection', 'num_days_ev', 'no_evolution'); mirror(this,'#num_days');">
+				days duration
+				<span class="tooltiptext">The last gaming event ends with the latest game recorded that matches all other criteria, and includes games played at the same event as that game up to the specified number of days prior to it.</span>
+			</label>
 	  	</div>	  	
 	</section>	
 
