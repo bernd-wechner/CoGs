@@ -655,7 +655,9 @@ function GetShortcutButtons() {
 		{"enabled": ["num_days", "compare_back_to"], 
 	     "num_days": 1,
 	     "compare_back_to": 1,
-	     "num_players_top": 10 		     
+	     "num_players_top": 10,
+		 "details": true,
+		 "links": "BGG"
 		}]);
 
 	if (preferred_league[0])
@@ -664,7 +666,9 @@ function GetShortcutButtons() {
 			 "game_leagues": [preferred_league[0]],
 		     "num_days": 1,
 		     "compare_back_to": 1,
-		     "num_players_top": 10 		     
+		     "num_players_top": 10,
+			 "details": true,
+			 "links": "BGG"
 			}]);
 	
 	return shortcut_buttons;
@@ -717,7 +721,7 @@ function ShortcutButton(button) {
 	// We replace the options that the shortcut button demands
 	// TODO: We should consider if any others need changing!
 	// Might be OK if enabled is simply overwritten. But maybe
-	// not, the parser server side may not look at enabled, but
+	// not, the parser server-side may not look at enabled, but
 	// look at other submissions. Needs diagnosis.
 	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;

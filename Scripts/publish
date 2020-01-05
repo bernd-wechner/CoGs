@@ -11,16 +11,22 @@ server_mount_dir=/home/bernd/Mounts/leaderboard.space
 server_account=weaver@arachne.lan
 server_dir=/data/www/leaderboard.space
 
+# Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
+source_dir=$(cd `dirname $0`/.. && pwd)
+echo "Source directory: $source_dir"
+
 # Ensure the server is properly mounted (or we can't publish to them)
 mountpoint -q $server_mount_dir
 if [ $? != 0 ];then
 	if [ ! -d $server_mount_dir ]; then
-		echo "Creating $server_mount_dir ..."
+		echo "Creating destination directory $server_mount_dir ..."
 	    mkdir -p $server_mount_dir
 	fi
 
 	echo Mounting $server_mount_dir ...
 	sshfs -o IdentityFile=$rsa_file $server_account:$server_dir $server_mount_dir
+else
+	echo "Destination directory: $server_mount_dir"
 fi
 
 # Build an rsync exclusons file
@@ -32,11 +38,11 @@ cat > $exclusion_file <<-EOF
 	static
 EOF
 
-# Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
-source_dir=$(cd `dirname $0`/.. && pwd)
-
 # Now collect the static files
-$source_dir/manage.py collectstatic  --verbosity 0 --noinput
+# Stuff that the settings file writes to screen escapes the 0 verbosity and is displayed
+# So redirect stdout to /dev/null
+echo "Collecting static files ..."
+$source_dir/manage.py collectstatic  --verbosity 0 --noinput > /dev/null
 
 # Now publish the site
 echo "Copying site to $server_name..."

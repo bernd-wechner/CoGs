@@ -35,12 +35,12 @@ backup_file_dev="$source_dir/Backups/$today CoGs Database - dev.backup"
 #       The custom format is designed for use with pg_restore
 
 # Back up the live database
-echo "Saving the live CoGs database to $backup_file_live... live_pass_warn"
+echo "Saving the live CoGs database to $backup_file_live... $live_pass_warn"
 pg_dump --host=$live_host --port=5432 --dbname="CoGs" --username=CoGs --format=custom > "$backup_file_live"
 echo "Saved the live CoGs database to $backup_file_live."
 
 # Back up the dev database
-echo "Saving the local CoGs database to $backup_file_dev... dev_pass_warn"
+echo "Saving the local CoGs database to $backup_file_dev... $dev_pass_warn"
 pg_dump --host=localhost --port=5432 --dbname="CoGs" --username=CoGs --format=custom > "$backup_file_dev"
 echo "Saved the CoGs database to $backup_file_dev."
 
