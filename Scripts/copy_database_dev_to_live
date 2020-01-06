@@ -74,4 +74,7 @@ echo "Loading the local CoGs database on the live site..."
 pg_restore $live_db --dbname=CoGs "$backup_file_dev"
 
 # Restart the live site
+echo "Restarting the UWSGI service on $live_host"
 ssh root@$live_host "service uwsgi start"
+
+echo "Done."

@@ -367,7 +367,7 @@ class leaderboard_options:
         # one of which can't should be set. We can only respect one. So if we get 
         # on in the request we should anull the other.
         #
-        # If both are supplied we need of course to ignore one. Matters no which, 
+        # If both are supplied we need of course to ignore one. Matters not which, 
         # but only one can be respected 
         if "compare_back_to" in urequest:
             self.compare_with = 0
@@ -922,7 +922,9 @@ class leaderboard_options:
                 elif isinstance(val, NameSelection) or isinstance(val, LinkSelection):
                     val = val.name
                 
-                d[attr] = val
+                # Only include the value if it needs no enabling or if it is enabled.
+                if (attr in self.need_enabling and attr in self.enabled) or not attr in self.need_enabling:
+                    d[attr] = val
         
         return d
 

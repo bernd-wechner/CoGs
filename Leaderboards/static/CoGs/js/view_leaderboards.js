@@ -599,12 +599,12 @@ function URLopts(make_static) {
 }
 
 // TODO: We should fetch definitions from the database
-// or better said, they should be delivered with eladerboards, based on the
+// or better said, they should be delivered with leaderboards, based on the
 // user logged on, with a default set for annonymous users.
 // For now just hard coding a set of defaults.
 
 // The 0th element is ignored, nominally there to represent the Reload button
-// and because we prefer our shortcut buttons to number from 1
+// and because we prefer our shortcut buttons to number from 1.
 // Global so that we can add them with one function and respond to them with 
 // another.
 let shortcut_buttons = [null]; 
@@ -640,15 +640,18 @@ let shortcut_buttons = [null];
 // buttons on other views too.
 
 function GetShortcutButtons() {
+	pl_id = preferred_league[0];
+	pl_name = preferred_league[1];
+	
 	// Start afresh
 	shortcut_buttons = [null];
 	
 	shortcut_buttons.push(["All leaderboards", true, false, {"enabled": []}]);
 
-	if (preferred_league[0])
-		shortcut_buttons.push([`All ${preferred_league[1]} leaderboards`, true, false, 
+	if (pl_id)
+		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, 
 			{"enabled": ["player_leagues_any", "game_leagues_any"], 
-			 "game_leagues": [preferred_league[0]]
+			 "game_leagues": [pl_id]
 			}]);
 
 	shortcut_buttons.push(["Impact of last games night", true, false, 
@@ -660,10 +663,10 @@ function GetShortcutButtons() {
 		 "links": "BGG"
 		}]);
 
-	if (preferred_league[0])
-		shortcut_buttons.push([`Impact of last ${preferred_league[1]} games night`, true, false,  
+	if (pl_id)
+		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,  
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
-			 "game_leagues": [preferred_league[0]],
+			 "game_leagues": [pl_id],
 		     "num_days": 1,
 		     "compare_back_to": 1,
 		     "num_players_top": 10,
@@ -719,10 +722,6 @@ function ShortcutButton(button) {
 			delete options[opt]
 	
 	// We replace the options that the shortcut button demands
-	// TODO: We should consider if any others need changing!
-	// Might be OK if enabled is simply overwritten. But maybe
-	// not, the parser server-side may not look at enabled, but
-	// look at other submissions. Needs diagnosis.
 	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;
 		if (options.need_enabling.includes(key) && !options.enabled.includes(key)) 
