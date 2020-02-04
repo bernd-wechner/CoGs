@@ -108,7 +108,7 @@ class leaderboard_options:
     # Options that we accept that will filter the list of players presented on leaderboards 
     # (i.e. define the subset of all players that have played that game) 
     player_filters = {'players_ex',              # Exclusively the listed self.players  
-                      'players_in',              # Inlcuding the listed self.players
+                      'players_in',              # Including the listed self.players
                       'num_players_top',         # The top self.num_players_top players
                       'num_players_above',       # self.num_players_above players above any players selected by self.players_in
                       'num_players_below',       # self.num_players_below players below any players selected by self.players_in
@@ -525,7 +525,7 @@ class leaderboard_options:
         # restrict which players we present on the boards.
 
         # A comma separated list of players if submitted flags a request
-        # to show thos players only (exlusive) or at least those players 
+        # to show those players only (exlusive) or at least those players 
         # (inclusive). The option specifies the context and only one of 
         # them can be specified at a time with any sense. 
         players = None
@@ -770,21 +770,29 @@ class leaderboard_options:
         '''
         return (self.is_enabled('players_in') or self.is_enabled('players_ex')) and str(player_pk) in self.players
 
+    def player_in_league(self, player_pk, league_pks):
+        '''
+        Returns True if a player meets the league criteria        
+        '''
+        league_pks = [str(pk) for pk in league_pks]  # We force them to strings as we stored strings in self.player_leagues 
+        if self.is_enabled('player_leagues_any') and not set(league_pks) & set(self.player_leagues):
+            return False
+        elif self.is_enabled('player_leagues_all') and not set(league_pks) == set(self.player_leagues):
+            return False
+        return True
+
     def player_ok(self, player_pk, plays, last_play, league_pks):
         '''        
         Returns True if a player with the specified properties passes the criteria specified
         for them. 
         '''
-        # We always inclide players we've explicitly requested
+        # We always include players we've explicitly requested
         if self.is_enabled('players_in') and str(player_pk) in self.players:
             return True
 
-        # If not explicitly selected then a player must satisfy anys pecified league criteria
+        # If not explicitly selected then a player must satisfy any specified league criteria
         # or else they won't be listed.
-        league_pks = [str(pk) for pk in league_pks]  # We force them to strings as we stored strings in self.player_leagues 
-        if self.is_enabled('player_leagues_any') and not set(league_pks) & set(self.player_leagues):
-            return False
-        elif self.is_enabled('player_leagues_all') and not set(league_pks) == set(self.player_leagues):
+        if not self.player_in_league(player_pk, league_pks):
             return False
 
         # If we have num_players_top requested then meeting any of the remaining filters 
@@ -846,8 +854,8 @@ class leaderboard_options:
                 last_play = p[11]
                 leagues = p[12] 
                 
-                # If an exlusive player list is enabled respect that
-                if self.is_enabled('players_ex'):
+                # If the player is explicitly nominated respect that
+                if self.player_nominated(pk):
                     if pk in self.players:
                         lbf.append(p)
                     continue
@@ -855,11 +863,11 @@ class leaderboard_options:
                 # Apply remaining citeria one by one
                 
                 # List top N players regardless of who they are
-                if self.is_enabled('num_players_top') and len(lbf) < self.num_players_top:
+                if self.player_in_league(pk, leagues) and self.is_enabled('num_players_top') and len(lbf) < self.num_players_top:
                     lbf.append(p)
                     continue
 
-                # For the rest of the list we check if the player is ok by the filters                   
+                # For the rest of the list we check if the player is ok by performance criteria and league criteria                   
                 if self.player_ok(pk, plays, last_play, leagues):
                     lbf.append(p)
                     continue
@@ -878,6 +886,7 @@ class leaderboard_options:
                     for i in range(self.num_players_above):
                         if start + i < len(leaderboard) and self.player_nominated(leaderboard[start + i][1]):
                             lbf.append(p)
+                            continue
 
                 # If need be we look back n players for a nominated player
                 if self.is_enabled('num_players_below'):
@@ -890,6 +899,7 @@ class leaderboard_options:
                     for i in range(self.num_players_below):
                         if start - i >= 0 and self.player_nominated(leaderboard[start - i][1]):
                             lbf.append(p)
+                            continue
                                 
         # If no player filters are specified, lsit the all the players
         else:
@@ -1055,14 +1065,10 @@ class leaderboard_options:
             s_filter &= Q(date_time__lte=self.as_at)
                 
         # We sort them by a measure of popularity (within the selected leagues)
-        #
-        # TODO: last_play is within the specified leagues (via s_filter)
-        #       session_count and play_count are not. They need to be.
-        
         latest_session = top(Session.objects.filter(s_filter).filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
-        session_count = Count('sessions', distinct=True)
-        play_count = Count('sessions__performances', distinct=True)
+        session_count = Count('sessions', filter=g_filter, distinct=True)
+        play_count = Count('sessions__performances', filter=g_filter, distinct=True)
 
         games = (Game.objects.filter(g_filter)
                              .annotate(last_play=last_play)
@@ -1120,8 +1126,7 @@ class leaderboard_options:
         filtered_games = games.filter(gfilter).order_by(*order_games_by).distinct()
         
         # Taking the top num_games of course happens last (after all other filters applied)
-        # TODO: Must it? Do we want to take the top n games and then apply the filters? Or
-        #       be able to choose. This is a classic prioritsiation question on the options.  
+        # It's a way of clipping long lists down to size focussing on the top entries.
         if self.is_enabled('top_games') or self.is_enabled('latest_games'):
             filtered_games = top(filtered_games, self.num_games)
             
@@ -1297,8 +1302,6 @@ class leaderboard_options:
         In subtitle:
             Display the perspective if any
             Display the evolution options if any
-            
-        TODO: Consider what happens on games_ex and players_ex 
         '''
         
         # Build A Leagues intro string
@@ -1327,12 +1330,12 @@ class leaderboard_options:
         elif len(L) > 2:
             l = f"{L[0].name}, {L[1].name} ..."
         
-        # Build the list of leagues capping at two items with elipsis if more.
+        # Build the list of players capping at two items with elipsis if more.
         if len(P) == 1:
             p = P[0].name_nickname 
-        elif len(L) == 2:
+        elif len(P) == 2:
             p = f"{P[0].name_nickname} and {P[1].name_nickname}"
-        elif len(L) > 2:
+        elif len(P) > 2:
             p = f"{P[0].name_nickname}, {P[1].name_nickname} ..."
        
         # Start the TITLE off with Top or Latest
@@ -1382,6 +1385,12 @@ class leaderboard_options:
         elif self.is_enabled("compare_with"):
             subtitle.append(f"compared with {self.compare_with} prior leaderboards")
     
+        if self.is_enabled("games_ex"):
+            subtitle.append(f"for the games: {', '.join([Game.objects.get(pk=g).name for g in self.games])}")
+    
+        if self.is_enabled("players_ex"):
+            subtitle.append(f"for the players: {', '.join([Player.objects.get(pk=p).name_nickname for p in self.players])}")
+
         return (title, "<BR>".join(subtitle))
 
     def make_static(self, ufilter={}, utz=UTC):

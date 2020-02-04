@@ -35,7 +35,8 @@ from dal import autocomplete
 #from numpy import rank
 
 #TODO: Add account security, and test it
-#TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
+#TODO: Once account security is in place a player will be in certain leagues, 
+#      restrict some views to info related to those leagues.
 #TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
 
 #===============================================================================
@@ -62,7 +63,9 @@ def updated_user_from_form(user, request):
     POST = request.POST
     registrars = Group.objects.get(name='registrars')
 
-    user.username = POST['name_nickname']       # TODO: nicknames can have spaces, does the auth model support usernames with spaces? 
+    # TODO: user names in the auth model can only have letters, numbers and  @/./+/-/_
+    # So filter the submitted name_nickname
+    user.username = POST['name_nickname'] 
     user.first_name = POST['name_personal']
     user.last_name = POST['name_family']
     user.email = POST['email_address']
@@ -100,7 +103,9 @@ def post_process_submitted_model(self):
     model = self.model._meta.model_name
 
     if model == 'player':
-        pass # updated_user_from_form(...) # TODO: Need when saving users update the auth model too.
+        # TODO: Need when saving users update the auth model too.
+        #       call updated_user_from_form() above 
+        pass  
     elif model == 'session':
     # TODO: When saving sessions, need to do a confirmation step first, reporting the impacts.
     #       Editing a session will have to force recalculation of all the rating impacts of sessions
@@ -306,7 +311,7 @@ def post_process_submitted_model(self):
                 else:
                     rank_previous = rank                         
        
-        # TODO: Before we calculate TrueSkillImpacts we need to hgve a completely validated session!
+        # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
         #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
         #       impacts but also all subsequent ones involving any of these players if it's an edit!
@@ -490,10 +495,11 @@ class view_Login(LoginViewExtended):
             # privacy settings change and lots of player name fields
             # in particular will be missing data in the cache that
             # is now available to the logged in user. This is 
-            # unfortunate and there may be a better way:
-            # TODO: rather that deleting the cache, we could
-            #       rebuild only the names in the leaderboards 
-            #       but that would be some fiddly code.
+            # unfortunate and there may be a cheaper way to replenish 
+            # the name data than rebuilding the entire leaderboard.
+            # TODO: consider cheap means of replenishing name data
+            # in a leaderboard chache so that the cache can be preseved 
+            # when permissions change (visibility of name data). 
             if "leaderboard_cache" in self.request.session:
                 del self.request.session["leaderboard_cache"]
             
@@ -681,7 +687,7 @@ def ajax_Leaderboards(request, raw=False):
     '''
 
     if not settings.USE_LEADERBOARD_CACHE and "leaderboard_cache" in request.session:
-        del request.session["leaderboard_cache"]    
+        del request.session["leaderboard_cache"]
     
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter',{})
@@ -717,7 +723,7 @@ def ajax_Leaderboards(request, raw=False):
         #        cache already. We need the session only for:
         #
         #  1) it's datetime - cheap
-        #  2) to build the three headerrs
+        #  2) to build the three headers
         #     a) session player list     - cheap
         #     b) analisys pre            - expensive
         #     c) analysis post           - expensive
@@ -778,18 +784,18 @@ def ajax_Leaderboards(request, raw=False):
                     full_snapshot = lb_cache[board.pk]
                     print_debug(f"\t\tFound it in cache!")                     
                 else:
-                    full_snapshot = board.leaderboard_snapshot()
+                    full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
 
                 # TODO, consider not relying on a firm index here, either providing 
-                # indexes as a an enumeration or using a dict? snapshot would habe 
-                # to be turned into a tuple or lsit of dict values to be inserted into
+                # indexes as an enumeration or using a dict? snapshot would habe 
+                # to be turned into a tuple or list of dict values to be inserted into
                 # a the leaderboards tuple for this game though. Unless the whole 
                 # structure moved more toward dicts (and dicts passed well as JSON 
                 # to context and AJAX callers?
                 #
-                # Alternately make snapshots  class with attrs? What are the 
+                # Alternately make snapshots a class with attrs? What are the 
                 # consequences of that for caching, JSONifying to context and 
                 # AJAX callers?
                 print_debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")

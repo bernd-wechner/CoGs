@@ -42,13 +42,13 @@ defaults = { 'object_summary_format': 'brief',
 # The aim is to make this available in template context so that 
 # a view that builds links can avoid putting default values on the URL
 urldefaults = { 'object_summary_format': 'brief', 
-             'list_menu_format': 'text_menus',
-             'field_link_target': 'internal_links',
-             'object_display_flags': 'TODO',
-             'object_display_modes': 'as_table',
-             'index': 'noindex',
-             'key': 'nokey'
-            }
+                'list_menu_format': 'text_menus',
+                'field_link_target': 'internal_links',
+                'object_display_flags': 'TODO',
+                'object_display_modes': 'as_table',
+                'index': 'noindex',
+                'key': 'nokey'
+              }
 
 def default(obj):
     '''
