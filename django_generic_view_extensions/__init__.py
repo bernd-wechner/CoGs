@@ -176,3 +176,9 @@ import html
 NONE = html.escape("<None>")
 NOT_SPECIFIED = html.escape("<Not specified>")
 FIELD_LINK_CLASS = "field_link"
+
+def null_logger(msg):
+    pass
+
+# A hook to provide a logger
+log = null_logger 

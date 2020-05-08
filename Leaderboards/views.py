@@ -6,15 +6,15 @@ from datetime import datetime, date, timedelta
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
 from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
-from django_generic_view_extensions.options import  list_display_format, object_display_format
-from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.options import  list_display_format, object_display_format 
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
 from cuser.middleware import CuserMiddleware
 
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
-from .leaderboards import leaderboard_options, NameSelections, LinkSelections 
-
+from CoGs.logging import log
+from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
+from .leaderboards import leaderboard_options, NameSelections, LinkSelections
+ 
 from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
@@ -226,7 +226,7 @@ def post_process_submitted_model(self):
                 for player in team_players_post:
                     teams = teams.filter(players=player)
 
-                print_debug("Team Check: {} teams that have these players".format(len(teams)))
+                log.debug("Team Check: {} teams that have these players".format(len(teams)))
 
                 # If not found, then create a team object with those players and 
                 # link it to the rank object and save that.
@@ -714,10 +714,10 @@ def ajax_Leaderboards(request, raw=False):
     #######################################################################################################
     ## FOR ALL THE GAMES WE SELECTED build a leaderboard (with any associated snapshots)
     #######################################################################################################
-    print_debug(f"Preparing leaderboards for {len(games)} games.")     
+    log.debug(f"Preparing leaderboards for {len(games)} games.")     
     leaderboards = []
     for game in games:
-        print_debug(f"Preparing leaderboard for: {game}")     
+        log.debug(f"Preparing leaderboard for: {game}")     
 
         # FIXME: Here is a sweet spot. Some or all sessions are available in the
         #        cache already. We need the session only for:
@@ -748,7 +748,7 @@ def ajax_Leaderboards(request, raw=False):
             # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure 
             # now. That is assemble the actualy leaderbards after each of the collected sessions.
             
-            print_debug(f"\tPreparing {len(boards)} boards/snapshots.")     
+            log.debug(f"\tPreparing {len(boards)} boards/snapshots.")     
             
             # We want to build a list of snapshots to add to the leaderboards list
             snapshots = []
@@ -777,12 +777,12 @@ def ajax_Leaderboards(request, raw=False):
                 #        than build so it boils down here to getting the snapshot from chache or building 
                 #        it. 
                 
-                print_debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
+                log.debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
 
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    print_debug(f"\t\tFound it in cache!")                     
+                    log.debug(f"\t\tFound it in cache!")                     
                 else:
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
@@ -798,7 +798,7 @@ def ajax_Leaderboards(request, raw=False):
                 # Alternately make snapshots a class with attrs? What are the 
                 # consequences of that for caching, JSONifying to context and 
                 # AJAX callers?
-                print_debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
+                log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
                 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
@@ -807,7 +807,7 @@ def ajax_Leaderboards(request, raw=False):
                     snapshot = lo.apply(full_snapshot)
                     lbf = snapshot[8]
 
-                    print_debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
+                    log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
             
                     # Counts supplied in the full_snapshot are global and we want to constrain them to
                     # the leagues in question.
@@ -958,7 +958,7 @@ def receive_ClientInfo(request):
     '''
     if (request.POST):
         if "clear_session" in request.POST:
-            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            log.debug(f"referrer = {request.META.get('HTTP_REFERER')}")
             session_keys = list(request.session.keys())
             for key in session_keys:
                 del request.session[key]
@@ -966,16 +966,16 @@ def receive_ClientInfo(request):
 
         # Check for the timezone
         if "timezone" in request.POST:
-            print_debug(f"Timezone = {request.POST['timezone']}")
+            log.debug(f"Timezone = {request.POST['timezone']}")
             request.session['timezone'] = request.POST['timezone']
             activate(request.POST['timezone'])
 
         if "utcoffset" in request.POST:
-            print_debug(f"UTC offset = {request.POST['utcoffset']}")
+            log.debug(f"UTC offset = {request.POST['utcoffset']}")
             request.session['utcoffset'] = request.POST['utcoffset']
 
         if "location" in request.POST :
-            print_debug(f"location = {request.POST['location']}")
+            log.debug(f"location = {request.POST['location']}")
             request.session['location'] = request.POST['location']
             
     return HttpResponse()
@@ -992,7 +992,7 @@ def receive_Filter(request):
     if (request.POST):
         # Check for league
         if "league" in request.POST:            
-            print_debug(f"League = {request.POST['league']}")
+            log.debug(f"League = {request.POST['league']}")
             save_league_filters(request.session, int(request.POST.get("league", 0)))
            
     return HttpResponse()
@@ -1192,7 +1192,7 @@ def view_Fix(request):
 #         error = dt_local.tzinfo._utcoffset
 #         dt_new = dt_raw - error
 #         dt_new_local = localtime(dt_new)
-#         print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#         log.debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #         session.date_time = dt_new_local
 #         session.save()
 #         
@@ -1215,7 +1215,7 @@ def view_Fix(request):
 #                     error = dt_local.tzinfo._utcoffset
 #                     dt_new = dt_raw - error
 #                     dt_new_local = localtime(dt_new)
-#                     print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     log.debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #                     obj.created_on = dt_new_local 
 # 
 #                 if hasattr(obj, 'last_edited_on'): 
@@ -1224,7 +1224,7 @@ def view_Fix(request):
 #                     error = dt_local.tzinfo._utcoffset
 #                     dt_new = dt_raw - error
 #                     dt_new_local = localtime(dt_new)
-#                     print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     log.debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #                     obj.last_edited_on = dt_new_local
 #                 
 #                 obj.save()
@@ -1234,7 +1234,7 @@ def view_Fix(request):
 #         dt_local = localtime(dt_raw)
 #         dt_naive = make_naive(dt_local)
 #         ctz = get_current_timezone()
-#         print_debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
+#         log.debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
     
     html = "Success"
     

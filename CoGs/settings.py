@@ -4,8 +4,9 @@ Django settings for CoGs project.
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
+
 from tzlocal import get_localzone
-from django.conf import global_settings
+from django.conf import global_settings 
 
 # A custom CoGs setting that enables or disables use of the leaderboard cache.
 # It's great for performance, but gets in the way of performance tests on uncached
@@ -24,7 +25,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 STATIC_URL = "/static/"
     
 # The name of the webserver this is running on (used to select deployment settings)
-WEBSERVER = "Arachne".lower()
+WEBSERVERS = ["Arachne".lower(), "Shelob".lower()]
 
 # The Site ID for the django.contrib.sites app, 
 # which just a prerequisite for the django.contrib.flatpages app
@@ -34,9 +35,9 @@ SITE_ID = 1
 import platform
 HOSTNAME = platform.node().lower()
 
-LIVE_SITE = HOSTNAME == WEBSERVER
+LIVE_SITE = HOSTNAME in WEBSERVERS
 
-ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "leaderboard.space", "arachne-nova.lan"]
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space"]
 
 if LIVE_SITE:
     print("Django settings: Web Server")
@@ -208,3 +209,46 @@ LOGIN_URL = '/login/'
 # were on when you tried to log in, using the next= URL parameter. This the fallback 
 # if one isn't present.
 LOGIN_REDIRECT_URL = '/leaderboards/'
+
+
+# Configure logging
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters':  
+        { 'dev': { 'format': 
+        '%(prefix)s%(relativeReference)9.4f, %(relativeLast)9.4f, %(filename)20s:%(lineno)4d, %(funcName)20s - %(message)s%(postfix)s'},
+        
+         'live': { 'format': 
+         '%(asctime)s.%(msecs).03d  - %(relativeReference)9.4f - %(relativeLast)9.4f - %(process)d - %(thread)d - %(levelname)8s - %(filename)20s:%(lineno)4d - %(funcName)20s - %(message)s'}
+        }
+}
+
+if LIVE_SITE:
+    # Only meaningful of logging is enabled on the Live site. Setting DEBUG to true here will enable debug logging of course.
+    # In future could log requests one by one.
+    LOGGING['handlers'] = { 'file': {
+                                    'level': 'DEBUG',
+                                    'class': 'logging.handlers.TimedRotatingFileHandler',
+                                    'filename': '/data/log/CoGs/django.log',
+                                    'when': 'midnight',
+                                    'formatter': 'live'
+                                    }
+                           }
+    
+    LOGGING['loggers'] = { 'CoGs': { 'handlers': ['file'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
+else:
+    LOGGING['handlers'] = { 'console': {
+                                    'level': 'DEBUG',
+                                    'class': 'logging.StreamHandler',
+                                    'stream': sys.stdout,  # Optional but forces text black, without this DEBUG text is red.
+                                    'formatter': 'dev'
+                                    }
+                           }
+    
+    LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
+
+# Pass our logger to Django Generic View Extensions
+from .logging import log 
+import django_generic_view_extensions
+django_generic_view_extensions.log = log

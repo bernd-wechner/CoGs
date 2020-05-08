@@ -33,10 +33,14 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.datetime import time_str
-from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.datetime import time_str 
 from django_generic_view_extensions.queryset import get_SQL
+
+from CoGs.logging import log
+
 from _ctypes import ArgumentError
+
+
 
 # CoGs Leaderboard Server Data Model
 #
@@ -1208,7 +1212,7 @@ class Game(AdminModel):
             else:
                 leagues = []                
 
-        print_debug(f"\t\tBuilding leaderboard for {self.name}.")
+        log.debug(f"\t\tBuilding leaderboard for {self.name}.")
                 
         # If a complex  leaderboard is requested we ignore "names" and the caller
         # must perform name formatting (we provide all formats in the tuple). But 
@@ -1224,7 +1228,7 @@ class Game(AdminModel):
             elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
                 raise ValueError(f"Unexpected league: {leagues[l]}.")
 
-        print_debug(f"\t\tValidated leagues")
+        log.debug(f"\t\tValidated leagues")
             
         if asat:
             # Build leaderboard as at a given time as specified
@@ -1251,7 +1255,7 @@ class Game(AdminModel):
             # (descending skill rating). The Rating model ensures this
             ratings = Rating.objects.filter(lb_filter).distinct()        
                  
-        print_debug(f"\t\tBuilt ratings queryset.")
+        log.debug(f"\t\tBuilt ratings queryset.")
         
         # Now build a leaderboard from all the ratings for players (in this league) at this game. 
         lb = []
@@ -1293,7 +1297,7 @@ class Game(AdminModel):
                             [l.pk for l in r.player.leagues.all()])
             lb.append(lb_entry)
 
-        print_debug(f"\t\tBuilt leaderboard.")
+        log.debug(f"\t\tBuilt leaderboard.")
                             
         return None if len(lb) == 0 else lb
 

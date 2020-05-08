@@ -11,7 +11,6 @@ if settings.DEBUG:
 # Django generic view extension imports
 from django_generic_view_extensions.datetime import fix_time_zone, UTC
 from django_generic_view_extensions.queryset import top, get_SQL
-from django_generic_view_extensions.debug import print_debug 
 
 # Python imports
 import enum, json, sys, numbers
@@ -21,7 +20,9 @@ from dateutil import parser
 from datetime import datetime, timedelta
 
 # Local imports
-from Leaderboards.models import Game, League, Player, Session
+from CoGs.logging import log
+from .models import Game, League, Player, Session
+
 
 # Some useful enums to use in the options. Really just a way of encapsulating related 
 # types so we can use them in templates to pupulate selectors and receive them from 
@@ -272,20 +273,20 @@ class leaderboard_options:
 
     def __init__(self, urequest={}, ufilter={}, utz=UTC):
         '''
-        Build a leaderboard options instance populated with options froma request dictionary
+        Build a leaderboard options instance populated with options from arequest dictionary
         (could be from request.GET or request.POST). If none is specified build with default 
-        values, i.e.e do nothing here (defaults are specified in attribute declaratons above) 
+        values, i.e.e do nothing here (defaults are specified in attribute declarations above) 
         
         :param urequest: a user request, i.e. a request.GET or request.POST dictionary that
                          contains options.
          
-        :param ufilter: a user filter, i.e request.session.filter dictionary that spectifies 
+        :param ufilter: a user filter, i.e request.session.filter dictionary that specifies 
                         the session default. Currently only 'league' is used to populate the 
                         options with a default league filter based on session preferences. 
                         Is extensible.
                         
         :param utz:      the users timezone. Only used to generating date_time strings where
-                         needed so that theya re int he users timezone when produced.
+                         needed so that they are in the users timezone when produced.
         '''
 
         def decodeDateTime(dt):
@@ -441,8 +442,9 @@ class leaderboard_options:
             else:
                 leagues = None
         elif not urequest:
-            preferred_league = ufilter.get('league', None)
-            leagues = [preferred_league] if preferred_league else []
+            preferred_league = ufilter.get('league', None) 
+            # We use a list of strings as IDs come in that way in request data
+            leagues = [str(preferred_league)] if preferred_league else []
         else:
             leagues = None
             
@@ -613,7 +615,8 @@ class leaderboard_options:
                 leagues = None
         elif not urequest:
             preferred_league = ufilter.get('league', None)
-            leagues = [preferred_league] if preferred_league else []
+            # We use a list of strings as IDs come in that way in request data
+            leagues = [str(preferred_league)] if preferred_league else []
         else:
             leagues = None
             
@@ -748,7 +751,7 @@ class leaderboard_options:
             self.ignore_cache = True
             
         if settings.DEBUG:
-            print_debug(f"Enabled leaderboard options: {self.enabled}")                         
+            log.debug(f"Enabled leaderboard options: {self.enabled}")                         
 
     def has_player_filters(self):
         '''
@@ -972,14 +975,14 @@ class leaderboard_options:
         if settings.DEBUG:
             queries_after = len(connection.queries)
 
-            print_debug("last_session_time:")
+            log.debug("last_session_time:")
             
             if queries_after == queries_before:
-                print_debug("\tSQL is still LAZY")
-                print_debug(f"\t{get_SQL(latest_property)}")
+                log.debug("\tSQL is still LAZY")
+                log.debug(f"\t{get_SQL(latest_property)}")
             else:
-                print_debug("\tSQL was evaluated!")
-                print_debug(f"\t{connection.queries[-1]['sql']}")
+                log.debug("\tSQL was evaluated!")
+                log.debug(f"\t{connection.queries[-1]['sql']}")
         
         return latest_property
 
@@ -1142,18 +1145,18 @@ class leaderboard_options:
         if settings.DEBUG:
             queries_after = len(connection.queries)
 
-            print_debug("GAME SELECTOR:")
+            log.debug("GAME SELECTOR:")
             
             if queries_after == queries_before:
-                print_debug("\tSQL is still LAZY")
-                print_debug(f"\t{get_SQL(filtered_games)}")
+                log.debug("\tSQL is still LAZY")
+                log.debug(f"\t{get_SQL(filtered_games)}")
             else:
-                print_debug("\tSQL was evaluated!")
-                print_debug(f"\t{connection.queries[-1]['sql']}")
+                log.debug("\tSQL was evaluated!")
+                log.debug(f"\t{connection.queries[-1]['sql']}")
             
-            print_debug("SELECTED GAMES:")
+            log.debug("SELECTED GAMES:")
             for game in filtered_games:
-                print_debug(f"\t{game.name}")
+                log.debug(f"\t{game.name}")
             
         return filtered_games
     
@@ -1268,18 +1271,18 @@ class leaderboard_options:
         if settings.DEBUG:
             queries_after = len(connection.queries)
 
-            print_debug("SNAPSHOT SELECTOR:")
+            log.debug("SNAPSHOT SELECTOR:")
             
             if queries_after == queries_before:
-                print_debug("\tSQL is still LAZY")
-                print_debug(f"\t{get_SQL(sessions)}")
+                log.debug("\tSQL is still LAZY")
+                log.debug(f"\t{get_SQL(sessions)}")
             else:
-                print_debug("\tSQL was evaluated!")
-                print_debug(f"\t{connection.queries[-1]['sql']}")
+                log.debug("\tSQL was evaluated!")
+                log.debug(f"\t{connection.queries[-1]['sql']}")
 
-            print_debug("SELECTED SNAPSHOTS:")
+            log.debug("SELECTED SNAPSHOTS:")
             for session in sessions:
-                print_debug(f"\t{session.date_time}")
+                log.debug(f"\t{session.date_time}")
 
         return sessions
             
@@ -1447,7 +1450,8 @@ class leaderboard_options:
         if ufilter:
             preferred_league = ufilter.get('league', None)
             if preferred_league:
+                # We use a list of strings as IDs come in that way in request data
                 if not self.game_leagues:
-                    self.game_leagues = [preferred_league]
+                    self.game_leagues = [str(preferred_league)]
                 if not self.player_leagues:
-                    self.player_leagues = [preferred_league] 
+                    self.player_leagues = [str(preferred_league)] 

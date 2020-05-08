@@ -18,7 +18,7 @@ source_dir=$(cd `dirname $0`/.. && pwd)
 
 # Identify live server. We need root access to that server via ssh
 # to stop and start appropriate services.
-live_host="arachne.lan"
+live_host="shelob.lan"
 
 # A couple of basic warnings strings
 live_pass_warn="(if this prompts for a password it is for live database and should be stored in ~/.pgpass under '$live_host')"

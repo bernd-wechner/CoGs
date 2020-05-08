@@ -64,13 +64,13 @@ from django.utils.safestring import mark_safe
 from django.utils.timezone import get_current_timezone
 
 # Package imports
-from . import FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
+from . import log, FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
 from .util import isListType, isListValue, isDictionary, safetitle
 from .datetime import time_str
 from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str, fmt_str
-from django_generic_view_extensions.debug import print_debug
+
 
 summary_methods = ["__str__", "__verbose_str__", "__rich_str__", "__detail_str__"] 
 
@@ -428,7 +428,7 @@ def collect_rich_object_fields(view):
         #
         # We also build fields_model and fields_other
 
-        print_debug(f"Collecting Rich Object Field: {field.name}")
+        log.debug(f"Collecting Rich Object Field: {field.name}")
         bucket = (odf.model if field.name in model_fields
             else odf.internal if field.name in internal_fields
             else odf.related if field.name in related_fields
@@ -488,7 +488,7 @@ def collect_rich_object_fields(view):
             names += summaries
             
         for name in names:
-            print_debug(f"Collecting Rich Object Property: {name}")
+            log.debug(f"Collecting Rich Object Property: {name}")
             label = safetitle(name.replace('_', ' '))
             
             # property_methods and summaries are functions, and properties are attributes

@@ -26,7 +26,6 @@ from .util import isListValue, isDictionary, isPRE, emulatePRE, indentVAL, getAp
 from .datetime import time_str
 from .options import list_display_format, object_display_format, object_display_modes, flt, osf, odm, odf, lmf
 from .filterset import format_filterset
-from django_generic_view_extensions.debug import print_debug
 
 
 def fmt_str(obj, safe=False):

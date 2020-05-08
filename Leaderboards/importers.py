@@ -5,8 +5,10 @@ from datetime import datetime
 from django.http import HttpResponse
 from django.db import transaction
 from django_generic_view_extensions.html import fmt_str
-from django_generic_view_extensions.debug import print_debug
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating
+
+from CoGs.logging import log
+from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating
+
 
 def import_CoGs_sessions(request):
     title = "Import CoGs scoresheet"
@@ -150,7 +152,7 @@ def import_Wollongong_sessions(request):
     missing_locations = []
     for s in sessions:
         date_time, location, game, ranked_players = s
-        print_debug(f"Processing session: {s}")
+        log.debug(f"Processing session: {s}")
         
         g = game
         try:
