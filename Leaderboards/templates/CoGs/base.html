@@ -120,9 +120,13 @@
 	        {% block branding %}
 	        <div id="branding">
 	        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
-				<h1 id="site-name"><a href="/">CoGs Leaderboard Space</a></h1>
+				{# SITE_TITLE is set int he Django Settings file based on hte host name #}
+				<h1 id="site-name"><a href="/">{{SITE_TITLE}}</a></h1>
 	        </div>
 	        {% endblock %}
+
+{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
+{#			<pre> {{ request.META }}  </pre>#}
 	        
 	        {% block menu %}
 	        <div id="menu-line" style="display: flex;">

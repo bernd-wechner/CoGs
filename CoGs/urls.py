@@ -86,7 +86,7 @@ urlpatterns = [
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # Provisional URL (remove in production, a duke nukem way of deleting records)
-if not settings.LIVE_SITE:
+if not settings.SITE_IS_LIVE:
     import debug_toolbar
     
     urlpatterns += [

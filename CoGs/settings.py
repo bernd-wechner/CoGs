@@ -23,23 +23,35 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
 # And this is the URL where static files will be expected by django pages
 STATIC_URL = "/static/"
-    
+
+import platform
+HOSTNAME = platform.node().lower()
+   
 # The name of the webserver this is running on (used to select deployment settings)
-WEBSERVERS = ["Arachne".lower(), "Shelob".lower()]
+PRODUCTION = "shelob"
+SANDBOX = "arachne"
+
+SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
+
+if HOSTNAME == PRODUCTION:
+    SITE_TITLE = "CoGs Leaderboard Space"
+elif HOSTNAME == SANDBOX:
+    SITE_TITLE = "CoGs Leaderboard Sandbox"
+else:
+    SITE_TITLE = "CoGs Leaderboard Development"
+
+# Make sure the SITE_TITLE is visible in context
+def site_context(request):  # @UnusedVariable
+    return {"SITE_TITLE": SITE_TITLE}
+
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", "sandbox.leaderboard.space"]
 
 # The Site ID for the django.contrib.sites app, 
 # which just a prerequisite for the django.contrib.flatpages app
 # which is used for serving the about page (and any other flat pages).
 SITE_ID = 1
 
-import platform
-HOSTNAME = platform.node().lower()
-
-LIVE_SITE = HOSTNAME in WEBSERVERS
-
-ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space"]
-
-if LIVE_SITE:
+if SITE_IS_LIVE:
     print("Django settings: Web Server")
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
@@ -111,7 +123,7 @@ MIDDLEWARE = (
     'cuser.middleware.CuserMiddleware',
 )
 
-if LIVE_SITE:
+if SITE_IS_LIVE:
     WSGI_APPLICATION = 'CoGs.wsgi.application'
     from django_lighttpd_middleware import METHOD
     if METHOD == "middleware":
@@ -134,6 +146,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'CoGs.settings.site_context'
             ],
         },
     },
@@ -224,7 +237,7 @@ LOGGING = {
         }
 }
 
-if LIVE_SITE:
+if SITE_IS_LIVE:
     # Only meaningful of logging is enabled on the Live site. Setting DEBUG to true here will enable debug logging of course.
     # In future could log requests one by one.
     LOGGING['handlers'] = { 'file': {
