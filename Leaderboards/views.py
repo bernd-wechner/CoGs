@@ -1,4 +1,4 @@
-import re, json
+import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 import cProfile, pstats, io
 from datetime import datetime, date, timedelta
@@ -6,14 +6,15 @@ from datetime import datetime, date, timedelta
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
 from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
-from django_generic_view_extensions.options import  list_display_format, object_display_format
-from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.options import  list_display_format, object_display_format 
+from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
 from cuser.middleware import CuserMiddleware
 
-from Leaderboards.models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
-from .leaderboards import leaderboard_options, NameSelections, LinkSelections 
-
+from CoGs.logging import log
+from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
+from .leaderboards import leaderboard_options, NameSelections, LinkSelections
+ 
 from django.db.models import Count, Q
 from django.shortcuts import render
 from django.utils import timezone
@@ -31,10 +32,11 @@ from django.conf import settings
 
 from dal import autocomplete
 
-from numpy import rank
+#from numpy import rank
 
 #TODO: Add account security, and test it
-#TODO: Once account security is in place a player will be in certain leagues, restrict some views to info related to those leagues.
+#TODO: Once account security is in place a player will be in certain leagues, 
+#      restrict some views to info related to those leagues.
 #TODO: Add testing: https://docs.djangoproject.com/en/1.10/topics/testing/tools/
 
 #===============================================================================
@@ -61,7 +63,9 @@ def updated_user_from_form(user, request):
     POST = request.POST
     registrars = Group.objects.get(name='registrars')
 
-    user.username = POST['name_nickname']       # TODO: nicknames can have spaces, does the auth model support usernames with spaces? 
+    # TODO: user names in the auth model can only have letters, numbers and  @/./+/-/_
+    # So filter the submitted name_nickname
+    user.username = POST['name_nickname'] 
     user.first_name = POST['name_personal']
     user.last_name = POST['name_family']
     user.email = POST['email_address']
@@ -99,7 +103,9 @@ def post_process_submitted_model(self):
     model = self.model._meta.model_name
 
     if model == 'player':
-        pass # updated_user_from_form(...) # TODO: Need when saving users update the auth model too.
+        # TODO: Need when saving users update the auth model too.
+        #       call updated_user_from_form() above 
+        pass  
     elif model == 'session':
     # TODO: When saving sessions, need to do a confirmation step first, reporting the impacts.
     #       Editing a session will have to force recalculation of all the rating impacts of sessions
@@ -220,7 +226,7 @@ def post_process_submitted_model(self):
                 for player in team_players_post:
                     teams = teams.filter(players=player)
 
-                print_debug("Team Check: {} teams that have these players".format(len(teams)))
+                log.debug("Team Check: {} teams that have these players".format(len(teams)))
 
                 # If not found, then create a team object with those players and 
                 # link it to the rank object and save that.
@@ -305,7 +311,7 @@ def post_process_submitted_model(self):
                 else:
                     rank_previous = rank                         
        
-        # TODO: Before we calculate TrueSkillImpacts we need to hgve a completely validated session!
+        # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
         #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
         #       impacts but also all subsequent ones involving any of these players if it's an edit!
@@ -486,13 +492,14 @@ class view_Login(LoginViewExtended):
             user = User.objects.get(username=username)
                         
             # We have to lose a leaderboard cache after a login as 
-            # privacy setting change and lots of player name fields
+            # privacy settings change and lots of player name fields
             # in particular will be missing data in the cache that
-            # is now available to the logged in user. This us 
-            # unfortunate and theremay be a better way:
-            # TODO: rather that deleting the cache, we could
-            #       rebuild only the names in the leaderboards 
-            #       but that would be some fiddly code.
+            # is now available to the logged in user. This is 
+            # unfortunate and there may be a cheaper way to replenish 
+            # the name data than rebuilding the entire leaderboard.
+            # TODO: consider cheap means of replenishing name data
+            # in a leaderboard chache so that the cache can be preseved 
+            # when permissions change (visibility of name data). 
             if "leaderboard_cache" in self.request.session:
                 del self.request.session["leaderboard_cache"]
             
@@ -570,8 +577,9 @@ def view_Leaderboards(request):
     leaderboards = ajax_Leaderboards(request, raw=True)   
 
     session_filter = request.session.get('filter',{})
-    lo = leaderboard_options(session_filter, request.GET)    
-    default = leaderboard_options(session_filter)
+    tz = pytz.timezone(request.session.get("timezone", "UTC"))
+    lo = leaderboard_options(request.GET, session_filter, tz)
+    default = leaderboard_options(ufilter=session_filter)
     
     (title, subtitle) = lo.titles()
     
@@ -624,6 +632,9 @@ def view_Leaderboards(request):
          'debug_mode': request.session.get("debug_mode", False)
          }
     
+    add_timezone_context(request, c)
+    add_debug_context(request, c)
+    
     return render(request, 'CoGs/view_leaderboards.html', context=c)
 
 
@@ -675,13 +686,13 @@ def ajax_Leaderboards(request, raw=False):
     a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
 
-    # For DEBUGGING    
-    # if "leaderboard_cache" in request.session:
-    #     del request.session["leaderboard_cache"]    
+    if not settings.USE_LEADERBOARD_CACHE and "leaderboard_cache" in request.session:
+        del request.session["leaderboard_cache"]
     
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter',{})
-    lo = leaderboard_options(session_filter, request.GET)
+    tz = pytz.timezone(request.session.get("timezone", "UTC"))
+    lo = leaderboard_options(request.GET, session_filter, tz)
     
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = lo.titles()
@@ -694,23 +705,25 @@ def ajax_Leaderboards(request, raw=False):
     # a dict keyed on session.pk
     lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {} 
     
-    # Fetch the queryset of games that thes options specify
-    # This is lazy and should not have caused a database hit just return an unevaluated queryset 
+    # Fetch the queryset of games that these options specify
+    # This is lazy and should not have caused a database hit just return an unevaluated queryset
+    # Note: this respect the last event of n days request by constraining to games played
+    #       in the specified time frame and at the same location.  
     games = lo.games_queryset()
     
     #######################################################################################################
     ## FOR ALL THE GAMES WE SELECTED build a leaderboard (with any associated snapshots)
     #######################################################################################################
-    print_debug(f"Preparing leaderboards for {len(games)} games.")     
+    log.debug(f"Preparing leaderboards for {len(games)} games.")     
     leaderboards = []
     for game in games:
-        print_debug(f"Preparing leaderboard for: {game}")     
+        log.debug(f"Preparing leaderboard for: {game}")     
 
         # FIXME: Here is a sweet spot. Some or all sessions are available in the
         #        cache already. We need the session only for:
         #
         #  1) it's datetime - cheap
-        #  2) to build the three headerrs
+        #  2) to build the three headers
         #     a) session player list     - cheap
         #     b) analisys pre            - expensive
         #     c) analysis post           - expensive
@@ -720,6 +733,11 @@ def ajax_Leaderboards(request, raw=False):
         # FIXME: For that it's best to use PK, so we want to put Session.PK into
         #        the snapshot tuple!        
         
+        # Note: the snapshot query does not constrain sessions to the same location as 
+        # as does the game query. once we have the games that were played at the event, 
+        # we're happy to include all sessions during the event regardless of where. The
+        # reason being that we want to see evoluton of the leaderboards during the event
+        # even if some people outside of the event are playing it and impacting the board.
         boards = lo.snapshot_queryset(game)
         
         if boards:
@@ -730,7 +748,7 @@ def ajax_Leaderboards(request, raw=False):
             # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure 
             # now. That is assemble the actualy leaderbards after each of the collected sessions.
             
-            print_debug(f"\tPreparing {len(boards)} boards/snapshots.")     
+            log.debug(f"\tPreparing {len(boards)} boards/snapshots.")     
             
             # We want to build a list of snapshots to add to the leaderboards list
             snapshots = []
@@ -759,28 +777,28 @@ def ajax_Leaderboards(request, raw=False):
                 #        than build so it boils down here to getting the snapshot from chache or building 
                 #        it. 
                 
-                print_debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
+                log.debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
 
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    print_debug(f"\t\tFound it in cache!")                     
+                    log.debug(f"\t\tFound it in cache!")                     
                 else:
-                    full_snapshot = board.leaderboard_snapshot()
+                    full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
 
                 # TODO, consider not relying on a firm index here, either providing 
-                # indexes as a an enumeration or using a dict? snapshot would habe 
-                # to be turned into a tuple or lsit of dict values to be inserted into
+                # indexes as an enumeration or using a dict? snapshot would habe 
+                # to be turned into a tuple or list of dict values to be inserted into
                 # a the leaderboards tuple for this game though. Unless the whole 
                 # structure moved more toward dicts (and dicts passed well as JSON 
                 # to context and AJAX callers?
                 #
-                # Alternately make snapshots  class with attrs? What are the 
+                # Alternately make snapshots a class with attrs? What are the 
                 # consequences of that for caching, JSONifying to context and 
                 # AJAX callers?
-                print_debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
+                log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
                 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
@@ -789,7 +807,7 @@ def ajax_Leaderboards(request, raw=False):
                     snapshot = lo.apply(full_snapshot)
                     lbf = snapshot[8]
 
-                    print_debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
+                    log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
             
                     # Counts supplied in the full_snapshot are global and we want to constrain them to
                     # the leagues in question.
@@ -844,7 +862,8 @@ def ajax_Leaderboards(request, raw=False):
             # Then build the game tuple with all its snapshots
             leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
 
-    request.session["leaderboard_cache"] = lb_cache
+    if settings.USE_LEADERBOARD_CACHE:
+        request.session["leaderboard_cache"] = lb_cache
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))
@@ -939,7 +958,7 @@ def receive_ClientInfo(request):
     '''
     if (request.POST):
         if "clear_session" in request.POST:
-            print_debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            log.debug(f"referrer = {request.META.get('HTTP_REFERER')}")
             session_keys = list(request.session.keys())
             for key in session_keys:
                 del request.session[key]
@@ -947,16 +966,16 @@ def receive_ClientInfo(request):
 
         # Check for the timezone
         if "timezone" in request.POST:
-            print_debug(f"Timezone = {request.POST['timezone']}")
+            log.debug(f"Timezone = {request.POST['timezone']}")
             request.session['timezone'] = request.POST['timezone']
             activate(request.POST['timezone'])
 
         if "utcoffset" in request.POST:
-            print_debug(f"UTC offset = {request.POST['utcoffset']}")
+            log.debug(f"UTC offset = {request.POST['utcoffset']}")
             request.session['utcoffset'] = request.POST['utcoffset']
 
         if "location" in request.POST :
-            print_debug(f"location = {request.POST['location']}")
+            log.debug(f"location = {request.POST['location']}")
             request.session['location'] = request.POST['location']
             
     return HttpResponse()
@@ -973,7 +992,7 @@ def receive_Filter(request):
     if (request.POST):
         # Check for league
         if "league" in request.POST:            
-            print_debug(f"League = {request.POST['league']}")
+            log.debug(f"League = {request.POST['league']}")
             save_league_filters(request.session, int(request.POST.get("league", 0)))
            
     return HttpResponse()
@@ -1173,7 +1192,7 @@ def view_Fix(request):
 #         error = dt_local.tzinfo._utcoffset
 #         dt_new = dt_raw - error
 #         dt_new_local = localtime(dt_new)
-#         print_debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#         log.debug(f"Session: {session.pk}    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #         session.date_time = dt_new_local
 #         session.save()
 #         
@@ -1196,7 +1215,7 @@ def view_Fix(request):
 #                     error = dt_local.tzinfo._utcoffset
 #                     dt_new = dt_raw - error
 #                     dt_new_local = localtime(dt_new)
-#                     print_debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     log.debug(f"{model._meta.object_name}: {obj.pk}    created    Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #                     obj.created_on = dt_new_local 
 # 
 #                 if hasattr(obj, 'last_edited_on'): 
@@ -1205,7 +1224,7 @@ def view_Fix(request):
 #                     error = dt_local.tzinfo._utcoffset
 #                     dt_new = dt_raw - error
 #                     dt_new_local = localtime(dt_new)
-#                     print_debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
+#                     log.debug(f"{model._meta.object_name}: {obj.pk}    edited     Raw: {dt_raw}    Local:{dt_local}    Error:{error}  New:{dt_new}    New Local:{dt_new_local}")
 #                     obj.last_edited_on = dt_new_local
 #                 
 #                 obj.save()
@@ -1215,7 +1234,7 @@ def view_Fix(request):
 #         dt_local = localtime(dt_raw)
 #         dt_naive = make_naive(dt_local)
 #         ctz = get_current_timezone()
-#         print_debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
+#         log.debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")        
     
     html = "Success"
     
@@ -1231,104 +1250,6 @@ def view_Kill(request, model, pk):
     html = "Success"
     
     return HttpResponse(html)
-
-import csv
-from dateutil import parser
-from django_generic_view_extensions.html import fmt_str
-
-def import_sessions():
-    title = "Import CoGs scoresheet"
-    
-    result = ""
-    sessions = []
-    with open('/home/bernd/workspace/CoGs/Seed Data/CoGs Scoresheet - Session Log.csv', newline='') as csvfile:
-        reader = csv.DictReader(csvfile, delimiter=',', quotechar='"')
-        for row in reader:
-            date_time = parser.parse(row["Date"])
-            game = row["Game"].strip()
-            ranks = {
-                row["1st place"].strip(): 1,
-                row["2nd place"].strip(): 2,
-                row["3rd place"].strip(): 3,
-                row["4th place"].strip(): 4,
-                row["5th place"].strip(): 5,
-                row["6th place"].strip(): 6,
-                row["7th place"].strip(): 7
-                }
-            
-            tie_ranks = {}
-            for r in ranks:
-                if ',' in r:
-                    rank = ranks[r]
-                    players = r.split(',')
-                    for p in players:
-                        tie_ranks[p.strip()] = rank
-                else:
-                    tie_ranks[r] = ranks[r]
-                    
-            session = (date_time, game, tie_ranks)
-            sessions.append(session)
-
-    # Make sure a Game and Player object exists for each game and player
-    missing_players = []
-    missing_games = []
-    for s in sessions:
-        g = s[1]
-        try:
-            Game.objects.get(name=g)
-        except Game.DoesNotExist:
-            if g and not g in missing_games:
-                missing_games.append(g)
-        except Game.MultipleObjectsReturned:
-            result += "{} exists more than once\n".format(g)
-        
-        for p in s[2]:
-            try:
-                Player.objects.get(name_nickname=p)
-            except Player.DoesNotExist:
-                if p and not p in missing_players:
-                    missing_players.append(p)
-            except Player.MultipleObjectsReturned:
-                result += "{} exists more than once\n".format(p)
-            
-    if len(missing_games) == 0 and len(missing_players) == 0:
-        result += fmt_str(sessions)
-        
-        Session.objects.all().delete()
-        Rank.objects.all().delete()
-        Performance.objects.all().delete()
-        Rating.objects.all().delete()
-        Team.objects.all().delete()
-        
-        for s in sessions:
-            session = Session()
-            session.date_time = s[0]
-            session.game = Game.objects.get(name=s[1])
-            session.league = League.objects.get(name='Hobart')
-            session.location = Location.objects.get(name='The Big Blue House')
-            session.save()
-            
-            for p in s[2]:
-                if p:
-                    rank = Rank()
-                    rank.session = session
-                    rank.rank = s[2][p]
-                    rank.player = Player.objects.get(name_nickname=p)
-                    rank.save()
-    
-                    performance = Performance()
-                    performance.session = session
-                    performance.player = rank.player
-                    performance.save()
-                            
-            Rating.update(session)
-    else:
-        result += "Missing Games:\n{}\n".format(fmt_str(missing_games))
-        result += "Missing Players:\n{}\n".format(fmt_str(missing_players))
-            
-    now = datetime.now()
-            
-    return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
 
 def rebuild_ratings():
     activate(settings.TIME_ZONE)

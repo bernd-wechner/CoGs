@@ -90,18 +90,18 @@ def wrap_filter(queryset, sql_where_crtiteria):
 
 def top(queryset, number_of_rows, use_slice=True):
     '''
-    A small queryset wrapper to get the top rows of a queryset without slicing it. 
+    A small queryset wrapper to get the top rows of a queryset, optionally without slicing it. 
     
-    Slicing may causes evaluation. 
+    Slicing causes evaluation. 
     
     https://docs.djangoproject.com/en/2.2/ref/models/querysets/#when-querysets-are-evaluated
     
-    Though to be honest it mostly doesnt ans slicing with [:number_of_rows] may well,
-    if it's the last operation, also return an unevaluated QuerySet. 
+    Though to be honest it mostly doesn't and slicing with [:number_of_rows] may well,
+    if it's the last operation, also returns an unevaluated QuerySet. 
     
     This method:
     
-    a) is postgresql specific, no gurantee it will work on another database engine
+    a) is postgresql specific, no guarantee it will work on another database engine
     b) produces a raw queryset adding a LIMIT specifier.
     
     As per the example here:

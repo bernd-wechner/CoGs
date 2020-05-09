@@ -33,9 +33,14 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.datetime import time_str
-from django_generic_view_extensions.debug import print_debug 
+from django_generic_view_extensions.datetime import time_str 
+from django_generic_view_extensions.queryset import get_SQL
+
+from CoGs.logging import log
+
 from _ctypes import ArgumentError
+
+
 
 # CoGs Leaderboard Server Data Model
 #
@@ -58,6 +63,8 @@ NEVER = pytz.utc.localize(datetime.min)     # Used for times to indicat if there
 ALL_LEAGUES = "Global"                      # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
 ALL_PLAYERS = "Everyone"                    # A reserved key for leaderboard filtering representing all players
 ALL_GAMES = "All Games"                     # A reserved key for leaderboard filtering representing all games
+
+MIN_TIME_DELTA = timedelta.resolution       # A nominally smallest time delta we'll consider.
 
 #===============================================================================
 # The support models, that store all the play records that are needed to
@@ -709,6 +716,32 @@ class Player(PrivacyMixIn, AdminModel):
         games = Game.objects.filter(Q(sessions__ranks__rank=1) & (Q(sessions__ranks__player=self) | Q(sessions__ranks__team__players=self))).distinct()
         return None if (games is None or games.count() == 0) else games 
 
+    @property_method
+    def last_play(self, game=None) -> object:
+        '''
+        For a given game returns the session that represents the last time this player played that game.
+        '''
+        sFilter = (Q(ranks__player=self) | Q(ranks__team__players=self))
+        if game:
+            sFilter &= Q(game=game)
+             
+        plays = Session.objects.filter(sFilter).order_by('-date_time')
+
+        return NEVER if (plays is None or plays.count() == 0) else plays[0] 
+
+    @property_method
+    def last_win(self, game=None) -> object:
+        '''
+        For a given game returns the session that represents the last time this player won that game.
+        '''
+        sFilter = Q(ranks__rank=1) & (Q(ranks__player=self) | Q(ranks__team__players=self))
+        if game:
+            sFilter &= Q(game=game)
+
+        plays = Session.objects.filter(sFilter).order_by('-date_time')
+
+        return NEVER if (plays is None or plays.count() == 0) else plays[0]    
+
     @property
     def last_plays(self) -> list:
         '''
@@ -732,10 +765,6 @@ class Player(PrivacyMixIn, AdminModel):
             if not lw is None:
                 sessions[game] = self.last_win(game)                
         return sessions
-
-    # TODO add a Leaderboard property
-    #    A method needs to take a league and game as input
-    #    A property can return a list of lists, league, game, place on leaderboard
 
     @property
     def leaderboard_positions(self) -> list:
@@ -839,22 +868,6 @@ class Player(PrivacyMixIn, AdminModel):
     def is_at_top_of_leaderbard(self, game, leagues=[]):
         return self.leaderboard_position(game, leagues) == 1
     
-    def last_play(self, game):
-        '''
-        For a given game returns the session that represents the last time this player played that game.
-        '''
-        plays = Session.objects.filter(Q(game=game) & (Q(ranks__player=self) | Q(ranks__team__players=self))).order_by('-date_time')
-
-        return NEVER if (plays is None or plays.count() == 0) else plays[0] 
-
-    def last_win(self, game):
-        '''
-        For a given game returns the session that represents the last time this player won that game.
-        '''
-        plays = Session.objects.filter(Q(game=game) & Q(ranks__rank=1) & (Q(ranks__player=self) | Q(ranks__team__players=self))).order_by('-date_time')
-
-        return NEVER if (plays is None or plays.count() == 0) else plays[0] 
-
     selector_field = "name_nickname"
     @classmethod
     def selector_queryset(cls, query="", session={}, all=False):
@@ -1051,13 +1064,13 @@ class Game(AdminModel):
         if not asat is None:
             pfilter &= Q(session__date_time__lte=asat)
         
-        # Aggregate for max date_time for a given player. That is we want a Performance 
+        # Aggregate for max date_time for a given player. That is we want one Performance 
         # per player, the one with the greatest date_time (that is before asat if specified) 
         
         pfilter = Q(
             session__date_time=Subquery(
                 (Performance.objects
-                    .filter(Q(player__in=OuterRef('player')) & pfilter)
+                    .filter(Q(player=OuterRef('player')) & pfilter)
                     .values('player')
                     .annotate(max_date=Max('session__date_time'))
                     .values('max_date')[:1]
@@ -1199,7 +1212,7 @@ class Game(AdminModel):
             else:
                 leagues = []                
 
-        print_debug(f"\t\tBuilding leaderboard for {self.name}.")
+        log.debug(f"\t\tBuilding leaderboard for {self.name}.")
                 
         # If a complex  leaderboard is requested we ignore "names" and the caller
         # must perform name formatting (we provide all formats in the tuple). But 
@@ -1215,7 +1228,7 @@ class Game(AdminModel):
             elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
                 raise ValueError(f"Unexpected league: {leagues[l]}.")
 
-        print_debug(f"\t\tValidated leagues")
+        log.debug(f"\t\tValidated leagues")
             
         if asat:
             # Build leaderboard as at a given time as specified
@@ -1242,7 +1255,7 @@ class Game(AdminModel):
             # (descending skill rating). The Rating model ensures this
             ratings = Rating.objects.filter(lb_filter).distinct()        
                  
-        print_debug(f"\t\tBuilt ratings queryset.")
+        log.debug(f"\t\tBuilt ratings queryset.")
         
         # Now build a leaderboard from all the ratings for players (in this league) at this game. 
         lb = []
@@ -1284,7 +1297,7 @@ class Game(AdminModel):
                             [l.pk for l in r.player.leagues.all()])
             lb.append(lb_entry)
 
-        print_debug(f"\t\tBuilt leaderboard.")
+        log.debug(f"\t\tBuilt leaderboard.")
                             
         return None if len(lb) == 0 else lb
 
@@ -1621,6 +1634,42 @@ class Session(TimeZoneMixIn, AdminModel):
                     victors.append(rank.player)
         return victors
     
+    @property
+    def total_impact_prediction(self) -> bool:
+        '''
+        Before actual trueskill impacts are calculated and saved we may want predict the
+        impact of this session from the data available (notably to provide feedback to 
+        a submitter regarding the impact this session will have on rathings).
+        
+        The aim is return two leaderboards the current leaderboard and the leaderbaord 
+        after this session is taken into account. There are two possble scenarios here
+        the simple and the complicated:
+        
+        The simple:
+            if the date_time of tis session is after all sessions of the same game, then
+            this is the current leaderboard and what it would look like after we save this 
+            session (remembering this is a prediction).
+            
+        The complicated:
+            The the date_time of this session is not after all sessions of this game, then
+            we are inserting a session and the current leaderboard is based on current 
+            ratings and the new one based on the impact of this session traced through all
+            later sessions. Called complected, for a reason!
+        
+        The aim is to returns a format that the client can build two leaderboard tables
+        from. This is already a defined format in leaderboard_snapshot() below, we'd be
+        returning two snapshots, the before and after. 
+        
+        TODO: Implement impact_predictions
+        '''
+        later_sessions = Session.objects.filter(Q(game=self.game) & Q(date_time__gt=self.date_time))
+        simple = len(later_sessions) == 0
+        
+#         before = self.leaderboard_before
+#         after = self.leaderboard_after
+        
+        return simple
+
     @property
     def trueskill_impacts(self) -> dict:
         '''
@@ -1995,6 +2044,65 @@ class Session(TimeZoneMixIn, AdminModel):
     
         return html
 
+    def _leaderboard(self, asat=None):
+        if not asat:
+            asat = self.date_time
+            
+        return self.game.leaderboard(asat=asat, simple=False)  
+    
+    @property
+    def leaderboard_before(self)  -> tuple:
+        return self._leaderboard(self.date_time-MIN_TIME_DELTA)
+
+    @property
+    def leaderboard_after(self)  -> tuple:
+        return self._leaderboard(self.date_time)
+
+    @property
+    def leaderboard_snapshot(self):
+        '''
+        Prepares a leaderboard snapshot for passing to a view for rendering. 
+        
+        A snapshot is defined by a tuple with these entries in order:
+        
+        session.pk, 
+        session.date_time (in local time), 
+        session.game.play_counts()['total'], 
+        session.game.play_counts()['sessions'], 
+        session.players() (as a list of pks), 
+        session.leaderboard_header(), 
+        session.leaderboard_analysis(), 
+        session.leaderboard_analysis_after(), 
+        game.leaderboard()
+        '''        
+        
+        # Get the leaderboard asat the time of this session.
+        # That includes the performances of this session and 
+        # hence the impact of this session.
+        #
+        # We provide an annotated version which supplies us with 
+        # the information needed for player filtering and rendering, 
+        # the leaderboard returned is complete (no league filter applied, 
+        # or name rendering options supplied).
+        #
+        # It will be up to the view to filter players as desired and 
+        # select the name format at render time.
+        
+        counts = self.game.play_counts(asat=self.date_time)
+
+        # Build the snapshot tuple
+        snapshot = (self.pk, 
+                    localize(localtime(self.date_time)),
+                    counts['total'], 
+                    counts['sessions'], 
+                    [p.pk for p in self.players], 
+                    self.leaderboard_header(), 
+                    self.leaderboard_analysis(), 
+                    self.leaderboard_analysis_after(), 
+                    self.leaderboard_after)
+
+        return snapshot  
+
     def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style=""):
         '''
         Internal OL factory for list of rankers on a session. 
@@ -2158,45 +2266,6 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (mark_safe(detail), data)                  
 
-    def leaderboard_snapshot(self):
-        '''
-        Prepares a leaderboard snapshot for passing to a view for rendering. 
-        
-        A snapshot is defined by a tuple with these entries in order:
-        
-        session.pk, 
-        session.date_time (in local time), 
-        session.game.play_counts()['total'], 
-        session.game.play_counts()['sessions'], 
-        session.players() (as a list of pks), 
-        session.leaderboard_header(), 
-        session.leaderboard_analysis(), 
-        session.leaderboard_analysis_after(), 
-        game.leaderboard()
-        '''        
-        # Get the leaderboard asat the time of this board.
-        # We request an annotated version which supplies us with the information 
-        # needed for player filtering and renderig, the leaderboard returned is 
-        # complete (no league filter applied, or name rendering options supplied).
-        # It will be up to the view to filter players as desired and select the 
-        # name format at render time.
-        lb = self.game.leaderboard(asat=self.date_time, simple=False)
-        
-        counts = self.game.play_counts(asat=self.date_time)
-
-        # Build the snapshot tuple
-        snapshot = (self.pk, 
-                    localize(localtime(self.date_time)),
-                    counts['total'], 
-                    counts['sessions'], 
-                    [p.pk for p in self.players], 
-                    self.leaderboard_header(), 
-                    self.leaderboard_analysis(), 
-                    self.leaderboard_analysis_after(), 
-                    lb)
-        
-        return snapshot
-   
     def previous_sessions(self, player):
         '''
         Returns all the previous sessions that the nominate player played this game in. 
@@ -2483,11 +2552,15 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         # Check all the fields
         for field in ['date_time', 'league', 'location', 'game', 'team_play']:
-            assert  getattr(self, field, None) != None, "Session Integrity error (id: {}): Must have {}.".format(self.id, field)
+            assert getattr(self, field, None) != None, "Session Integrity error (id: {}): Must have {}.".format(self.id, field)
             
         # Check that team_play is permitted for the game
         # TODO: Enable this once we have team play working properly, using an Inkognito session to fine tune the form mode change.
-        # assert (self.team_play and self.game.team_play) or (not self.team_play and self.game.individual_play), "Session Integrity error (id: {}): Game does not support play mode (game:{}, play mode: {}).".format(self.id, self.game.id, self.team_play) 
+        # assert (self.team_play and self.game.team_play) or (not self.team_play and self.game.individual_play), "Session Integrity error (id: {}): Game does not support play mode (game:{}, play mode: {}).".format(self.id, self.game.id, self.team_play)
+        
+        # Check that the date_time is in the past! It makes no sense to have future sessions recorded!
+        # TODO: test the time zone interplay here. 
+        assert self.date_time > datetime.now(tz=self.date_time_tz), "Session is in future! Recorded sessions must be in the past!"  
 
         # Collect the ranks and check rank fields
         rank_values = []
@@ -2621,7 +2694,7 @@ class Session(TimeZoneMixIn, AdminModel):
             coincident_sessions = Session.objects.filter(sfilter).exclude(pk=self.pk)
             
             if coincident_sessions.count() > 0:
-                self.date_time += timedelta(milliseconds=1)
+                self.date_time += MIN_TIME_DELTA
             else:
                 break
 

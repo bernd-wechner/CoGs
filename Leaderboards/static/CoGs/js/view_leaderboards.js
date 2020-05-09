@@ -536,11 +536,12 @@ function URLopts(make_static) {
 	  case "compare_back_to":
 		  	if (compare_back_to)
 		  		// We submit a a date to compare back to. We want to compare
-				// back to the last
-		  		// session before this date as it created the leaderboard in
-				// effect at this date.
-		  		// TODO: Check the server does this.
-		  		opts.push("compare_back_to="+encodeDateTime(compare_back_to));
+				// back to the last session before this date as it created 
+				// the leaderboard in effect at this date.
+				if (compare_back_to == changed_since)
+		  			opts.push("compare_back_to");
+				else 
+		  			opts.push("compare_back_to="+encodeDateTime(compare_back_to));
 		    break;
 	  case "num_days_ev":
 		  	if (num_days_ev)
@@ -560,7 +561,10 @@ function URLopts(make_static) {
 				// plain int, as opposed
 		  		// to a date/time and this is how the server knows it's a
 				// session relative request.
-		  		opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
+				if (num_days_ev == num_days)
+		  			opts.push("compare_back_to");
+				else
+		  			opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
 		    break;
 	}		
 	
@@ -595,12 +599,12 @@ function URLopts(make_static) {
 }
 
 // TODO: We should fetch definitions from the database
-// or better said, they should be delivered with eladerboards, based on the
+// or better said, they should be delivered with leaderboards, based on the
 // user logged on, with a default set for annonymous users.
 // For now just hard coding a set of defaults.
 
 // The 0th element is ignored, nominally there to represent the Reload button
-// and because we prefer our shortcut buttons to number from 1
+// and because we prefer our shortcut buttons to number from 1.
 // Global so that we can add them with one function and respond to them with 
 // another.
 let shortcut_buttons = [null]; 
@@ -636,31 +640,38 @@ let shortcut_buttons = [null];
 // buttons on other views too.
 
 function GetShortcutButtons() {
+	pl_id = preferred_league[0];
+	pl_name = preferred_league[1];
+	
 	// Start afresh
 	shortcut_buttons = [null];
 	
 	shortcut_buttons.push(["All leaderboards", true, false, {"enabled": []}]);
 
-	if (preferred_league[0])
-		shortcut_buttons.push([`All ${preferred_league[1]} leaderboards`, true, false, 
+	if (pl_id)
+		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, 
 			{"enabled": ["player_leagues_any", "game_leagues_any"], 
-			 "game_leagues": [preferred_league[0]]
+			 "game_leagues": [pl_id]
 			}]);
 
 	shortcut_buttons.push(["Impact of last games night", true, false, 
 		{"enabled": ["num_days", "compare_back_to"], 
 	     "num_days": 1,
 	     "compare_back_to": 1,
-	     "num_players_top": 10 		     
+	     "num_players_top": 10,
+		 "details": true,
+		 "links": "BGG"
 		}]);
 
-	if (preferred_league[0])
-		shortcut_buttons.push([`Impact of last ${preferred_league[1]} games night`, true, false,  
+	if (pl_id)
+		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,  
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
-			 "game_leagues": [preferred_league[0]],
+			 "game_leagues": [pl_id],
 		     "num_days": 1,
 		     "compare_back_to": 1,
-		     "num_players_top": 10 		     
+		     "num_players_top": 10,
+			 "details": true,
+			 "links": "BGG"
 			}]);
 	
 	return shortcut_buttons;
@@ -711,10 +722,6 @@ function ShortcutButton(button) {
 			delete options[opt]
 	
 	// We replace the options that the shortcut button demands
-	// TODO: We should consider if any others need changing!
-	// Might be OK if enabled is simply overwritten. But maybe
-	// not, the parser server side may not look at enabled, but
-	// look at other submissions. Needs diagnosis.
 	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;
 		if (options.need_enabling.includes(key) && !options.enabled.includes(key)) 
@@ -723,8 +730,8 @@ function ShortcutButton(button) {
 	// Reinitalise all the filter controls
 	InitControls(options)
 
-	// Reload the leaderboards (first argument is make_static)
-	refetchLeaderboards(false);
+	// Reload the leaderboards
+	refetchLeaderboards();
 }
 
 function toggle_visibility(class_name, visible_style) {
@@ -757,7 +764,11 @@ function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_z
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
 function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
-function show_url_static() { refetchLeaderboards(true); }
+function show_url_static() { refetchLeaderboards(null, true); }
+
+function enable_submissions(yes_or_no) {
+	$("#leaderboard_options :input").prop("disabled", !yes_or_no);	
+}
 
 function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
@@ -779,17 +790,30 @@ function got_new_leaderboards() {
 		// redraw the leaderboards
 		DrawTables("tblLB");
 		
+		// Hide all the reloading icons we're supporting
 		$("#reloading_icon").css("visibility", "hidden");		
+		$("#reloading_icon_advanced").css("visibility", "hidden");
+		
+		// Enable form elements again
+		enable_submissions(true);
 	}
 };
 
 const REQUEST = new XMLHttpRequest();
 REQUEST.onreadystatechange = got_new_leaderboards;
 	
-function refetchLeaderboards(make_static) {
+function refetchLeaderboards(reload_icon, make_static) {
+	if (typeof reload_icon === "undefined" || reload_icon == null) reload_icon = 'reloading_icon';
+	if (typeof make_static === "undefined") make_static = false;
+	
+	// Build the URL to fetch (AJAX)
 	const url = url_json_leaderboards + URLopts(make_static);
 	
-	$("#reloading_icon").css("visibility", "visible");
+	// Display the reloading icon requeste
+	$("#"+reload_icon).css("visibility", "visible");
+	
+	// Disable all the submission buttons
+	enable_submissions(false);
 
 	REQUEST.open("GET", url, true);
 	REQUEST.send(null);
@@ -1294,55 +1318,6 @@ function DrawTables(target, links) {
 			}
 		}
 	} 
-// This was a clever way to to support pairs that run across the screen.
-// Have decided in interim that we won't support that. It's much nicer even with
-// pairs
-// to run them one pair per row.
-// else if (maxshots == 2) {
-// // if cols is odd, add one so that comparisons are always side by side. So
-// cols = 1 becomes 2
-// // in the extreme.
-// if ( cols % 2 ) cols += 1;
-//
-// // Now halve the number of columns as we're spiting out two tables at a time.
-// cols /= 2;
-//
-// // And base layout calcs on the total number of boards (so twice those
-// presented, we'll
-// // leave gaps for any that don't have a comparison table.
-// var totalboards = 2*leaderboards.length;
-//
-// // Now very similar to case of maxshots==1, just in pairs.
-// var rows = totalboards / ( 2 * cols );
-// var remainder = totalboards - rows*cols;
-// if (remainder > 0) { rows++; }
-//
-// // A wrapper table for the leaderboards
-// var table = document.getElementById(target);
-// table.innerHTML = "";
-// table.className = 'leaderboard wrapper'
-//
-// var lb = 0;
-// for (var i = 0; i < rows; i++) {
-// var row = table.insertRow(i);
-// for (var j = 0; j < cols; j++) {
-// if (lb < leaderboards.length) {
-// var cell1 = row.insertCell(2*j);
-// cell1.className = 'leaderboard wrapper'
-// cell1.appendChild(LBtable(leaderboards[lb], 0, links));
-//
-// var cell2 = row.insertCell(2*j+1);
-// cell2.className = 'leaderboard wrapper'
-// if (leaderboards[lb][3].length > 1)
-// cell2.appendChild(LBtable(leaderboards[lb], 1, links));
-// else
-// cell2.appendChild(document.createTextNode("No prior board for " +
-// leaderboards[lb][2]));
-// }
-// lb++;
-// }
-// }
-// }
 	else {
 		// One row per board and its snapshots
 		// Ignore cols and use our own value here

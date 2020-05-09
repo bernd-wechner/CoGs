@@ -1,0 +1,65 @@
+#!/bin/bash
+# Publish the CoGs Site to the webserver
+
+# To mount the router and webserver we need to have SSH access and SSH keys installed
+# as we'll use sshfs to mount them if needed
+rsa_file=/home/bernd/.ssh/id_rsa
+
+# Web Server properties
+server_name=Shelob
+server_mount_dir=/home/bernd/Mounts/leaderboard.space.shelob
+server_account=sting@shelob.lan
+server_dir=/data/www/leaderboard.space
+
+# Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
+source_dir=$(cd `dirname $0`/.. && pwd)
+echo "Source directory: $source_dir"
+
+# Ensure the server is properly mounted (or we can't publish to them)
+mountpoint -q $server_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $server_mount_dir ]; then
+		echo "Creating destination directory $server_mount_dir ..."
+	    mkdir -p $server_mount_dir
+	fi
+
+	echo Mounting $server_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$server_dir $server_mount_dir
+else
+	echo "Destination directory: $server_mount_dir"
+fi
+
+# Build an rsync exclusons file
+exclusion_file="publish-exclusions"
+cat > $exclusion_file <<-EOF
+	__pycache__
+	*.pyc
+	migrations
+	static
+EOF
+
+# Now collect the static files
+# Stuff that the settings file writes to screen escapes the 0 verbosity and is displayed
+# So redirect stdout to /dev/null
+echo "Collecting static files ..."
+$source_dir/manage.py collectstatic  --verbosity 0 --noinput > /dev/null
+
+# Now publish the site
+echo "Copying site to $server_name..."
+site=(static CoGs Leaderboards Scripts django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin manage.py uwsgi_shelob.ini)
+for source in ${site[@]}; do
+	# If we're excluding static dirs, we still want to copy the static folder
+	if grep -q $source $exclusion_file; then
+		exclude=""
+	else
+		exclude="--exclude-from $exclusion_file"
+	fi
+
+	rsync -r $exclude $source_dir/$source $server_mount_dir
+done
+
+# We need to restart the uwsgi service for changes to take effect
+echo "Restarting UWSGI service on $server_name ..."
+ssh -o IdentityFile=$rsa_file $server_account sudo service uwsgi restart
+
+echo "Done."

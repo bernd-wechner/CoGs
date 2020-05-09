@@ -13,6 +13,7 @@ from django.contrib.flatpages import views as flat_views
 from django_generic_view_extensions.views import ajax_Autocomplete, ajax_Selector
 
 from Leaderboards import views
+from Leaderboards import importers
 
 # A note on flatpages:
 #    These are loaded from the database table django_flatpage (model "Flat pages" in the admin interface
@@ -85,7 +86,7 @@ urlpatterns = [
 ] + static(settings.STATIC_URL, document_root=settings.STATIC_ROOT)
 
 # Provisional URL (remove in production, a duke nukem way of deleting records)
-if not settings.LIVE_SITE:
+if not settings.SITE_IS_LIVE:
     import debug_toolbar
     
     urlpatterns += [
@@ -94,6 +95,10 @@ if not settings.LIVE_SITE:
         path('unwind', views.view_UnwindToday, name='unwind'),
         path('check', views.view_CheckIntegrity, name='check'),
         path('rebuild', views.view_RebuildRatings, name='rebuild'),
+        
+        # Currrently tailored to needs each time
+        # TODO: Write a generic importer
+        path('import', importers.import_Wollongong_sessions, name='import'),
         
         path(r'kill/<model>/<pk>', views.view_Kill, name='kill'),
         path('__debug__/', include(debug_toolbar.urls)),

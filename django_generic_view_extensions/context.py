@@ -9,6 +9,8 @@ Functions that add to the context that templates see.
 from django.utils.safestring import mark_safe
 from django.conf import settings 
 from django.utils.timezone import get_current_timezone
+from django.views.generic import base
+from django.http.request import HttpRequest
 
 # Python imports
 import pytz
@@ -33,6 +35,10 @@ def add_model_context(view, context, plural, title=False):
     Specifically, access to the model, and related forms 
     (forms for models that relate to this one).
     '''
+    
+    if not isinstance(view, base.View):
+        raise ValueError("Internal Error: add_model_context requested with invalid view")
+    
     context.update(view.kwargs)
     if 'model' in context and hasattr(view, 'operation'):
         context["model"] = context["view"].model
@@ -52,41 +58,6 @@ def add_model_context(view, context, plural, title=False):
 
     return context
 
-def add_timezone_context(view, context):
-    '''
-    Add some useful timezone information to the context. Timezone can be determined at login,
-    is stored as a session variable and passed by views into context using this function.
-    '''
-    context['timezones'] = pytz.common_timezones
-    
-    #naive_now = make_naive(datetime.now(get_localzone()))
-    naive_now = datetime.now()
-
-    dt = naive_now
-    context['naive_datetime'] = str(dt)
-    context['naive_timezone'] = None
-    context['naive_utcoffset'] = None
-
-    tz = pytz.timezone(view.request.session.get("timezone", "UTC"))
-    dt = tz.localize(naive_now)
-    context['session_datetime'] = str(dt)
-    context['session_timezone'] = str(dt.tzinfo)
-    context['session_utcoffset'] = dt.tzinfo._utcoffset
-    
-    active_tz = get_current_timezone()
-    active_dt = active_tz.localize(naive_now)
-    context['active_datetime'] = str(active_dt)
-    context['active_timezone'] = str(active_dt.tzinfo)
-    context['active_utcoffset'] = active_dt.tzinfo._utcoffset
-    
-    django_tz = pytz.timezone(settings.TIME_ZONE)
-    django_dt = django_tz.localize(naive_now)
-    context['django_datetime'] = str(django_dt)
-    context['django_timezone'] = str(django_dt.tzinfo)
-    context['django_utcoffset'] = django_dt.tzinfo._utcoffset
-    
-    return context
-    
 def add_format_context(view, context):
     '''
     Add some useful context information to views that reveal information about the
@@ -99,6 +70,8 @@ def add_format_context(view, context):
     Two types are supported Detail and List views, with different context generate
     for each one.  
     '''
+    if not isinstance(view, base.View):
+        raise ValueError("Internal Error: add_model_context requested with invalid view")
 
     if hasattr(view, "operation") and hasattr(view, "format"):
         # List views are simple
@@ -173,6 +146,9 @@ def add_filter_context(view, context):
     List view clearly, the filter determines what is listed
     Detail view, only the neighbours for browsing (prior and next) are impacted   
     '''
+    if not isinstance(view, base.View):
+        raise ValueError("Internal Error: add_model_context requested with invalid view")
+
     context['widget_filters'] = FilterWidget(model=view.model, choices=view.request.GET)
     
     # Default empty value so templates can include Javascript "var filters    = {{filters}};" without issue.
@@ -207,7 +183,9 @@ def add_ordering_context(view, context):
     :param view:
     :param context:
     '''
-    
+    if not isinstance(view, base.View):
+        raise ValueError("Internal Error: add_model_context requested with invalid view")
+
     context['widget_ordering'] = OrderingWidget(model=view.model, choices=view.request.GET.get('ordering', None))
     
     if hasattr(view, 'ordering') and not view.ordering is None:
@@ -222,13 +200,69 @@ def add_ordering_context(view, context):
         
     return context
 
-def add_debug_context(view, context):
+def add_timezone_context(view_request, context):
     '''
-    A hook to add debug into the context when requested by teh session debug flag
+    Add some useful timezone information to the context. Timezone can be determined at login,
+    is stored as a session variable and passed by views into context using this function.
+    
+    :param view_request: Must be either django.views.generic.base.View (or a derived class) 
+                         or django.http.request.HttpRequest (or rerived class) which provides
+                         a django session object. In a class based view this can be "self" and
+                         in a function based view it can be the request. 
+                         
+    :param context:     The context dictionary to augment. It is added to (i.e. the context
+                        passed in is changed/augmented, and the augmented result is returned as 
+                        well. 
+    '''
+    
+    if isinstance(view_request, base.View):
+        request = view_request.request
+    elif isinstance(view_request, HttpRequest):
+        request = view_request
+    else:
+        raise ValueError("Internal Error: add_time_context requested with invalid view/request")
+    
+    context['timezones'] = pytz.common_timezones
+    
+    #naive_now = make_naive(datetime.now(get_localzone()))
+    naive_now = datetime.now()
 
-    :param view:
-    :param context:
+    dt = naive_now
+    context['naive_datetime'] = str(dt)
+    context['naive_timezone'] = None
+    context['naive_utcoffset'] = None
+
+    tz = pytz.timezone(request.session.get("timezone", "UTC"))
+    dt = tz.localize(naive_now)
+    context['session_datetime'] = str(dt)
+    context['session_timezone'] = str(dt.tzinfo)
+    context['session_utcoffset'] = dt.tzinfo._utcoffset
+    
+    active_tz = get_current_timezone()
+    active_dt = active_tz.localize(naive_now)
+    context['active_datetime'] = str(active_dt)
+    context['active_timezone'] = str(active_dt.tzinfo)
+    context['active_utcoffset'] = active_dt.tzinfo._utcoffset
+    
+    django_tz = pytz.timezone(settings.TIME_ZONE)
+    django_dt = django_tz.localize(naive_now)
+    context['django_datetime'] = str(django_dt)
+    context['django_timezone'] = str(django_dt.tzinfo)
+    context['django_utcoffset'] = django_dt.tzinfo._utcoffset
+    
+    return context
+
+def add_debug_context(view_request, context):
     '''
-    context['debug_mode'] = view.request.session.get("debug_mode", False)
+    A hook to add debug into the context when requested by the session debug flag.
+    '''
+    if isinstance(view_request, base.View):
+        request = view_request.request
+    elif isinstance(view_request, HttpRequest):
+        request = view_request
+    else:
+        raise ValueError("Internal Error: add_time_context requested with invalid view/request")
+
+    context['debug_mode'] = request.session.get("debug_mode", False)
     
     return context

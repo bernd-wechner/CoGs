@@ -43,16 +43,27 @@ from cuser.middleware import CuserMiddleware
 from dal import autocomplete
 
 # Package imports
+from . import log
 from .util import app_from_object, class_from_string
 from .html import list_html_output, object_html_output, object_as_html, object_as_table, object_as_ul, object_as_p, object_as_br
 from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context, add_debug_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields, add_related
-from .debug import print_debug
 from .forms import get_related_forms, save_related_forms
 from .filterset import format_filterset, is_filter_field 
 
+# import sys, os
+# print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+# # import pydevd;
+# # pydevd.settrace()
+# def trace_func(frame, event, arg):
+#     with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
+#         print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
+#     return trace_func
+#   
+# sys.settrace(trace_func)
+# print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 
 def get_filterset(self):
     FilterSet = type("FilterSet", (ModelFilterSet,), { 
@@ -168,6 +179,7 @@ class TemplateViewExtended(TemplateView):
         return context
 
 
+import os;
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
     # Allowing us to present lists basically with the same flexibility as pre-formattted
@@ -182,6 +194,7 @@ class ListViewExtended(ListView):
 
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
+        #log.debug(f"Getting Queryset for List View. Process ID: {os.getpid()}.")
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
 
@@ -511,12 +524,12 @@ class CreateViewExtended(CreateView):
         # Hook for pre-processing the form (before the data is saved)
         if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
        
-        print_debug(f"Connection vendor: {connection.vendor}")
+        log.debug(f"Connection vendor: {connection.vendor}")
         if connection.vendor == 'postgresql':
-            print_debug(f"Is_valid? {self.form.data}")
+            log.debug(f"Is_valid? {self.form.data}")
             if self.form.is_valid():
                 try:
-                    print_debug(f"Open a transaction")
+                    log.debug(f"Open a transaction")
                     with transaction.atomic():
                         self.object = self.form.save()
                         
@@ -525,12 +538,12 @@ class CreateViewExtended(CreateView):
                         self.success_url = reverse_lazy('view', kwargs=kwargs)
                         
                         save_related_forms(self)
-                        print_debug(f"Saved the form and related forms.")
+                        log.debug(f"Saved the form and related forms.")
                         
                         if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
                             self.object.clean_relations()
          
-                        print_debug(f"Cleaned the relations.")
+                        log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
                     # TODO: Report IntergityErrors too
                     # TODO: if error_dict refers to a non field this crashes, find what the criterion
@@ -693,32 +706,32 @@ class UpdateViewExtended(UpdateView):
         # Hook for pre-processing the form (before the data is saved)
         if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
        
-        print_debug(f"Connection vendor: {connection.vendor}")
+        log.debug(f"Connection vendor: {connection.vendor}")
         if connection.vendor == 'postgresql':
-            print_debug(f"Is_valid? {self.form.data}")
+            log.debug(f"Is_valid? {self.form.data}")
             if self.form.is_valid():
                 try:
-                    print_debug(f"Open a transaction")
+                    log.debug(f"Open a transaction")
                     with transaction.atomic():
-                        print_debug("Saving form from POST request containing:")
+                        log.debug("Saving form from POST request containing:")
                         for (key, val) in sorted(self.request.POST.items()):
-                            print_debug(f"\t{key}: {val}")
+                            log.debug(f"\t{key}: {val}")
                         
                         self.object = self.form.save()
-                        print_debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
+                        log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
                         
                         kwargs = self.kwargs
                         kwargs['pk'] = self.object.pk
                         self.success_url = reverse_lazy('view', kwargs=kwargs)
                         
-                        print_debug(f"Saving the related forms.")
+                        log.debug(f"Saving the related forms.")
                         save_related_forms(self)
-                        print_debug(f"Saved the related forms.")
+                        log.debug(f"Saved the related forms.")
                         
                         if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
                             self.object.clean_relations()
          
-                        print_debug(f"Cleaned the relations.")
+                        log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
                     # TODO: Report IntegrityErrors too
                     # TODO: if error_dict refers to a non field this crashes, find what the criterion

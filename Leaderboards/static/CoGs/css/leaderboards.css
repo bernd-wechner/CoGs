@@ -25,21 +25,23 @@
 .lo_buttons {
 	grid-area: lo_buttons; 
 	display: grid;
-	grid-template-columns: min-content 1fr min-content;
+	grid-template-columns: min-content min-content max-content  1fr;
 	grid-auto-rows: min-content;
 	grid-column-gap: 5px;
-	grid-template-areas: "lo_reload   lo_shortcuts    lo_utils"
+	grid-template-areas: "lo_reload lo_reload_icon lo_shortcuts lo_utils";
 }
 
-.lo_reload    { grid-area: lo_reload; }
-.lo_shortcuts { grid-area: lo_shortcuts; }
-.lo_utils     { grid-area: lo_shortcuts; }
+.lo_reload      { grid-area: lo_reload; }
+.lo_reload_icon { grid-area: lo_reload_icon;  }
+.lo_shortcuts   { grid-area: lo_shortcuts; }
+.lo_utils       { grid-area: lo_utils; }
+.lo_space       { grid-area: lo_space; }
 
-.lo_basic   { grid-area: lo_basic; }
+.lo_basic       { grid-area: lo_basic; }
 
-.lbl_view     { grid-area: lbl_view; 	 font-weight: bold !important; }
-.lbl_basic    { grid-area: lbl_basic; 	 font-weight: bold !important; }
-.lbl_advanced { grid-area: lbl_advanced; font-weight: bold !important; white-space: nowrap !important;}
+.lbl_view       { grid-area: lbl_view; 	   font-weight: bold !important; }
+.lbl_basic      { grid-area: lbl_basic;    font-weight: bold !important; }
+.lbl_advanced   { grid-area: lbl_advanced; font-weight: bold !important; white-space: nowrap !important;}
 
 .button_left { 
 	float: left; 
@@ -50,9 +52,11 @@
 .button_right { 
 	float: right; 
 	margin-left: 0.5em;
+	margin-bottom: 5px;
 }
 
-button:hover { cursor: pointer; }
+button:hover:enabled { cursor: pointer; }
+button:hover:disabled { cursor: wait; }
 
 .lo_visibility {
   	display: grid;
