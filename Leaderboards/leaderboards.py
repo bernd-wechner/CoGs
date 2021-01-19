@@ -1282,7 +1282,7 @@ class leaderboard_options:
 
             log.debug("SELECTED SNAPSHOTS:")
             for session in sessions:
-                log.debug(f"\t{session.date_time}")
+                log.debug(f"\t{session.id}: {session.date_time}")
 
         return sessions
             

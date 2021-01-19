@@ -19,7 +19,7 @@ echo "Saving the live CoGs database to $backup_file..."
 # Note: The password must be store in ~/.pgpass for this server/port/database/user
 # 		Or this will prompt for one
 #       The custom format is designed for use with pg_restore
-pg_dump --host=arachne.lan --port=5432 --dbname=CoGs --username=CoGs --format=custom > "$backup_file"
+pg_dump --host=shelob.lan --port=5432 --dbname=CoGs --username=CoGs --format=custom > "$backup_file"
 echo "Saved the CoGs database to $backup_file."
 
 # Disconnect the processes using the CoGS database

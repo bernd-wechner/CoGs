@@ -4,6 +4,7 @@ Django Generic View Extensions
 QuerySet Extensions
 
 '''
+import re
 from django.db import connection
 
 def get_SQL(queryset, explain=False):
@@ -44,8 +45,26 @@ def get_SQL(queryset, explain=False):
         #     or %(key)s placeholders for a dictionary (where key is replaced 
         #     by a dictionary key, of course)
         #
-        # Which is precisely how Python2 standard % formating works.        
-        return sql % params        
+        # Which is precisely how Python2 standard % formating works.
+        SQL = sql % params
+        
+        # There's an irritating shortfall in this. Datetimes in SQL must be 
+        # bunded by single uqotes, and this hasn't  been handled meaning this SQL is 
+        # broken when it contains date times.
+        #
+        # It's not easy to fix that, and this is akuludge, but works well enough
+        # assuming datetimes format in this style which is fair signature for now
+        # but may not be universal by any measure - technically it's the default 
+        # format in use for str(datetime).  
+        # 
+        # 2020-10-02 17:00:00+00:00
+        # TODO: Generalise this by working out what the default fromat for 
+        # str(datetime) is (it will be locale defined and one place to look 
+        # is the Django settings DATETIME_INPUT_FORMATS and DATETIME_FORMAT
+        RE = re.compile(r"([^'])(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\+\d{2}:\d{2})([^'])")
+        SQL = re.sub(RE, r"\1'\2'\3", SQL)
+
+        return SQL
 
 def wrap_filter(queryset, sql_where_crtiteria):
     '''

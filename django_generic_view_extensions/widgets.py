@@ -43,7 +43,7 @@ class FilterWidget(SelectMultiple):
 
     :param choices: The request.GET object (a dictionary), that contains the initial values we will use.
 
-    Derive from SelectMultiple simply because it is the closes built-in widget to what we want.
+    Derive from SelectMultiple simply because it is the closest built-in widget to what we want.
     In that it can return an array of selections, which is what this widget wants to do. 
     '''
     model = None

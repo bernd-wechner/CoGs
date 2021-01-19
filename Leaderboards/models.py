@@ -35,6 +35,7 @@ from django_generic_view_extensions.model import field_render, link_target_url, 
 from django_generic_view_extensions.decorators import property_method
 from django_generic_view_extensions.datetime import time_str 
 from django_generic_view_extensions.queryset import get_SQL
+from django_generic_view_extensions.util import AssertLog
 
 from CoGs.logging import log
 
@@ -380,7 +381,7 @@ class Rating(RatingModel):
     def rebuild_all(self):
         # Walk through the history of sessions to rebuild all ratings
         # If ever performed keep a record of duration overall and per 
-        # session tp permit a cost esitmate should it happen again. 
+        # session to permit a cost estimate should it happen again. 
         # On a large database this could be a costly exercise, causing
         # some down time to the server (must either lock server to do 
         # this as we cannot have new ratings being created while 
@@ -417,42 +418,49 @@ class Rating(RatingModel):
         # Update the  entry in Rebuild_Log with performance results
         pass
 
-    def check_integrity(self):
+    def check_integrity(self, passthru=True):
         '''
         Perform integrity check on this rating record
         '''
+        L = AssertLog(passthru)
+        
+        pfx = f"Rating Integrity error (id: {self.id}):"
+        
         # Check for uniqueness
         same = Rating.objects.filter(player=self.player, game=self.game)
-        assert same.count() <= 1, "Integrity error: Duplicate rating entries for player: {} and game: {}".format(self.player, self.game)
+        L.Assert(same.count() <= 1, f"{pfx} Duplicate rating entries for player: {self.player} and game: {self.game}. Dupes are {[s.id for s in same]}")
         
         # Check that rating matches last performance
         last_play = self.last_performance
         last_win = self.last_winning_performance
         
-        assert not last_play is None, "Integrity error: Rating {} ({}) has no Last Play".format(self.pk, self)
+        L.Assert(not last_play is None, f"{pfx} Has no Last Play!")
         
-        assert isclose(self.trueskill_mu, last_play.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu, last_play.trueskill_mu_after)
-        assert isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma, last_play.trueskill_sigma_after)
-        assert isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Rating has {} Last Play has {}".format(self.trueskill_eta, last_play.trueskill_eta_after)
-
-        assert isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_mu0, last_play.trueskill_mu0_after)
-        assert isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Rating has {} Last Play has {}".format(self.trueskill_sigma0, last_play.trueskill_sigma0_after)
-        assert isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Rating has {} Last Play has {}".format(self.trueskill_delta, last_play.trueskill_delta_after)
-
-        assert isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Rating has {} Last Play has {}".format(self.trueskill_tau, last_play.trueskill_tau_after)
-        assert isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Rating has {} Last Play has {}".format(self.trueskill_p, last_play.trueskill_p_after)
-
-        # Check that the play and victory counts reflect what Performance says
-        assert self.plays == last_play.play_number, "Integrity error: Play count mismatch. Rating has {} Last play has {}.".format(self.plays, last_play.play_number)
-        assert self.victories == last_play.victory_count, "Integrity error: Victory count mismatch. Rating has {} Last play has {}.".format(self.victories, last_play.victory_count)
-
-        # Check that last_play and last_victory dates are accurate reflects on Performance records
-        assert self.last_play == last_play.session.date_time, "Integrity error: Last play mismatch. Rating has {} Last play has {}.".format(self.last_play, last_play.session.date_time)
+        if last_play:
+            L.Assert(isclose(self.trueskill_mu, last_play.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance µ mismatch. Rating has {self.trueskill_mu} Last Play has {last_play.trueskill_mu_after}.")
+            L.Assert(isclose(self.trueskill_sigma, last_play.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ mismatch. Rating has {self.trueskill_sigma} Last Play has {last_play.trueskill_sigma_after}.")
+            L.Assert(isclose(self.trueskill_eta, last_play.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance η mismatch. Rating has {self.trueskill_eta} Last Play has {last_play.trueskill_eta_after}.")
+    
+            L.Assert(isclose(self.trueskill_mu0, last_play.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance µ0 mismatch. Rating has {self.trueskill_mu0} Last Play has {last_play.trueskill_mu0}.")
+            L.Assert(isclose(self.trueskill_sigma0, last_play.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ0 mismatch. Rating has {self.trueskill_sigma0} Last Play has {last_play.trueskill_sigma0}.")
+            L.Assert(isclose(self.trueskill_delta, last_play.trueskill_delta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance δ mismatch. Rating has {self.trueskill_delta} Last Play has {last_play.trueskill_delta}.")
+    
+            L.Assert(isclose(self.trueskill_tau, last_play.trueskill_tau, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance τ mismatch. Rating has {self.trueskill_tau} Last Play has {last_play.trueskill_tau}.")
+            L.Assert(isclose(self.trueskill_p, last_play.trueskill_p, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance p mismatch. Rating has {self.trueskill_p} Last Play has {last_play.trueskill_p}.")
+    
+            # Check that the play and victory counts reflect what Performance says
+            L.Assert(self.plays == last_play.play_number, f"{pfx} Play count mismatch. Rating has {self.plays} Last play has {last_play.play_number}.")
+            L.Assert(self.victories == last_play.victory_count, f"{pfx} Victory count mismatch. Rating has {self.victories} Last play has {last_play.victory_count}.")
+    
+            # Check that last_play and last_victory dates are accurate reflections on Performance records
+            L.Assert(self.last_play == last_play.session.date_time, f"{pfx} Last play mismatch. Rating has {self.last_play} Last play has {last_play.session.date_time}.")
         
         if last_win:
-            assert self.last_victory == last_win.session.date_time, "Integrity error: Last victory mismatch. Rating has {} Last victory has {}.".format(self.last_victory, last_win.session.date_time)
+            L.Assert(self.last_victory == last_win.session.date_time, f"{pfx} Last victory mismatch. Rating has {self.last_victory} Last victory has {last_win.session.date_time}.")
         else:
-            assert self.last_victory == NEVER, "Integrity error: Last victory mismatch. Rating has {} when expecting the NEVER value of {}.".format(self.last_victory, NEVER)
+            L.Assert(self.last_victory == NEVER, f"{pfx} Last victory mismatch. Rating has {self.last_victory} when expecting the NEVER value of {NEVER}.")
+            
+        return L.assertion_failures            
     
     def clean(self):
         # TODO: diagnose when this is called. What can we assume about session cleans? And what not?
@@ -1067,7 +1075,7 @@ class Game(AdminModel):
         # Aggregate for max date_time for a given player. That is we want one Performance 
         # per player, the one with the greatest date_time (that is before asat if specified) 
         
-        pfilter = Q(
+        Pfilter = Q(
             session__date_time=Subquery(
                 (Performance.objects
                     .filter(Q(player=OuterRef('player')) & pfilter)
@@ -1078,7 +1086,12 @@ class Game(AdminModel):
             )
         )
         
-        return Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
+        Ps = Performance.objects.filter(Pfilter).order_by('-trueskill_eta_after')
+        
+        log.debug(f"Fetching latest performances for game '{self.name}' as at {asat} for leagues ({leagues}) and players ({players})")
+        log.debug(f"SQL:\n{get_SQL(Ps)}")
+    
+        return Ps
 
     @property_method
     def session_list(self, leagues=[], asat=None) -> list:
@@ -1212,7 +1225,7 @@ class Game(AdminModel):
             else:
                 leagues = []                
 
-        log.debug(f"\t\tBuilding leaderboard for {self.name}.")
+        log.debug(f"\t\tBuilding leaderboard for {self.name} as at {asat}.")
                 
         # If a complex  leaderboard is requested we ignore "names" and the caller
         # must perform name formatting (we provide all formats in the tuple). But 
@@ -2090,6 +2103,8 @@ class Session(TimeZoneMixIn, AdminModel):
         
         counts = self.game.play_counts(asat=self.date_time)
 
+        log.debug(f"\t\t\tBuilding {self.pk}")                     
+
         # Build the snapshot tuple
         snapshot = (self.pk, 
                     localize(localtime(self.date_time)),
@@ -2542,80 +2557,98 @@ class Session(TimeZoneMixIn, AdminModel):
         detail += u'</OL>'
         return detail 
             
-    def check_integrity(self):
+    def check_integrity(self, passthru=True):
         '''
         It should be impossible for a session to go wrong if implemented securely and atomically. 
         
-        But all the same it's a complext object and database integrity failures can cause a lot of headaches, 
+        But all the same it's a complex object and database integrity failures can cause a lot of headaches, 
         so this is a centralised integrity check for a given session so that a walk through sessions can find 
         and identify issues easily.
         '''
+        L = AssertLog(passthru)
+        
+        pfx = f"Session Integrity error (id: {self.id}):"
+        
         # Check all the fields
         for field in ['date_time', 'league', 'location', 'game', 'team_play']:
-            assert getattr(self, field, None) != None, "Session Integrity error (id: {}): Must have {}.".format(self.id, field)
+            L.Assert(getattr(self, field, None) != None, f"{pfx} Must have {field}.")
             
-        # Check that team_play is permitted for the game
-        # TODO: Enable this once we have team play working properly, using an Inkognito session to fine tune the form mode change.
-        # assert (self.team_play and self.game.team_play) or (not self.team_play and self.game.individual_play), "Session Integrity error (id: {}): Game does not support play mode (game:{}, play mode: {}).".format(self.id, self.game.id, self.team_play)
+        # Check that the play mode is supported by the game
+        L.Assert(not self.team_play or self.game.team_play, f"{pfx} Recorded with team play, but Game (ID: {self.game.id}) does not support that!")
+        L.Assert(self.team_play or self.game.individual_play, f"{pfx} Recorded with individual play, but Game (ID: {self.game.id}) does not support that!")
         
         # Check that the date_time is in the past! It makes no sense to have future sessions recorded!
-        # TODO: test the time zone interplay here. 
-        assert self.date_time > datetime.now(tz=self.date_time_tz), "Session is in future! Recorded sessions must be in the past!"  
+        L.Assert(self.date_time <= datetime.now(tz=self.date_time_tz), f"{pfx} Session is in future! Recorded sessions must be in the past!")  
 
         # Collect the ranks and check rank fields
         rank_values = []
-        assert self.ranks.count() > 0, "Session Integrity error (id: {}): Has no ranks.".format(self.id)
+        L.Assert(self.ranks.count() > 0, f"{pfx}  Has no ranks.")
+        
         for rank in self.ranks.all():
             for field in ['session', 'rank']:
-                assert  getattr(rank, field, None) != None, "Session Integrity error (id: {}): Rank {} (id: {}) must have {}.".format(self.id, rank.rank, rank.id,  field)
+                L.Assert(getattr(rank, field, None) != None, f"{pfx}  Rank {rank.rank} (id: {rank.id}) must have {field}.")
+
             if self.team_play:
-                assert rank.team != None, "Session Integrity error (id: {}): Rank {} (id: {}) must have team.".format(self.id, rank.rank, rank.id)
+                L.Assert(getattr(rank, 'team', None) != None, f"{pfx}  Rank {rank.rank} (id: {rank.id}) must have team.")
             else:
-                assert rank.player != None, "Session Integrity error (id: {}): Rank {} (id: {}) must have player.".format(self.id, rank.rank, rank.id)
+                L.Assert(getattr(rank, 'player', None) != None, f"{pfx}  Rank {rank.rank} (id: {rank.id}) must have player.")
+            
             rank_values.append(rank.rank)
             
         # Check that we have a victor
-        assert 1 in rank_values, "Session Integrity error (id: {}): Must have a victor (rank=1).".format(self.id)
+        L.Assert(1 in rank_values, f"{pfx}  Must have a victor (rank=1).")
                
         # Check that ranks are contiguous
         last_rank_val = 0
         rank_values.sort()
+        rank_list = ', '.join([str(r) for r in rank_values])
+        skip = 0
+        # TODO: Am experimenting here with sensible ranking that has a gap after ties.
+        #       Supports both for now. If enforcing that mode will need a clean_ranks() 
+        #       method on session that tidies them. For now, the checker will pass either 
+        #       consecutive or with tie gaps. 
         for rank in rank_values:
-            assert rank == last_rank_val or rank == last_rank_val+1, "Session Integrity error (id: {}): Ranks must be consecutive and have no gaps. Found rank {} when previous rank was {}.".format(self.id, rank, last_rank_val)
-            last_rank_val = rank
+            L.Assert(rank == last_rank_val or rank == last_rank_val+1 or rank == last_rank_val+1+skip, f"{pfx} Ranks must be consecutive. Found rank {rank} following rank {last_rank_val} in ranks {rank_list}. Expected it at {last_rank_val}, {last_rank_val+1} or {last_rank_val+1+skip}.")
+
+            if rank == last_rank_val:
+                skip += 1
+            else:
+                skip = 0
+                last_rank_val = rank
 
         # Collect all the players (respecting the mode of play team/individual)
         players = set()
         if self.team_play:
             for rank in self.ranks.all():
-                assert rank.team, "Session Integrity error (id: {}): Rank {} (id:{}) has no team.".format(self.id, rank.rank, rank.id)
-                assert rank.team.players, "Session Integrity error (id: {}): Rank {} (id:{}) has a team (id:) with no players.".format(self.id, rank.rank, rank.id, rank.team.id)
+                L.Assert(getattr(rank, 'team', None) != None, f"{pfx} Rank {rank.rank} (id:{rank.id}) has no team.")
+                L.Assert(getattr(rank.team, 'players', 0), f"{pfx} Rank {rank.rank} (id:{rank.id}) has a team (id:{rank.team.id}) with no players.")
                 
                 # Check that the number of players is allowed by the game
                 num_players = len(rank.team.players.all())
-                assert num_players >= self.game.min_players_per_team, "Session Integrity error (id: {}): Too few players in team (game: {}, team: {}, players: {}, min: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.min_players_per_team)
-                assert num_players <= self.game.max_players_per_team, "Session Integrity error (id: {}): Too many players in team (game: {}, team: {}, players: {}, max: {}).".format(self.id, self.game.id, rank.team.id, num_players, self.game.max_players_per_team)
+                L.Assert(num_players >= self.game.min_players_per_team, f"{pfx} Too few players in team (game: {self.game.id}, team: {rank.team.id}, players: {num_players}, min: {self.game.min_players_per_team}).")
+                L.Assert(num_players <= self.game.max_players_per_team, f"{pfx} Too many players in team (game: {self.game.id}, team: {rank.team.id}, players: {num_players}, max: {self.game.max_players_per_team}).")
                 
                 for player in rank.team.players.all():
-                    assert player, "Session Integrity error (id: {}): Rank {} (id: {}) has a team (id: {}) with an invalid player.".format(self.id, rank.rank, rank.id, rank.team.id)
+                    L.Assert(player, f"{pfx} Rank {rank.rank} (id: {rank.id}) has a team (id: {rank.team.id}) with an invalid player.")
                     players.add(player)
         else:
             for rank in self.ranks.all():
-                assert rank.player, "Session Integrity error (id: {}): Rank {} (id: {}) has no player.".format(self.id, rank.rank, rank.id)
+                L.Assert(rank.player, f"{pfx} Rank {rank.rank} (id: {rank.id}) has no player.")
                 players.add(rank.player)
         
         # Check that the number of players is allowed by the game
-        assert len(players) >= self.game.min_players, "Session Integrity error (id: {}): Too few players (game: {}, players: {}).".format(self.id, self.game.id, len(players))
-        assert len(players) <= self.game.max_players, "Session Integrity error (id: {}): Too many players (game: {}, players: {}).".format(self.id, self.game.id, len(players))
+        L.Assert(len(players) >= self.game.min_players, f"{pfx} Too few players (game: {self.game.id}, players: {len(players)}).")
+        L.Assert(len(players) <= self.game.max_players, f"{pfx} Too many players (game: {self.game.id}, players: {len(players)}).")
 
         # Check that there's a performance obejct for each player and only one for each player         
         for performance in self.performances.all():
             for field in ['session', 'player', 'partial_play_weighting', 'play_number', 'victory_count']:
-                assert getattr(performance, field, None) != None, "Session Integrity error (id: {}): Performance {} (id:{}) has no {}.".format(self.id, performance.play_number, performance.id, field)
-            assert performance.player in players, "Session Integrity error (id: {}): Performance {} (id:{}) refers to a player that was not ranked: {}.".format(self.id, performance.play_number, performance.id, performance.player)
+                L.Assert(getattr(performance, field, None) != None, f"{pfx} Performance {performance.play_number} (id:{performance.id}) has no {field}.")
+
+            L.Assert(performance.player in players, f"{pfx} Performance {performance.play_number} (id:{performance.id}) refers to a player that was not ranked: {performance.player}.")
             players.discard(performance.player)
             
-        assert len(players) == 0, "Session Integrity error (id: {}): Ranked players that lack a performance: {}.".format(self.id, performance.play_number, performance.id, players)
+        L.Assert(len(players) == 0, f"{pfx} Ranked players that lack a performance: {players}.")
         
         # Check that for each performance object the _before ratings are same as _after retings in the previous performance
         for performance in self.performances.all():
@@ -2625,18 +2658,20 @@ class Session(TimeZoneMixIn, AdminModel):
                 
                 trueskill_eta = TS.mu0 - TS.mu0 / TS.sigma0 * TS.sigma0
                 
-                assert isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
-                assert isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-                assert isclose(performance.trueskill_eta_before, trueskill_eta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, trueskill_eta)
+                L.Assert(isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE),         f"{pfx} Performance µ mismatch. Before at {performance.session.date_time} is {performance.trueskill_mu_before} and After on previous at Never is {TS.mu0} (the default)")
+                L.Assert(isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE),   f"{pfx} Performance σ mismatch. Before at {performance.session.date_time} is {performance.trueskill_sigma_before} and After on previous at Never is {TS.sigma0} (the default)")
+                L.Assert(isclose(performance.trueskill_eta_before, trueskill_eta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance η mismatch. Before at {performance.session.date_time} is {performance.trueskill_eta_before} and After on previous at Never is {trueskill_eta} (the default)")
             else:
-                assert isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
-                assert isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
-                assert isclose(performance.trueskill_eta_before, previous.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, previous.session.date_time, previous.trueskill_eta_after)
+                L.Assert(isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE),       f"{pfx} Performance µ mismatch. Before at {performance.session.date_time} is {performance.trueskill_mu_before} and After on previous at {previous.session.date_time} is {previous.trueskill_mu_after}")
+                L.Assert(isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ mismatch. Before at {performance.session.date_time} is {performance.trueskill_sigma_before} and After on previous at {previous.session.date_time} is {previous.trueskill_sigma_after}")
+                L.Assert(isclose(performance.trueskill_eta_before, previous.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE),     f"{pfx} Performance η mismatch. Before at {performance.session.date_time} is {performance.trueskill_eta_before} and After on previous at {previous.session.date_time} is {previous.trueskill_eta_after}")
+                
+        return L.assertion_failures
 
     def clean(self):
         '''
-        Clean is called by DJango before form_valid is called for the form. It affords a place and way for us to
-        Check that everything is in order before processing to the form_valid  method that should save.
+        Clean is called by Django before form_valid is called for the form. It affords a place and way for us to
+        Check that everything is in order before proceding to the form_valid method that should save.
         '''
         # Check that the number of players is allowed by the game
         # This is called before the ranks are saved and hence fails always! 
@@ -2851,18 +2886,24 @@ class Rank(AdminModel):
         return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     #@property_method
-    def check_integrity(self):
+    def check_integrity(self, passthru=True):
         '''
         Perform basic integrity checks on this Rank object.
         '''
+        L = AssertLog(passthru)
+        
+        pfx = f"Rank Integrity error (id: {self.id}):"
+        
         # Check that one of self.player and self.team has a valid value and the other is None
-        assert not (self.team is None and self.player is None), "Integrity error: No team or player specified in rank {}".format(self.pk)
-        assert not (not self.team is None and not self.player is None), "Integrity error: Both team and player specified in rank {}".format(self.pk)
+        L.Assert(not (self.team is None and self.player is None), f"{pfx} No team or player specified!")
+        L.Assert(not (not self.team is None and not self.player is None), f"{pfx} Both team and player are specified!")
         
         if self.team is None:
-            assert not self.session.team_play, "Ingerity error: Rank {} specifies player while session {} specifies team play".format(self.pk, self.session.pk)
+            L.Assert(not self.session.team_play, f"{pfx} Rank specifies a player while session (ID: {self.session.pk}) specifies team play")
         elif self.player is None:
-            assert self.session.team_play, "Ingerity error: Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk)
+            L.Assert(self.session.team_play, f"{pfx} Rank specifies a team while session (ID: {self.session.pk}) does not specify team play")
+
+        return L.assertion_failures            
         
     def __unicode__(self):
         return "{}".format(self.rank)
@@ -3094,10 +3135,14 @@ class Performance(AdminModel):
         if save:
             self.save()
 
-    def check_integrity(self):
+    def check_integrity(self, passthru=True):
         '''
         Perform basic integrity checks on this Performance object.
         '''
+        L = AssertLog(passthru)
+        
+        pfx = f"Performance Integrity error (id: {self.id}):"
+        
         # Check that the before values match the after values of the previous play
         performance = self
         previous = self.previous_play
@@ -3105,37 +3150,42 @@ class Performance(AdminModel):
         if previous is None:
             TS = TrueskillSettings()
             
-            assert isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, None, TS.mu0)
-            assert isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, None, TS.sigma0)
-            assert isclose(performance.trueskill_eta_before, 0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, None, 0)
+            trueskill_eta = TS.mu0 - TS.mu0 / TS.sigma0 * TS.sigma0
+            
+            L.Assert(isclose(performance.trueskill_mu_before, TS.mu0, abs_tol=FLOAT_TOLERANCE),         f"{pfx} Performance µ mismatch. Before at {performance.session.date_time} is {performance.trueskill_mu_before} and After on previous at Never is {TS.mu0} (the default)")
+            L.Assert(isclose(performance.trueskill_sigma_before, TS.sigma0, abs_tol=FLOAT_TOLERANCE),   f"{pfx} Performance σ mismatch. Before at {performance.session.date_time} is {performance.trueskill_sigma_before} and After on previous at Never is {TS.sigma0} (the default)")
+            L.Assert(isclose(performance.trueskill_eta_before, trueskill_eta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance η mismatch. Before at {performance.session.date_time} is {performance.trueskill_eta_before} and After on previous at Never is {trueskill_eta} (the default)")
         else:
-            assert isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu_after)
-            assert isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma_after)
-            assert isclose(performance.trueskill_eta_before, previous.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance η mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_eta_before, previous.session.date_time, previous.trueskill_eta_after)
+            L.Assert(isclose(performance.trueskill_mu_before, previous.trueskill_mu_after, abs_tol=FLOAT_TOLERANCE),       f"{pfx} Performance µ mismatch. Before at {performance.session.date_time} is {performance.trueskill_mu_before} and After on previous at {previous.session.date_time} is {previous.trueskill_mu_after}")
+            L.Assert(isclose(performance.trueskill_sigma_before, previous.trueskill_sigma_after, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ mismatch. Before at {performance.session.date_time} is {performance.trueskill_sigma_before} and After on previous at {previous.session.date_time} is {previous.trueskill_sigma_after}")
+            L.Assert(isclose(performance.trueskill_eta_before, previous.trueskill_eta_after, abs_tol=FLOAT_TOLERANCE),     f"{pfx} Performance η mismatch. Before at {performance.session.date_time} is {performance.trueskill_eta_before} and After on previous at {previous.session.date_time} is {previous.trueskill_eta_after}")
         
         # Check that the Trueskill settings are consistent with previous play too
         if previous is None:
             TS = TrueskillSettings()
             
-            assert isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu0_before, None, TS.mu0)
-            assert isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma0_before, None, TS.sigma0)
-            assert isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, None, TS.delta)
+            L.Assert(isclose(performance.trueskill_mu0, TS.mu0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance µ0 mismatch. At {performance.session.date_time} is {performance.trueskill_mu0} and previous at Never is {TS.mu0}")
+            L.Assert(isclose(performance.trueskill_sigma0, TS.sigma0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ0 mismatch. At {performance.session.date_time} is {performance.trueskill_sigma0} and on previous at Never is {TS.sigma0}")
+            L.Assert(isclose(performance.trueskill_delta, TS.delta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance δ mismatch. At {performance.session.date_time} is {performance.trueskill_delta} and previous at Never is {TS.delta}")
         else:
-            assert isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance µ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_mu_before, previous.session.date_time, previous.trueskill_mu0_after)
-            assert isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance σ0 mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_sigma_before, previous.session.date_time, previous.trueskill_sigma0_after)
-            assert isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance δ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_delta_before, previous.session.date_time, previous.trueskill_delta_after)
-            assert isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance ß mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_beta_before, previous.session.date_time, previous.trueskill_beta_after)
-            assert isclose(performance.trueskill_tau, previous.trueskill_tau, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance τ mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_tau_before, previous.session.date_time, previous.trueskill_tau_after)
-            assert isclose(performance.trueskill_p, previous.trueskill_p, abs_tol=FLOAT_TOLERANCE), "Integrity error: Performance p mismatch. Before at {} is {} and After on previous at {} is {}".format(performance.session.date_time, performance.trueskill_p_before, previous.session.date_time, previous.trueskill_p_after)
+            L.Assert(isclose(performance.trueskill_mu0, previous.trueskill_mu0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance µ0 mismatch. At {performance.session.date_time} is {performance.trueskill_mu0} and previous at {previous.session.date_time} is {previous.trueskill_mu0}")
+            L.Assert(isclose(performance.trueskill_sigma0, previous.trueskill_sigma0, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance σ0 mismatch. At {performance.session.date_time} is {performance.trueskill_sigma0} and previous at {previous.session.date_time} is {previous.trueskill_sigma0}")
+            L.Assert(isclose(performance.trueskill_delta, previous.trueskill_delta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance δ mismatch. At {performance.session.date_time} is {performance.trueskill_delta} and previous at {previous.session.date_time} is {previous.trueskill_delta}")
+            L.Assert(isclose(performance.trueskill_beta, previous.trueskill_beta, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance ß mismatch. At {performance.session.date_time} is {performance.trueskill_beta} and previous at {previous.session.date_time} is {previous.trueskill_beta}")
+            L.Assert(isclose(performance.trueskill_tau, previous.trueskill_tau, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance τ mismatch. At {performance.session.date_time} is {performance.trueskill_tau} and previous at {previous.session.date_time} is {previous.trueskill_tau}")
+            L.Assert(isclose(performance.trueskill_p, previous.trueskill_p, abs_tol=FLOAT_TOLERANCE), f"{pfx} Performance p mismatch. At {performance.session.date_time} is {performance.trueskill_p} and previous at {previous.session.date_time} is {previous.trueskill_p}")
         
         # Check that there is an associate Rank
-        assert not self.rank is None, "Integrity error: Apparently no rank avalaible for a Performance (id: {})".format(self.id)  
+        L.Assert(not self.rank is None, f"{pfx} Has no associated rank!")  
 
         # Check that play number and victory count reflect early records
         expected_play_number = self.session.previous_sessions(self.player).count()      # Includes the current sessions
         expected_victory_count = self.session.previous_victories(self.player).count()   # Includes the current session if it's a victory
-        assert self.play_number == expected_play_number, "Integrity error: Play number on Performance is wrong. Performance id: {}, Play number: {}, Expected: {}.".format(self.id, self.play_number, expected_play_number)
-        assert self.victory_count == expected_victory_count, "Integrity error: Victory count on Performance is wrong. Performance id: {}, Victory count: {}, Expected: {}.".format(self.id, self.victory_count, expected_victory_count)
+        
+        L.Assert(self.play_number == expected_play_number, f"{pfx} Play number is wrong. Play number: {self.play_number}, Expected: {expected_play_number}.")
+        L.Assert(self.victory_count == expected_victory_count, f"{pfx} Victory count is wrong. Victory count: {self.victory_count}, Expected: {expected_victory_count}.")
+        
+        return L.assertion_failures
 
     def clean(self):
         return # Disable for now, enable only for testing

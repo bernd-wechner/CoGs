@@ -777,13 +777,14 @@ def ajax_Leaderboards(request, raw=False):
                 #        than build so it boils down here to getting the snapshot from chache or building 
                 #        it. 
                 
-                log.debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
+                log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")                     
 
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
                     log.debug(f"\t\tFound it in cache!")                     
                 else:
+                    log.debug(f"\t\tBuilding it!")                     
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
@@ -1055,28 +1056,60 @@ def view_CheckIntegrity(request):
     All needs some serious tidy up for a productions site.    
     '''
     CuserMiddleware.set_user(request.user)
+
+    title = "Database Integrity Check"
+    
+    assertion_failures = [] # Assertion failures
     
     print("Checking all Performances for internal integrity.", flush=True)
     for P in Performance.objects.all():
-        print("Performance: {}".format(P), flush=True)
-        P.check_integrity()
+        fails = P.check_integrity()
 
+        print(f"Performance {P.id}: {P}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+ 
     print("Checking all Ranks for internal integrity.", flush=True)
     for R in Rank.objects.all():
-        print("Rank: {}".format(R), flush=True)
-        R.check_integrity()
-    
+        fails = R.check_integrity()
+
+        print(f"Rank {R.id}: {R}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+     
     print("Checking all Sessions for internal integrity.", flush=True)
     for S in Session.objects.all():
-        print("Session: {}".format(S), flush=True)
-        S.check_integrity()
+        fails = S.check_integrity(True)
+        
+        print(f"Session {S.id}: {S}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
 
     print("Checking all Ratings for internal integrity.", flush=True)
     for R in Rating.objects.all():
-        print("Rating: {}".format(R), flush=True)
-        R.check_integrity()
+        fails = R.check_integrity()
 
-    return HttpResponse("Passed All Integrity Tests")
+        print(f"Rating {R.id}: {R}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+
+    now = datetime.now()
+    summary = '\n'.join(assertion_failures)
+    result = f"<html><body<p>{title}</p><p>It is now {now}.</p><p><pre>{summary}</pre></p></body></html>"
+
+    return HttpResponse(result)
 
 def view_RebuildRatings(request):
     CuserMiddleware.set_user(request.user)
@@ -1268,7 +1301,7 @@ def rebuild_ratings():
         
     now = datetime.now()
 
-    return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
+    return f"<html><body<p>{title}</p><p>It is now {now}.</p><p><pre>{result}</pre></p></body></html>"
 
 def force_unique_session_times():
     '''

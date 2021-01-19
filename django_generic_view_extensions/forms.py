@@ -30,7 +30,7 @@ from django.conf import settings
 
 # Package imports
 from . import log
-from .model import add_related, apply_sort_by
+from .model import add_related, apply_sort_by, Add_Related, can_save_related_formsets
 
 
 def classify_widget(field):
@@ -453,10 +453,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
             # a field 'team' that points to Team and so Member.team is also a way to specify this related form if desired.
             
             # If the model's add_related field mentions this relation ... and only if.
-            if ( relation.name in add_related(model)
-                or (hasattr(relation, "field") 
-                and relation.field.model.__name__ + "." + relation.field.name in add_related(model)) ):
-                
+            if Add_Related(model, relation):
                 # Build the class for the related formset. The related formset will be an instance of this class 
                 Related_Formset = modelformset_factory(relation.related_model, can_delete=False, extra=0, fields=('__all__'), formfield_callback=custom_field_callback)
                 related_formset = None # Will be built using either form_data or db_object as a data source 
@@ -512,7 +509,7 @@ def get_related_forms(model, form_data=None, db_object=None, model_history=[]):
     for rf in related_forms:
         rm = related_forms[rf].Meta.model
         
-        log.debug(f"\n{debug_prefix}Processing {rm._meta.object_name}: add_related={add_related(rm)} ")
+        log.debug(f"\n{debug_prefix}Processing {rm._meta.object_name}: {rm._meta.object_name} has add_related={add_related(rm)} ")
         
         # add generic related forms (with no object) to provide easy access to 
         # the related empty form and field widgets in the context. Instance forms
@@ -681,68 +678,74 @@ def save_related_forms(self):
         mon = model._meta.object_name                   # Model Object Name
         rmon = related_model._meta.object_name          # Related Model Object Name
         
-        log.debug(f"Saving {mon}->{rmon}")
-                
-        if relation.field.editable and (len(self.request.POST) > 0 or len(self.request.FILES) > 0):
-            assert field_name in add_related(model), "Progamming Error: field_name is not in add_related yet we're trying to save it!"
-            
-            Related_Formset = inlineformset_factory(model, related_model, can_delete=True, extra=0, fields=('__all__'))
-            related_formset = Related_Formset(self.request.POST, self.request.FILES, instance=obj, prefix=name)
-            
-            if related_formset.is_valid():
-                ran = relation.rel.related_name         # Related Attribute Name
-                rfn = relation.field.name               # Related model field name
-
-                log.debug(f"\t{mon}->{rmon} is valid. Used prefix={name} and instance={mon} {obj.pk}")
-                if (settings.DEBUG):
-                    robjs_before = len(getattr(obj, ran).all())
-                    log.debug(f"\t\t{mon} {obj.pk}: checking parent before save {ran}={robjs_before}")
-
-                # This is interesting:
-                # https://stackoverflow.com/questions/12486734/how-to-save-m2m-field-in-a-formset-when-commit-false
-                #
-                # Apparently we can do this:
-                
-#                 for form in related_formset:                
-#                     if form.has_changed(): 
-#                         form.save()
-
-                # And he also notes this fascinating pattern
-                
-#                 deal = fm.save(commit=False)
-#                 ...
-#                 deal.save()
-
-                # Implying we can save our session with commit=False and get an object with a PK!
-                # So we can then look the related forms and save them!
-                # This looks cool.
-                
-                log.debug(f"\t{mon}->{rmon} Saving related formset...")
-                instances = related_formset.save()  # returns the instances saved but we don't need them here
-
-                # Debugging output
-                if (settings.DEBUG):
-                    robjs_after = len(getattr(obj, ran).all())
-                    log.debug(f"\t\t{mon} {obj.pk}: checking parent after save {ran}={robjs_after}")
-
-                    if (robjs_after>robjs_before):
-                            log.debug(f"\t\t{mon} {obj.pk}: added {robjs_after-robjs_before} {rmon}s")
-
-                    for instance in instances:
-                        parent = getattr(instance, relation.field.name, None)
-                        if (not parent is None):                    
-                            log.debug(f"\t\t{mon} {obj.pk}: saved {rmon}={instance}. It has {rfn}={parent.pk}")
-                            log.debug(f"\t\t{mon} {obj.pk}: checking parent {ran}={getattr(parent, ran).all()}")
+        if can_save_related_formsets(model, relation.field):
+            log.debug(f"Saving {mon}->{rmon}")
                     
-                    if (len(instances) == 0):
-                            log.debug(f"\t\t{mon} {obj.pk}: did not save any {rmon}s")
-                            
-                    if (robjs_after<robjs_before):
-                            log.debug(f"\t\t{mon} {obj.pk}: deleted {robjs_before-robjs_after} {rmon}s")
-            else:
-                # TODO: Report errors cleanly on new edit form
-                # Errors are in related_formset.errors
-                raise ValueError(f"Form errors: {related_formset.errors} in form {related_formset}")    
+            if relation.field.editable and (len(self.request.POST) > 0 or len(self.request.FILES) > 0):
+                assert field_name in add_related(model), "Progamming Error: field_name is not in add_related yet we're trying to save it!"
+                
+                Related_Formset = inlineformset_factory(model, related_model, can_delete=True, extra=0, fields=('__all__'))
+                related_formset = Related_Formset(self.request.POST, self.request.FILES, instance=obj, prefix=name)
+                
+                if related_formset.is_valid():
+                    ran = relation.rel.related_name         # Related Attribute Name
+                    rfn = relation.field.name               # Related model field name
+    
+                    log.debug(f"\t{mon}->{rmon} is valid. Used prefix={name} and instance={mon} {obj.pk}")
+                    if (settings.DEBUG):
+                        robjs_before = len(getattr(obj, ran).all())
+                        log.debug(f"\t\t{mon} {obj.pk}: checking parent before save {ran}={robjs_before}")
+    
+                    # This is interesting:
+                    # https://stackoverflow.com/questions/12486734/how-to-save-m2m-field-in-a-formset-when-commit-false
+                    #
+                    # Apparently we can do this:
+                    
+    #                 for form in related_formset:                
+    #                     if form.has_changed(): 
+    #                         form.save()
+    
+                    # And he also notes this fascinating pattern
+                    
+    #                 deal = fm.save(commit=False)
+    #                 ...
+    #                 deal.save()
+    
+                    # Implying we can save our session with commit=False and get an object with a PK!
+                    # So we can then look the related forms and save them!
+                    # This looks cool.
+                    
+                    log.debug(f"\t{mon}->{rmon} Saving related formset...")
+                    instances = related_formset.save()  # returns the instances saved but we don't need them here
+    
+                    # Debugging output
+                    if (settings.DEBUG):
+                        robjs_after = len(getattr(obj, ran).all())
+                        log.debug(f"\t\t{mon} {obj.pk}: checking parent after save {ran}={robjs_after}")
+    
+                        if (robjs_after>robjs_before):
+                                log.debug(f"\t\t{mon} {obj.pk}: added {robjs_after-robjs_before} {rmon}s")
+    
+                        for instance in instances:
+                            parent = getattr(instance, relation.field.name, None)
+                            if (not parent is None):                    
+                                log.debug(f"\t\t{mon} {obj.pk}: saved {rmon}={instance}. It has {rfn}={parent.pk}")
+                                log.debug(f"\t\t{mon} {obj.pk}: checking parent {ran}={getattr(parent, ran).all()}")
+                        
+                        if (len(instances) == 0):
+                                log.debug(f"\t\t{mon} {obj.pk}: did not save any {rmon}s")
+                                
+                        if (robjs_after<robjs_before):
+                                log.debug(f"\t\t{mon} {obj.pk}: deleted {robjs_before-robjs_after} {rmon}s")
+                else:
+                    # TODO: Report errors cleanly on new edit form
+                    # Errors are in related_formset.errors
+                    raise ValueError(f"Form errors: {related_formset.errors} in form {related_formset}")
+        else:
+            m = model._meta.object_name 
+            rm = relation.field.remote_field.model._meta.object_name
+            log.warning(f"Could not save related formset: {relation.field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
+
     
     return False # Return no errors
 

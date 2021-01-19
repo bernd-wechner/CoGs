@@ -79,6 +79,7 @@ else:
     print(f"Django loaded from: {django.__file__}")
     print(f"Using Path: {sys.path}")
     print(f"Process Info: {pinfo()}")
+    print(f"Debug: {DEBUG}")
     
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 #     #if not sys.gettrace():
