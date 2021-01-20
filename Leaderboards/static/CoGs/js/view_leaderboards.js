@@ -277,7 +277,7 @@ function encodeList(list) {
 function encodeDateTime(datetime) {
 	// We communicate datetimes in the ISO 8601 format:
 	// https://en.wikipedia.org/wiki/ISO_8601
-	// but in URLS they turn into an ugly mess. If we make a few simple URL safe
+	// but in URLs they turn into an ugly mess. If we make a few simple URL safe
 	// substitutions and unmake them at the server end all is good, and URLs
 	// become
 	// legible approximations to ISO 8601.

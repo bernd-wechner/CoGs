@@ -5,7 +5,7 @@ from datetime import datetime, date, timedelta
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
+from django_generic_view_extensions.datetime import datetime_format_python_to_PHP, decodeDateTime
 from django_generic_view_extensions.options import  list_display_format, object_display_format 
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
@@ -412,7 +412,7 @@ def extra_context_provider(self, context={}):
             # initial["game"] could be a Game object or a PK
             if isinstance(game , int):
                 try:
-                    game  = Game.objects.get(pk=game)
+                    game = Game.objects.get(pk=game)
                 except:
                     game = Game()
         else:
@@ -1113,7 +1113,21 @@ def view_CheckIntegrity(request):
 
 def view_RebuildRatings(request):
     CuserMiddleware.set_user(request.user)
-    html = rebuild_ratings()
+    
+    if 'game' in request.GET and request.GET['game'].isdigit():
+        try:
+            game = Game.objects.get(pk=request.GET['game'])
+        except Game.DoesNotExist:
+            game = None
+             
+    if 'from' in request.GET:
+        try:
+            From = decodeDateTime(request.GET['from'])
+        except:
+            From = None 
+    
+    html = rebuild_ratings(game, From)
+    
     return HttpResponse(html)
 
 def view_UnwindToday(request):
@@ -1284,20 +1298,27 @@ def view_Kill(request, model, pk):
     
     return HttpResponse(html)
 
-def rebuild_ratings():
+def rebuild_ratings(Game=None, From=None):
     activate(settings.TIME_ZONE)
 
-    title = "Rebuild of all ratings"
+    title = "Rebuild of ratings"
+    if not Game and not From:
+        title = "Rebuild of ALL ratings"
+    else:
+        if Game:
+            title += f" for {Game.name}" 
+        if From:
+            title += f" from {From}" 
+        
     pr = cProfile.Profile()
     pr.enable()
-    
-    Rating.rebuild_all()
+    result = Rating.rebuild(Game, From)
     pr.disable()
     
     s = io.StringIO()
     ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
     ps.print_stats()
-    result = s.getvalue()
+    result += s.getvalue()
         
     now = datetime.now()
 

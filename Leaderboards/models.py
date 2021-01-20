@@ -40,6 +40,8 @@ from django_generic_view_extensions.util import AssertLog
 from CoGs.logging import log
 
 from _ctypes import ArgumentError
+from click.types import DateTime
+from samba.tests import ntacls_backup
 
 
 
@@ -239,7 +241,7 @@ class Rating(RatingModel):
 
         An explicit method, rather than override of __init_ which is called 
         whenever and object is instantiated which can be when creating a new 
-        Rating or when fetching an old one fromt the database. So not appropriate
+        Rating or when fetching an old one from tthe database. So not appropriate
         to override it for new Ratings.
         ''' 
 
@@ -271,6 +273,9 @@ class Rating(RatingModel):
         '''
         Fetch (or create fromd efaults) the rating for a given player at a game
         and perform some quick data integrity checks in the process.  
+        
+        :param player: a Player object
+        :param game:   a Game object 
         '''
         TS = TrueskillSettings()
         
@@ -298,7 +303,7 @@ class Rating(RatingModel):
         return r 
 
     @classmethod
-    def update(self, session, feign_latest=False):
+    def update(cls, session, feign_latest=False):
         '''
         Update the ratings for all the players of a given session.
         
@@ -311,23 +316,26 @@ class Rating(RatingModel):
         is_latest = True
         player_rating = {}
         for performance in session.performances.all():
-            rating = Rating.get(performance.player, session.game)
+            rating = Rating.get(performance.player, session.game) # Create a new rating if needed
             player_rating[performance.player] = rating
-            if not session.date_time > rating.last_play:
+            if session.date_time < rating.last_play:
                 is_latest = False
         
         if is_latest or feign_latest:
+            log.debug(f"Update rating for session {session.id}: {session}.")
+
             # Trickle admin bypass down 
-            if self.__bypass_admin__:
+            if cls.__bypass_admin__:
                 session.__bypass_admin__ = True                    
             
             # Get the session impact (records results in database Performance objects)
+            # This updates the Performance objects associated with that session.
             impact = session.calculate_trueskill_impacts()    
             
             # Update the rating for this player/game combo
             for player in impact:
                 r = player_rating[player]
-
+                
                 # Record the new rating data                    
                 r.trueskill_mu = impact[player]["after"]["mu"]
                 r.trueskill_sigma = impact[player]["after"]["sigma"]
@@ -349,9 +357,9 @@ class Rating(RatingModel):
                 if session.performance(player).is_victory:
                     r.last_victory = session.date_time
                 # else leave r.last_victory unchanged
-                
+
                 # Trickle admin bypass down 
-                if self.__bypass_admin__:
+                if cls.__bypass_admin__:
                     r.__bypass_admin__ = True                    
                     
                 r.save()
@@ -375,11 +383,22 @@ class Rating(RatingModel):
             fs = session.future_sessions
             if not fs is None: 
                 for s in fs:
+                    log.debug(f"\tUpdate triggered for Session {session.id}: {session}.")
                     Rating.update(s, feign_latest=True)
     
     @classmethod
-    def rebuild_all(self):
-        # Walk through the history of sessions to rebuild all ratings
+    def rebuild(cls, Game=None, From=None):
+        '''
+        Rebuild the ratings for a specific game from a specific time
+        
+        If neither Game nor From specified, rebuilds ALL ratings
+        If both Game and From specified rebuilds ratings only for that game for sessions from that datetime
+        If only Game is specified, rebuilds all ratings for that game
+        If only From is specified rebuilds ratings fro all games from that datetime
+        
+        :param Game: A Game object
+        :param From: A datetime 
+        '''
         # If ever performed keep a record of duration overall and per 
         # session to permit a cost estimate should it happen again. 
         # On a large database this could be a costly exercise, causing
@@ -400,24 +419,55 @@ class Rating(RatingModel):
         # Copy all ratings to Backup_Rating
         
         # Bypass admin field updates for a rating rebuild
-        self.__bypass_admin__ = True
+        cls.__bypass_admin__ = True
+                        
+        if not Game and not From:
+            log.debug(f"Rebuilding ALL leaderboard ratings.")
 
-        print("Rebuilding all leaderboard ratings...", flush=False)
-
-        self.objects.all().delete()
-        sessions = Session.objects.all().order_by('date_time')
-        
-        # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
-        for s in sessions:
-            print(s.pk, s.date_time, s.game.name, flush=False)
-            self.update(s, feign_latest=True)
+            sessions = Session.objects.all().order_by('date_time')
+        else:
+            log.debug(f"Rebuilding leaderboard ratings for {Game.name} from {From}")
             
-        print("Done.", flush=False)
+            sfilterg = Q(game=Game) if Game else Q()
+            sfilterf = Q(date_time__gte=From) if isinstance(From, datetime) else Q()
+           
+            sessions = Session.objects.filter(sfilterg&sfilterf).order_by('date_time')
 
-        # Stop timer
-        # Update the  entry in Rebuild_Log with performance results
-        pass
+        log.debug(f"{sessions.count()} Sessions to process.")
 
+        # Delete all Backup_Rating objects
+        Backup_Rating.reset()
+            
+        # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
+        backedup = set()
+        for s in sessions:
+            # Backup a rating only the first time we encounter it
+            # Ratings appluye ta player/game pair and we wnat a backup
+            # of the rating before this rebuild process starts to 
+            # compare the final ratings to. We only want to backup
+            # ratings that are being updated though hence first time
+            # see a player/game pair in the rebuild process, nab a 
+            # backup.  
+            for p in s.performances.all():
+                rkey = (p.player, s.game)
+                if not rkey in backedup:
+                    try:
+                        rating = Rating.get(p.player, s.game)
+                        Backup_Rating.clone(rating)
+                    except:
+                        pass
+                    else:
+                        backedup.add(rkey)
+                
+            cls.update(s, feign_latest=True)
+            
+        # Desist from bypassing admin feield updates
+        cls.__bypass_admin__ = False
+        
+        log.debug("Done.")
+        
+        return Backup_Rating.html_diff()
+   
     def check_integrity(self, passthru=True):
         '''
         Perform integrity check on this rating record
@@ -477,13 +527,79 @@ class Backup_Rating(RatingModel):
     '''
     A simple container for a complete backup of Rating.
     
-    Used when doing a full rebuild of ratings so as to have the previous copy on hand, and to be able to
+    Used when doing a rebuild of ratings so as to have the previous copy on hand, and to be able to
     compare to see what the impact of the rebuild was. This can be very relevant if rebuilding because of
     a change to TrueSkill settings for example, when tuning the settings for particular games.
     
     # TODO: Put an option on the leaderboards view to see the Backup leaderboards, and another to show a comparison
     '''
-    pass
+    @classmethod
+    def reset(cls):
+        '''
+        Deletes all backup ratings
+        '''
+        cls.objects.all().delete()
+    
+    @classmethod
+    def clone(cls, rating):
+        '''
+        Clones a rating into the Backup model (database table)
+        
+        :param rating: A Rating object
+        '''
+        try:
+            backup = cls.objects.get(player=rating.player, game=rating.game)
+        except ObjectDoesNotExist:
+            backup = cls()
+            
+        for field in rating._meta.fields:
+            if not field.primary_key:
+                setattr(backup, field.name, getattr(rating, field.name))
+                
+        backup.save()        
+
+    @classmethod
+    def html_diff(cls, show_unchanged=True):
+        '''
+        Returns an HTML table (string) summarising differences between current ratings and backed up ratings.
+        :param cls:
+        '''
+        sign = lambda a: '-' if a<0 else '+'
+        
+        html = "<TABLE>"
+        html += "<TR>"
+        html += "<TH>Game</TH>"
+        html += "<TH>Player</TH>"
+        html += "<TH>Rating (η)</TH>"
+        html += "<TH>Mean (µ)</TH>"
+        html += "<TH>Standard Deviation(µ)</TH>"
+        html += "</TR>"
+        for r in cls.objects.all().order_by('game', '-trueskill_eta'):
+            R = Rating.get(r.player, r.game)
+            
+            diff_eta = R.trueskill_eta - r.trueskill_eta
+            diff_mu = R.trueskill_mu - r.trueskill_mu
+            diff_sigma = R.trueskill_sigma - r.trueskill_sigma
+            
+            eqn_eta = f"{r.trueskill_eta:.4f} {sign(diff_eta)} {abs(diff_eta):.4f} = {R.trueskill_eta:.4f}"
+            eqn_mu = f"{r.trueskill_mu:.4f} {sign(diff_mu)} {abs(diff_mu):.4f} = {R.trueskill_mu:.4f}"
+            eqn_sigma = f"{r.trueskill_sigma:.4f} {sign(diff_sigma)} {abs(diff_sigma):.4f} = {R.trueskill_sigma:.4f}"
+            
+            if (show_unchanged
+                or abs(diff_eta) > FLOAT_TOLERANCE
+                or abs(diff_mu) > FLOAT_TOLERANCE
+                or abs(diff_sigma) > FLOAT_TOLERANCE): 
+                html += "<TR>"
+                html += f"<TD>{r.game.name}</TD>"
+                html += f"<TD>{r.player.name()}</TD>"
+                html += f"<TD>{eqn_eta}</TD>"
+                html += f"<TD>{eqn_mu}</TD>"
+                html += f"<TD>{eqn_sigma}</TD>"
+                html += "</TR>"
+        html += "</TABLE>"
+        
+        return html
+            
 
 class League(AdminModel):
     '''
@@ -838,7 +954,7 @@ class Player(PrivacyMixIn, AdminModel):
         else:
             return None
 
-    def name(self, style):
+    def name(self, style="full"):
         '''
         Renders the players name in a nominated style
         :param style: Supports "nick", "full", "complete", "flexi"

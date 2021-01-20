@@ -11,12 +11,12 @@ if settings.DEBUG:
 # Django generic view extension imports
 from django_generic_view_extensions.datetime import fix_time_zone, UTC
 from django_generic_view_extensions.queryset import top, get_SQL
+from django_generic_view_extensions.datetime import decodeDateTime
 
 # Python imports
 import enum, json, sys, numbers
 
 from collections import OrderedDict
-from dateutil import parser
 from datetime import datetime, timedelta
 
 # Local imports
@@ -288,56 +288,6 @@ class leaderboard_options:
         :param utz:      the users timezone. Only used to generating date_time strings where
                          needed so that they are in the users timezone when produced.
         '''
-
-        def decodeDateTime(dt):
-            '''
-            decodes a DateTime that was URL encoded. 
-            Has to agree with the URL encoding chosen by the Javascript that 
-            fetches leaderboards though an AJAX call of course.
-            
-            The colons are encoded as : - Works on Chrome even though it's 
-            a reserved character not encouraged for URL use. 
-            
-            The space between date and time is encoded as + and so arrives
-            as a space. 
-            
-            A - introducing the timezone passes through unencoded.
-            
-            A + introducing the timezone arrives here as a space
-            
-            Just in case : in the URL does cause an issue, up front we'll
-            support - which travels undamaged from URL to here, as the 
-            hh mm ss separator.
-            
-            All the while we are using the ISO 8601 format for datetimes,
-            or encoded versions of it that we try to decode here.
-            
-            ref1 and ref 2 are ISO 8601 datetimes with and without timezone
-            used do our work here.                         
-            '''
-            ref1 = "2019-03-01 18:56:16+1100"
-            ref2 = "2019-03-01 18:56:16"
-            
-            # strigs are immutable and we need to listify them to 
-            # make character referenced substitutions
-            new = list(dt)
-            
-            if not (len(dt) == len(ref1) or len(dt) == len(ref2)):
-                return dt
-            
-            if len(dt) == len(ref1):
-                if dt[-5] == " ":
-                    new[-5] = "+"
-
-            if dt[13] == "-":
-                new[13] = ":"
-
-            if dt[16] == "-":
-                new[16] = ":"
-
-            # The n stringify the list again. 
-            return "".join(new)
-
         # If we have a options submitted then don't use the default 
         # enabled list respect the incoming options instead.
         
@@ -500,7 +450,7 @@ class leaderboard_options:
         self.need_enabling.add('changed_since')          
         if 'changed_since' in urequest:
             try:
-                self.changed_since = fix_time_zone(parser.parse(decodeDateTime(urequest['changed_since'])))
+                self.changed_since = decodeDateTime(urequest['changed_since'])
             except:
                 self.changed_since = None # Must be a a Falsey value
 
@@ -592,7 +542,7 @@ class leaderboard_options:
         self.need_enabling.add('played_since')          
         if 'played_since' in urequest:
             try:
-                self.played_since = fix_time_zone(parser.parse(decodeDateTime(urequest['played_since'])))
+                self.played_since = decodeDateTime(urequest['played_since'])
             except:
                 self.played_since = None  # Must be a a Falsey value        
 
@@ -650,7 +600,7 @@ class leaderboard_options:
         self.need_enabling.add('as_at')          
         if 'as_at' in urequest:
             try:
-                self.as_at = fix_time_zone(parser.parse(decodeDateTime(urequest['as_at'])))
+                self.as_at = decodeDateTime(urequest['as_at'])
             except:
                 self.as_at = None  # Must be a a Falsey value
                 
@@ -679,7 +629,7 @@ class leaderboard_options:
                     self.compare_back_to = float(urequest['compare_back_to'])
                 else:
                     try:
-                        self.compare_back_to = fix_time_zone(parser.parse(decodeDateTime(urequest['compare_back_to'])))
+                        self.compare_back_to = decodeDateTime(urequest['compare_back_to'])
                     except:
                         self.compare_back_to = None  # Must be a a Falsey value
             # If compare_back_to is specificed without any value, it is taken
