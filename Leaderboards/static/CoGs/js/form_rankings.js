@@ -1,6 +1,99 @@
+/*eslint-env es6*/
+/*jslint node: true */
 "use strict";
 
 const debug = true;
+
+// Load the session data (function is defined in the loading html file because it needs 
+// to use on Django template tags to get input from Django with which to populate the
+// Sessions structure.
+const Session = get_session_data();	
+
+/*
+	Session is the key data structure for communicating a session between Django and this form and for
+	managing form alterations (specifically play mode switches). It's useful therefore to see a sample 
+	of the two play modes.
+	
+	Unknown IDs (Rank, Player, Team, Performance) will carry a string of form "id_n" where n is 0, 1, 2 ...
+	That being a sign that the id is unknown (this data not saved yet and given a database ID)
+	
+	An Individual Play Mode session:
+	
+		    {
+		        "rIDs": [124, 126, 123, 125],   // Rank IDs
+		        "Ranks": {						// RankID to rank value (1st, 2nd, 3rd etc)
+		            "123": 2,
+		            "124": 1,
+		            "125": 2,
+		            "126": 1
+		        },
+		        "Players": {					// Rank ID to Player ID
+		            "123": 6,
+		            "124": 12,
+		            "125": 1,
+		            "126": 10
+		        },
+		        "Teams": {						// Rank ID to Team ID
+		            "123": null,
+		            "124": null,
+		            "125": null,
+		            "126": null
+		        },
+		        "TeamNames": {},				// Team ID to team name (a string)
+		        "TeamPlayers": {},				// Team ID to list of team Player IDs
+		        "pIDs": {						// Player ID to Performance ID 
+		            "1": 125,
+		            "6": 126,
+		            "10": 123,
+		            "12": 124
+		        },
+		        "Weights": {					// Player ID to Partial Play Weighting (a float)
+		            "1": 1,
+		            "6": 1,
+		            "10": 1,
+		            "12": 1
+		        }
+		    }
+	    
+	 And a Team Play Session:
+	 
+		 {
+		    "rIDs": [392, 393],
+		    "Ranks": {
+		        "392": 1,
+		        "393": 2
+		    },
+		    "Players": {
+		        "392": null,
+		        "393": null
+		    },
+		    "Teams": {
+		        "392": 3,
+		        "393": 4
+		    },
+		    "TeamNames": {
+		        "3": "Team 1",
+		        "4": "Team 2"
+		    },
+		    "TeamPlayers": {
+		        "3": [1, 20],
+		        "4": [22, 21]
+		    },
+		    "pIDs": {
+		        "1": 392,
+		        "20": 393,
+		        "21": 394,
+		        "22": 395
+		    },
+		    "Weights": {
+		        "1": 1,
+		        "20": 1,
+		        "21": 1,
+		        "22": 1
+		    }
+		}
+*/
+
 
 // Note: The Django Generic widgets are created by Django with __prefix__ conveniently in the widget name
 //       where the Django formset saver expects to find a form identifier. Replacig this with a number which
@@ -162,10 +255,12 @@ function OnLoad(event) {
 		configureGame();
 	
 	// If an illegal game mode is loaded, or both game modes are supported the team_switch is enabled
-	team_switch.disabled = !(      (team_switch.checked && !game_team_play) 
-								|| (!team_switch.checked && !game_individual_play) 
-								|| (game_individual_play && game_team_play) 
-							);
+	const lock = !( (team_switch.checked && !game_team_play) 
+				|| (!team_switch.checked && !game_individual_play) 
+				|| (game_individual_play && game_team_play) 
+				);
+				  
+	team_switch.disabled = lock;
 }
 
 function OnSubmit(event) {
@@ -181,6 +276,15 @@ function OnSubmit(event) {
 	// Tidy up the submission to meet Django formset expectations (to simplify processing when submitted)
 	const team_switch = $$(id_team_switch);
 	const team_play = team_switch.checked;
+	
+	// enable the team_switch if it was disabled
+	// disabled elements don't get submitted with the POST
+	// checkbox elemnts don't support the readonly attribute
+	// only recourse is to disable it when not supported but
+	// enable it here before submission so Django gets to see 
+	// it in the form submission (and save the session object 
+	// with this flag). 
+	team_switch.disabled = false;
 	
 	// If it's a team play submission
 	if (team_play) {
@@ -203,8 +307,8 @@ function OnSubmit(event) {
 		// Django expects INITIAL_FORMS and TOTAL_FORMS and the first INITIAL_FORMS items need IDs and the 
 		// rest need blank IDs and Django will create IDs for them after submission.
 		//
-		// So pass 0 collect Performances with IDs
-		//    pass 1 collect those without them
+		// So pass 0 collect Performances with IDs and Ranks
+		//    pass 1 collect Performances without IDs
 		//
 		// So we can build forms numbered 0 to INITIAL_FORMS-1 with IDs and then INITIAL_FORMS to TOTAL_FORMS-1 with blank IDs
 		//
@@ -262,7 +366,7 @@ function OnSubmit(event) {
 								if (spare_rids.length > 0)
 									rid.value = spare_rids.shift();
 								// If no spare rids are available remove the rid element altogether							
-								// TODO: do we need to check the that the management form is good 
+								// TODO: do we need to check that the management form is good 
 								// here, and/or ensure that all removed rids have a form number 
 								// above valid rids? Or does this code already ensure that? Perhaps,
 								// because of the way we fold and unfold here? Needs a think.
@@ -275,7 +379,8 @@ function OnSubmit(event) {
 				}
 
 	            // Now on both passes we look at all players, but on pass 0 we build up P = 0, 1, 2, 3 ... n
-	            // until we've used all the PIDs, then on pass 1 we'll continue with P = n, n+1, n+2 ... m
+	            // Until we've used all the PIDs, then on pass 1 we'll continue with P = n, n+1, n+2 ... m
+	            // Which is why we neeed two passes
 	    		for (let p = 0; p < num_players; p++) {
 	    			// pid is found on first pass, but then if it has a value is renamed 
 	    			// so that on the second pass only those without value are left. The 
@@ -495,10 +600,10 @@ function OnSubmit(event) {
 		// Remove the individual play form completely before submitting
 		if ($$(id_indiv_div)) $$(id_indiv_div).remove();
 	} 
-	else { // it's individual play
+	else { // it's individual play (the team_play checkbox is not checked)
 		const num_players = Number($$(id_num_players).value);
 		
-        // On Add operations remove the rid and pid for each player from submission as a safety.
+        // On Add operations remove the rid and pid for each player from the submission as a safety.
 		// Django will create ids for us when saving to the database.
 		if (operation === "add") {
 	    	const id_table = 'tblPlayersTable'
@@ -579,16 +684,17 @@ function OnSubmit(event) {
 					}
 				}
 				
-				// having dealth with team IDs we need to deal with Rank IDs. The thing is if a team session 
-				// is converted to individual play, then there's only one rank per team and on of the players
-				// from the erstwhile team can get that the others will have placeholders (in form id_n.m)
+				// having dealt with team IDs we need to deal with Rank IDs. The thing is if a team session 
+				// is converted to individual play, then there's only one rank per team and only one of the players
+				// from the erstwhile team can get that rank the others will have placeholders (in form id_n.m)
 				// At a bare minimum we need these placeholders removed so that Django creates new Rank objects
 				// with new IDs when saving. But we also want to order the forms in such a way that the ones 
-				// with Rank IDs are 0 to n and the onese without are n+1 to m. 
+				// with Rank IDs are 0 to n and the ones without are n+1 to m. 
 				//
 				// First let's fetch all the rid elements
 	            const rids = $$(id_indiv_div).querySelectorAll("[id^='"+id_prefix+rank_prefix+"'][id$='-id']");
 
+				// Get the form numbers (fns) and classify them
 	            let rid_fns_now = [];
 	            let rid_fns_good = [];
 	            let rid_fns_bad = [];
@@ -603,23 +709,23 @@ function OnSubmit(event) {
 						rid_fns_good.push(fn);										
 				}
 
+				// And build a new list of form numbers
 	            let rid_fns_new = [];
 				for (let f=0; f<rid_fns_good.length; f++) rid_fns_new.push(rid_fns_good[f]);	            
 				for (let f=0; f<rid_fns_bad.length; f++) rid_fns_new.push(rid_fns_bad[f]);
 	            
 				// Now if the two lists differ we have to map the now form numbers to the new form numbers
 				// but that involves renumbering all the form elements from one index to the next
-				// The beauty is that the POSTed data is keyed on element names, not IDs and by default
-				// the names and IDs all hold the same form number, so we need only cnhange the name, not
-				// the ID of the form elements.
+				// The beauty is that POSTed data is keyed on element names, not IDs and by default
+				// the names and IDs all hold the same form number, so we need only change the name, not
+				// the ID of the form elements in order to produce a clean POST.
 				for (let f=0; f<rid_fns_now.length; f++) 
 	            	mapElementNames($$(id_indiv_div), ["Rank", "Performance"], rid_fns_now[f], rid_fns_new[f]);
 			} 
 			else { 
-				// we are editing a session that had session.team_play=false when the form was initialised. 
-				// We have to check the trash for deleted players. We have a 
-				// rank ID and a performance ID for each one that we need to 
-				// request the deletion of.
+				// We are editing a session that had session.team_play=false when the form was initialised. 
+				// We have to check the trash for deleted players. We have a rank ID and a performance ID 
+				// for each one that we need to request the deletion of.
 				const id_template = "templatePlayersTable";
 				const id_table = id_template.replace("template", "tbl");
 				const id_trash = id_table.replace("tbl", "trash");
@@ -701,8 +807,7 @@ function configureGame() {
 	
 	// game_individual_play is true if the game supports individual play mode
 	// game_team_play is true if the game supports team play mode
-	// These are game properties.
-	
+	// These are game properties.	
 
 	// Decide which mode (individual play or team play to display)
 	let show_team_play = false;
@@ -768,8 +873,9 @@ function configureGame() {
 	
 	// Else do nothing, the form can stay in the mode its in (Individual or Team Play)
 	
-	// But in all cases disable the team switch if only one mode is available.
-	team_switch.disabled = (!game_individual_play || !game_team_play); 	
+	// But in all cases lock the team switch if only one mode is available.
+	const lock = (!game_individual_play || !game_team_play);
+	team_switch.disabled = lock;	
 }
 
 // Event handler for a new game selection
@@ -1177,6 +1283,33 @@ function updateManagementForms(div) {
     }
 }
 
+function add_player(select2, player_id) {
+	// Adds a player to a select Django-auto-complete-light select2 widget
+
+	// Populating the select2 widget from django-auto-complete-light is not so
+	// trivial, and taken from here: 
+	// 		https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
+	
+    const url = player_selector_url.replace(/\d+$/, player_id)
+    
+    $.ajax({
+        type: 'GET',
+        url: url
+    }).then(function (data) {
+        // create the option and append to Select2
+        var option = new Option(data, player_id, true, true);
+        select2.append(option).trigger('change');
+
+        // manually trigger the `select2:select` event
+        select2.trigger({
+            type: 'select2:select',
+            params: {
+                data: data
+            }
+        });
+    });
+}
+
 // Given a session object and a table row of specified type will force the widgets in that
 // row to conform with the session object. 
 function applySessionToRow(session, row, table_type) {
@@ -1212,34 +1345,14 @@ function applySessionToRow(session, row, table_type) {
             weight.value = player_id in weights ? weights[player_id] : 1;	                               
             player_copy.value = player_id;
             
-            // Populating the select2 widget form django-auto-complete-light is not so
-            // trivial, and taken from here: 
-            // 		https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
             if (rid.value in players) {
-	            const select2_player = $("#"+player.id, row)
-	            const url = player_selector_url.replace(/\d+$/, player_id)
-	            $.ajax({
-	                type: 'GET',
-	                url: url
-	            }).then(function (data) {
-	                // create the option and append to Select2
-	                var option = new Option(data, player_id, true, true);
-	                select2_player.append(option).trigger('change');
-	
-	                // manually trigger the `select2:select` event
-	                select2_player.trigger({
-	                    type: 'select2:select',
-	                    params: {
-	                        data: data
-	                    }
-	                });
-	            });            
+	            const select2_player = $("#"+$.escapeSelector(player.id), row)
+	            add_player(select2_player, player_id)
             }
             
 //            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
 //            $("#"+player.id, row).append(newOption)
 //            $("#"+player.id, row).trigger('change');
-            const a = 1;
     	}
     	break;
     		
@@ -1274,10 +1387,19 @@ function applySessionToRow(session, row, table_type) {
             const rID = rownum_Team < rids.length ? rids[rownum_Team] : undefined;
             const tID = rID in teams ? teams[rID] : undefined;
             
-            player.value = tID in teamplayers 		? teamplayers[tID][rownum_TeamPlayer] : "";
+    	    const player_id 	= tID in teamplayers ? teamplayers[tID][rownum_TeamPlayer] : "";
             
-            weight.value = player.value in weights 	? weights[player.value] : 1;	                               
-            pid.value 	 = player.value in pids 	? pids[player.value] 	: "";
+            //ASAP: This won't work with select 2 player widget.
+            // The code for popularing a select 2 widget is above. 
+            // Given it's used there and will be needed here, should put it 
+            // in a small function.   
+            const select2_player = $("#"+$.escapeSelector(player.id), row)
+            add_player(select2_player, player_id)
+
+            //player.value = tID in teamplayers 		? teamplayers[tID][rownum_TeamPlayer] : "";
+            
+            weight.value = player_id in weights ? weights[player_id] : 1;	                               
+            pid.value 	 = player_id in pids 	? pids[player_id] 	: "";
     	}
         break;
     };
@@ -1469,10 +1591,10 @@ function RenderTable(template, entries, placein, entry_number, session) {
 	            
 	            // And if there's a team player count widget we need to fix that too 
 	            fixWidget(TRB, name_num_team_players, entry_id);
-	            
+
 	            // Then apply the session data to the widgets in the TR element
 	            applySessionToRow(session, TRB, table_type);
-	
+
 	        	// Then enable all the widgets (disabled in the template by default)
 	            enableChildren(TRB, true);
 	
@@ -1612,7 +1734,7 @@ function enableChildren(of, enable) {
 //Get the Django widget with a give name inside a given element
 function getWidget(inside, name, entry_id) {
 	if (entry_id == undefined) {
-        // We expect and element which has a form_number in it somewhere but we don't know
+        // We expect an element which has a form_number in it somewhere but we don't know
 		// what number. So if there is a form_number in there, we'll use a querySelector
 		// to find the first element that matches the pattern.
 		if (name.includes(form_number)) {
@@ -1685,9 +1807,9 @@ function getNumberValue(element, default_value) {
 //its name to "to" form number, leaving the id intact
 //Used to renumber forms in the form submission.
 function renameDjangoWidget(element, from, to) {
- const matches = String(element.id).match(/^id_(.+?)\-(\d+)\-(.+?)$/);
- if (matches != null && Number(matches[2]) == from)
- 	element.name = matches[1] + "-" + to + "-" + matches[3];    
+	 const matches = String(element.id).match(/^id_(.+?)\-(\d+)\-(.+?)$/);
+	 if (matches != null && Number(matches[2]) == from)
+	 	element.name = matches[1] + "-" + to + "-" + matches[3];    
 }
 
 // Map element names from one form number to another for the the Django models specified int the list 

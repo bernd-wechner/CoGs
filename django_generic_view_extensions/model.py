@@ -103,7 +103,7 @@ def add_related(model):
      
     return []
 
-def can_save_related_formsets(model, field):
+def can_save_related_formsets(model, related_model):
     '''
     For related forms to be saved they must have a foreign key back 
     to the parent form's model. It's impossible to save the related formset
@@ -119,7 +119,7 @@ def can_save_related_formsets(model, field):
     field specified thuslyc an be saved as a formset.
     
     :param model: A Django model
-    :param field: A field in model 
+    :param related_model: A Django model that has a relation to the first one. 
     '''
     try:
         # The most reliable way to test this simply to try and build an inline_formset.
@@ -129,8 +129,7 @@ def can_save_related_formsets(model, field):
         #
         # It fails with an exception if no ForeignKey is found and we simply loook for that
         # before exception 
-        log.debug(f"{model=}, {field=}, {field.model=}, {field.remote_field.model=}")
-        inlineformset_factory(model, field.remote_field.model, fields=('__all__'))
+        inlineformset_factory(model, related_model, fields=('__all__'))
         return True
     except ValueError:
         return False
@@ -148,7 +147,7 @@ def Add_Related(model, field):
     '''
     if field.is_relation:
         if field.name in add_related(model):
-            if not can_save_related_formsets(model, field):
+            if not can_save_related_formsets(model, field.remote_field.model):
                 m = model._meta.object_name 
                 rm = field.remote_field.model._meta.object_name
                 log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")

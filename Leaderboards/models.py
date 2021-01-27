@@ -33,7 +33,7 @@ from django_model_privacy_mixin import PrivacyMixIn
 from django_generic_view_extensions.options import flt, osf
 from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.datetime import time_str 
+from django_generic_view_extensions.datetime import time_str, fix_time_zone 
 from django_generic_view_extensions.queryset import get_SQL
 from django_generic_view_extensions.util import AssertLog
 
@@ -303,88 +303,71 @@ class Rating(RatingModel):
         return r 
 
     @classmethod
-    def update(cls, session, feign_latest=False):
+    def update(cls, session):
         '''
         Update the ratings for all the players of a given session.
         
-        :param feign_latest: if True will ignore recorded future sessions and pretend the provided one is the latest one. Used for rebuiling a rating by walking through existing sessions.  
+        :param session:   A Session object  
         '''
         TS = TrueskillSettings()
         
         # Check to see if this is the latest play for each player
-        # And capture the current rating for each player (which we ill update) 
-        is_latest = True
+        # And capture the current rating for each player (which we will update) 
+        is_latest = {}
         player_rating = {}
         for performance in session.performances.all():
             rating = Rating.get(performance.player, session.game) # Create a new rating if needed
             player_rating[performance.player] = rating
-            if session.date_time < rating.last_play:
-                is_latest = False
+            is_latest[performance.player] = session.date_time < rating.last_play
         
-        if is_latest or feign_latest:
-            log.debug(f"Update rating for session {session.id}: {session}.")
+        log.debug(f"Update rating for session {session.id}: {session}.")
+        log.debug(f"Is latest session of {session.game} for {[k for (k,v) in is_latest.items() if v]}")
+        log.debug(f"Is not latest session of {session.game} for {[k for (k,v) in is_latest.items() if not v]}")
+
+        # Trickle admin bypass down 
+        if cls.__bypass_admin__:
+            session.__bypass_admin__ = True                    
+        
+        # Get the session impact (records results in database Performance objects)
+        # This updates the Performance objects associated with that session.
+        impact = session.calculate_trueskill_impacts()    
+        
+        # Update the rating for this player/game combo
+        # So this regardless of the sessions status as latest for any players
+        # Here is not where we make that call and this method is called by rebuild() 
+        # which is itself called by a function that decides on the consequence
+        # of so doing (whether a rebuild is needed because of future sessions,
+        # relative this one). 
+        for player in impact:
+            r = player_rating[player]
+            
+            # Record the new rating data                    
+            r.trueskill_mu = impact[player]["after"]["mu"]
+            r.trueskill_sigma = impact[player]["after"]["sigma"]
+            r.trueskill_eta = r.trueskill_mu - TS.mu0 / TS.sigma0 * r.trueskill_sigma  # µ − (µ0 ÷ σ0) × σ
+            
+            # Record the TruesSkill settings used to get them                     
+            r.trueskill_mu0 = TS.mu0
+            r.trueskill_sigma0 = TS.sigma0
+            r.trueskill_delta = TS.delta
+            r.trueskill_beta = session.game.trueskill_beta
+            r.trueskill_tau = session.game.trueskill_tau
+            r.trueskill_p = session.game.trueskill_p
+            
+            # Record the context of the rating 
+            r.plays = impact[player]["plays"]
+            r.victories = impact[player]["victories"]
+                
+            r.last_play = session.date_time
+            if session.performance(player).is_victory:
+                r.last_victory = session.date_time
+            # else leave r.last_victory unchanged
 
             # Trickle admin bypass down 
             if cls.__bypass_admin__:
-                session.__bypass_admin__ = True                    
-            
-            # Get the session impact (records results in database Performance objects)
-            # This updates the Performance objects associated with that session.
-            impact = session.calculate_trueskill_impacts()    
-            
-            # Update the rating for this player/game combo
-            for player in impact:
-                r = player_rating[player]
+                r.__bypass_admin__ = True                    
                 
-                # Record the new rating data                    
-                r.trueskill_mu = impact[player]["after"]["mu"]
-                r.trueskill_sigma = impact[player]["after"]["sigma"]
-                r.trueskill_eta = r.trueskill_mu - TS.mu0 / TS.sigma0 * r.trueskill_sigma  # µ − (µ0 ÷ σ0) × σ
-                
-                # Record the TruesSkill settings used to get them                     
-                r.trueskill_mu0 = TS.mu0
-                r.trueskill_sigma0 = TS.sigma0
-                r.trueskill_delta = TS.delta
-                r.trueskill_beta = session.game.trueskill_beta
-                r.trueskill_tau = session.game.trueskill_tau
-                r.trueskill_p = session.game.trueskill_p
-                
-                # Record the context of the rating 
-                r.plays = impact[player]["plays"]
-                r.victories = impact[player]["victories"]
-                    
-                r.last_play = session.date_time
-                if session.performance(player).is_victory:
-                    r.last_victory = session.date_time
-                # else leave r.last_victory unchanged
-
-                # Trickle admin bypass down 
-                if cls.__bypass_admin__:
-                    r.__bypass_admin__ = True                    
-                    
-                r.save()
-        else:
-            # One or more players have ratings recorded based on sessions played after the provided session.
-            # This should only happen if someone is adding a session retrospectively and after sessions were
-            # added that were played since the one being recorded. An unusual not a usual circumstance. But
-            # one we need to accommodate all the same.
-            #
-            # The tangled web of (sorted list of all) future sessions impacted by adding this one are returned 
-            # by session.future_sessions.
-            for rating in player_rating.values():
-                if session.date_time < rating.last_play:
-                    rating.reset(session)
-
-            # Having reset the ratings of all players in this session
-            # update with the current session.
-            Rating.update(session, feign_latest=True)
-
-            # Then we want to update for each future session, in order so we want to buld
-            fs = session.future_sessions
-            if not fs is None: 
-                for s in fs:
-                    log.debug(f"\tUpdate triggered for Session {session.id}: {session}.")
-                    Rating.update(s, feign_latest=True)
+            r.save()
     
     @classmethod
     def rebuild(cls, Game=None, From=None):
@@ -418,7 +401,7 @@ class Rating(RatingModel):
         # Start timer and counter
         # Copy all ratings to Backup_Rating
         
-        # Bypass admin field updates for a rating rebuild
+        # Bypass admin fields updates for a rating rebuild
         cls.__bypass_admin__ = True
                         
         if not Game and not From:
@@ -426,7 +409,7 @@ class Rating(RatingModel):
 
             sessions = Session.objects.all().order_by('date_time')
         else:
-            log.debug(f"Rebuilding leaderboard ratings for {Game.name} from {From}")
+            log.debug(f"Rebuilding leaderboard ratings for {getattr(Game, 'name', None)} from {From}")
             
             sfilterg = Q(game=Game) if Game else Q()
             sfilterf = Q(date_time__gte=From) if isinstance(From, datetime) else Q()
@@ -455,11 +438,12 @@ class Rating(RatingModel):
                         rating = Rating.get(p.player, s.game)
                         Backup_Rating.clone(rating)
                     except:
-                        pass
+                        # Ignore errors, We just won't record that rating as backedup. 
+                        pass 
                     else:
                         backedup.add(rkey)
                 
-            cls.update(s, feign_latest=True)
+            cls.update(s)
             
         # Desist from bypassing admin feield updates
         cls.__bypass_admin__ = False
@@ -559,12 +543,44 @@ class Backup_Rating(RatingModel):
         backup.save()        
 
     @classmethod
+    def diff(cls, show_unchanged=True):
+        '''
+        Returns an a dictionary summarising differences between current ratings and 
+        backed up ratings. It is an ordered dictionary keyed on the tuple of player id
+        and game id containing a 9 tuple of the old, diff and new values for the three
+        rating measures (eta, mu, sigma) 
+        
+        :param show_unchanged: Include ratings that didn't change.
+        '''
+        diffs = OrderedDict()
+        for r in cls.objects.all().order_by('game', '-trueskill_eta'):
+            R = Rating.get(r.player, r.game)
+            
+            diff_eta = R.trueskill_eta - r.trueskill_eta
+            diff_mu = R.trueskill_mu - r.trueskill_mu
+            diff_sigma = R.trueskill_sigma - r.trueskill_sigma
+            
+            if (show_unchanged
+                or abs(diff_eta) > FLOAT_TOLERANCE
+                or abs(diff_mu) > FLOAT_TOLERANCE
+                or abs(diff_sigma) > FLOAT_TOLERANCE):
+                diffs[(r.player.pk, r.game.pk)] = (r.trueskill_eta, r.trueskill_mu, r.trueskill_sigma,
+                                                   diff_eta, diff_mu, diff_sigma,
+                                                   R.trueskill_eta, R.trueskill_mu, R.trueskill_sigma)
+                
+        return diffs 
+
+    @classmethod
     def html_diff(cls, show_unchanged=True):
         '''
-        Returns an HTML table (string) summarising differences between current ratings and backed up ratings.
-        :param cls:
+        Returns an HTML table (string) summarising differences between current ratings and 
+        backed up ratings.
+        
+        :param show_unchanged: Include ratings that didn't change.
         '''
         sign = lambda a: '-' if a<0 else '+'
+        
+        diffs = cls.diff(show_unchanged)
         
         html = "<TABLE>"
         html += "<TR>"
@@ -575,15 +591,13 @@ class Backup_Rating(RatingModel):
         html += "<TH>Standard Deviation(µ)</TH>"
         html += "</TR>"
         for r in cls.objects.all().order_by('game', '-trueskill_eta'):
-            R = Rating.get(r.player, r.game)
+            (old_eta, old_mu, old_sigma,
+             diff_eta, diff_mu, diff_sigma,
+             new_eta, new_mu, new_sigma) = diffs[(r.player.pk, r.game.pk)]
             
-            diff_eta = R.trueskill_eta - r.trueskill_eta
-            diff_mu = R.trueskill_mu - r.trueskill_mu
-            diff_sigma = R.trueskill_sigma - r.trueskill_sigma
-            
-            eqn_eta = f"{r.trueskill_eta:.4f} {sign(diff_eta)} {abs(diff_eta):.4f} = {R.trueskill_eta:.4f}"
-            eqn_mu = f"{r.trueskill_mu:.4f} {sign(diff_mu)} {abs(diff_mu):.4f} = {R.trueskill_mu:.4f}"
-            eqn_sigma = f"{r.trueskill_sigma:.4f} {sign(diff_sigma)} {abs(diff_sigma):.4f} = {R.trueskill_sigma:.4f}"
+            eqn_eta = f"{old_eta:.4f} {sign(diff_eta)} {abs(diff_eta):.4f} = {new_eta:.4f}"
+            eqn_mu = f"{old_mu:.4f} {sign(diff_mu)} {abs(diff_mu):.4f} = {new_mu:.4f}"
+            eqn_sigma = f"{old_sigma:.4f} {sign(diff_sigma)} {abs(diff_sigma):.4f} = {new_sigma:.4f}"
             
             if (show_unchanged
                 or abs(diff_eta) > FLOAT_TOLERANCE
@@ -599,7 +613,6 @@ class Backup_Rating(RatingModel):
         html += "</TABLE>"
         
         return html
-            
 
 class League(AdminModel):
     '''
@@ -730,6 +743,8 @@ class Team(AdminModel):
     def __unicode__(self):
         if self.name:
             return self.name
+        elif self._state.adding: # self.players is unavailable
+            return "Empty Unsaved Team"
         else:
             return u", ".join([str(p) for p in self.players.all()])
     def __str__(self): return self.__unicode__()
@@ -2070,6 +2085,10 @@ class Session(TimeZoneMixIn, AdminModel):
         return right/total if total > 0 else 0    
 
     @property
+    def date_time_local(self):
+        return fix_time_zone(self.date_time, self.date_time_tz)
+
+    @property
     def prediction_quality(self) -> int:
         return self._prediction_quality()
 
@@ -2092,21 +2111,23 @@ class Session(TimeZoneMixIn, AdminModel):
         
         html = "<div id='session_inspector' class='inspector'>"
         html += "<table>"
-        html += "<tr><th>pk:</th><td>{}</td></tr>".format(self.pk)
-        html += "<tr><th>date_time:</th><td>{}</td></tr>".format(self.date_time)
-        html += "<tr><th>league:</th><td>{}</td></tr>".format(self.league.pk)
-        html += "<tr><th>location:</th><td>{}</td></tr>".format(self.location.pk)
-        html += "<tr><th>game:</th><td>{}</td></tr>".format(self.game.pk)
-        html += "<tr><th>team_play:</th><td>{}</td></tr>".format(self.team_play)
+        html += f"<tr><th>pk:</th><td>{self.pk}</td></tr>"
+        html += f"<tr><th>date_time:</th><td>{self.date_time}</td></tr>"
+        html += f"<tr><th>league:</th><td>{self.league.pk}: {self.league.name}</td></tr>"
+        html += f"<tr><th>location:</th><td>{self.location.pk}: {self.location.name}</td></tr>"
+        html += f"<tr><th>game:</th><td>{self.game.pk}: {self.game.name}</td></tr>"
+        html += f"<tr><th>team_play:</th><td>{self.team_play}</td></tr>"
         
         pid = ttf.format("pid", "Performance ID - the primary key of a Performance object")
         rid = ttf.format("rid", "Rank ID - the primary key of a Rank object")
         tid = ttf.format("tid", "Ream ID - the primary key of a Team object")
+
         html += "<tr><th>{}</th><td><table>".format(ttf.format("Integrity:","Every player in the game must have an associated performance, rank and if relevant, team object"))
+        
         for performance in self.performances.all():
             html += "<tr>"
-            html += "<th>player:</th><td>{}</td><td>{}</td>".format(performance.player.pk, performance.player.full_name)
-            html += "<th>{}:</th><td>{}</td>".format(pid, performance.pk)
+            html += f"<th>player:</th><td>{performance.player.pk}</td><td>{performance.player.full_name}</td>"
+            html += f"<th>{pid}:</th><td>{performance.pk}</td>"
 
             rank = None
             team = None
@@ -2127,45 +2148,45 @@ class Session(TimeZoneMixIn, AdminModel):
             else:
                 try:
                     rank = Rank.objects.get(session=self, player=performance.player).pk
-                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+                    html += f"<th>{rid}:</th><td>{rank}</td>"
                 except Rank.DoesNotExist:
                     rank = None
-                    html += "<th>{}:</th><td>{}</td>".format(rid, rank)
+                    html += f"<th>{rid}:</th><td>{rank}</td>"
                 except Rank.MultipleObjectsReturned:
                     ranks = Rank.objects.filter(session=self, player=performance.player)
-                    html += "<th>{}:</th><td>{}</td>".format(rid, [rank.pk for rank in ranks])
+                    html += f"<th>{rid}:</th><td>{[rank.pk for rank in ranks]}</td>"
             
-            html += "<th>{}:</th><td>{}</td>".format(tid, team) if self.team_play else ""
+            html += f"<th>{tid}:</th><td>{team}</td>" if self.team_play else ""
             html += "</tr>"
         html += "</table></td></tr>"
         
         html += "<tr><th>ranks:</th><td><ol start=0>"
         for rank in self.ranks.all():
             html += "<li><table>"
-            html += "<tr><th>pk:</th><td>{}</td></tr>".format(rank.pk)
-            html += "<tr><th>rank:</th><td>{}</td></tr>".format(rank.rank)
-            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(rank.player.pk if rank.player else None, rank.player.full_name if rank.player else None)
-            html += "<tr><th>team:</th><td>{}</td><td>{}</td></tr>".format(rank.team.pk if rank.team else None, rank.team.name if rank.team else "")
+            html += f"<tr><th>pk:</th><td>{rank.pk}</td></tr>"
+            html += f"<tr><th>rank:</th><td>{rank.rank}</td></tr>"
+            html += f"<tr><th>player:</th><td>{rank.player.pk if rank.player else None}</td><td>{rank.player.full_name if rank.player else None}</td></tr>"
+            html += f"<tr><th>team:</th><td>{rank.team.pk if rank.team else None}</td><td>{rank.team.name if rank.team else ''}</td></tr>"
             if (rank.team):
                 for player in rank.team.players.all():
-                    html += "<tr><th></th><td>{}</td><td>{}</td></tr>".format(player.pk, player.full_name)                                
+                    html += f"<tr><th></th><td>{player.pk}</td><td>{player.full_name}</td></tr>"                                
             html += "</table></li>"
         html += "</ol></td></tr>"
             
         html += "<tr><th>performances:</th><td><ol start=0>"
         for performance in self.performances.all():
             html += "<li><table>"
-            html += "<tr><th>pk:</th><td>{}</td></tr>".format(performance.pk)
-            html += "<tr><th>player:</th><td>{}</td><td>{}</td></tr>".format(performance.player.pk, performance.player.full_name)
-            html += "<tr><th>weight:</th><td>{}</td></tr>".format(performance.partial_play_weighting)
-            html += "<tr><th>play_number:</th><td>{}</td>".format(performance.play_number)
-            html += "<th>victory_count:</th><td>{}</td></tr>".format(performance.victory_count)
-            html += "<tr><th>mu_before:</th><td>{}</td>".format(performance.trueskill_mu_before)
-            html += "<th>mu_after:</th><td>{}</td></tr>".format(performance.trueskill_mu_after)
-            html += "<tr><th>sigma_before:</th><td>{}</td>".format(performance.trueskill_sigma_before)
-            html += "<th>sigma_after:</th><td>{}</td></tr>".format(performance.trueskill_sigma_after)
-            html += "<tr><th>eta_before:</th><td>{}</td>".format(performance.trueskill_eta_before)
-            html += "<th>eta_after:</th><td>{}</td></tr>".format(performance.trueskill_eta_after)            
+            html += f"<tr><th>pk:</th><td>{performance.pk}</td></tr>"
+            html += f"<tr><th>player:</th><td>{performance.player.pk}</td><td>{performance.player.full_name}</td></tr>"
+            html += f"<tr><th>weight:</th><td>{performance.partial_play_weighting}</td></tr>"
+            html += f"<tr><th>play_number:</th><td>{performance.play_number}</td>"
+            html += f"<th>victory_count:</th><td>{performance.victory_count}</td></tr>"
+            html += f"<tr><th>mu_before:</th><td>{performance.trueskill_mu_before}</td>"
+            html += f"<th>mu_after:</th><td>{performance.trueskill_mu_after}</td></tr>"
+            html += f"<tr><th>sigma_before:</th><td>{performance.trueskill_sigma_before}</td>"
+            html += f"<th>sigma_after:</th><td>{performance.trueskill_sigma_after}</td></tr>"
+            html += f"<tr><th>eta_before:</th><td>{performance.trueskill_eta_before}</td>"
+            html += f"<th>eta_after:</th><td>{performance.trueskill_eta_after}</td></tr>"            
             html += "</table></li>"
         html += "</ol></td></tr>"
         html += "</table>"
@@ -2397,49 +2418,103 @@ class Session(TimeZoneMixIn, AdminModel):
         
         return (mark_safe(detail), data)                  
 
-    def previous_sessions(self, player):
+    def previous_sessions(self, player=None):
         '''
         Returns all the previous sessions that the nominate player played this game in. 
-        Or None if no such session exists.
+        
+        Always includes the current session as the first item (previous_sessions[0]). 
+        
+        :param player: A Player object. Optional, all previous this game was played in if not provided.
         '''
         # TODO: Test thoroughly. Tricky Query. 
         time_limit = self.date_time
         
         # Get the list of previous sessions including the current session! So the list must be at least length 1 (the current session).
         # The list is sorted in descending date_time order, so that the first entry is the current sessions.
-        prev_sessions = Session.objects.filter(Q(date_time__lte=time_limit) & Q(game=self.game) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
+        sfilter = Q(date_time__lte=time_limit) & Q(game=self.game)
+        if player:
+            sfilter = sfilter & ( Q(ranks__player=player) | Q(ranks__team__players=player) )
+        
+        prev_sessions = Session.objects.filter(sfilter).order_by('-date_time')
 
         return prev_sessions
 
-    def previous_session(self, player):
+    def previous_session(self, player=None):
         '''
         Returns the previous session that the nominate player played this game in. 
         Or None if no such session exists.
+        
+        :param player: A Player object. Optional, returns the last session this game was played if not provided.
         '''
         prev_sessions = self.previous_sessions(player)
         
         if len(prev_sessions) < 2:
-            assert len(prev_sessions)==1, "Database error: Current session not in list previous sessions list, session={}, player={}, len(prev_sessions)={}.".format(self.pk, player.pk, len(prev_sessions))
-            assert prev_sessions[0]==self, "Database error: Current session not in list previous sessions list, session={}, player={}, session={}.".format(self.pk, player.pk, prev_sessions[0])
+            assert len(prev_sessions)==1, f"Database error: Current session not in previous sessions list, session={self.pk}, player={player.pk}, {len(prev_sessions)=}."
+            assert prev_sessions[0]==self, f"Database error: Current session not in previous sessions list, session={self.pk}, player={player.pk}, {prev_sessions=}."
             prev_session = None
         else:
             prev_session = prev_sessions[1]
-            assert prev_sessions[0].date_time == self.date_time, "Query error: current session not in list for session={}, player={}".format(self.pk, player.pk)
-            assert prev_session.date_time < self.date_time, "Database error: Two sessions with identical time, session={}, previous session={}, player={}".format(self.pk, prev_session.pk, player.pk)
+            assert prev_sessions[0].date_time == self.date_time, f"Query error: current session not in previous sessions list for session={self.pk}, player={player.pk}"
+            assert prev_session.date_time < self.date_time, f"Database error: Two sessions with identical time, session={self.pk}, previous session={prev_session.pk}, player={player.pk}"
 
         return prev_session
+
+    def following_sessions(self, player=None):
+        '''
+        Returns all the following sessions that the nominate player played (will play?) this game in. 
+        
+        Always includes the current session as the first item (previous_sessions[0]). 
+
+        :param player: A Player object. Optional, all following sessions this game was played in if not provided.
+        '''
+        # TODO: Test thoroughly. Tricky Query. 
+        time_limit = self.date_time
+        
+        # Get the list of previous sessions including the current session! So the list must be at least length 1 (the current session).
+        # The list is sorted in descending date_time order, so that the first entry is the current sessions.
+        sfilter = Q(date_time__gte=time_limit) & Q(game=self.game)
+        if player:
+            sfilter = sfilter & ( Q(ranks__player=player) | Q(ranks__team__players=player) )
+        
+        foll_sessions = Session.objects.filter(sfilter).order_by('date_time')
+
+        return foll_sessions
+    
+    def following_session(self, player=None):
+        '''
+        Returns the previous session that the nominate player played this game in. 
+        Or None if no such session exists.
+        
+        :param player: A Player object. Optional, returns the last session this game was played if not provided.
+        '''
+        foll_sessions = self.following_sessions(player)
+        
+        if len(foll_sessions) < 2:
+            assert len(foll_sessions)==1, f"Database error: Current session not in following sessions list, session={self.pk}, player={player.pk}, {len(foll_sessions)=}."
+            assert foll_sessions[0]==self, f"Database error: Current session not in following sessions list, session={self.pk}, player={player.pk}, {foll_sessions=}."
+            foll_session = None
+        else:
+            foll_session = foll_sessions[1]
+            assert foll_sessions[0].date_time == self.date_time, f"Query error: current session not in following sessions list of following sessions for session={self.pk}, player={player.pk}"
+            assert foll_session.date_time > self.date_time, f"Database error: Two sessions with identical time, session={self.pk}, previous session={foll_session.pk}, player={player.pk}"
+
+        return foll_session
 
     def previous_victories(self, player):
         '''
         Returns all the previous sessions that the nominate player played this game in that this player won 
         Or None if no such session exists.
+        
+        :param player: a Player object. Required, as the previous_vitory of any player is just previous_session().
         '''
         # TODO: Test thoroughly. Tricky Query. 
         time_limit = self.date_time
         
         # Get the list of previous sessions including the current session! So the list must be at least length 1 (the current session).
         # The list is sorted in descening date_time order, so that the first entry is the current sessions.
-        prev_sessions = Session.objects.filter(Q(date_time__lte=time_limit) & Q(game=self.game) & Q(ranks__rank=1) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
+        sfilter = Q(date_time__lte=time_limit) & Q(game=self.game) & Q(ranks__rank=1)
+        sfilter = sfilter & ( Q(ranks__player=player) | Q(ranks__team__players=player) ) 
+        prev_sessions = Session.objects.filter(sfilter).order_by('-date_time')
 
         return prev_sessions
 
@@ -2897,7 +2972,7 @@ class Rank(AdminModel):
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
     #    but there are some complexites they introduce that are rather unnatracive as well
     player = models.ForeignKey(Player, verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
-    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, editable=False, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
 
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
