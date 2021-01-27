@@ -39,12 +39,6 @@ from django_generic_view_extensions.util import AssertLog
 
 from CoGs.logging import log
 
-from _ctypes import ArgumentError
-from click.types import DateTime
-from samba.tests import ntacls_backup
-
-
-
 # CoGs Leaderboard Server Data Model
 #
 # The underlying model of data is designed designed to allow:

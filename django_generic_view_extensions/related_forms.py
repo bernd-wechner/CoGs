@@ -28,7 +28,7 @@ from django.core.exceptions import ValidationError
 
 from . import log
 from .model import add_related, Add_Related, can_save_related_formsets
-from alembic.util.compat import callable
+
 
 class RelatedForms(dict):
     # The basic offering here is build a list of related forms
