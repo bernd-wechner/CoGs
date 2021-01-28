@@ -50,7 +50,8 @@
 {#</script>#}
 
 	{% comment %}
-		Sessions are very particular and perhaps the most complicated object we use and hence teh cmost complicated form we have to drive it
+		Sessions are very particular and perhaps the most complicated object we use and hence the most 
+		complicated form we have to drive.
 
 		We include the standard form above but the Session object is pointed to by:
 			Rank objects - one for each player or team (depending on play mode) points to this session object
@@ -65,6 +66,8 @@
 		<table id='tableRankings'>
 			<script>
 				"use strict";
+				// TODO: Move all this to a subtemplate that is included here if it exists. So as to keep generic
+				//       templates separate from model specific ones. Could name the include file after the model.
 				{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
 				const operation		= "{{operation}}"
 				
@@ -72,17 +75,17 @@
 					{# Rank Related Data - lists with on entry per rank #}
 					const rIDs          = {{ form.related_forms.Rank.field_data.id|NoneToNull }};         		{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
 					const rRanks 		= {{ form.related_forms.Rank.field_data.rank|NoneToNull }};       		{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
-					const rPlayers 		= {{ form.related_forms.Rank.field_data.player|NoneToNull }};       		{# Primary Keys of the players corresponding to the ranks in Ranking. #}
-					const tIDs  		= {{ form.related_forms.Rank.field_data.team|NoneToNull }}; 				{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+					const rPlayers 		= {{ form.related_forms.Rank.field_data.player|NoneToNull }};       	{# Primary Keys of the players corresponding to the ranks in Ranking. #}
+					const tIDs  		= {{ form.related_forms.Rank.field_data.team|NoneToNull }}; 			{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
 	
 					{# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
 					const rTeamNames 	= {{ form.related_forms.Rank.field_data.Team__name|QuoteValues|safe }};  {# List of Team names #}
-					const rTeamPlayers 	= {{ form.related_forms.Rank.field_data.Team__players|NoneToNull }};    	{# List of Lists of Team Players. #}
+					const rTeamPlayers 	= {{ form.related_forms.Rank.field_data.Team__players|NoneToNull }};     {# List of Lists of Team Players. #}
 	
 					{# Performance Related Data - lists with one entry per performance #}
 					const pIDs          = {{ form.related_forms.Performance.field_data.id|NoneToNull }}; 					{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
-					const pPlayers 		= {{ form.related_forms.Performance.field_data.player|NoneToNull }};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
-					const pWeights 		= {{ form.related_forms.Performance.field_data.partial_play_weighting|NoneToNull }}; {# Partial play weighting factors corresponding to the players in Players #}
+					const pPlayers 		= {{ form.related_forms.Performance.field_data.player|NoneToNull }};				{# Primary Keys of the players corresponding to the ranks in Performance. #}
+					const pWeights 		= {{ form.related_forms.Performance.field_data.partial_play_weighting|NoneToNull }};{# Partial play weighting factors corresponding to the players in Players #}
 	
 					{# Teams have optional names. Replace None with the default name of 'Team n' #}
 					for (let i = 0; i < rTeamNames.length; i++) {
@@ -128,8 +131,6 @@
 					return Session;
 				}
 				
-				const Session = get_session_data();				
-				
 				const is_team_play = ("{{session.team_play}}" == "True");										
 
 				{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
@@ -141,7 +142,7 @@
 				var game_min_players_per_team 	= {{game_min_players_per_team}};
 				var game_max_players_per_team 	= {{game_max_players_per_team}};
 				
-				{# The game props fetcher URL needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
+				{# The game props and player fetcher URLs needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
 				const game_props_url 			= "{% url 'get_game_props' 1 %}" 
 				const player_selector_url 		= "{% url 'get_selector' "Player" 1 %}" 
 			</script>
@@ -153,8 +154,12 @@
 	{% endif %}
 
 	<input type="submit" value="Submit" style="margin-top:20px;"/>
-	{% if debug %}	
-		<input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
+	{% if debug %}
+		<br>	
+		<br><input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
+		<br><input type="checkbox" id="debug_form_data" name="debug_form_data" value="on"> Display form data only (do not process submission)
+		<br><input type="checkbox" id="debug_rebuild_request" name="debug_rebuild_request" value="on"> Display rebuild request log only (do not save anything to database)
+		<br><br>
 		<div class='tooltip'>
 			<input type="button" value="Prepare Submission" id="prepare_submission"/>
 			<span class='tooltiptext' style='width: 300%;'>Runs the OnSubmit event handler without submitting. So the page can be inspected in its state just prior to submission.</span>

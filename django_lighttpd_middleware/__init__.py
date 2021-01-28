@@ -32,7 +32,7 @@ and Django wants this:
     PATH_INFO: /list/Player
 
 It's possible this is a WSGI issue not a Django issue per se, as there is a related fix in
-lighttpd 2 (which is not released at present and I'm using 1.45):
+lighttpd 2 (which is not released at present and I'm using 1.4.55):
 
     https://redmine.lighttpd.net/projects/lighttpd2/wiki/Howto_WSGI
     

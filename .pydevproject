@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?eclipse-pydev version="1.0"?><pydev_project>
-                                
+                                    
+    
     
     
     
@@ -9,7 +10,8 @@
     
     
     <pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">python CoGs</pydev_property>
-                                
+                                    
+    
     
     
     
@@ -18,7 +20,8 @@
     
     
     <pydev_variables_property name="org.python.pydev.PROJECT_VARIABLE_SUBSTITUTION">
-                                                                
+                                                                        
+        
         
         
         
@@ -27,7 +30,8 @@
         
         
         <key>DJANGO_MANAGE_LOCATION</key>
-                                                                
+                                                                        
+        
         
         
         
@@ -36,7 +40,8 @@
         
         
         <value>manage.py</value>
-                                                                
+                                                                        
+        
         
         
         
@@ -45,7 +50,8 @@
         
         
         <key>DJANGO_SETTINGS_MODULE</key>
-                                                                
+                                                                        
+        
         
         
         
@@ -54,7 +60,8 @@
         
         
         <value>CoGs.settings</value>
-                                                                
+                                                                        
+    
     
     
     
@@ -63,7 +70,8 @@
     
     
     </pydev_variables_property>
-                                
+                                    
+    
     
     
     
@@ -72,7 +80,8 @@
     
     
     <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
-                                                                
+                                                                        
+        
         
         
         
@@ -81,7 +90,8 @@
         
         
         <path>/${PROJECT_DIR_NAME}</path>
-                                                                
+                                                                        
+    
     
     
     
@@ -90,7 +100,8 @@
     
     
     </pydev_pathproperty>
-                                
+                                    
+    
     
     
     
@@ -99,7 +110,7 @@
     
     
     <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python interpreter</pydev_property>
-                                
+                                    
 
 
 
@@ -107,10 +118,11 @@
 
 
 
+    
     
     <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
         <path>/home/bernd/.local/lib/python3.8/site-packages</path>
-        <path>/media/Data/PortableSoftware/Eclipse/plugins/org.python.pydev.core_7.4.0.201910251334/pysrc</path>
     </pydev_pathproperty>
-    
+        
+
 </pydev_project>

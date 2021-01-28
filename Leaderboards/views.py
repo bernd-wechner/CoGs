@@ -1,11 +1,12 @@
+import cProfile, pstats, io
 import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
-import cProfile, pstats, io
 from datetime import datetime, date, timedelta
+from collections import OrderedDict
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
+from django_generic_view_extensions.datetime import datetime_format_python_to_PHP, decodeDateTime
 from django_generic_view_extensions.options import  list_display_format, object_display_format 
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
@@ -20,7 +21,7 @@ from django.shortcuts import render
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.formats import localize
-from django.utils.timezone import is_aware, make_aware, activate, localtime
+from django.utils.timezone import is_aware, make_aware, make_naive, activate, localtime
 from django.http import HttpResponse
 #from django.http.response import HttpResponseRedirect
 from django.urls import reverse, reverse_lazy  #, resolve
@@ -78,27 +79,251 @@ def updated_user_from_form(user, request):
             registrars.user_set.remove(user)
     user.save
 
-def clean_submitted_data(self):
+def pre_process_submitted_model(self):
     '''
-    Do stuff before the model is saved
+    When a model form is POSTed, this function is called BEFORE the form is saved.
+    
+    This intended primarily to make decisions based on the post (and possibly
+    the database object being updated) and buildingba kwargs dict to pass to
+    the post processor. The pre-processore is called befoe the save and so have 
+    privileged access to he database before the save takes place.
+    
+    It runs before the the form is cleaned so self.form.data is available but not
+    self.form.cleaned_data is not. 
+    
+    self is an instance of CreateViewExtended or UpdateViewExtended.
+    
+    If it returns a dict that will be used as a kwargs dict into the
+    the configured post processor (post_process_submitted_model below).
     '''
     model = self.model._meta.model_name
+    
+    debug_only = bool(self.form.data.get("debug_rebuild_request", False))
+    
+    # f"<html><body<p>{title}</p><p>It is now {now}.</p><p><pre>{result}</pre></p></body></html>"    
+    html = "<section id='debug'>\n<pre>\n"
+    
+    def output(message):
+        '''Toggle for diagnostic output direction'''
+        nonlocal html
+        if debug_only:
+            m = message.replace('\n', '\n\t')
+            html += f"{m}\n"
+        else:
+            m = message.replace('\n', ' ')
+            log.debug(m)
+            
+    def STR(r):
+        '''Quick and dirty preyty-printer for tuples and lists of tuples requests (as the repr defaults suck)'''
+        if isinstance(r, list):
+            s = '['
+            R = r
+        else:
+            s = ''
+            R = [r]
+            
+        for i, t in enumerate(R):
+            s += '('
+            for j, e in enumerate(t):
+                s += str(e)
+                if not j == len(t)-1: s += ', '
+            s += ')' 
+            if not i == len(R)-1: s += ', '
+        if isinstance(r, list): s+= ']'
+        return s
+    
+    # When a session submitted (while it is still in unchanged int he database) we need 
+    # to check if the submission changes any rating affecting fields and make note of that
+    # so that the post processor can update the ratings with a rebuild request if needed
+    if model == 'session':
+        output(f"PRE-PROCESSING Session submission.")
 
-def pre_process_submitted_model(self):
-    pass
+        output(f"Using form data:")
+        for (key, val) in self.form.data.items():
+            output(f"\t{key}:{val}")
+        output("\n")
+        
+        # We need the time, game and players first
+        # As this is all we need to know for 
+        # both the Create and Update views.
+
+        str_time = self.form.data['date_time']  # Submitted session time
+        new_time = parse_datetime(str_time)            # Fails with exception or None if invalid
+
+        # We need a TZ naive version for comparising against naive datetimes.
+        if is_aware(new_time):
+            nt = make_naive(localtime(new_time, timezone.utc))
+        else:
+            nt = new_time
+            new_time = make_aware(new_time)
+        
+        str_game = self.form.data['game']       # Submitted game ID
+        new_game = Game.objects.get(pk=int(str_game))  # Fails with exception if bad input
+        
+        # Grab the players and play_weights
+        performances = int(self.form.data['Performance-TOTAL_FORMS'])
+        new_players = []
+        new_weights = []
+        for p in range(performances):
+            int_player = int(self.form.data[f'Performance-{p}-player'])
+            new_players.append(Player.objects.get(pk=int_player))
+            str_weight = self.form.data[f'Performance-{p}-partial_play_weighting']
+            new_weights.append(float(str_weight))
+            
+        # Check to see if this is the latest play for each player
+        is_latest = True
+        for player in new_players:
+            rating = Rating.get(player, new_game) 
+            if new_time < rating.last_play:
+                is_latest = False
+                
+        # Rebuild nothing by default
+        rebuild = None
+
+        # A rebuild of ratings is triggered under any of the following circumstances:
+        #
+        # 1. It's a new session and any of the players involved have future sessions
+        #    recorded already.
+        if isinstance(self, CreateViewExtended):
+            output(f"New Session")
+            if not is_latest:
+                return {'rebuild': (new_game, new_time)}
+
+        # or
+        #
+        # 2. It's an edit to an old session (that is not the latest in that game)
+        #    and a rating-changing edit was made.
+        #
+        # Rating changing edits are:
+        #
+        # 1. The game changed
+        # 2. One or more players were added or removed
+        # 3. The play mode changed (team vs. individual)
+        # 4. Any players rank is changed
+        # 5. Any players weight has changed
+        # 6. If the date time is changed such that the prior or next session 
+        #    for any player changes (i.e. the order of sessions for any player 
+        #    is changed)
+        elif isinstance(self, UpdateViewExtended):
+            old_session = self.object
+            output(f"Editing session {old_session.pk}")
+
+            # If the game was changed we will request a rebuild of both games 
+            # regardless of any other considerations. Both their rating trees
+            # need rebuilding. 
+            if not new_game == old_session.game:
+                rebuild = [(old_session.game, old_session.date_time), (new_game, new_time)]
+                output(f"\tGame changed. Requesting rebuild of leaderboards: {STR(rebuild)}")
+                
+            else:
+                old_players = old_session.players
+                                
+                # Divine the play mode
+                if 'team_play' in self.form.data:
+                    assert 'num_teams' in self.form.data, "Bad form submission, team_play on but no num_teams."
+                    new_team_play = True
+                else:
+                    assert 'num_players' in self.form.data, "Bad form submission, team_play off but no num_players."
+                    new_team_play = False
+                
+                # If the play mode changed rebuild this  games rating tree from 
+                # this session on.
+                if not new_team_play == old_session.team_play: 
+                    rebuild = (old_session.game, min(old_session.date_time, new_time))
+                    output(f"\tPlay mode changed from {'team' if old_session.team_play else 'individual'} to {'team' if new_team_play else 'individual'}.\n\tRequesting rebuild of leaderboards: {STR(rebuild)}")
+                    
+                # If any players were added, remove or changed, rebuild this 
+                # games rating tree from this session on.
+                elif not set(new_players) == set(old_players):
+                    rebuild = (old_session.game, min(old_session.date_time, new_time))
+                    output(f"\tPlayers changed from\n\t{STR(set(old_players))} to\n\t{STR(set(new_players))}.\n\tRequesting rebuild of leaderboards: {STR(rebuild)}")
+                    
+                # Otherwise check for othe rating impacts
+                else:
+                    output(f"Checking for general rating impacts ....")
+                    # Grab the ranks
+                    # As no players have be added or deleted and
+                    # the play mode has not changed we can feel 
+                    # pretty confident that each of the ranks in 
+                    # the form has an id (none were DELETED)  
+                    ranks = int(self.form.data['Rank-TOTAL_FORMS'])
+                    new_ranks = []
+                    for r in range(ranks):
+                        new_ranks.append(int(self.form.data.get(f'Rank-{r}-rank', None)))
+
+                    # Get a list of old ranks in same order as new_players and hence 
+                    # new_ranks (assumes the Rank and Performance formsets have parallel 
+                    # sequence numbers, which the form must ensure).
+                    old_ranks = [old_session.rank(p).rank for p in new_players]
+
+                    rank_changed = not new_ranks == old_ranks
+                    if rank_changed: output(f"\tRanks changed from {old_ranks} to {new_ranks}.")
+                            
+                    # Check for a session sequence change
+                    # If for any player this session moves out of the bounds of prev session  
+                    # and following session the sequence changed
+                    sequence_changed = False
+                    # We can loop over new or old players because if they are not the same
+                    # a rebuild is triggered anyhow.
+                    for p in new_players:
+                        prev_sess = old_session.previous_session(p)
+                        foll_sess = old_session.following_session(p)
+                        
+                        # min and max are TX unaware (naive), and session.date_time is UTC
+                        # So we make session.date_time naive for the comparison to come.
+                        time_window = (make_naive(prev_sess.date_time) if prev_sess else datetime.min,
+                                       make_naive(foll_sess.date_time) if foll_sess else datetime.max)
+                        
+                        # TODO: Cofirm that timezone handling is right here. 
+                        # Easiest way is empircially to find a game that's been played like three time in a row and
+                        # move the middle one. 
+                        if not time_window[0] < nt < time_window[1]:
+                            sequence_changed = True
+                            output(f"\tSession sequence changed for {p}.\n\tOld time: {make_naive(old_session.date_time)}\n\tWindow: {STR(time_window)}.\n\tNew time: {nt}")
+                            break 
+        
+                    # Check for a partial play weighting change on any player
+                    weight_changed = False
+                    for i, p in enumerate(new_players):
+                        w = new_weights[i]
+                        if not w == old_session.performance(p).partial_play_weighting:
+                            weight_changed = True
+                            output(f"\tPartial play weighting changed for {p}.\nFrom {old_session.performance(p).partial_play_weighting} to {w}.")
+                            break
+                        
+                    # Determine if a rating impacting change took place.
+                    rating_impact = (not new_team_play == old_session.team_play
+                                     or rank_changed
+                                     or weight_changed
+                                     or sequence_changed )
     
-def post_process_submitted_model(self):
+                    # If a rating impact has been assess, request a rebuild.
+                    if rating_impact: 
+                        rebuild = (old_session.game, min(old_session.date_time, new_time))
+                        output(f"\tRequesting rebuild of leaderboards:\n\t{STR(rebuild)}.")
+                    else:
+                        output(f"\tNo rating impact found. No rebuild requested.")
+    
+            if debug_only:
+                html += "</pre>\n</section>\n"
+                return {'debug_only': html}
+            else:
+                return {'rebuild': rebuild}
+    
+def post_process_submitted_model(self, rebuild=None):
     '''
-    When a model form is posted, this function will perform model specific updates, based on the model 
-    specified in the form (kwargs) as "model"
+    When a model form is POSTed, this function is called AFTER the form is saved.
     
+    self is an instance of CreateViewExtended or UpdateViewExtended.
+
     It will be running inside a transaction and can bail with an IntegrityError if something goes wrong 
     achieving a rollback.
     
-    This is executed inside a transaction as a callback from generic_view_extensions CreateViewExtended and UpdateViewExtended,
-    so it can throw an Integrity Error to roll back the transaction. This is important if it is trying to update a number of 
-    models at the same time that are all related. The integrity of relations after the save should be tested and if not passed,
-    then throw an IntegrityError.   
+    This is executed inside a transaction which is important if it is trying to update 
+    a number of models at the same time that are all related. The integrity of relations after 
+    the save should be tested and if not passed, then throw an IntegrityError.   
+    
+    :param rebuild: An optional game, player tuple or list two such tuples nominating ratings rebuilds we should request. 
     '''
     model = self.model._meta.model_name
 
@@ -111,9 +336,10 @@ def post_process_submitted_model(self):
     #       Editing a session will have to force recalculation of all the rating impacts of sessions
     #       all the participating players were in that were played after the edited session.
     #    A general are you sure? system for edits is worth implementing.
-    
         session = self.object
                       
+        log.debug(f"POST-PROCESSING Session {session.pk} submission.")
+
         team_play = session.team_play
         
         # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
@@ -134,12 +360,7 @@ def post_process_submitted_model(self):
         #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>    
         #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)]) 
 
-        # TODO: Was in middle of testing saves with Book/Author test model. Where was I up to?
-
-        # TODO: Consider and test under which circumstances Django has saved teams befor geettng here!
-        #       And do we want to do anything special in the pre processor? And/or validator?
-                     
-        # manage teams properly, as we handl teams in a special way creating them
+        # manage teams properly, as we handle teams in a special way creating them
         # on the fly as needed and reusing where player sets match.
         if team_play:
             # Check if a team ID was submitted, then we have a place to start.
@@ -155,27 +376,28 @@ def post_process_submitted_model(self):
             num_players = 0
             TeamPlayers = []
             for t in range(num_teams):
-                num_team_players = int(self.request.POST["Team-{:d}-num_players".format(t)])
+                num_team_players = int(self.request.POST[f"Team-{t:d}-num_players"])
                 num_players += num_team_players
                 TeamPlayers.append([])
 
             # Populate the TeamPlayers record (i.e. work out which players are on the same team)
             player_pool = set()
             for p in range(num_players):
-                player = int(self.request.POST["Performance-{:d}-player".format(p)])
+                player = int(self.request.POST[f"Performance-{p:d}-player"])
                 
                 assert not player in player_pool, "Error: Players in session must be unique"
                 player_pool.add(player)                
                 
-                team_num = int(self.request.POST["Performance-{:d}-team_num".format(p)])
+                team_num = int(self.request.POST[f"Performance-{p:d}-team_num"])
                 TeamPlayers[team_num].append(player)
 
-            # For each team now, find it, create it , fix it as needed and associate it with the appropriate Rank just created
+            # For each team now, find it, create it , fix it as needed 
+            # and associate it with the appropriate Rank just created
             for t in range(num_teams):
                 # Get the submitted Team ID if any and if it is supplied 
                 # fetch the team so we can provisionally use that (renaming it 
                 # if a new name is specified).
-                team_id = self.request.POST.get("Team-{:d}-id".format(t), None)
+                team_id = self.request.POST.get(f"Team-{t:d}-id", None)
                 team = None
                 
                 # Get Team players that we already extracted from the POST
@@ -199,34 +421,33 @@ def post_process_submitted_model(self):
                 # is a better approach, be they teams or other objects).  
                 force_new_team = len(team_players_db) > 0 and set(team_players_post) != set(team_players_db)
                 
-                # Get the approriate rank object for this team
-                rank_id = self.request.POST.get("Rank-{:d}-id".format(t), None)
-                rank_rank = self.request.POST.get("Rank-{:d}-rank".format(t), None)
+                # Get the appropriate rank object for this team
+                rank_id = self.request.POST.get(f"Rank-{t:d}-id", None)
+                rank_rank = self.request.POST.get(f"Rank-{t:d}-rank", None)
                 rank = session.ranks.get(rank=rank_rank)
 
                 # A rank must have been saved before we got here, either with the POST
-                # specified rank_id (for edit forms) or a ew ID (for add forms) 
-                assert rank, "Save error: No Rank was saved with the rank {}".format(rank_rank)                                            
+                # specified rank_id (for edit forms) or a new ID (for add forms) 
+                assert rank, f"Save error: No Rank was saved with the rank {rank_rank}"
 
-                # If a rank_id is specified in the POST it must match that saved by
-                # django_generic_view_extensions.forms.save_related_forms
+                # If a rank_id is specified in the POST it must match that saved 
                 # before we got here using that POST specified ID. 
                 if (not rank_id is None):
-                    assert int(rank_id)==rank.pk, "Save error: Saved Rank has different ID to submitted form Rank ID!"                                            
+                    assert int(rank_id)==rank.pk, f"Save error: Saved Rank has different ID to submitted form Rank ID! Rank ID {int(rank_id)} was submitted and Rank ID {rank.pk} has the same rank as submitted: {rank_rank}."
 
                 # The name submitted for this team 
-                new_name = self.request.POST.get("Team-{:d}-name".format(t), None)
+                new_name = self.request.POST.get(f"Team-{t:d}-name", None)
 
                 # Find the team object that has these specific players.
                 # Filter by count first and filter by players one by one.
                 # recall: these filters are lazy, we construct them here 
-                # but the do not do anything, are just recorded, and when 
-                # needed converted to SQL and executed. 
+                # but they do not do anything, are just recorded, and when 
+                # needed the SQL is executed. 
                 teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players_post))
                 for player in team_players_post:
                     teams = teams.filter(players=player)
 
-                log.debug("Team Check: {} teams that have these players".format(len(teams)))
+                log.debug(f"Team Check: {len(teams)} teams that have these players: {team_players_post}.")
 
                 # If not found, then create a team object with those players and 
                 # link it to the rank object and save that.
@@ -237,12 +458,14 @@ def post_process_submitted_model(self):
                         player = Player.objects.get(id=player_id)
                         team.players.add(player)
 
+                    # If the name changed and is not a placeholder of form "Team n" use it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
                         team.name = new_name
 
                     team.save()
                     rank.team=team
                     rank.save()
+                    log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
 
                 # If one is found, then link it to the approriate rank object and 
                 # check its name against the submission (updating if need be)
@@ -251,6 +474,7 @@ def post_process_submitted_model(self):
 
                     # If the name changed and is not a placeholder of form "Team n" save it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name :
+                        log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
                         team.name = new_name
                         team.save()
 
@@ -258,6 +482,7 @@ def post_process_submitted_model(self):
                     if (rank.team != team):
                         rank.team = team
                         rank.save()
+                        log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
 
                 # Weirdness, we can't legally have more than one team with the same set of players in the database
                 else:
@@ -272,7 +497,7 @@ def post_process_submitted_model(self):
         
             player_pool = set()
             for player in session.players:
-                assert not player in player_pool, "Error: Players in session must be unique"
+                assert not player in player_pool, "Error: Players in session must be unique. {player} appears twice."
                 player_pool.add(player)
                 
         # Enforce clean ranking. This MUST happen after Teams are processed above because
@@ -280,47 +505,89 @@ def post_process_submitted_model(self):
         # we clean them that relationshop is lost. So we should clean the ranks as last 
         # thing just before calculating TrueSkill impacts.
         
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_pre = {}
+            for rank in session.ranks.all():
+                rkey = rank.team.pk if team_play else rank.player.pk
+                rank_debug_pre[f"{'Team' if team_play else f'Player'} {rkey}"] = rank.rank  
+        
+            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+        
         # First collect all the supplied ranks
-        ranks = []
+        rank_values = []
+        ranks_by_pk = {}
         for rank in session.ranks.all():
-            ranks.append(rank.rank)
+            rank_values.append(rank.rank)
+            ranks_by_pk[rank.pk] = rank.rank
         # Then sort them by rank
-        ranks = sorted(ranks)
-        # Now check that they start at 1 and are contiguous
-        ranks_good = ranks[0] == 1
-        rank_previous = ranks[0]
-        for rank in ranks:
-            if rank - rank_previous > 1:
-                ranks_good = False
-            rank_previous = rank
-            
-        # if the ranks need fixing, fix them (to ensure they start at 1 and are contiguous):
-        if not ranks_good:
-            if rank[0] != 1:
-                rank_obj = session.ranks.get(rank=rank)
-                rank_obj.rank = 1
-                rank_obj.save()
-            
-            rank_previous = 1
-            for rank in ranks:
-                if rank - rank_previous > 1:
-                    rank_obj = session.ranks.get(rank=rank)
-                    rank_obj.rank = rank_previous + 1
-                    rank_obj.save()
-                    rank_previous = rank_obj.rank                    
+        rank_values.sort()
+
+        log.debug(f"\tRank values: {rank_values}")
+        log.debug(f"\tRanks by PK: {ranks_by_pk}")
+
+        # Build a map of submited ranks to saving ranks
+        rank_map = OrderedDict()
+
+        expected = 1
+        for rank in rank_values:
+            # if it's a new rank process it 
+            if not rank in rank_map:
+                # If we have the expected value map it to itself
+                if rank == expected:
+                    rank_map[rank] = rank
+                    
+                # Else map all tied ranks to the expected value and update the expectation
                 else:
-                    rank_previous = rank                         
-       
+                    rank_map[rank] = expected
+                    expected += rank_values.count(rank)
+            
+        log.debug(f"\tRanks Map: {rank_map}")
+        
+        for From, To in rank_map.items():
+            if not From == To:
+                pks = [k for k,v in ranks_by_pk.items() if v == From]
+                rank_objs = session.ranks.filter(pk__in=pks)
+                for rank_obj in rank_objs: 
+                    rank_obj.rank = To
+                    rank_obj.save()
+                    rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
+                    log.debug(f"\tMoved {'Team' if team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
+                    
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_post = {}
+            for rank_obj in session.ranks.all():
+                rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
+                rank_debug_post[f"{'Team' if team_play else f'Player'} {rkey}"] = rank_obj.rank  
+
+            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+            log.debug(f"\tRanks Saved    : {sorted(rank_debug_post.items(), key=lambda x: x[1])}")
+            
         # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
         #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
         #       impacts but also all subsequent ones involving any of these players if it's an edit!
+
+        # If a rebuild request arrived from the preprocessors honour that
+        # It means this submission is known to affect "future" sessions 
+        # already in the database. Those future (relative to the submission) 
+        # sessions need a ratings rebuild.        
+        if rebuild:
+            if isinstance(rebuild, tuple):
+                Rebuild = [rebuild]
+            elif isinstance(rebuild, list):
+                Rebuild = rebuild
+            else:
+                raise NotImplementedError(f"A rebuild request is expected to be a tuple or list, no other format is supported. {type(rebuild)} was submitted.")
+            
+            for r in Rebuild:
+                Rating.rebuild(*r)  
         
-        # Calculate and save the TrueSkill rating impacts to the Performance records
-        session.calculate_trueskill_impacts()
-        
-        # Then update the ratings for all players of this game
-        Rating.update(session)
+        # Otherwise, just update ratings formthis session (this implies it's the latest 
+        # session for that game and these player. 
+        else:
+            Rating.update(session)
         
         # Now check the integrity of the save. For a sessions, this means that:
         #
@@ -412,7 +679,7 @@ def extra_context_provider(self, context={}):
             # initial["game"] could be a Game object or a PK
             if isinstance(game , int):
                 try:
-                    game  = Game.objects.get(pk=game)
+                    game = Game.objects.get(pk=game)
                 except:
                     game = Game()
         else:
@@ -521,12 +788,10 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     operation = 'add'
     #fields = '__all__'
     extra_context_provider = extra_context_provider
-    #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
 
 # TODO: Test that this does validation and what it does on submission errors
-
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     # TODO: Must be atomic and in such a way that it tests if changes haveintegrity.
     #       notably if a session changes from indiv to team mode say or vice versa,
@@ -538,7 +803,6 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
     extra_context_provider = extra_context_provider
-    #pre_processor = clean_submitted_data
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
 
@@ -777,13 +1041,14 @@ def ajax_Leaderboards(request, raw=False):
                 #        than build so it boils down here to getting the snapshot from chache or building 
                 #        it. 
                 
-                log.debug(f"\tBoard/Snapshot for session at {localize(localtime(board.date_time))}.")                     
+                log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")                     
 
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
                     log.debug(f"\t\tFound it in cache!")                     
                 else:
+                    log.debug(f"\t\tBuilding it!")                     
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
@@ -1055,32 +1320,82 @@ def view_CheckIntegrity(request):
     All needs some serious tidy up for a productions site.    
     '''
     CuserMiddleware.set_user(request.user)
+
+    title = "Database Integrity Check"
+    
+    assertion_failures = [] # Assertion failures
     
     print("Checking all Performances for internal integrity.", flush=True)
     for P in Performance.objects.all():
-        print("Performance: {}".format(P), flush=True)
-        P.check_integrity()
+        fails = P.check_integrity()
 
+        print(f"Performance {P.id}: {P}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+ 
     print("Checking all Ranks for internal integrity.", flush=True)
     for R in Rank.objects.all():
-        print("Rank: {}".format(R), flush=True)
-        R.check_integrity()
-    
+        fails = R.check_integrity()
+
+        print(f"Rank {R.id}: {R}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+     
     print("Checking all Sessions for internal integrity.", flush=True)
     for S in Session.objects.all():
-        print("Session: {}".format(S), flush=True)
-        S.check_integrity()
+        fails = S.check_integrity(True)
+        
+        print(f"Session {S.id}: {S}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
 
     print("Checking all Ratings for internal integrity.", flush=True)
     for R in Rating.objects.all():
-        print("Rating: {}".format(R), flush=True)
-        R.check_integrity()
+        fails = R.check_integrity()
 
-    return HttpResponse("Passed All Integrity Tests")
+        print(f"Rating {R.id}: {R}. {len(fails)} assertion failures.", flush=True)
+        for f in fails:
+            print(f"\t{f}", flush=True)
+        
+        if fails:
+            assertion_failures += fails
+
+    now = datetime.now()
+    summary = '\n'.join(assertion_failures)
+    result = f"<html><body<p>{title}</p><p>It is now {now}.</p><p><pre>{summary}</pre></p></body></html>"
+
+    return HttpResponse(result)
 
 def view_RebuildRatings(request):
     CuserMiddleware.set_user(request.user)
-    html = rebuild_ratings()
+    
+    if 'game' in request.GET and request.GET['game'].isdigit():
+        try:
+            game = Game.objects.get(pk=request.GET['game'])
+        except Game.DoesNotExist:
+            game = None
+    else:
+        game = None
+             
+    if 'from' in request.GET:
+        try:
+            From = decodeDateTime(request.GET['from'])
+        except:
+            From = None 
+    else:
+        From = None
+    
+    html = rebuild_ratings(game, From)
+    
     return HttpResponse(html)
 
 def view_UnwindToday(request):
@@ -1251,24 +1566,31 @@ def view_Kill(request, model, pk):
     
     return HttpResponse(html)
 
-def rebuild_ratings():
+def rebuild_ratings(Game=None, From=None):
     activate(settings.TIME_ZONE)
 
-    title = "Rebuild of all ratings"
+    title = "Rebuild of ratings"
+    if not Game and not From:
+        title = "Rebuild of ALL ratings"
+    else:
+        if Game:
+            title += f" for {Game.name}" 
+        if From:
+            title += f" from {From}" 
+        
     pr = cProfile.Profile()
     pr.enable()
-    
-    Rating.rebuild_all()
+    result = Rating.rebuild(Game, From)
     pr.disable()
     
     s = io.StringIO()
     ps = pstats.Stats(pr, stream=s).sort_stats('cumulative')
     ps.print_stats()
-    result = s.getvalue()
+    result += s.getvalue()
         
     now = datetime.now()
 
-    return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
+    return f"<html><body<p>{title}</p><p>It is now {now}.</p><p><pre>{result}</pre></p></body></html>"
 
 def force_unique_session_times():
     '''

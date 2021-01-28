@@ -17,6 +17,21 @@ from django.db.models.query import QuerySet
 # Package imports
 from .options import odm
 
+class AssertLog:
+    ''' A tiny helper to switch between Exception raising asserts and logged assertion failures '''
+    _passthru = False
+    assertion_failures = []
+    
+    def __init__(self, passthru=False):
+        self._passthru = passthru
+        self.assertion_failures = []
+    
+    def Assert(self, condition, message):
+        if self._passthru:
+            if not condition:
+                self.assertion_failures.append(message)
+        else:
+            assert condition, message
 
 def safetitle(text):
     '''Given an object returns a title case version of its string representation.'''

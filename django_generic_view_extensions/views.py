@@ -50,7 +50,7 @@ from .context import add_model_context, add_timezone_context, add_format_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields, add_related
-from .forms import get_related_forms, save_related_forms
+from .related_forms import RelatedForms
 from .filterset import format_filterset, is_filter_field 
 
 # import sys, os
@@ -238,7 +238,6 @@ class ListViewExtended(ListView):
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
-
 class DetailViewExtended(DetailView):
     '''
     An enhanced DetailView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does (defined in BaseForm).
@@ -319,7 +318,6 @@ class DetailViewExtended(DetailView):
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context  
 
-
 class DeleteViewExtended(DeleteView):
     '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
     # HTML formatters stolen straight form the Django ModelForm class
@@ -376,6 +374,231 @@ class DeleteViewExtended(DeleteView):
 # Session objects anyhow and the Team, Rank, Perfromance and related objects will not even
 # be available on production menues, only for the admin for drilling down and debugging.
 
+def get_context_data_generic(self, *args, **kwargs):
+    '''
+    Augments the standard context with model and related model information 
+    so that the template in well informed - and can do Javascript wizardry 
+    based on this information
+
+    :param self: and instance of CreateView or UpdateView
+    
+    This is code shared by the two views so peeled out into a generic.
+    '''
+    # We need to set self.model here 
+    self.app = app_from_object(self)
+    self.model = class_from_string(self, self.kwargs['model'])
+    if not hasattr(self, 'fields') or self.fields == None:
+        self.fields = '__all__'
+
+    # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+    CuserMiddleware.set_user(self.request.user)
+
+    if isinstance(self, CreateView):
+        # Note that the super.get_context_data initialises the form with get_initial
+        context = super(CreateView, self).get_context_data(*args, **kwargs)
+    elif isinstance(self, UpdateView):
+        # Note that the super.get_context_data initialises the form with get_object
+        context = super(UpdateView, self).get_context_data(*args, **kwargs)
+    else:
+        raise NotImplementedError("Generic get_context_data only for use by CreateView or UpdateView derivatives.")
+
+    # Now add some context extensions ....
+    add_model_context(self, context, plural=False, title='New')
+    add_timezone_context(self, context)
+    add_debug_context(self, context)
+    if callable(getattr(self, 'extra_context_provider', None)): 
+        context.update(self.extra_context_provider(context))
+    
+    return context
+
+def get_form_generic(self):
+    '''
+    Augments the standard form with related model forms 
+    so that the template in well informed - and can do 
+    Javascript wizardry based on this information
+
+    :param self: and instance of CreateView or UpdateView
+    
+    This is code shared by the two views so peeled out into a generic.
+    '''
+    model = self.model
+    selector = getattr(model, "selector_field", None)        
+
+    if isinstance(self, CreateView):
+        form = super(CreateView, self).get_form()
+    elif isinstance(self, UpdateView):
+        form = super(UpdateView, self).get_form()
+    else:
+        raise NotImplementedError("Generic get_form only for use by CreateView or UpdateView derivatives.")
+    
+    for field in form.fields.values():
+        if isinstance(field, ModelChoiceField):
+            field_model = field.queryset.model
+            selector = getattr(field_model, "selector_field", None)
+            if not selector is None:
+                url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                if isinstance(field, ModelMultipleChoiceField):
+                    field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                else:
+                    field.widget = autocomplete.ModelSelect2(url=url)
+
+                field.widget.choices = field.choices
+
+    if len(add_related(model)) > 0:
+        if len(getattr(self.request, 'POST', [])) > 0:
+            form_data = self.request.POST
+        elif len(getattr(self.request, 'GET', [])) > 0:
+            form_data = self.request.GET
+        else:
+            form_data = None
+          
+        if isinstance(getattr(self, "object", None), model):
+            db_object = self.object
+        else:
+            db_object = None
+                
+        #related_forms = get_related_forms(model, form_data, db_object)
+        related_forms = RelatedForms(model, form_data, db_object)
+        
+        for related_form in related_forms.values():
+            for field in related_form.fields.values():
+                if isinstance(field, ModelChoiceField):
+                    field_model = field.queryset.model
+                    selector = getattr(field_model, "selector_field", None)
+                    if not selector is None:
+                        url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                        if isinstance(field, ModelMultipleChoiceField):
+                            field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                        else:
+                            field.widget = autocomplete.ModelSelect2(url=url)
+                        
+                        field.widget.choices = field.choices
+                        
+        form.related_forms = related_forms
+
+    return form  
+
+def post_generic(self, request, *args, **kwargs):
+    '''
+    Processes a form submission.
+
+    :param self: and instance of CreateView or UpdateView
+    
+    This is code shared by the two views so peeled out into a generic.
+    '''
+    # Just reflect the POST data back to client for debugging if requested
+    if self.request.POST.get("debug_post_data", "off") == "on":
+        html = "<h1>self.request.POST:</h1>"   
+        html += "<table>"   
+        for key in sorted(self.request.POST):
+            html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
+        html += "</table>"         
+        return HttpResponse(html)        
+
+    self.model = class_from_string(self, self.kwargs['model'])
+    if not hasattr(self, 'fields') or self.fields == None:
+        self.fields = '__all__'
+
+    if isinstance(self, CreateView):
+        # The self.object atttribute MUST exist and be None in a CreateView. 
+        self.object = None
+    elif isinstance(self, UpdateView):
+        self.object = self.get_object()
+    else:
+        raise NotImplementedError("Generic post only for use by CreateView or UpdateView derivatives.")
+
+    # Get the form
+    self.form = self.get_form()
+    
+    # Just reflect the form data back to client for debugging if requested
+    if self.request.POST.get("debug_form_data", "off") == "on":
+        html = "<h1>self.form.data:</h1>"   
+        html += "<table>"   
+        for key in sorted(self.form.data):
+            html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.form.data[key])
+        html += "</table>"         
+        return HttpResponse(html)        
+
+    # Hook for pre-processing the form (before the data is saved)
+    if callable(getattr(self, 'pre_processor', None)): 
+        post_kwargs = self.pre_processor()
+        if not post_kwargs: post_kwargs = {}
+        if "debug_only" in post_kwargs: 
+            return HttpResponse(post_kwargs["debug_only"])
+   
+    log.debug(f"Connection vendor: {connection.vendor}")
+    if connection.vendor == 'postgresql':
+        log.debug(f"Is_valid? {self.form.data}")
+        if self.form.is_valid():
+            try:
+                log.debug(f"Open a transaction")
+                with transaction.atomic():
+                    log.debug("Saving form from POST request containing:")
+                    for (key, val) in sorted(self.request.POST.items()):
+                        log.debug(f"\t{key}: {val}")
+                    
+                    self.object = self.form.save()
+                    log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
+                    
+                    kwargs = self.kwargs
+                    kwargs['pk'] = self.object.pk
+                    self.success_url = reverse_lazy('view', kwargs=kwargs)
+                    
+                    log.debug(f"Saving the related forms.")
+                    related_forms = RelatedForms(self.model, self.form.data, self.object)
+                    related_forms.save()
+                    log.debug(f"Saved the related forms.")
+                    
+                    if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
+                        self.object.clean_relations()
+     
+                    log.debug(f"Cleaned the relations.")
+            except (IntegrityError, ValidationError) as e:
+                # TODO: Report IntegrityErrors too
+                # TODO: if error_dict refers to a non field this crashes, find what the criterion
+                #       in add_error is and then if it's a field that doesn't match this criteron 
+                #       do somethings sensible. We may be able to attach errors to the formsets too!
+                for field, errors in e.error_dict.items():
+                    for error in errors:
+                        self.form.add_error(field, error)
+                return self.form_invalid(self.form)
+
+            # Hook for post-processing data (after it's all saved) 
+            if callable(getattr(self, 'post_processor', None)):
+                self.post_processor(**post_kwargs)
+                                      
+            return self.form_valid(self.form)
+        else:
+            return self.form_invalid(self.form)
+       
+    else:
+        if self.form.is_valid():
+            self.object = self.form.save()
+            related_forms = RelatedForms(self.model, self.form.data, self.object)
+            related_forms.save()
+            
+            # Hook for post-processing data (after it's all saved) 
+            if callable(getattr(self, 'post_processor', None)): 
+                self.post_processor(**post_kwargs)
+            
+            return self.form_valid(self.form)
+        else:
+            return self.form_invalid(self.form)
+
+def form_valid_generic(self, form):
+    '''
+    If the form is valid, redirect to the supplied URL.
+
+    :param self: and instance of CreateView or UpdateView
+    
+    This is code shared by the two views so peeled out into a generic.
+    
+    This is specifically intended NOT to call Djangos form_valid()
+    implementation which saves the object. In these Extensions we 
+    perform the save in the post not the form_valid method. 
+    '''
+    return HttpResponseRedirect(self.get_success_url())
+
 
 class CreateViewExtended(CreateView):
     '''
@@ -402,85 +625,14 @@ class CreateViewExtended(CreateView):
     NOTE: We do also include a form_valid() override. This is important because in the standard
     Django post/form_valid pair, post does not save, form_valid does. If we defer to the Django 
     form_valid it goes and saves the form again. This doesn't create a new copy on creates as it
-    happens as by that point self.instance already has a PK thanks to the save here in post() but
+    happens that by that point self.instance already has a PK thanks to the save here in post() but
     it is an unnecessary repeat save all the same.
     '''
 
-    def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
-
-        # We need to set self.model here 
-        self.app = app_from_object(self)
-        self.model = class_from_string(self, self.kwargs['model'])
-        if not hasattr(self, 'fields') or self.fields == None:
-            self.fields = '__all__'
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-
-        # Note that the super.get_context_data initialises the form with get_initial
-        context = super().get_context_data(*args, **kwargs)  # This calls get_form()
-
-        # Now add some context extensions ....
-        add_model_context(self, context, plural=False, title='New')
-        add_timezone_context(self, context)
-        add_debug_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): 
-            context.update(self.extra_context_provider(context))
-        
-        return context
-
-    def get_form(self):
-        model = self.model
-        selector = getattr(model, "selector_field", None)        
-
-        form = super().get_form()  # This calls get_initial
-        
-        for field in form.fields.values():
-            if isinstance(field, ModelChoiceField):
-                field_model = field.queryset.model
-                selector = getattr(field_model, "selector_field", None)
-                if not selector is None:
-                    url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                    if isinstance(field, ModelMultipleChoiceField):
-                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
-                    else:
-                        field.widget = autocomplete.ModelSelect2(url=url)
-
-                    field.widget.choices = field.choices
-
-        if len(add_related(model)) > 0:
-            if len(getattr(self.request, 'POST', [])) > 0:
-                form_data = self.request.POST
-            elif len(getattr(self.request, 'GET', [])) > 0:
-                form_data = self.request.GET
-            else:
-                form_data = None
-              
-            if isinstance(getattr(self, "object", None), model):
-                db_object = self.object
-            else:
-                db_object = None
-                    
-            related_forms = get_related_forms(model, form_data, db_object)
-            
-            for related_form in related_forms.values():
-                for field in related_form.fields.values():
-                    if isinstance(field, ModelChoiceField):
-                        field_model = field.queryset.model
-                        selector = getattr(field_model, "selector_field", None)
-                        if not selector is None:
-                            url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                            if isinstance(field, ModelMultipleChoiceField):
-                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
-                            else:
-                                field.widget = autocomplete.ModelSelect2(url=url)
-                            
-                            field.widget.choices = field.choices
-                            
-            form.related_forms = related_forms
-
-        return form  
+    get_context_data = get_context_data_generic 
+    get_form = get_form_generic
+    post = post_generic
+    form_valid = form_valid_generic
 
     def get_initial(self):
         '''
@@ -490,7 +642,8 @@ class CreateViewExtended(CreateView):
         initial = super().get_initial()
          
         try:
-            # TODO: Consider geting the last object created by the logged in user instead of the last object created
+            # TODO: Consider gerting the last object created by the logged in user instead 
+            # of the last object created
             last = self.model.objects.latest()
         except ObjectDoesNotExist:
             last = None
@@ -504,79 +657,6 @@ class CreateViewExtended(CreateView):
          
         return initial 
     
-    def post(self, request, *args, **kwargs):
-        if self.request.POST.get("debug_post_data", "off") == "on":
-            html = "<table>"   
-            for key in sorted(self.request.POST):
-                html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
-            html += "</table>"         
-            return HttpResponse(html)        
-        
-        # The self.object atttribute MUST exist and be None in a CreateView. 
-        self.model = class_from_string(self, self.kwargs['model'])
-        self.object = None
-        if not hasattr(self, 'fields') or self.fields == None:
-            self.fields = '__all__'
-        
-        # Get the form
-        self.form = self.get_form()     
-
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
-       
-        log.debug(f"Connection vendor: {connection.vendor}")
-        if connection.vendor == 'postgresql':
-            log.debug(f"Is_valid? {self.form.data}")
-            if self.form.is_valid():
-                try:
-                    log.debug(f"Open a transaction")
-                    with transaction.atomic():
-                        self.object = self.form.save()
-                        
-                        kwargs = self.kwargs
-                        kwargs['pk'] = self.object.pk
-                        self.success_url = reverse_lazy('view', kwargs=kwargs)
-                        
-                        save_related_forms(self)
-                        log.debug(f"Saved the form and related forms.")
-                        
-                        if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
-                            self.object.clean_relations()
-         
-                        log.debug(f"Cleaned the relations.")
-                except (IntegrityError, ValidationError) as e:
-                    # TODO: Report IntergityErrors too
-                    # TODO: if error_dict refers to a non field this crashes, find what the criterion
-                    #       in add_error is and then if it's a field that doesn't match this criteron 
-                    #       do somethings sensible. We may be able to attach errors to the formsets too!
-                    for field, errors in e.error_dict.items():
-                        for error in errors:
-                            self.form.add_error(field, error)
-                    return self.form_invalid(self.form)
-
-                # Hook for post-processing data (after it's all saved) 
-                if callable(getattr(self, 'post_processor', None)): self.post_processor()
-                                          
-                return self.form_valid(self.form)
-            else:
-                return self.form_invalid(self.form)
-           
-        else:
-            if self.form.is_valid():
-                self.object = self.form.save()
-                save_related_forms(self)
-
-                # Hook for post-processing data (after it's all saved) 
-                if callable(getattr(self, 'post_processor', None)): self.post_processor()
-                
-                return self.form_valid(self.form)
-            else:
-                return self.form_invalid(self.form)
-             
-    def form_valid(self, form):
-        """If the form is valid, redirect to the supplied URL."""
-        return HttpResponseRedirect(self.get_success_url())
-
 #     def form_invalid(self, form):
 #         """
 #         If the form is invalid, re-render the context data with the
@@ -601,6 +681,11 @@ class UpdateViewExtended(UpdateView):
           get_object() for GET requests and post() for POST requests. 
     '''
 
+    get_context_data = get_context_data_generic 
+    get_form = get_form_generic
+    post = post_generic
+    form_valid = form_valid_generic
+
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
         self.pk = self.kwargs['pk']
@@ -614,156 +699,15 @@ class UpdateViewExtended(UpdateView):
             self.fields = self.obj.fields_for_model()
         else:           
             self.fields = fields_for_model(self.model)
-            
+        
+        #TODO: Jump to the leaderboard for game showing change (2 boards)
+        # WOrk out the URL for that.
         self.success_url = reverse_lazy('view', kwargs=self.kwargs)
          
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
         CuserMiddleware.set_user(self.request.user)
          
         return self.obj    
-
-    def get_context_data(self, *args, **kwargs):
-        '''Augments the standard context with model and related model information so that the template in well informed - and can do Javascript wizardry based on this information'''
-        # Note that the super.get_context_data initialises the form with get_initial
-        context = super().get_context_data(*args, **kwargs)
-
-        # Now add some context extensions ....
-        add_model_context(self, context, plural=False, title='Edit')
-        add_timezone_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): 
-            context.update(self.extra_context_provider(context))
-        return context
-
-    def get_form(self):
-        model = self.model
-        selector = getattr(model, "selector_field", None)        
-
-        form = super().get_form()  # This calls get_initial
-        
-        for field in form.fields.values():
-            if isinstance(field, ModelChoiceField):
-                field_model = field.queryset.model
-                selector = getattr(field_model, "selector_field", None)
-                if not selector is None:
-                    url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                    if isinstance(field, ModelMultipleChoiceField):
-                        field.widget = autocomplete.ModelSelect2Multiple(url=url)
-                    else:
-                        field.widget = autocomplete.ModelSelect2(url=url)
-                        
-                    field.widget.choices = field.choices
-
-        if len(add_related(model)) > 0:
-            if len(getattr(self.request, 'POST', [])) > 0:
-                form_data = self.request.POST
-            elif len(getattr(self.request, 'GET', [])) > 0:
-                form_data = self.request.GET
-            else:
-                form_data = None
-              
-            if isinstance(getattr(self, "object", None), model):
-                db_object = self.object
-            else:
-                db_object = None
-                    
-            related_forms = get_related_forms(model, form_data, db_object)
-            
-            for related_form in related_forms.values():
-                for field in related_form.fields.values():
-                    if isinstance(field, ModelChoiceField):
-                        field_model = field.queryset.model
-                        selector = getattr(field_model, "selector_field", None)
-                        if not selector is None:
-                            url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                            if isinstance(field, ModelMultipleChoiceField):
-                                field.widget = autocomplete.ModelSelect2Multiple(url=url)
-                            else:
-                                field.widget = autocomplete.ModelSelect2(url=url)
-                            
-                            field.widget.choices = field.choices
-                            
-            form.related_forms = related_forms
-
-        return form  
-        
-    def post(self, request, *args, **kwargs):
-        if self.request.POST.get("debug_post_data", "off") == "on":
-            html = "<table>"   
-            for key in sorted(self.request.POST):
-                html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.request.POST[key])
-            html += "</table>"         
-            return HttpResponse(html)        
-
-        # The self.object atttribute MUST exist and be None in a CreateView. 
-        self.model = class_from_string(self, self.kwargs['model'])
-        self.object = self.get_object()
-        if not hasattr(self, 'fields') or self.fields == None:
-            self.fields = '__all__'
-                
-        # Get the form
-        self.form = self.get_form()     
-
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_processor', None)): self.pre_processor()
-       
-        log.debug(f"Connection vendor: {connection.vendor}")
-        if connection.vendor == 'postgresql':
-            log.debug(f"Is_valid? {self.form.data}")
-            if self.form.is_valid():
-                try:
-                    log.debug(f"Open a transaction")
-                    with transaction.atomic():
-                        log.debug("Saving form from POST request containing:")
-                        for (key, val) in sorted(self.request.POST.items()):
-                            log.debug(f"\t{key}: {val}")
-                        
-                        self.object = self.form.save()
-                        log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
-                        
-                        kwargs = self.kwargs
-                        kwargs['pk'] = self.object.pk
-                        self.success_url = reverse_lazy('view', kwargs=kwargs)
-                        
-                        log.debug(f"Saving the related forms.")
-                        save_related_forms(self)
-                        log.debug(f"Saved the related forms.")
-                        
-                        if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
-                            self.object.clean_relations()
-         
-                        log.debug(f"Cleaned the relations.")
-                except (IntegrityError, ValidationError) as e:
-                    # TODO: Report IntegrityErrors too
-                    # TODO: if error_dict refers to a non field this crashes, find what the criterion
-                    #       in add_error is and then if it's a field tat doesn't match this criteron 
-                    #       do somethings sensible. We may be able to attach errors to the formsets too!
-                    for field, errors in e.error_dict.items():
-                        for error in errors:
-                            self.form.add_error(field, error)
-                    return self.form_invalid(self.form)
-
-                # Hook for post-processing data (after it's all saved) 
-                if callable(getattr(self, 'post_processor', None)): self.post_processor()
-                                          
-                return self.form_valid(self.form)
-            else:
-                return self.form_invalid(self.form)
-           
-        else:
-            if self.form.is_valid():
-                self.object = self.form.save()
-                save_related_forms(self)
-                
-                # Hook for post-processing data (after it's all saved) 
-                if callable(getattr(self, 'post_processor', None)): self.post_processor()
-                
-                return self.form_valid(self.form)
-            else:
-                return self.form_invalid(self.form)
-             
-    def form_valid(self, form):
-        """If the form is valid, redirect to the supplied URL."""
-        return HttpResponseRedirect(self.get_success_url())
 
 #===============================================================================
 # An Autocomplete view

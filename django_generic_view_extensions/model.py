@@ -62,6 +62,7 @@ import html, collections, inspect
 from django.db import models
 from django.utils.safestring import mark_safe
 from django.utils.timezone import get_current_timezone
+from django.forms.models import inlineformset_factory
 
 # Package imports
 from . import log, FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
@@ -70,7 +71,6 @@ from .datetime import time_str
 from .options import default, flt, osf, odf
 from .decorators import is_property_method
 from .html import odm_str, fmt_str
-
 
 summary_methods = ["__str__", "__verbose_str__", "__rich_str__", "__detail_str__"] 
 
@@ -102,6 +102,68 @@ def add_related(model):
         return model.add_related
      
     return []
+
+def can_save_related_formsets(model, related_model):
+    '''
+    For related forms to be saved they must have a foreign key back 
+    to the parent form's model. It's impossible to save the related formset
+    without a way to relate the forms in the formset back to a specific 
+    parent object.
+       
+    Specifying such a relation in add_related can provide model forms
+    but they cannot be saved as formsets. it's a good idea to flag a 
+    warning to the mdoel designer in that case, and to avoid crashing
+    when trying to save the a formset. 
+    
+    This is a consistent way code using add_related, to check if a
+    field specified thuslyc an be saved as a formset.
+    
+    :param model: A Django model
+    :param related_model: A Django model that has a relation to the first one. 
+    '''
+    try:
+        # The most reliable way to test this simply to try and build an inline_formset.
+        # This searches for a foreign key as needed and there's no convenient way to do
+        # that in Django that's better. As at Django 3, first thing it does is call a 
+        # private function (_get_foreign_key()) to do this test andit's a little involved.
+        #
+        # It fails with an exception if no ForeignKey is found and we simply loook for that
+        # before exception 
+        inlineformset_factory(model, related_model, fields=('__all__'))
+        return True
+    except ValueError:
+        return False
+
+def Add_Related(model, field):
+    '''
+    Return true if the supplied field is a relation and in the
+    add_related property of the model the field belongs to.
+    
+    Defines the syntax that the add_related property supports, 
+    which is basically the field name itself, a field of a field.
+    
+    :param model: A Django model
+    :param field: A field in model 
+    '''
+    if field.is_relation:
+        if field.name in add_related(model):
+            if not can_save_related_formsets(model, field.remote_field.model):
+                m = model._meta.object_name 
+                rm = field.remote_field.model._meta.object_name
+                log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
+            return True
+        # ASAP: double check this and what it's about
+        # Check my models for . syntax add related and try the form
+        elif hasattr(field, "field"):
+            field_name = field.field.model.__name__ + "." + field.field.name
+            if field_name in add_related(model):
+                return True
+            else:
+                return False
+        else:
+            return False
+    else:
+        return False
 
 def inherit_fields(model):
     '''

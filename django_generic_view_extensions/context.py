@@ -21,8 +21,7 @@ from datetime import datetime
 # Package imports
 from .util import safetitle
 from .datetime import datetime_format_python_to_PHP
-from .model import add_related
-from .forms import get_related_forms, classify_widgets #, get_inherit_fields
+from .forms import classify_widgets #, get_inherit_fields
 from .options import urldefaults, odf, odm
 from .widgets import FilterWidget, OrderingWidget
 from .filterset import format_filterset

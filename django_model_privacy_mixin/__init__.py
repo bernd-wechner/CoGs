@@ -55,8 +55,8 @@ class PrivacyMixIn():
         
         def get_User_extensions(user):
             '''
-            Returns a list of attributes that are in request.user which represent User model extensions. That 
-            is have a OneToOne relationship with User. 
+            Returns a list of attributes that are in request.user which represent User model extensions. 
+            That is have a OneToOne relationship with User. 
             '''            
             ext = []
             if not user is None and hasattr(user, 'is_authenticated'):

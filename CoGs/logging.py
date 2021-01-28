@@ -3,20 +3,15 @@ Logging utilities
 
 To use, just import "log" from here and call log.debug(msg).
 '''
-# Python imports
 from time import time
-from copy import copy
 import re, logging
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE.
-
-# Django imports
-from django.conf import settings 
 
 log = logging.getLogger("CoGs")
 
 class RelativeFilter(logging.Filter):
     '''
-    Abuse of a logging filter to augment the logged record with some realtive timing data.
+    Abuse of a logging filter to augment the logged record with some relative timing data.
     
     For a justification of this abuse see: 
         https://docs.python.org/3/howto/logging-cookbook.html#context-info
@@ -24,17 +19,19 @@ class RelativeFilter(logging.Filter):
     The benefits are:
     
     1) Attached to logger and not to a handler 
-        (solution customizing Formatter are attached to handlers_
+        (solution customizing Formatter are attached to handlers)
         See: https://stackoverflow.com/questions/37900521/subclassing-logging-formatter-changes-default-behavior-of-logging-formatter
         
     2) Is called for every message that the logger processes. 
     '''
-    # 
-    # TODO: copy debug RE's method of moving newlines around the log line.
-    # need to change record.msg.
     time_reference = None
     time_last = None
     
+    # A simple RE to suck out prefix and postfix newlines from the message and make them
+    # separately available. The formatter can choose to render these or not as it sees fit
+    # but a formatter like:
+    #     '%(prefix)s other stuff %(message)s% other stuff (postfix)s'
+    # will wrap the whole log message in the prefix/postfix pair. 
     RE = re.compile(r'^(?P<newlines1>\n*)(?P<message>.*?)(?P<newlines2>\n*)$', ref.DOTALL)
     
     def filter(self, record):
