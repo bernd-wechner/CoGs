@@ -1,7 +1,8 @@
+import cProfile, pstats, io
 import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
-import cProfile, pstats, io
 from datetime import datetime, date, timedelta
+from collections import OrderedDict
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
@@ -31,7 +32,6 @@ from django.forms.models import ModelChoiceIterator, ModelMultipleChoiceField
 from django.conf import settings
 
 from dal import autocomplete
-from django_generic_view_extensions import NONE
 
 #from numpy import rank
 
@@ -465,6 +465,7 @@ def post_process_submitted_model(self, rebuild=None):
                     team.save()
                     rank.team=team
                     rank.save()
+                    log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
 
                 # If one is found, then link it to the approriate rank object and 
                 # check its name against the submission (updating if need be)
@@ -473,6 +474,7 @@ def post_process_submitted_model(self, rebuild=None):
 
                     # If the name changed and is not a placeholder of form "Team n" save it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name :
+                        log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
                         team.name = new_name
                         team.save()
 
@@ -480,6 +482,7 @@ def post_process_submitted_model(self, rebuild=None):
                     if (rank.team != team):
                         rank.team = team
                         rank.save()
+                        log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
 
                 # Weirdness, we can't legally have more than one team with the same set of players in the database
                 else:
@@ -502,60 +505,65 @@ def post_process_submitted_model(self, rebuild=None):
         # we clean them that relationshop is lost. So we should clean the ranks as last 
         # thing just before calculating TrueSkill impacts.
         
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_pre = {}
+            for rank in session.ranks.all():
+                rkey = rank.team.pk if team_play else rank.player.pk
+                rank_debug_pre[f"{'Team' if team_play else f'Player'} {rkey}"] = rank.rank  
+        
+            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+        
         # First collect all the supplied ranks
-        rank_ids = {}
         rank_values = []
+        ranks_by_pk = {}
         for rank in session.ranks.all():
-            rank_ids[rank.rank] = rank.pk 
             rank_values.append(rank.rank)
+            ranks_by_pk[rank.pk] = rank.rank
         # Then sort them by rank
         rank_values.sort()
 
-        # Initialise some trackers
-        last_rank_val = 0
-        skip = 0
+        log.debug(f"\tRank values: {rank_values}")
+        log.debug(f"\tRanks by PK: {ranks_by_pk}")
 
-        # Now check that they start at 1 and are contiguous
-        # with tie skipping gaps
-        ranks_good = rank_values[0] == 1
+        # Build a map of submited ranks to saving ranks
+        rank_map = OrderedDict()
+
+        expected = 1
         for rank in rank_values:
-            # Has to be a tie (same as last rank, or leave a tie gap.
-            if not (rank == last_rank_val or rank == last_rank_val+1+skip):
-                ranks_good = False
-                break
-                
-            if rank == last_rank_val:
-                skip += 1
-            else:
-                skip = 0
-                last_rank_val = rank
-            
-        # if the ranks need fixing, fix them (to ensure they start at 1 
-        # and are contiguous with tie gaps):
-        if not ranks_good:
-            if rank_values[0] != 1:
-                rank_obj = session.ranks.get(pk=rank_ids[rank_values[0]])
-                rank_obj.rank = 1
-                rank_obj.save()
-            
-            last_rank_val = 1
-            skip = 0
-            for rank in rank_values:
-                if not (rank == last_rank_val or rank == last_rank_val+1+skip):
-                    rank_obj = session.ranks.get(pk=rank_ids[rank_values[0]])
-                    # We know it's not a tie because rank was not last_rank_val
-                    # So it must be the next rank, nominally 1 more than the last
-                    # rank but more if multiple players had the last rank (there 
-                    # was a tie) 
-                    rank_obj.rank = last_rank_val+1+skip
-                    rank_obj.save()
+            # if it's a new rank process it 
+            if not rank in rank_map:
+                # If we have the expected value map it to itself
+                if rank == expected:
+                    rank_map[rank] = rank
                     
-                if rank == last_rank_val:
-                    skip += 1
+                # Else map all tied ranks to the expected value and update the expectation
                 else:
-                    skip = 0
-                    last_rank_val = rank
-       
+                    rank_map[rank] = expected
+                    expected += rank_values.count(rank)
+            
+        log.debug(f"\tRanks Map: {rank_map}")
+        
+        for From, To in rank_map.items():
+            if not From == To:
+                pks = [k for k,v in ranks_by_pk.items() if v == From]
+                rank_objs = session.ranks.filter(pk__in=pks)
+                for rank_obj in rank_objs: 
+                    rank_obj.rank = To
+                    rank_obj.save()
+                    rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
+                    log.debug(f"\tMoved {'Team' if team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
+                    
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_post = {}
+            for rank_obj in session.ranks.all():
+                rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
+                rank_debug_post[f"{'Team' if team_play else f'Player'} {rkey}"] = rank_obj.rank  
+
+            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+            log.debug(f"\tRanks Saved    : {sorted(rank_debug_post.items(), key=lambda x: x[1])}")
+            
         # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
         #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
