@@ -2554,7 +2554,84 @@ class Session(TimeZoneMixIn, AdminModel):
         # The list is sorted in descening date_time order, so that the first entry is the current sessions.
         prev_victory = Session.objects.filter(Q(date_time__lte=time_limit) & Q(game=self.game) & Q(ranks__rank=1) & (Q(ranks__player=player) | Q(ranks__team__players=player))).order_by('-date_time')
         return None if (prev_victory is None or prev_victory.count() == 0) else prev_victory[0].performance(player)
-              
+    
+    def clean_ranks(self): 
+        '''
+        Ranks can be submitted any which way, all that matters is that they can order the players
+        and identify ties. For consistency though in the database we can enforce clean rankings.
+        
+        Two strategies are possible, strictly sequential,or sequential with tie gaps. To illustrate
+        with a 6 player game and a tie for 2nd place:
+        
+        sequential:  1, 2, 2, 3, 4, 5
+        tie gapped:  1, 2, 2, 4, 5, 6
+        
+        This cleaner will create tie gapped ranks.
+        '''
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_pre = {}
+            for rank in self.ranks.all():
+                rkey = rank.team.pk if self.team_play else rank.player.pk
+                rank_debug_pre[f"{'Team' if self.team_play else f'Player'} {rkey}"] = rank.rank  
+        
+            log.debug(f"\tRanks Before: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+        
+        # First collect all the supplied ranks
+        rank_values = []
+        ranks_by_pk = {}
+        for rank in self.ranks.all():
+            rank_values.append(rank.rank)
+            ranks_by_pk[rank.pk] = rank.rank
+        # Then sort them by rank
+        rank_values.sort()
+
+        log.debug(f"\tRank values: {rank_values}")
+        log.debug(f"\tRanks by PK: {ranks_by_pk}")
+
+        # Build a map of submited ranks to saving ranks
+        rank_map = OrderedDict()
+
+        log.debug(f"\tBuilding rank map")
+        expected = 1
+        for rank in rank_values:
+            # if it's a new rank process it 
+            if not rank in rank_map:
+                # If we have the expected value map it to itself
+                if rank == expected:
+                    rank_map[rank] = rank
+                    expected += 1
+                    log.debug(f"\t\tRank {rank} is as expected.")
+                    
+                # Else map all tied ranks to the expected value and update the expectation
+                else:
+                    log.debug(f"\t\tRank {rank} is expected at {expected}.")
+                    rank_map[rank] = expected
+                    expected += rank_values.count(rank)
+                    log.debug(f"\t\t\tMoved {rank_values.count(rank)} {'teams' if self.team_play else f'players'} to the expected rank and the new expectation is {expected}.")
+            
+        log.debug(f"\tRanks Map: {rank_map}")
+        
+        for From, To in rank_map.items():
+            if not From == To:
+                pks = [k for k,v in ranks_by_pk.items() if v == From]
+                rank_objs = self.ranks.filter(pk__in=pks)
+                for rank_obj in rank_objs: 
+                    rank_obj.rank = To
+                    rank_obj.save()
+                    rkey = rank_obj.team.pk if self.team_play else rank_obj.player.pk
+                    log.debug(f"\tMoved {'Team' if self.team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
+                    
+        if settings.DEBUG:
+            # Grab a pre snapshot
+            rank_debug_post = {}
+            for rank_obj in self.ranks.all():
+                rkey = rank_obj.team.pk if self.team_play else rank_obj.player.pk
+                rank_debug_post[f"{'Team' if self.team_play else f'Player'} {rkey}"] = rank_obj.rank  
+
+            log.debug(f"\tRanks Before : {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
+            log.debug(f"\tRanks Cleaned: {sorted(rank_debug_post.items(), key=lambda x: x[1])}")
+
     def build_trueskill_data(self, save=False):
         '''Builds a the data structures needed by trueskill.rate
         

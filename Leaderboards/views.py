@@ -504,65 +504,8 @@ def post_process_submitted_model(self, rebuild=None):
         # Team processing fetches ranks based on the POST submitted rank for the team. After 
         # we clean them that relationshop is lost. So we should clean the ranks as last 
         # thing just before calculating TrueSkill impacts.
-        
-        if settings.DEBUG:
-            # Grab a pre snapshot
-            rank_debug_pre = {}
-            for rank in session.ranks.all():
-                rkey = rank.team.pk if team_play else rank.player.pk
-                rank_debug_pre[f"{'Team' if team_play else f'Player'} {rkey}"] = rank.rank  
-        
-            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
-        
-        # First collect all the supplied ranks
-        rank_values = []
-        ranks_by_pk = {}
-        for rank in session.ranks.all():
-            rank_values.append(rank.rank)
-            ranks_by_pk[rank.pk] = rank.rank
-        # Then sort them by rank
-        rank_values.sort()
 
-        log.debug(f"\tRank values: {rank_values}")
-        log.debug(f"\tRanks by PK: {ranks_by_pk}")
-
-        # Build a map of submited ranks to saving ranks
-        rank_map = OrderedDict()
-
-        expected = 1
-        for rank in rank_values:
-            # if it's a new rank process it 
-            if not rank in rank_map:
-                # If we have the expected value map it to itself
-                if rank == expected:
-                    rank_map[rank] = rank
-                    
-                # Else map all tied ranks to the expected value and update the expectation
-                else:
-                    rank_map[rank] = expected
-                    expected += rank_values.count(rank)
-            
-        log.debug(f"\tRanks Map: {rank_map}")
-        
-        for From, To in rank_map.items():
-            if not From == To:
-                pks = [k for k,v in ranks_by_pk.items() if v == From]
-                rank_objs = session.ranks.filter(pk__in=pks)
-                for rank_obj in rank_objs: 
-                    rank_obj.rank = To
-                    rank_obj.save()
-                    rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
-                    log.debug(f"\tMoved {'Team' if team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
-                    
-        if settings.DEBUG:
-            # Grab a pre snapshot
-            rank_debug_post = {}
-            for rank_obj in session.ranks.all():
-                rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
-                rank_debug_post[f"{'Team' if team_play else f'Player'} {rkey}"] = rank_obj.rank  
-
-            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
-            log.debug(f"\tRanks Saved    : {sorted(rank_debug_post.items(), key=lambda x: x[1])}")
+        session.clean_ranks()
             
         # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
         #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
