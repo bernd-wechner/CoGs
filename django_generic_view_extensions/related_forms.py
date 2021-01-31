@@ -19,6 +19,9 @@ data is available for display primarily.
 
 See .model for a definition of add_related.
 '''
+
+# import sys, os, traceback
+
 from collections import OrderedDict
 
 from django.conf import settings
@@ -51,6 +54,8 @@ class RelatedForms(dict):
     __form_data     = None 
     __db_object     = None
     __related_forms = None
+    __are_valid     = None 
+    __form_errors   = None 
     
     @property
     def dp(self):
@@ -171,12 +176,13 @@ class RelatedForms(dict):
         # (an attribute of the related_forms we return that contains data for populating 
         # empty form with or instance_forms if we have database instances of related objects)
         if not form_data is None:
-            log.debug(f"{self.dp}Using form_data:")
+            log.debug(f"{self.dp}Got form_data:")
             for (key, val) in form_data.items():
                 log.debug(f"{self.dp}\t{key}:{val}")
             log.debug("\n")
-        elif not db_object is None:
-            log.debug(f"{self.dp}Using db_object: {db_object._meta.object_name} {db_object.pk}")
+            
+        if not db_object is None:
+            log.debug(f"{self.dp}Got db_object: {db_object._meta.object_name} {db_object.pk}")
     
         log.debug(f"{self.dp}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
     
@@ -253,7 +259,7 @@ class RelatedForms(dict):
             else:
                 Related_Formset = modelformset_factory(relation.related_model, can_delete=False, extra=0, fields=('__all__'), formfield_callback=custom_field_callback)
             
-            # Build a forset from form data if available, else db_object, else an empty one 
+            # Build a formset from form data if available, else db_object, else an empty one 
             if form_data:
                 if db_object and inline:
                     related_formset = Related_Formset(prefix=related_model_name, data=form_data, instance=db_object)
@@ -319,12 +325,20 @@ class RelatedForms(dict):
 
                     d = getattr(form, "data", {})
                     cd = getattr(form, "cleaned_data", {})
-                    log.debug(f"{self.dp}\t\tCleaned form: data={d}, cleaned_data={cd}")
+                    log.debug(f"{self.dp}\t\tCleaned form:")
+                    log.debug(f"{self.dp}\t\t\tdata={d}")
+                    log.debug(f"{self.dp}\t\t\tcleaned_data={cd}")
                 
                     for field_name in self.get_form_fields(relation.related_model):
                         # If data came in through form_data, we should have cleaned data.
                         if field_name in getattr(form, "cleaned_data", {}):
                             field_value = form.cleaned_data[field_name]
+                            
+                            # Cleaned data can be turned from PK into model object
+                            # If so we want the PK in field_data.
+                            if isinstance(field_value, Model):
+                                field_value = field_value.pk
+                            
                         # If data came in through db_objects then we won't cleaned data 
                         # but it will initial data, but only if it's an editable field
                         elif field_name in getattr(form, "initial", {}):
@@ -405,6 +419,89 @@ class RelatedForms(dict):
         self.__model_history.pop()
         return related_forms            
 
+    def are_valid(self):
+        '''
+        Equivalent of Django's formset.is_valid() function, but asks the question
+        of all the related forms and formsets in a RelatedForms object.
+
+        This is only useful (or relevant for that matter) if the RelateForms object was 
+        instantiated with form_data. No form data and it's not useful. 
+        '''
+        if self.__form_data:
+            log.debug(f"{self.dp} Form data:")
+            for k, v in self.__form_data.items():
+                log.debug(f"{self.dp}\t{k} = {v}")
+        
+        # Before the recrusive walk fo related forms, start with clean 
+        # history. These are populated duing the walk.
+        self.__model_history = []
+        self.__are_valid = True
+        self.__form_errors = {}
+        
+        # Start the recursive walk down related forms.
+        return self._are_valid()
+
+    def _are_valid(self, model_name=None, related_forms=None):
+        '''
+        As RelatedForms are in a tree of relations, this isthe recursive walker of that
+        tree collecting formset.is_valid results and compiling them into a structure to 
+        return.
+        
+        :param related_forms: The related forms to use
+        '''
+        if model_name: self.__model_history.append(model_name)
+        
+        # Get the related forms for this model/object
+        if related_forms == None:
+            related_forms = self.__related_forms
+
+        log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms")
+
+        for name, form in related_forms.items():
+            related_model = form.model                      # The related model 
+            rmon = related_model._meta.object_name          # Related Model Object Name
+            assert rmon == name, "Programming error: related forms should be filed under their related model's name."
+
+            if form.formset.forms:
+                form.formset.full_clean()
+                
+                is_valid = form.formset.is_valid()
+    
+                fs_key = ".".join(self.__model_history+[rmon])
+                assert not fs_key in self.__form_errors, f"Key generation error. Formset keys must be unique. {fs_key} tried a second time."
+    
+                mn_pfx = f"{model_name} has " if model_name else ""            
+                log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key is {fs_key}")
+    
+                # Django returns a fairly liberal errors list for formsets
+                # Basically formset.errors is a list of dicts one per form in
+                # formset. The dic is empty for forms with no erros and has 
+                # a field: message entry for forms that have errors. If the 
+                # formset has no forms in it this list is empty.  We don't 
+                # add such empty lists to our collected form_errors. Empty 
+                # formsets validly arise when an add_related model member 
+                # includes a field that cannot be save (points to a model 
+                # that has no freignkiy back to htis one) for the purpose
+                # of making the basic form available to a rich template. 
+                if not is_valid: 
+                    log.debug(f"Errors are: {form.formset.errors}")
+                    self.__are_valid = False
+                    self.__form_errors[fs_key] = form.formset.errors
+    
+                # Recurse downwards
+                self._are_valid(name, form.related_forms)
+            else:
+                mn_pfx = f"{model_name} has " if model_name else ""            
+                log.debug(f"{self.dp} {mn_pfx} no forms.")
+
+        if self.__model_history: self.__model_history.pop()
+        
+        return self.__are_valid
+
+    @property
+    def errors(self):
+        return self.__form_errors
+
     def save(self):
         '''
         Save the related forms. Assumes that an object just saved was used to instantiate
@@ -413,7 +510,7 @@ class RelatedForms(dict):
             obj = self.form.save()
             rf =  RelatedForms(model, self.form.data, db_object)
         '''
-        # ASAP: check difference between form.data and request.POST if any.
+        self.__model_history = []
         return self._save()
 
     def _save(self, db_object=None, related_forms=None):
@@ -457,9 +554,9 @@ class RelatedForms(dict):
 
         log.debug(f"{self.dp} Starting {self.__class__.__name__}.save() with {len(related_forms)} related forms on {model_name} {db_object.pk}: {db_object}")
 
-        # Now for each related form ... 
+        # Now for each related form ...
         for name, form in related_forms.items():
-            related_model = form.model             # The related model to save
+            related_model = form.model                      # The related model to save
             field_name = form.field_name                    # Get the field name in model that this relation relates to  
             relation = getattr(model, field_name, None)     # Get the field itself (which is a relation)
     
@@ -504,8 +601,19 @@ class RelatedForms(dict):
                     for instance in instances:
                         self._save(instance, related_forms[instance._meta.object_name].related_forms)
                 else:
-                    # TODO: Report errors cleanly on new edit form
-                    # Errors are in related_formset.errors
+#                     exc_type, exc_obj, exc_tb = sys.exc_info()
+#                     fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                     print(exc_type, fname, exc_tb.tb_lineno)                
+#                     print(traceback.format_exc())                    
+                    fs_key = ".".join(self.__model_history+[rmon])
+                    mn_pfx = f"{model_name} has " if model_name else ""
+                    log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that ARE NOT valid. Their key is {fs_key}")
+                    log.debug(f"Errors are: {form.formset.errors}")
+
+                    # We raise an exception because we expect the caller to have check
+                    # relaetd_froms.are_valid() before calling related_forms.save()
+                    # If they have called related_forms.save() on an invalid set of
+                    # related formsets, well, that's exceptional ;-). 
                     raise ValidationError(f"Form errors: {form.formset.errors}")
 
             elif not relation.field.editable:

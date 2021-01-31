@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
 # Python imports
-import datetime
+import datetime #, sys, traceback
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -509,7 +509,7 @@ def post_generic(self, request, *args, **kwargs):
 
     # Get the form
     self.form = self.get_form()
-    
+
     # Just reflect the form data back to client for debugging if requested
     if self.request.POST.get("debug_form_data", "off") == "on":
         html = "<h1>self.form.data:</h1>"   
@@ -545,22 +545,30 @@ def post_generic(self, request, *args, **kwargs):
                     self.success_url = reverse_lazy('view', kwargs=kwargs)
                     
                     log.debug(f"Saving the related forms.")
-                    related_forms = RelatedForms(self.model, self.form.data, self.object)
-                    related_forms.save()
-                    log.debug(f"Saved the related forms.")
-                    
+                    if self.form.related_forms.are_valid():
+                        self.form.related_forms.save()
+                        log.debug(f"Saved the related forms.")
+                    else:
+                        log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
+                        # Attach the newly annotated (with errros) related forms to the 
+                        # form so that theyt reach the response template.
+                        #self.form.related_forms = related_forms
+                        # We raise an exception to break out of the 
+                        # atomic transaction triggering a rollback.
+                        raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
+
                     if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
                         self.object.clean_relations()
      
                     log.debug(f"Cleaned the relations.")
             except (IntegrityError, ValidationError) as e:
+                # TODO: Work out how to get here with an IntegrityError: what can trigger this
                 # TODO: Report IntegrityErrors too
-                # TODO: if error_dict refers to a non field this crashes, find what the criterion
-                #       in add_error is and then if it's a field that doesn't match this criteron 
-                #       do somethings sensible. We may be able to attach errors to the formsets too!
-                for field, errors in e.error_dict.items():
-                    for error in errors:
-                        self.form.add_error(field, error)
+#                 exc_type, exc_obj, exc_tb = sys.exc_info()
+#                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                 print(exc_type, fname, exc_tb.tb_lineno)                
+#                 print(traceback.format_exc())
+                
                 return self.form_invalid(self.form)
 
             # Hook for post-processing data (after it's all saved) 

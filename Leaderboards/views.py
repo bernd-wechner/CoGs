@@ -161,14 +161,25 @@ def pre_process_submitted_model(self):
         new_game = Game.objects.get(pk=int(str_game))  # Fails with exception if bad input
         
         # Grab the players and play_weights
+        # And check for player uniqueness now
         performances = int(self.form.data['Performance-TOTAL_FORMS'])
         new_players = []
         new_weights = []
+        seen_players = set()
         for p in range(performances):
             int_player = int(self.form.data[f'Performance-{p}-player'])
-            new_players.append(Player.objects.get(pk=int_player))
+            player = Player.objects.get(pk=int_player)
+            
+            # If we have a player dup0licated bail now (form.is_valid will 
+            # fail after we've added this error)
+            if int_player in seen_players:
+                self.form.add_error(None, f"Players must be unique. {player.name()} used more than once.")
+                return None
+                
+            new_players.append(player)
             str_weight = self.form.data[f'Performance-{p}-partial_play_weighting']
             new_weights.append(float(str_weight))
+            seen_players.add(int_player)
             
         # Check to see if this is the latest play for each player
         is_latest = True
@@ -507,16 +518,13 @@ def post_process_submitted_model(self, rebuild=None):
 
         session.clean_ranks()
             
-        # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
-        #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
-        #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
-        #       impacts but also all subsequent ones involving any of these players if it's an edit!
-
         # If a rebuild request arrived from the preprocessors honour that
         # It means this submission is known to affect "future" sessions 
         # already in the database. Those future (relative to the submission) 
         # sessions need a ratings rebuild.        
         if rebuild:
+            log.debug(f"A ratings rebuild has been requested: {rebuild}")
+
             if isinstance(rebuild, tuple):
                 Rebuild = [rebuild]
             elif isinstance(rebuild, list):

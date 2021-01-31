@@ -92,3 +92,11 @@ def checked(value, compare=None):
             return "checked"
         else:
             return ""
+        
+@register.filter
+def fallback(value, fallback):
+    if value:
+        return value
+    else:
+        return fallback
+    

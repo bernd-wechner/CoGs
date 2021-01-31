@@ -8,7 +8,13 @@
 {% endblock %}
 
 {% block startscript %}
-	<script>const reload_icon = "{% static 'reload.png' %}";</script>
+	<script>
+		const reload_icon = "{% static 'reload.png' %}";
+
+		// Catch form errors that come in (in order to report them)
+		const form_errors 		  = {{ form.errors | fallback:'[]' | safe }};
+		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};  
+	</script>
 {% endblock %}
 
 {% block content %}
@@ -18,9 +24,8 @@
 
 <form id="formData" action="" method="post">
 	{{ form.media }}
-
+	{% csrf_token %}
 	<table>
-		{% csrf_token %}
 	    {{ form.as_table }}
 	    
 		{% if debug and model_name == 'Session' %}
@@ -69,7 +74,7 @@
 				// TODO: Move all this to a subtemplate that is included here if it exists. So as to keep generic
 				//       templates separate from model specific ones. Could name the include file after the model.
 				{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
-				const operation		= "{{operation}}"
+				const operation		= "{{operation}}";
 				
 				function get_session_data() {
 					{# Rank Related Data - lists with on entry per rank #}
@@ -110,23 +115,25 @@
 						tidTeamPlayers[tIDs[i]] = rTeamPlayers[i];
 					}				
 					
-					{# Store the Performance Data keyed on player ID #}
-					const plidPerformances = {};
-					const plidWeights = {};
+					{# Store the Performance Data keyed on performance ID #}
+					const pidPlayers = {};
+					const pidWeights = {};
 					for (let i = 0; i < pIDs.length; i++) {
-						plidPerformances[pPlayers[i]] 	= pIDs[i]
-						plidWeights[pPlayers[i]] 		= pWeights[i]
+						pidPlayers[pIDs[i]]		= pPlayers[i];
+						pidWeights[pIDs[i]]		= pWeights[i];
 					}
 					
 					{# Store all the incoming session properties in a single safe spot #}
+					{# The key is r, p or t for rank ID, performance ID or team ID #}
 					const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
-									 'Ranks'		: ridRanks,			// dict of ranks keyed on rID 
-									 'Players'		: ridPlayers,	    // dict of player IDs keyed on rID 
-									 'Teams'		: ridTeams, 		// dict of team IDs keyed on rID
-									 'TeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
-									 'TeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
-									 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID 
-									 'Weights'		: plidWeights}		// dict of performance weights keyed on player ID
+									 'rRanks'		: ridRanks,			// dict of ranks keyed on rID 
+									 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID 
+									 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID
+									 'tTeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
+									 'tTeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
+									 'pIDs'			: rIDs,				// Array of performance IDs
+									 'pPlayers'		: pidPlayers, 		// dict of player IDs keyed on pID 
+									 'pWeights'		: pidWeights}		// dict of performance weights keyed on pID
 									 
 					return Session;
 				}
