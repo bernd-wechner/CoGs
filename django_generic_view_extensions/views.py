@@ -431,6 +431,7 @@ def get_form_generic(self):
     else:
         raise NotImplementedError("Generic get_form only for use by CreateView or UpdateView derivatives.")
     
+    # Attach DAL (Django Autocomplete Light) Select2 widgets to all the mdoel selectors
     for field in form.fields.values():
         if isinstance(field, ModelChoiceField):
             field_model = field.queryset.model
@@ -543,6 +544,14 @@ def post_generic(self, request, *args, **kwargs):
                     kwargs = self.kwargs
                     kwargs['pk'] = self.object.pk
                     self.success_url = reverse_lazy('view', kwargs=kwargs)
+                    
+                    if isinstance(self, CreateView):
+                        # Having saved the root object we reinitialise related forms
+                        # with that object attached. Failure to this results in the 
+                        # form_clean failing as the formsets don't have populated 
+                        # back references (as we had not object) and it fails with 
+                        # 'This field is required.' erros on the primary keys
+                        self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
                     
                     log.debug(f"Saving the related forms.")
                     if self.form.related_forms.are_valid():

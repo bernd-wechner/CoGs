@@ -9,10 +9,18 @@
 // If we have more than 2 snapshots per game we are looking at leaderboard timelines 
 //    or evolutions and so want one game per row, and one column per snapshot, so we
 //    can safely ignore cols, and use a table as wide as maxshots.   
+
+
+// Configuranly, shoudla gree with what the view is configured to deliver.
+// if the view is delivering baseline boards this should be true and we will
+// not render them and use them only for calculating rank deltas. If it is false
+// the view should idelaly not deliver baslines (or they'll render and not honor
+// the leaderboard options accurately).
+const use_baseline = true;
 	
-var boardcount = 0;
-var maxshots = 0;
-var totalshots = 0;
+let boardcount = 0;
+let maxshots = 0;
+let totalshots = 0;
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
@@ -73,12 +81,18 @@ function get_and_report_metrics(LB) {
 	let snapshots = 0; 
 
 	// Globals that we'll set here
-	boardcount = LB.length;
-	maxshots = 0;
-	totalshots = 0;
+	boardcount = LB.length; // The number of games we are displaying
+	maxshots = 0;			// We want to discover the widest game (maxium number of snapshots)
+	totalshots = 0;			// The total nbumber of snapshots we'll be displaying
 	
 	for (let g=0; g<boardcount; g++) {
-		snapshots = LB[g][3].length;
+		// deduct 1 for the baseline board we always request
+		// we request it simply so we can render Rank deltas 
+		// in ALL our boards (otherwise not possible for the 
+		// last one snapshot in one games evolution or at all 
+		// if no evolution options are on.
+		const delivered = LB[g][3].length;
+		const snapshots = delivered - (use_baseline && delivered > 1 ? 1 : 0); 
 		totalshots += snapshots;
 		if (snapshots > maxshots) maxshots = snapshots;
 	}	 
@@ -254,6 +268,7 @@ function InitControls(options) {
 	$('#chk_details').prop('checked', dval(options.details, false));
 	$('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
 	$('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
+	$('#chk_show_delta').prop('checked', dval(options.show_delta, false));
 
 	// Then the leaderboard screen layout options
 	$('#cols').val(dval(options.cols, 1));
@@ -359,6 +374,7 @@ function URLopts(make_static) {
 	const details = $('#chk_details').is(":checked");
 	const analysis_pre = $('#chk_analysis_pre').is(":checked");
 	const analysis_post = $('#chk_analysis_post').is(":checked");	
+	const show_delta = $('#chk_show_delta').is(":checked");	
 	
 	const names = $('#names').val();	
 	const links = $('#links').val();
@@ -582,7 +598,8 @@ function URLopts(make_static) {
 	// deviations from that default.
 	if (details != defaults.details) opts.push("details="+encodeURIComponent(details));
 	if (analysis_pre != defaults.analysis_pre) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
-	if (analysis_post != defaults.details) opts.push("analysis_post="+encodeURIComponent(analysis_post));
+	if (analysis_post != defaults.analysis_post) opts.push("analysis_post="+encodeURIComponent(analysis_post));
+	if (show_delta != defaults.show_delta) opts.push("show_delta="+encodeURIComponent(show_delta));
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from
@@ -600,7 +617,7 @@ function URLopts(make_static) {
 
 // TODO: We should fetch definitions from the database
 // or better said, they should be delivered with leaderboards, based on the
-// user logged on, with a default set for annonymous users.
+// user logged on, with a default set for anonymous users.
 // For now just hard coding a set of defaults.
 
 // The 0th element is ignored, nominally there to represent the Reload button
@@ -819,472 +836,6 @@ function refetchLeaderboards(reload_icon, make_static) {
 	REQUEST.send(null);
 }
 
-// Function to draw one leaderboard table
-function LBtable(LB, snapshot, links) {
-// LB is specific to one game and is a data structure that contains one board
-// per snapshot,
-// and each board is a list of players.
-// In LB:
-// First tier has just four values: Game PK, Game BGGid, Game name, Snapshots
-// Second tier is Snapshots which is is a list of five values tuples: Date time
-// string, count of plays, count of sessions, session details and Leaderboard
-// Leaderboard is the third tier which is a list of tuples which have six
-// values: Player PK, Player BGGid, Player name, Trueskill rating, Play count,
-// Victory count
-
-	// Column Indices in LB[3]:
-	const iPKgame = 0;
-	const iBGGid = 1;
-	const iGameName = 2;
-	const iSnapshots = 3;
-
-	// The name format to use
-	const name_choice  = $("#names").val();
-	
-	// Extract the data we need
-	const pkg = LB[iPKgame];
-	const BGGid = LB[iBGGid];
-	const game = LB[iGameName];
-
-	// This MUST align with the way ajax_Leaderboards() bundles up leaderboards
-	// which in turn relies on Game.leaderboard to provide its tuples.
-	//
-	// Rather a complex structure that may benefit from some naming (rather than
-	// being a list of lists of lists of lists. Must explore how dictionaries
-	// map
-	// into Javascript at some stage and consider a reimplementation.
-	
-	// Column Indices in LB[iSnapshots]:
-	// index 0 holds the session PK, not needed here
-	// (unless we want to put a link to the session somewhere later I guess).
-	const iDateTime            = 1;
-	const iPlayCount           = 2;
-	const iSessionCount        = 3;
-	const iSessionPlayers      = 4;
-	const iSessionDetails      = 5;
-	const iSessionAnalysisPre  = 6;
-	const iSessionAnalysisPost = 7;
-	const iPlayerList          = 8;
-		
-	// HTML values are let not const because we'll wrap selective contents with
-	// links later
-	// HTML values come paired with data values (which are ordered player list)
-	const date_time                  = LB[iSnapshots][snapshot][iDateTime]
-	const play_count                 = LB[iSnapshots][snapshot][iPlayCount];
-	const session_count              = LB[iSnapshots][snapshot][iSessionCount];
-	const session_players            = LB[iSnapshots][snapshot][iSessionPlayers];
-	let   session_details_html       = LB[iSnapshots][snapshot][iSessionDetails][0];
-	const session_details_data       = LB[iSnapshots][snapshot][iSessionDetails][1];
-	let   session_analysis_pre_html  = LB[iSnapshots][snapshot][iSessionAnalysisPre][0];
-	const session_analysis_pre_data  = LB[iSnapshots][snapshot][iSessionAnalysisPre][1];
-	let   session_analysis_post_html = LB[iSnapshots][snapshot][iSessionAnalysisPost][0];
-	const session_analysis_post_data = LB[iSnapshots][snapshot][iSessionAnalysisPost][1];
-	const player_list                = LB[iSnapshots][snapshot][iPlayerList];
-	
-	// Get the index of the last snapshot, as that one is special
-	// for now it means at least we can't highlight rank changes on that
-	// snapshot
-	const last_snapshot = LB[iSnapshots].length - 1;
-	
-	// Create the Game link based on the requested link target
-	const linkGameCoGs = url_view_Game.replace('00',pkg);
-	const linkGameBGG = "https:\/\/boardgamegeek.com/boardgame/" + BGGid;
-	const linkGame = links == "CoGs" ? linkGameCoGs : links == "BGG" ?  linkGameBGG : null;
-
-	// Fix the session detail and analysis headers which were provided with
-	// templated links
-	let linkPlayerCoGs = url_view_Player.replace('00','{ID}');
-	let linkPlayerBGG = "https:\/\/boardgamegeek.com/user/{ID}";
-	let linkTeamCoGs = url_view_Team.replace('00','{ID}');
-	
-	let linkRanker = {};
-	linkRanker["Player"] = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
-	linkRanker["Team"] = links == "CoGs" ? linkTeamCoGs : links == "BGG" ?  null : null;
-
-	// Build a map of PK to BGGid for all rankers
-	// Note, session_details_data, session_analysis_pre_data and
-	// session_analysis_post_data perforce
-	// contain the same map (albeit in a different order) so we can use just one
-	// of them to build the map.
-	let linkRankerID = {}
-	for (let r = 0; r < session_details_data.length; r++) {
-		const PK = session_details_data[r][0];
-		const BGGname = session_details_data[r][1];
-		
-		linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
-	}
-
-	// A regex replacer which has as args first the matched string then each of
-	// the matched subgroups
-	// The subgroups we expect for a link update to the HTML headers are
-	// klass, model, id and then the text.
-	// This is a function that the following replace() functions pass matched
-	// groups to and is tasked
-	// with returning a the replacement string.
-	function fix_template_link(match, klass, model, id, txt) {
-		if (linkRankerID[id] == null) 
-			return txt;
-		else {
-			var url = linkRanker[model].replace('{ID}', linkRankerID[id]);
-			return "<A href='"+url+"' class='"+klass+"'>"+txt+"</A>";
-		}
-	}
-	
-	// Fix the links in the HTML headers
-	// An example: {link.field_link.Player.1}Bernd{link_end}
-	session_details_html = session_details_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-	session_analysis_pre_html = session_analysis_pre_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-	session_analysis_post_html = session_analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
-		
-	// A regex replacer which has as args first the matched string then each of
-	// the matched subgroups
-	// The subgroups we expect from name update to the HTML headers are:
-	// pk, nick, full, complete
-	// We don't actually need the PK, it's just there.
-	function fix_template_name(match, pk, nick, full, complete) {
-	    switch (name_choice) {
-	      case "nick": return nick;
-	      case "full": return full;
-	      case "complete": return complete;
-	      default: throw new Error ("Illegal name selector.");
-	    }
-	}
-
-	// Fix the names in the HTML headers
-	// An example: "{1,Bernd,Bernd <Hidden>,Bernd <Hidden> (Bernd)}"
-	session_details_html = session_details_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
-	session_analysis_pre_html = session_analysis_pre_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
-	session_analysis_post_html = session_analysis_post_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
-	
-	var table = document.createElement('TABLE');
-	table.className = 'leaderboard'
-	table.style.width = '100%';
-
-	// Five header rows as follows:
-	// A full-width session detail block, or the date the leaderboard was set
-	// (of last session played that contributed to it)
-	// A full-width pre session analysis
-	// A full-width post session analysis
-	// A game header with the name of the game (2 cols) and play/session summary
-	// (3 cols)
-	// A final header with 5 column headers (rank, player, rating, plays,
-	// victories)
-
-	var tableHead = document.createElement('THEAD');
-	table.appendChild(tableHead);	    
-
-	// #############################################################
-	// First Header Row
-
-	var tr = document.createElement('TR');
-	tableHead.appendChild(tr);
-
-	var th = document.createElement('TH');
-	var content;
-	if (linkGame) {
-		content = document.createElement('a');
-		content.setAttribute("style", "text-decoration: none; color: inherit;");
-		content.href = linkGame;
-		content.innerHTML = game;
-	} else {
-		content = document.createTextNode(game);		
-	}
-	th.setAttribute("style", "font-weight: bold; font-size: 120%;");	
-	th.appendChild(content);
-	th.colSpan = 2;
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	var th = document.createElement('TH');
-	plays = document.createTextNode(play_count+" plays in "); // Play Count
-	th.appendChild(plays);   
-
-	var sessions = session_count + " sessions";
-	var content;
-	if (links == "CoGs") {
-		content = document.createElement('a');
-		content.setAttribute("style", "text-decoration: none; color: inherit;");
-		content.href =  url_list_Sessions + "?rich&no_menus&index&game=" + pkg; 
-		content.innerHTML = sessions;
-	} else {
-		content = document.createTextNode(sessions);
-	}   
-	th.appendChild(content);
-
-	th.colSpan = 3;
-	th.className = 'leaderboard normal'
-		th.style.textAlign = 'center';
-	tr.appendChild(th);
-	
-	// #############################################################
-	// Second (optional) Header Row (session details if requested)
-
-	var details = document.getElementById("chk_details").checked;
-	
-	if (details) {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var td = document.createElement('TD');
-		td.innerHTML = "<div style='float: left; margin-right: 2ch; font-weight: bold;'>Results after:</div><div style='float: left;'>" + session_details_html + "</div>";
-		td.colSpan = 5;
-		td.className = 'leaderboard normal'
-		tr.appendChild(td);
-	
-	// If no details displayed at least display the date-time of the session
-	// that produced this leaderboard snapshot
-	} else {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var th = document.createElement('TH');
-		var content = document.createTextNode("Results after " + date_time);
-		th.appendChild(content);
-		th.colSpan = 5;
-		th.className = 'leaderboard normal'
-		tr.appendChild(th);		
-	}
-
-	// #############################################################
-	// Third Header Row
-
-	var analysis_pre = document.getElementById("chk_analysis_pre").checked;
-
-	if (analysis_pre) {
-		var tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		var td = document.createElement('TD');
-		td.innerHTML = session_analysis_pre_html;
-		td.colSpan = 5;
-		td.className = 'leaderboard normal'
-		tr.appendChild(td);
-	}
-
-	// #############################################################
-	// Fourth Header Row
-
-	var analysis_post = document.getElementById("chk_analysis_post").checked;
-
-	if (analysis_post) {
-		let tr = document.createElement('TR');
-		tableHead.appendChild(tr);
-
-		let td = document.createElement('TD');
-		td.innerHTML = session_analysis_post_html;
-		td.colSpan = 5;
-		td.className = 'leaderboard normal'
-		tr.appendChild(td);
-	}
-
-	// #############################################################
-	// Fifth Header Row
-
-	tr = document.createElement('TR');
-	tableHead.appendChild(tr);
-
-	th = document.createElement('TH');
-	th.style.textAlign = 'center';
-	th.appendChild(document.createTextNode("Rank"));
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	th = document.createElement('TH');
-	th.appendChild(document.createTextNode("Player"));
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	th = document.createElement('TH');
-	th.style.textAlign = 'center';
-	th.appendChild(document.createTextNode("Teeth"));
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	th = document.createElement('TH');
-	th.style.textAlign = 'center';
-	th.appendChild(document.createTextNode("Plays"));
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	th = document.createElement('TH');
-	th.style.textAlign = 'center';
-	th.appendChild(document.createTextNode("Victories"));
-	th.className = 'leaderboard normal'
-	tr.appendChild(th);
-
-	// #############################################################
-	// The Body
-
-	const highlight_players = document.getElementById("chk_highlight_players").checked;
-	const highlight_changes = document.getElementById("chk_highlight_changes").checked;
-	const highlight_selected = document.getElementById("chk_highlight_selected").checked;
-	
-	const selected_players = options.players;  // A list of string ids
-
-	const tableBody = document.createElement('TBODY');
-	table.appendChild(tableBody);
-
-	for (let i = 0; i < player_list.length; i++) {
-		const tr = document.createElement('TR');
-		tableBody.appendChild(tr);
-
-		// Column Indices in player_list[i]:
-		// 0 is the rank
-		// 1 and 2 are the PK and BGGname,
-		// 3, 4 and 5 are the nickname, full name and complete name of the
-		// player respectively
-		// 6, 7, and 8 are Trueskill eta, mu and sigma
-		// 9 and 10 are play count and victory count
-		const iRank = 0;
-		const iPK = 1;
-		const iBGGname = 2;
-		const iNickName = 3;
-		const iFullName = 4;
-		const iCompleteName = 5;
-		const iEta = 6;
-		const iMu = 7;
-		const iSigma = 8;
-		const iPlays = 9;
-		const iWins = 10;
-		// 11 and 12 are last_play and player_leagues respectively not used here
-		const iRankPrev = 13;   
-		
-		td_class = 'leaderboard normal';
-		
-		const this_player = player_list[i][iPK]; 
-		
-		// session_players is the list of players in the game session that
-		// resulted in this leaderboard snapshot.
-		if (session_players.indexOf(this_player) >= 0)
-			td_class += highlight_players ? ' highlight_players_on' : ' highlight_players_off'; 
-
-		// session_players is the list of players selected in the multiselect
-		// player
-		// selector box.
-		if (selected_players.indexOf(this_player.toString()) >= 0)
-			td_class += highlight_selected ? ' highlight_selected_on' : ' highlight_selected_off'; 
-
-		// On all but the last snapshot we can render rank change highlights
-		if (snapshot < last_snapshot) {
-			const rank      = player_list[i][iRank];
-			const prev_rank = player_list[i][iRankPrev];
-			
-			if (rank != prev_rank)
-				td_class += highlight_changes ? ' highlight_changes_on' : ' highlight_changes_off';
-		}
-
-		const pkp = player_list[i][iPK];
-		const BGGname = player_list[i][iBGGname];
-		const rating  = player_list[i][iEta]
-		const mu  = player_list[i][iMu]
-		const sigma  = player_list[i][iSigma]
-		const plays  = player_list[i][iPlays]
-		const wins  = player_list[i][iWins]
-		const play_count  = player_list[i][iPlays]
-		const victory_count  = player_list[i][iWins]
-
-		const linkPlayerCoGs = url_view_Player.replace('00',pkp);
-		const linkPlayerBGG = BGGname ? "https:\/\/boardgamegeek.com/user/" + BGGname : null;
-		const linkPlayer = links == "CoGs" ? linkPlayerCoGs : links == "BGG" ?  linkPlayerBGG : null;
-		
-		// ###########################################################################
-		// The RANK column
-		const rank = player_list[i][iRank]
-		
-		const td_rank = document.createElement('TD');
-		td_rank.style.textAlign = 'center';
-		td_rank.className = td_class;
-		td_rank.appendChild(document.createTextNode(rank));
-		tr.appendChild(td_rank);
-
-		// ###########################################################################
-		// The PLAYER column
-		const chosen_name = name_choice == 'nick' ? player_list[i][iNickName]
-		                  : name_choice == 'full' ? player_list[i][iFullName]
-			        	  : name_choice == 'complete' ? player_list[i][iCompleteName]
-		                  : "ERROR";		
-		
-		const td_player = document.createElement('TD');
-		td_player.className = td_class;
-		
-		if (linkPlayer) {
-			const a_player = document.createElement('a');
-			a_player.setAttribute("style", "text-decoration: none; color: inherit;");				
-			a_player.href =  linkPlayer; 
-			a_player.innerHTML = chosen_name;
-			td_player.appendChild(a_player);
-		} else {
-			td_player.innerHTML = chosen_name;
-		}
-
-		tr.appendChild(td_player);
-
-		// ###########################################################################
-		// The TEETH/RATING column
-
-		const fixed_rating = rating.toFixed(1);
-		const fixed_mu = mu.toFixed(1);
-		const fixed_sigma = sigma.toFixed(1);
-
-		const td_rating = document.createElement('TD');
-		td_rating.className = td_class;
-		td_rating.style.textAlign = 'center'
-		
-		const div_rating = document.createElement('div');
-		div_rating.setAttribute("class", "tooltip");
-		div_rating.innerHTML = fixed_rating;
-		
-		const tt_rating = document.createElement('span');
-		tt_rating.className = "tooltiptext";
-		tt_rating.style.width='400%'
-		tt_rating.innerHTML = "	&mu;=" + fixed_mu + " &sigma;=" + fixed_sigma; 
-		
-		div_rating.appendChild(tt_rating);
-		td_rating.appendChild(div_rating);
-		tr.appendChild(td_rating);		
-		
-		// ###########################################################################
-		// The PLAY COUNT column
-		
-		const td_plays = document.createElement('TD');
-		td_plays.className = td_class;
-		td_plays.style.textAlign = 'center'
-		
-		const a_plays = document.createElement('a');
-		a_plays.setAttribute("style", "text-decoration: none; color: inherit;");				
-		a_plays.href =  url_list_Sessions + "?performances__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index"; 
-		a_plays.innerHTML = plays;
-
-		td_plays.appendChild(a_plays);
-		tr.appendChild(td_plays);
-		
-		// ###########################################################################
-		// The WIN COUNT column
-		
-		const td_wins = document.createElement('TD');
-		td_wins.className = td_class;
-		td_wins.style.textAlign = 'center'
-		
-		// FIXME: What link can get victories in teams as well?
-		// And are team victories listed in the victory count at all?
-		// url_filters can only be ANDs I think, so this hard for team
-		// victories. One way is if Performance has a field is_victory
-		// that can be filtered on. Currently has a property that returns
-		// this. Can url_filter filter on properties? Via Annotations on
-		// a query?
-		
-		const a_wins = document.createElement('a');
-		a_wins.setAttribute("style", "text-decoration: none; color: inherit;");				
-		a_wins.href =  url_list_Sessions + "?ranks__rank=1&ranks__player=" + pkp + "&game=" + pkg + "&detail&external_links&no_menus&index";; 
-		a_wins.innerHTML = wins;
-
-		td_wins.appendChild(a_wins);
-		tr.appendChild(td_wins);
-	}
-		
-	return table;
-}
-
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
 	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure
@@ -1295,6 +846,9 @@ function DrawTables(target, links) {
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
+	// maxshots is the maximum number of snapshots of any games's boards in the
+	// datase we're about to render. If it's 1 that implies no evolution is being 
+	// displayed just a single snapshot per game.
 	if (maxshots == 1) {
 		var totalboards = leaderboards.length;		
 		var rows = totalboards / cols;
@@ -1312,7 +866,7 @@ function DrawTables(target, links) {
 				k = i*cols+j 
 				if (k < totalboards) {
 					var cell = row.insertCell(j);
-					cell.className = 'leaderboard wrapper'
+					//cell.className = 'leaderboard wrapper'
 					cell.appendChild(LBtable(leaderboards[k], 0, links));
 				}
 			}
@@ -1332,10 +886,14 @@ function DrawTables(target, links) {
 		var lb = 0; 
 		for (var i = 0; i < rows; i++) {
 			var row = table.insertRow(i);
-			snaps = leaderboards[lb][3].length;
+			// We deduct 1 from the snapshot count which is the baseline board we always request
+			// So that we can display rank deltas for ALL boards not just those with an earlier 
+			// one. Always a minimum of 1 snap for a game though is displayed.
+			const delivered = leaderboards[lb][3].length;
+			const snaps     = delivered - (use_baseline && delivered > 1 ? 1 : 0); 
 			for (var j = 0; j < snaps; j++) {
 				var cell = row.insertCell(j);
-				cell.className = 'leaderboard wrapper'
+				//cell.className = 'leaderboard wrapper'
 				cell.appendChild(LBtable(leaderboards[lb], j, links));
 			}
 			lb++; 

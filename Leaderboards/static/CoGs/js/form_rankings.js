@@ -14,82 +14,6 @@ const Session = get_session_data();
 	
 	Unknown IDs (Rank, Player, Team, Performance) will carry a string of form "id_n" where n is 0, 1, 2 ...
 	That being a sign that the id is unknown (this data not saved yet and given a database ID)
-	
-	An Individual Play Mode session:
-	
-		    {
-		        "rIDs": [124, 126, 123, 125],   // Rank IDs
-		        "Ranks": {						// RankID to rank value (1st, 2nd, 3rd etc)
-		            "123": 2,
-		            "124": 1,
-		            "125": 2,
-		            "126": 1
-		        },
-		        "Players": {					// Rank ID to Player ID
-		            "123": 6,
-		            "124": 12,
-		            "125": 1,
-		            "126": 10
-		        },
-		        "Teams": {						// Rank ID to Team ID
-		            "123": null,
-		            "124": null,
-		            "125": null,
-		            "126": null
-		        },
-		        "TeamNames": {},				// Team ID to team name (a string)
-		        "TeamPlayers": {},				// Team ID to list of team Player IDs
-		        "pIDs": {						// Player ID to Performance ID 
-		            "1": 125,
-		            "6": 126,
-		            "10": 123,
-		            "12": 124
-		        },
-		        "Weights": {					// Player ID to Partial Play Weighting (a float)
-		            "1": 1,
-		            "6": 1,
-		            "10": 1,
-		            "12": 1
-		        }
-		    }
-	    
-	 And a Team Play Session:
-	 
-		 {
-		    "rIDs": [392, 393],
-		    "Ranks": {
-		        "392": 1,
-		        "393": 2
-		    },
-		    "Players": {
-		        "392": null,
-		        "393": null
-		    },
-		    "Teams": {
-		        "392": 3,
-		        "393": 4
-		    },
-		    "TeamNames": {
-		        "3": "Team 1",
-		        "4": "Team 2"
-		    },
-		    "TeamPlayers": {
-		        "3": [1, 20],
-		        "4": [22, 21]
-		    },
-		    "pIDs": {
-		        "1": 392,
-		        "20": 393,
-		        "21": 394,
-		        "22": 395
-		    },
-		    "Weights": {
-		        "1": 1,
-		        "20": 1,
-		        "21": 1,
-		        "22": 1
-		    }
-		}
 */
 
 
@@ -1326,7 +1250,7 @@ function insertErrors() {
 					const id = id_player.replace(form_number, i);
 					const row = $(`#${id}`).closest('tr'); 
 					for (let j in related_form_errors.Performance[i]) {
-				    	const new_row = $(`<tr class="error"><td colspan=0>${related_form_errors.Performance[i][j]}</td></tr>`);
+				    	const new_row = $(`<tr class="error"><td colspan=10>Performance error: ${related_form_errors.Performance[i][j]}</td></tr>`);
 				    	new_row.insertBefore(row);
 					}
 				}
@@ -1341,7 +1265,7 @@ function insertErrors() {
 					const id = id_rank.replace(form_number, i);
 					const row = $(`#${id}`).closest('tr'); 
 					for (let j in related_form_errors.Rank[i]) {
-				    	const new_row = $(`<tr><td colspan=0>${related_form_errors.Rank[i][j]}</td></tr>`);
+				    	const new_row = $(`<tr class="error"><td colspan=10>Rank error: ${related_form_errors.Rank[i][j]}</td></tr>`);
 				    	new_row.insertBefore(row);
 					}
 				}

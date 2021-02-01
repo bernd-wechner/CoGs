@@ -1,6 +1,7 @@
 {% extends "CoGs/base.html" %}
 {% load static %}
 {% load filters %}
+{% load tags %}
 {% block title %}{{ title }}{% endblock %}
 
 {% block styles %}
@@ -11,8 +12,7 @@
 	<script>
 		const reload_icon = "{% static 'reload.png' %}";
 
-		// Catch form errors that come in (in order to report them)
-		const form_errors 		  = {{ form.errors | fallback:'[]' | safe }};
+		// Catch related form errors that come in (in order to report them)
 		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};  
 	</script>
 {% endblock %}
@@ -67,6 +67,8 @@
 
 		We need form elements to enter all this and to properly initialise and respond to the various object IDs in this complex interrelationship.
 	{% endcomment %}
+	{% try_include model_name %}
+	
 	{% if model_name == 'Session' %}
 		<table id='tableRankings'>
 			<script>

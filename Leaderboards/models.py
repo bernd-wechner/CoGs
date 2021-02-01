@@ -1328,10 +1328,12 @@ class Game(AdminModel):
         specified leagues, or for all leagues if None is specified. As at a given date/time if such is specified,
         else, as at now (latest or current, leaderboard).
         
+        A much richer tuple can be provided if simple!=True.
+        
         :param leagues:   Show only players in any of these leagues if specified, else in any league (a single league or a list of leagues)
         :param asat:      Show the leaderboard as it was at this time rather than now, if specified
         :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options. 
-        :param simple     Defaults to Tue and is designed for the simple property method and a simple view
+        :param simple     Defaults to True and is designed for the simple property method and a simple view
                           of a games leaderboard.
                           
                           if False a more complex tuple is returned on each row of the board empowering
@@ -1341,7 +1343,7 @@ class Game(AdminModel):
                                 present the mu and sigma in a ToolTip or other annotation
                                 present alternate name formats (default tupe has complete, we include nick and full in prepend).
                                 filter player lists based on activity (last_play) or league membership (league PKs).
-                          If annotated is requested we ignore leaques and names (filtering and name renderig handled by caller) 
+                          If this is requested we ignore 'leaques' and 'names' (filtering and name rendering handled by caller) 
         '''  
         # If a single league was provided make a list with one entry.
         if not isinstance(leagues, list):
@@ -1357,7 +1359,7 @@ class Game(AdminModel):
         # we ignore it vehemently, it's a programming error to invoke this method 
         # with "names" and not simple ...
         if not simple and names != "nick":
-            raise ArgumentError("Game.leaderboards requested with annotations. Expected no names submitted but got: {names}")                        
+            raise ValueError("Game.leaderboards requested with annotations. Expected no names submitted but got: {names}")                        
             
         # We can accept leagues as League instances or PKs but want a PK list for the queries.
         for l in range(0, len(leagues)):
@@ -1413,7 +1415,7 @@ class Game(AdminModel):
                 trueskill_sigma = r.trueskill_sigma_after
                 plays = r.play_number
                 victories = r.victory_count
-                last_play = r.session.date_time       # TODO: date_time_tz?   
+                last_play = r.session.date_time       # TODO: date_time_tz?
             else:
                 raise ValueError(f"Progamming error in Game.leaderboard().")
             
@@ -2249,7 +2251,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         return snapshot  
 
-    def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style=""):
+    def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style="margin-left: 8ch;"):
         '''
         Internal OL factory for list of rankers on a session. 
         
@@ -2337,7 +2339,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         :param name_style: Must be supplied
         '''
-        detail = u"<b>" + time_str(self.date_time) + u"</b><br><br>"
+        detail = u"<b>Results after: " + time_str(self.date_time) + u"</b><br><br>"
         
         (ol, data) = self._html_rankers_ol(self.ranks.all(), True, None, name_style)
         
@@ -2369,11 +2371,12 @@ class Session(TimeZoneMixIn, AdminModel):
         :param name_style: Must be supplied
         '''
         (ordered_ranks, confidence) = self.predicted_ranking
+        quality = self.prediction_quality
         
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
-        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality:.0%} accurate){tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style, "margin-left: 8ch;")        
+        detail = f"Predicted ranking <b>before</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance", name_style)
         
         detail += ol
         
@@ -2403,11 +2406,12 @@ class Session(TimeZoneMixIn, AdminModel):
         :param name_style: Must be supplied
         '''
         (ordered_ranks, confidence) = self.predicted_ranking_after
+        quality = self.prediction_quality_after
 
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
-        detail = f"Predicted ranking (<div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{self.prediction_quality_after:.0%} accurate){tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style, "margin-left: 8ch;")
+        detail = f"Predicted ranking <b>after</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
+        (ol, data) = self._html_rankers_ol(ordered_ranks, False, "performance_after", name_style)
         detail += ol
         
         return (mark_safe(detail), data)                  

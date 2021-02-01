@@ -148,14 +148,21 @@ def pre_process_submitted_model(self):
         # both the Create and Update views.
 
         str_time = self.form.data['date_time']  # Submitted session time
-        new_time = parse_datetime(str_time)            # Fails with exception or None if invalid
-
+        new_time = parse_datetime(str_time)     # Fails with exception or None if invalid
+        
         # We need a TZ naive version for comparising against naive datetimes.
         if is_aware(new_time):
             nt = make_naive(localtime(new_time, timezone.utc))
         else:
             nt = new_time
             new_time = make_aware(new_time)
+
+        # The time of the session cannot be in the future of course.
+        if new_time > localtime():
+            # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.
+            # Methinks we want to translate form fields back into Session context as part of bailing
+            self.form.add_error("date_time", f"Please choose a time in the past.")
+            return None
         
         str_game = self.form.data['game']       # Submitted game ID
         new_game = Game.objects.get(pk=int(str_game))  # Fails with exception if bad input
@@ -167,12 +174,20 @@ def pre_process_submitted_model(self):
         new_weights = []
         seen_players = set()
         for p in range(performances):
-            int_player = int(self.form.data[f'Performance-{p}-player'])
-            player = Player.objects.get(pk=int_player)
+            str_player = self.form.data[f'Performance-{p}-player']
+            try:
+                int_player = int(str_player)
+                player = Player.objects.get(pk=int_player)
+            except:
+                self.form.add_error(None, f"Please select a registered player.")
+                return None
+            
             
             # If we have a player dup0licated bail now (form.is_valid will 
             # fail after we've added this error)
             if int_player in seen_players:
+                # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.
+                # Methinks we want to translate form fields back into Session context as part of bailing
                 self.form.add_error(None, f"Players must be unique. {player.name()} used more than once.")
                 return None
                 
@@ -741,6 +756,19 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     extra_context_provider = extra_context_provider
     pre_processor = pre_process_submitted_model
     post_processor = post_process_submitted_model
+    #
+    # TODO The success URL should go a new page, an impact view which
+    # shows the impact of the added board. Here's a JSON URL that getcehs t:
+    # http://127.0.0.1:8000/json/leaderboards/?no_defaults&games_ex=29&player_leagues_any=1&as_at=2021-01-16+13-30-00+0000&links=BGG&details=true&analysis_pre=true&analysis_post=true&show_delta=true&ignore_cache
+    # Do this in Add and Edit. 
+    #
+    # TODO: Once that's done a second board which shows th ime impact on the latest leaderboards (if this
+    # add or edit was not latest) Appropriate headers and all, the latest board impact would be not 
+    # compared to the previous session temporally but to the ratings backup taken before a rebuild 
+    # was tricggered. To wit the Backup_Rating has a diff emthod but Game.leaderboard I think
+    # needs to be able to build one from Rating or BackupRating and the ajax view be able to make
+    # a request for a games leaderboard lastest from Rating or BackupRating from whcih it can build a
+    # Leaderboard with Rank Deltas.
 
 # TODO: Test that this does validation and what it does on submission errors
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
@@ -789,7 +817,8 @@ def view_Leaderboards(request):
     The raison d'etre of the whole site, this view presents the leaderboards. 
     '''
     # Fetch the leaderboards
-    leaderboards = ajax_Leaderboards(request, raw=True)   
+    # We always request raw (so it's not JSON but Python data
+    leaderboards = ajax_Leaderboards(request, raw=True)
 
     session_filter = request.session.get('filter',{})
     tz = pytz.timezone(request.session.get("timezone", "UTC"))
@@ -857,7 +886,7 @@ def view_Leaderboards(request):
 # AJAX providers
 #===============================================================================
 
-def ajax_Leaderboards(request, raw=False):
+def ajax_Leaderboards(request, raw=False, baseline=True):
     '''
     A view that returns a JSON string representing requested leaderboards.
     
@@ -953,7 +982,7 @@ def ajax_Leaderboards(request, raw=False):
         # we're happy to include all sessions during the event regardless of where. The
         # reason being that we want to see evoluton of the leaderboards during the event
         # even if some people outside of the event are playing it and impacting the board.
-        boards = lo.snapshot_queryset(game)
+        boards = lo.snapshot_queryset(game, baseline)
         
         if boards:
             #######################################################################################################
@@ -974,15 +1003,17 @@ def ajax_Leaderboards(request, raw=False):
             previous_rank = {}
             
             # For each board/snapshot of this game ...
-            # In temporral order so we can construct the "previous rank" 
+            # In temporal order so we can construct the "previous rank" 
             # element on the fly, but we're reverse it back when we add the 
             # collected snapshots to the leaderboards list.        
             for board in reversed(boards):
                 # IF as_at is now, the first time should be the last session time for the game 
                 # and thus should translate to the same as what's in the Rating model. 
+                #
                 # TODO: Perform an integrity check around that and indeed if it's an ordinary
                 #       leaderboard presentation check on performance between asat=time (which 
                 #       reads Performance) and asat=None (which reads Rating).
+                #
                 # TODO: Consider if performance here improves with a prefetch or such noting that
                 #       game.play_counts and game.session_list might run faster with one query rather 
                 #       than two.
@@ -997,9 +1028,10 @@ def ajax_Leaderboards(request, raw=False):
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    log.debug(f"\t\tFound it in cache!")                     
+                    log.debug(f"\t\tFound it in cache!")
+                    
                 else:
-                    log.debug(f"\t\tBuilding it!")                     
+                    log.debug(f"\t\tBuilding it!")
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
@@ -1048,15 +1080,15 @@ def ajax_Leaderboards(request, raw=False):
                     # snapshot 0 and 1 are the session PK and localized time
                     # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
                     # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
-                    # snapshot 8 is the leaderboard (a tuple of player tuples
-                    # The HTML header and analyses use flex player naming and expect client side to render 
-                    # appropriately. See Player.name() for flexi naming standard.
+                    # snapshot 8 is the leaderboard (a tuple of player tuples)
+                    # The HTML header and analyses use flexi player naming and expect client side to render 
+                    # appropriately. See Player.name() for flexi naming standards.
                     snapshot = (snapshot[0:2] 
                              +  (counts['total'], counts['sessions']) 
                              +  snapshot[4:8] 
                              +  (lbf,))
                                     
-                    # Clear and rebuild the previouse_rank dictionary with this boards' lb values
+                    # Clear and rebuild the previous_rank dictionary with this boards' lb values
                     # We use the wholeleaderboard hear (lb) not the player filtered leaderboard (lbf)
                     previous_rank = {}
                     for p in lb:
