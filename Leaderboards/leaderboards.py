@@ -132,7 +132,7 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
     
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_delta'}
     
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
@@ -219,7 +219,8 @@ class leaderboard_options:
     # Only one of these can be respected at a time,    
     # compare_back_to is special, it can take one two types of value:
     #    a) a datetime, in which case it encodes a datetime back to which we'd like to have snapshots
-    #    b) an integer or float, in which case  it encodes num_days above basically, the length of the last event looking back from as_at which is used to determine a date_time for the query.
+    #    b) an integer or float, in which case  it encodes num_days above basically, the length of 
+    #       the last event looking back from as_at which is used to determine a date_time for the query.
     compare_with = 1            # Compare with this many historic leaderboards
     compare_back_to = None      # Compare all leaderboards back to this date (and the leaderboard that was the latest one then)
 
@@ -238,6 +239,7 @@ class leaderboard_options:
     details = False             # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False        # Show the TrueSkill Pre-session analysis 
     analysis_post = False       # Show the TrueSkill Post-session analysis
+    show_delta = False          # Show the delta (movement) in ranking this session caused
 
     # Options for laying out leaderboards on screen 
     cols = 3                    # Display boards in this many columns (ignored when comparing with historic boards)
@@ -658,6 +660,9 @@ class leaderboard_options:
     
         if 'analysis_post' in urequest:
             self.analysis_post = json.loads(urequest['analysis_post'].lower()) # A boolean value is parsed
+
+        if 'show_delta' in urequest:
+            self.show_delta = json.loads(urequest['show_delta'].lower()) # A boolean value is parsed
     
         ##################################################################
         # HIGHLIGHT OPTIONS
@@ -955,6 +960,9 @@ class leaderboard_options:
         of the ostensible start of the last gaming event. Being the last_event_end_time as above)
         less the value of delta_days. This could be self.num_days for the game filtering or 
         self.compare_back_to for snapshot capture for example.
+        
+        :param delta_days:              The number of days before the last session to pin the event start time at
+        :param as_ExpressionWrapper:    Return an ExpressionWrpaper (for a lazy Queryset builder)
         '''
         if as_ExpressionWrapper:
             lest = ExpressionWrapper(Subquery(self.last_session_property('date_time')) - timedelta(days=delta_days), output_field=DateTimeField())
@@ -1110,13 +1118,13 @@ class leaderboard_options:
             
         return filtered_games
     
-    def snapshot_queryset(self, game):
+    def snapshot_queryset(self, game, baseline=False):
         '''
         Returns a QuerySet of the Session objects which which provide the foundation
-        for historic snapshots selcted by these options (self.evolution_options drive
+        for historic snapshots selected by these options (self.evolution_options drive
         this).
         
-        As a QuerySet this should ideal remain unevaluated on return (remain lazy).
+        As a QuerySet this should ideally remain unevaluated on return (remain lazy).
         
         A snapshot is the leaderboard as it appears after a given game session
         The default and only standard snapshot is the current leaderboard after the 
@@ -1128,14 +1136,17 @@ class leaderboard_options:
            lo.as_at which asks for the leaderboard as at a given time (not the latest one)
          
         Evolution requests:
-           lo.EvolutionSelections documents the possible selections
+           lo.evolution_options documents the possible selections
                
-        We build a QeurySet of the sessions after which we want the leaderboard snapshots.        
+        We build a QeurySet of the sessions after which we want the leaderboard snapshots.
+        
+        :param game:        A Game object for which the leaderboards are requested
+        :param baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
         '''
         
         def sessions_plus(sessions):
             '''
-            Given a sessioons queryset adds the prefets needed to lower the query count later and boost 
+            Given a sessions queryset adds the prefetches needed to lower the query count later and boost 
             performance a little.
 
             On one trial of a full leaderboad generation I got this without the prefech:
@@ -1173,42 +1184,55 @@ class leaderboard_options:
         if self.is_enabled('as_at'):
             sfilter &= Q(date_time__lte=self.as_at)
 
-        # At this stage we have sfilter (a filter on sessions that
+        # At this stage we have sfilter - a filter on sessions that
         #   Specifies a game
         #   Respects and league constraints specified
         #   Respects any perspective constraint supplied
 
-        if (self.no_evolution()):
+        if self.no_evolution():
             # Just get the latest session, one snapshot only
-            sessions = top(Session.objects.filter(sfilter).order_by("-date_time"), 1)
+            # And extra one if a baseline is requested.
+            sessions = top(Session.objects.filter(sfilter).order_by("-date_time"), 2 if baseline else 1)
         else:
+            # compare_with or compare_back_to is enabled
             extra_session = None
+            reference_time = None
             
             sessions = Session.objects.all()
             
-            # Respect the evolution options where enabled
+            # We want one extra session, the one just before the reference time.
+            # This is a new QuerySet which we'll Union with the main one. We
+            # want to find it just before we restrict sfilter as we'd like to
+            # respect sfilter to date. It specified a game at least, possibly 
+            # league constraints on the sessions and a perspective constraint.                                
             if self.is_enabled('compare_back_to'):
-                # We want one extra session, the one just before the reference time.
-                # This is a new QuerySet which we'll Union with the main one. We
-                # want to find it just before we restrict sfilter as we'd like to
-                # respect sfilter to date. It specified a game at least, possibly 
-                # league constraints on the sessions and a perspective constraint.                                
-                if self.is_enabled('compare_back_to'):
-                    if isinstance(self.compare_back_to, numbers.Real):
-                        reference_time = self.last_event_start_time(self.compare_back_to)
-                    elif isinstance(self.compare_back_to, datetime):
-                        reference_time = self.compare_back_to
-                    else:
-                        reference_time = None
+                # We're defining a window here. We want all session from the start of
+                # that window (done here)  and the end of the window ifs defined by 
+                # self.as_at or the latest session (no explicit end needed). 
+                
+                # We want a reference time first being the start of an event or 
+                # a time explciitly provided. Well add the snapshot prior to this time
+                # as a the state of the boartd AT that time, and if a baseline is 
+                # requested a second one (not intended for renderig just for rank delta 
+                # calculatiuon.
+                if isinstance(self.compare_back_to, numbers.Real):
+                    reference_time = self.last_event_start_time(self.compare_back_to)
+                elif isinstance(self.compare_back_to, datetime):
+                    reference_time = self.compare_back_to
+                else:
+                    reference_time = None
 
                 if reference_time:
-                    extra_session = top(sessions_plus(sessions.filter(sfilter & Q(date_time__lt = reference_time))), 1)
+                    efilter = sfilter & Q(date_time__lt = reference_time)
+                    extra_session = top(sessions_plus(sessions.filter(efilter)), 2 if baseline else 1)
+                    
+                    # The referecce time is of course, also the time that we want all boards from.
+                    # We update sfilter AFTER building the extra_session query because sfltter prior 
+                    # to his constrain is used in defining it.
                     sfilter &= Q(date_time__gte = reference_time)
-            
-            sessions = sessions_plus(sessions)
-
+                
             # Then order the sessions in reverse date_time order  
-            sessions =  sessions.filter(sfilter).order_by("-date_time")
+            sessions =  sessions_plus(sessions.filter(sfilter).order_by("-date_time"))
             
             if extra_session:
                 sessions = sessions.union(extra_session).order_by("-date_time")
@@ -1216,7 +1240,12 @@ class leaderboard_options:
             # Keep on respecting the evolution options where enabled
             if self.is_enabled('compare_with'):
                 # This encodes a number of sessions so the top n on the temporally ordered
-                sessions = top(sessions, 1+self.compare_with)
+                # sessions. we want at least one more because that one more (because it's
+                # compare the latested - or as_at - with n prioer boards, so we want at 
+                # least n+1 boards total. But if we've been asked to provide a baselined 
+                # we return one more which the caller presumeably doesn't render just used
+                # for delta calculation (it's the hidden baselined for deltas)
+                sessions = top(sessions, self.compare_with + (2 if baseline else 1))
                 
         if settings.DEBUG:
             queries_after = len(connection.queries)

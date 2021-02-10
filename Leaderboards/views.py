@@ -3,6 +3,7 @@ import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 from datetime import datetime, date, timedelta
 from collections import OrderedDict
+from html import escape
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
@@ -15,6 +16,7 @@ from cuser.middleware import CuserMiddleware
 from CoGs.logging import log
 from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections
+from .BGG import BGG
  
 from django.db.models import Count, Q
 from django.shortcuts import render
@@ -23,6 +25,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.formats import localize
 from django.utils.timezone import is_aware, make_aware, make_naive, activate, localtime
 from django.http import HttpResponse
+from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
 #from django.http.response import HttpResponseRedirect
 from django.urls import reverse, reverse_lazy  #, resolve
 from django.contrib.auth.models import User, Group
@@ -79,7 +82,7 @@ def updated_user_from_form(user, request):
             registrars.user_set.remove(user)
     user.save
 
-def pre_process_submitted_model(self):
+def pre_save_handler(self):
     '''
     When a model form is POSTed, this function is called BEFORE the form is saved.
     
@@ -94,7 +97,7 @@ def pre_process_submitted_model(self):
     self is an instance of CreateViewExtended or UpdateViewExtended.
     
     If it returns a dict that will be used as a kwargs dict into the
-    the configured post processor (post_process_submitted_model below).
+    the configured post processor (pre_commit_handler below).
     '''
     model = self.model._meta.model_name
     
@@ -148,27 +151,53 @@ def pre_process_submitted_model(self):
         # both the Create and Update views.
 
         str_time = self.form.data['date_time']  # Submitted session time
-        new_time = parse_datetime(str_time)            # Fails with exception or None if invalid
-
+        new_time = parse_datetime(str_time)     # Fails with exception or None if invalid
+        
         # We need a TZ naive version for comparising against naive datetimes.
         if is_aware(new_time):
             nt = make_naive(localtime(new_time, timezone.utc))
         else:
             nt = new_time
             new_time = make_aware(new_time)
+
+        # The time of the session cannot be in the future of course.
+        if new_time > localtime():
+            # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.
+            # Methinks we want to translate form fields back into Session context as part of bailing
+            self.form.add_error("date_time", f"Please choose a time in the past.")
+            return None
         
         str_game = self.form.data['game']       # Submitted game ID
         new_game = Game.objects.get(pk=int(str_game))  # Fails with exception if bad input
         
         # Grab the players and play_weights
+        # And check for player uniqueness now
         performances = int(self.form.data['Performance-TOTAL_FORMS'])
         new_players = []
         new_weights = []
+        seen_players = set()
         for p in range(performances):
-            int_player = int(self.form.data[f'Performance-{p}-player'])
-            new_players.append(Player.objects.get(pk=int_player))
+            str_player = self.form.data[f'Performance-{p}-player']
+            try:
+                int_player = int(str_player)
+                player = Player.objects.get(pk=int_player)
+            except:
+                self.form.add_error(None, f"Please select a registered player.")
+                return None
+            
+            
+            # If we have a player dup0licated bail now (form.is_valid will 
+            # fail after we've added this error)
+            if int_player in seen_players:
+                # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.
+                # Methinks we want to translate form fields back into Session context as part of bailing
+                self.form.add_error(None, f"Players must be unique. {player.name()} used more than once.")
+                return None
+                
+            new_players.append(player)
             str_weight = self.form.data[f'Performance-{p}-partial_play_weighting']
             new_weights.append(float(str_weight))
+            seen_players.add(int_player)
             
         # Check to see if this is the latest play for each player
         is_latest = True
@@ -182,12 +211,20 @@ def pre_process_submitted_model(self):
 
         # A rebuild of ratings is triggered under any of the following circumstances:
         #
+        # A rebuild request goes to the post_processor for the submission (runs after 
+        # the submisison was saved. It takes the form of a list of sessions to rebuild
+        # or a queryset of them,  
+        #
         # 1. It's a new session and any of the players involved have future sessions
         #    recorded already.
         if isinstance(self, CreateViewExtended):
             output(f"New Session")
             if not is_latest:
-                return {'rebuild': (new_game, new_time)}
+                rebuild = new_game.future_sessions(new_time, new_players)
+                output(f"Requesting a rebuild of ratings for {len(rebuild)} sessions: {escape(str(rebuild))}")
+                return {'rebuild': rebuild}
+            else:
+                output(f"Is the latest session of {new_game} for all of {', '.join(new_players[:-1])} and {new_players[-1]}")
 
         # or
         #
@@ -206,18 +243,27 @@ def pre_process_submitted_model(self):
         #    is changed)
         elif isinstance(self, UpdateViewExtended):
             old_session = self.object
+            old_players = old_session.players
+            
             output(f"Editing session {old_session.pk}")
+            J = '\n\t\t' # A log message list item joiner
+
+            # Build a list of all players affected by this submission
+            all_players = list(set(old_players) | set(new_players))
+            output(f"\tOld players: {escape(', '.join([str(p) for p in old_players]))}")
+            output(f"\tNew players: {escape(', '.join([str(p) for p in new_players]))}")
+            output(f"\tAll players: {escape(', '.join([str(p) for p in all_players]))}")
 
             # If the game was changed we will request a rebuild of both games 
             # regardless of any other considerations. Both their rating trees
             # need rebuilding. 
             if not new_game == old_session.game:
-                rebuild = [(old_session.game, old_session.date_time), (new_game, new_time)]
-                output(f"\tGame changed. Requesting rebuild of leaderboards: {STR(rebuild)}")
+                old_sessions =  old_session.game.future_sessions(old_session.date_time, old_session.players)
+                new_sessions =  new_game.future_sessions(new_time, new_players)
+                rebuild      = sorted(old_sessions + new_sessions, key=lambda s: s.date_time)
+                output(f"\tGame changed. Requesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
                 
             else:
-                old_players = old_session.players
-                                
                 # Divine the play mode
                 if 'team_play' in self.form.data:
                     assert 'num_teams' in self.form.data, "Bad form submission, team_play on but no num_teams."
@@ -229,14 +275,14 @@ def pre_process_submitted_model(self):
                 # If the play mode changed rebuild this  games rating tree from 
                 # this session on.
                 if not new_team_play == old_session.team_play: 
-                    rebuild = (old_session.game, min(old_session.date_time, new_time))
-                    output(f"\tPlay mode changed from {'team' if old_session.team_play else 'individual'} to {'team' if new_team_play else 'individual'}.\n\tRequesting rebuild of leaderboards: {STR(rebuild)}")
+                    rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
+                    output(f"\tPlay mode changed from {'team' if old_session.team_play else 'individual'} to {'team' if new_team_play else 'individual'}.\n\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
                     
                 # If any players were added, remove or changed, rebuild this 
                 # games rating tree from this session on.
                 elif not set(new_players) == set(old_players):
-                    rebuild = (old_session.game, min(old_session.date_time, new_time))
-                    output(f"\tPlayers changed from\n\t{STR(set(old_players))} to\n\t{STR(set(new_players))}.\n\tRequesting rebuild of leaderboards: {STR(rebuild)}")
+                    rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
+                    output(f"\tPlayers changed. Requesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
                     
                 # Otherwise check for othe rating impacts
                 else:
@@ -274,7 +320,6 @@ def pre_process_submitted_model(self):
                         time_window = (make_naive(prev_sess.date_time) if prev_sess else datetime.min,
                                        make_naive(foll_sess.date_time) if foll_sess else datetime.max)
                         
-                        # TODO: Cofirm that timezone handling is right here. 
                         # Easiest way is empircially to find a game that's been played like three time in a row and
                         # move the middle one. 
                         if not time_window[0] < nt < time_window[1]:
@@ -299,8 +344,8 @@ def pre_process_submitted_model(self):
     
                     # If a rating impact has been assess, request a rebuild.
                     if rating_impact: 
-                        rebuild = (old_session.game, min(old_session.date_time, new_time))
-                        output(f"\tRequesting rebuild of leaderboards:\n\t{STR(rebuild)}.")
+                        rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
+                        output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
                     else:
                         output(f"\tNo rating impact found. No rebuild requested.")
     
@@ -308,9 +353,10 @@ def pre_process_submitted_model(self):
                 html += "</pre>\n</section>\n"
                 return {'debug_only': html}
             else:
+                # Return the kwargs for the next handler
                 return {'rebuild': rebuild}
     
-def post_process_submitted_model(self, rebuild=None):
+def pre_commit_handler(self, rebuild=None):
     '''
     When a model form is POSTed, this function is called AFTER the form is saved.
     
@@ -504,90 +550,20 @@ def post_process_submitted_model(self, rebuild=None):
         # Team processing fetches ranks based on the POST submitted rank for the team. After 
         # we clean them that relationshop is lost. So we should clean the ranks as last 
         # thing just before calculating TrueSkill impacts.
-        
-        if settings.DEBUG:
-            # Grab a pre snapshot
-            rank_debug_pre = {}
-            for rank in session.ranks.all():
-                rkey = rank.team.pk if team_play else rank.player.pk
-                rank_debug_pre[f"{'Team' if team_play else f'Player'} {rkey}"] = rank.rank  
-        
-            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
-        
-        # First collect all the supplied ranks
-        rank_values = []
-        ranks_by_pk = {}
-        for rank in session.ranks.all():
-            rank_values.append(rank.rank)
-            ranks_by_pk[rank.pk] = rank.rank
-        # Then sort them by rank
-        rank_values.sort()
 
-        log.debug(f"\tRank values: {rank_values}")
-        log.debug(f"\tRanks by PK: {ranks_by_pk}")
+        session.clean_ranks()
 
-        # Build a map of submited ranks to saving ranks
-        rank_map = OrderedDict()
-
-        expected = 1
-        for rank in rank_values:
-            # if it's a new rank process it 
-            if not rank in rank_map:
-                # If we have the expected value map it to itself
-                if rank == expected:
-                    rank_map[rank] = rank
-                    
-                # Else map all tied ranks to the expected value and update the expectation
-                else:
-                    rank_map[rank] = expected
-                    expected += rank_values.count(rank)
-            
-        log.debug(f"\tRanks Map: {rank_map}")
-        
-        for From, To in rank_map.items():
-            if not From == To:
-                pks = [k for k,v in ranks_by_pk.items() if v == From]
-                rank_objs = session.ranks.filter(pk__in=pks)
-                for rank_obj in rank_objs: 
-                    rank_obj.rank = To
-                    rank_obj.save()
-                    rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
-                    log.debug(f"\tMoved {'Team' if team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
-                    
-        if settings.DEBUG:
-            # Grab a pre snapshot
-            rank_debug_post = {}
-            for rank_obj in session.ranks.all():
-                rkey = rank_obj.team.pk if team_play else rank_obj.player.pk
-                rank_debug_post[f"{'Team' if team_play else f'Player'} {rkey}"] = rank_obj.rank  
-
-            log.debug(f"\tRanks Submitted: {sorted(rank_debug_pre.items(), key=lambda x: x[1])}")
-            log.debug(f"\tRanks Saved    : {sorted(rank_debug_post.items(), key=lambda x: x[1])}")
-            
-        # TODO: Before we calculate TrueSkillImpacts we need to have a completely validated session!
-        #       Any Ranks that come in, may have been repurposed from Indiv to Team or vice versa. 
-        #       We need to clean these up. I think this means we just have to recaluclate the trueskill 
-        #       impacts but also all subsequent ones involving any of these players if it's an edit!
+        # update ratings on the saved session.    
+        Rating.update(session)
 
         # If a rebuild request arrived from the preprocessors honour that
         # It means this submission is known to affect "future" sessions 
         # already in the database. Those future (relative to the submission) 
-        # sessions need a ratings rebuild.        
+        # sessions need a ratings rebuild.  
         if rebuild:
-            if isinstance(rebuild, tuple):
-                Rebuild = [rebuild]
-            elif isinstance(rebuild, list):
-                Rebuild = rebuild
-            else:
-                raise NotImplementedError(f"A rebuild request is expected to be a tuple or list, no other format is supported. {type(rebuild)} was submitted.")
-            
-            for r in Rebuild:
-                Rating.rebuild(*r)  
-        
-        # Otherwise, just update ratings formthis session (this implies it's the latest 
-        # session for that game and these player. 
-        else:
-            Rating.update(session)
+            J = '\n\t\t' # A log message list item joiner
+            log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+            Rating.rebuild(Sessions=rebuild)
         
         # Now check the integrity of the save. For a sessions, this means that:
         #
@@ -605,7 +581,33 @@ def post_process_submitted_model(self, rebuild=None):
         # The rating has recorded the global trueskill settings and the Game trueskill settings reliably.
         #
         # TODO: Do these checks. Then do test of the transaction rollback and error catch by 
-        #       simulating an integrity error.  
+        #       simulating an integrity error.
+        
+        # If there was a rebuild we store the PKs of all rebuilt sessions in the users login session
+        # (unfortunate double meaning of session here). We can dot hat because you MUST be logged in 
+        # to submit and edit sessions and so have a user session. This is theeasiest way to pass a 
+        # list of unknown length to the success_url, we only need to pass it the session key to retrieve
+        # the list. We do want to ensure the session key is unique and new (on the off and very bizarre 
+        # chance that this one user is saving multiple sessions at exactly the same time!
+        #  
+        # The success URL should make this key available so that a user could using the key revisit the
+        # impact while they ar elogged in and their user session remains of course.
+        get_params = ""
+        if rebuild:
+            rebuild_key = f"rating_rebuild_{localtime():%Y-%m-%d_%H:%M:%S}"
+            offset = 0
+            while rebuild_key in self.request.session:
+                offset += 1
+                delta = datetime.timedelta(seconds=offset)
+                rebuild_key = f"rating_rebuild_{localtime()+delta:%Y-%m-%d_%H:%M:%S}"
+                  
+            self.request.session[rebuild_key] = [s.pk for s in rebuild] 
+            get_params = f"?rebuilt={rebuild_key}"
+        
+        self.success_url = reverse_lazy('impact', kwargs={'model': 'Session', 'pk': session.pk}) + get_params
+        
+        # No args to pass to the next handler
+        return None
 
 def html_league_options(session):
     '''
@@ -788,12 +790,24 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     operation = 'add'
     #fields = '__all__'
     extra_context_provider = extra_context_provider
-    pre_processor = pre_process_submitted_model
-    post_processor = post_process_submitted_model
+    pre_save = pre_save_handler
+    pre_commit = pre_commit_handler
+    #
+    # TODO The success URL should go a new page, an impact view which
+    # shows the impact of the added board. Here's a JSON URL that getcehs t:
+    # http://127.0.0.1:8000/json/leaderboards/?no_defaults&games_ex=29&player_leagues_any=1&as_at=2021-01-16+13-30-00+0000&links=BGG&details=true&analysis_pre=true&analysis_post=true&show_delta=true&ignore_cache
+    # Do this in Add and Edit. 
+    #
+    # TODO: Once that's done a second board which shows the impact on the latest leaderboards (if this
+    # add or edit was not latest) Appropriate headers and all, the latest board impact would be not 
+    # compared to the previous session temporally but to the ratings backup taken before a rebuild 
+    # was tricggered. To wit the BackupRating has a diff method but Game.leaderboard I think
+    # needs to be able to build one from Rating or BackupRating and the ajax view be able to make
+    # a request for a games leaderboard lastest from Rating or BackupRating from whcih it can build a
+    # Leaderboard with Rank Deltas.
 
-# TODO: Test that this does validation and what it does on submission errors
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
-    # TODO: Must be atomic and in such a way that it tests if changes haveintegrity.
+    # TODO: Must be atomic and in such a way that it tests if changes have integrity.
     #       notably if a session changes from indiv to team mode say or vice versa,
     #       there is a notable impact on rank objects that could go wrong and we should
     #       check integrity. 
@@ -803,8 +817,8 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
     extra_context_provider = extra_context_provider
-    pre_processor = pre_process_submitted_model
-    post_processor = post_process_submitted_model
+    pre_save = pre_save_handler
+    pre_commit = pre_commit_handler
 
 class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
@@ -828,6 +842,62 @@ class view_Detail(DetailViewExtended):
     extra_context_provider = extra_context_provider
 
 #===============================================================================
+# Success URL views
+#===============================================================================
+
+def view_Impact(request, model, pk): 
+    '''
+    A view to show the impact of submitting a session. 
+    
+    :param request:    A Django request object
+    :param model:      The name of a model (only 'session' supported at present)
+    :param pk:         The Primary key of the object of model (i.e of the session)
+    '''
+    CuserMiddleware.set_user(request.user)
+
+    m = class_from_string('Leaderboards', model)
+    o = m.objects.get(pk=pk)
+
+    if model == "Session":
+        # TODO: If future_sessions.length > 0 add also a before and after 
+        # view of latest ratings.
+        
+        # TODO: We don't want to add leadrboar_snapshot but a leaderboard game entry
+        # with 1 to 3 snapshots! Build that! Makes it easier to plug in the JS 
+        # LeaderboardTable function.
+        #
+        # TODO: Add a baseline snapshot. That is for the previous session in this game.
+        snapshot = o.leaderboard_snapshot
+        
+        try:
+            baseline = o.previous_session().leaderboard_snapshot
+            snapshot = augment_with_baseline(snapshot, baseline)
+        # If there is no baseline to use don't sweat it
+        except:
+            pass
+            
+        snapshots = [snapshot] 
+        
+        c = {"game": o.game, 
+             "date_time": o.date_time, 
+             "is_latest": o.is_latest, 
+             "leaderboard_snapshots": json.dumps(leaderboard_tuple_game(o.game, snapshots), cls=DjangoJSONEncoder)}
+
+        rebuilt = request.GET.get("rebuilt", None)
+        session_pks = request.session.get(rebuilt, None)
+        if session_pks:
+            sessions = Session.objects.filter(pk__in=session_pks)
+        else:
+            sessions = []
+        
+        c["future_sessions"] = sessions
+        
+        return render(request, 'CoGs/view_session_impact.html', context=c)
+    else:
+        return HttpResponseRedirect(reverse_lazy('view', kwargs={'model':model, 'pk':pk}))
+
+
+#===============================================================================
 # The Leaderboards view. What it's all about!
 #===============================================================================
 
@@ -838,7 +908,8 @@ def view_Leaderboards(request):
     The raison d'etre of the whole site, this view presents the leaderboards. 
     '''
     # Fetch the leaderboards
-    leaderboards = ajax_Leaderboards(request, raw=True)   
+    # We always request raw (so it's not JSON but Python data
+    leaderboards = ajax_Leaderboards(request, raw=True)
 
     session_filter = request.session.get('filter',{})
     tz = pytz.timezone(request.session.get("timezone", "UTC"))
@@ -906,7 +977,57 @@ def view_Leaderboards(request):
 # AJAX providers
 #===============================================================================
 
-def ajax_Leaderboards(request, raw=False):
+def leaderboard_tuple_game(game, snapshots):
+    '''
+    A central defintion of the first tier of a the AJAX leaderboard view.
+    
+    The second tier is a list snapshots and they are defined in
+    
+        Session.leaderboard_snapshot.
+     
+    :param game:        a Game object
+    :param snapshots:   a list of leaderboard snaphots for that game
+    '''
+    return (game.pk, game.BGGid, game.name, snapshots)
+
+def augment_with_baseline(snapshot, baseline):
+    '''
+    Given a leaderboard snapshot and a baseline to compare it against, will 
+    augment the snapshot with a delta measure.
+    
+    A leaderboard snapshot is a list of tuples with a contents defined
+    by Game.leaderboard
+    
+    :param snapshot:    a leaderboard snapshot 
+    :param baseline:    a leaderboard snapshot to compare with
+    '''
+    
+    # Extract the leaderboards from the snapshot and baseline.
+    ilb = 8 
+    lb_snapshot = snapshot[ilb]
+    lb_baseline = baseline[ilb]
+    
+    previous_rank = {}
+    # The 8th element of a nsapshot tuple has the leaderboard!
+    for p in lb_baseline:
+        rank = p[0]
+        pk = p[1]
+        previous_rank[pk] = rank
+    
+    for r, p in enumerate(lb_snapshot):
+        rank = p[0]
+        pk = p[1]
+        if pk in previous_rank:
+            lb_snapshot[r] = p + (previous_rank[pk],)
+
+    # Use a list as tuple is not mutable
+    augmented_snapshot = list(snapshot) 
+    augmented_snapshot[ilb] = lb_snapshot
+    
+    # Back tot uple with frozen result
+    return tuple(augmented_snapshot)
+
+def ajax_Leaderboards(request, raw=False, baseline=True):
     '''
     A view that returns a JSON string representing requested leaderboards.
     
@@ -993,16 +1114,13 @@ def ajax_Leaderboards(request, raw=False):
         #     c) analysis post           - expensive
         #
         # We want to know if the session is already in a cached snapshot.
-        #
-        # FIXME: For that it's best to use PK, so we want to put Session.PK into
-        #        the snapshot tuple!        
         
         # Note: the snapshot query does not constrain sessions to the same location as 
         # as does the game query. once we have the games that were played at the event, 
         # we're happy to include all sessions during the event regardless of where. The
         # reason being that we want to see evoluton of the leaderboards during the event
         # even if some people outside of the event are playing it and impacting the board.
-        boards = lo.snapshot_queryset(game)
+        boards = lo.snapshot_queryset(game, baseline)
         
         if boards:
             #######################################################################################################
@@ -1016,22 +1134,23 @@ def ajax_Leaderboards(request, raw=False):
             
             # We want to build a list of snapshots to add to the leaderboards list
             snapshots = []
-            
-            # We keep a dictionary of previous ranks for each player by PK so we can can
-            # insert them into the leaderboardd, enabling the client to highlight rank 
-            # changes from snapshot to snapshot. 
-            previous_rank = {}
+
+            # We keep a baseline snapshot (the rpevious one) for augfmenting snapshots with
+            # (it adds a rank_delat entry, change in rank from the baseline)            
+            baseline = None
             
             # For each board/snapshot of this game ...
-            # In temporral order so we can construct the "previous rank" 
+            # In temporal order so we can construct the "previous rank" 
             # element on the fly, but we're reverse it back when we add the 
             # collected snapshots to the leaderboards list.        
             for board in reversed(boards):
-                # IF as_at is now, the first time should be the last session time for the game 
+                # If as_at is now, the first time should be the last session time for the game 
                 # and thus should translate to the same as what's in the Rating model. 
+                #
                 # TODO: Perform an integrity check around that and indeed if it's an ordinary
                 #       leaderboard presentation check on performance between asat=time (which 
                 #       reads Performance) and asat=None (which reads Rating).
+                #
                 # TODO: Consider if performance here improves with a prefetch or such noting that
                 #       game.play_counts and game.session_list might run faster with one query rather 
                 #       than two.
@@ -1046,9 +1165,10 @@ def ajax_Leaderboards(request, raw=False):
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    log.debug(f"\t\tFound it in cache!")                     
+                    log.debug(f"\t\tFound it in cache!")
+                    
                 else:
-                    log.debug(f"\t\tBuilding it!")                     
+                    log.debug(f"\t\tBuilding it!")
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
@@ -1084,34 +1204,24 @@ def ajax_Leaderboards(request, raw=False):
                     #        and it still makes sense to list a playcount across all those leagues.
                     
                     counts = game.play_counts(leagues=lo.game_leagues, asat=board.date_time)                    
-                    
-                    # We add the previous rank if available to each players tuple in the leaderboard
-                    if lbf and previous_rank:
-                        for p in range(len(lbf)):
-                            player_tuple = lbf[p]
-                            pk = player_tuple[1]
-                            if pk in previous_rank:
-                                lbf[p] = player_tuple + (previous_rank[pk],)
 
-                    
                     # snapshot 0 and 1 are the session PK and localized time
                     # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
                     # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
-                    # snapshot 8 is the leaderboard (a tuple of player tuples
-                    # The HTML header and analyses use flex player naming and expect client side to render 
-                    # appropriately. See Player.name() for flexi naming standard.
+                    # snapshot 8 is the leaderboard (a tuple of player tuples)
+                    # The HTML header and analyses use flexi player naming and expect client side to render 
+                    # appropriately. See Player.name() for flexi naming standards.
                     snapshot = (snapshot[0:2] 
                              +  (counts['total'], counts['sessions']) 
                              +  snapshot[4:8] 
                              +  (lbf,))
-                                    
-                    # Clear and rebuild the previouse_rank dictionary with this boards' lb values
-                    # We use the wholeleaderboard hear (lb) not the player filtered leaderboard (lbf)
-                    previous_rank = {}
-                    for p in lb:
-                        rank = p[0]
-                        pk = p[1]
-                        previous_rank[pk] = rank
+
+                    # Augmemnt the snapshot with the delta from baseline if we have one
+                    if baseline:
+                        snapshot = augment_with_baseline(snapshot, baseline)
+
+                    # Store the baselien for next iteration
+                    baseline = snapshot
                         
                     snapshots.append(snapshot)                
 
@@ -1125,7 +1235,7 @@ def ajax_Leaderboards(request, raw=False):
             snapshots.reverse()
             
             # Then build the game tuple with all its snapshots
-            leaderboards.append((game.pk, game.BGGid, game.name, snapshots))
+            leaderboards.append(leaderboard_tuple_game(game, snapshots))
 
     if settings.USE_LEADERBOARD_CACHE:
         request.session["leaderboard_cache"] = lb_cache
@@ -1148,6 +1258,30 @@ def ajax_Game_Properties(request, pk):
              }
       
     return HttpResponse(json.dumps(props))
+
+def ajax_BGG_Game_Properties(request, pk):
+    '''
+    A view that returns basic game properties from BGG.
+    
+    This is neded because BGG don't support CORS. That means modern browsers cannot 
+    fetch data from their API in Javascript. And BGG don't seem to care or want tof ix that.:
+    
+    https://boardgamegeek.com/thread/2268761/cors-security-issue-using-xmlapi
+    https://boardgamegeek.com/thread/1304818/cross-origin-resource-sharing-cors
+    
+    So we have to fech the data from the CoGS server and supply it to the browser from 
+    the same origin. Givcen our API is using JSON not XML, we provide it in JSON to the 
+    browser. 
+    
+    The main use casehere is thatthe browser can request BGG data to poopulate form 
+    fields when submitting a new game. Use case:
+    
+    1. User enters a BGG ID
+    2. User clicks a fetch button
+    3. Form is poulated by data from BGG
+    '''
+    bgg = BGG(pk)
+    return HttpResponse(json.dumps(bgg))
 
 def ajax_List(request, model):
     '''

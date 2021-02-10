@@ -68,7 +68,8 @@ button:hover:disabled { cursor: wait; }
 	grid-row-gap: 0px;  
 	grid-template-areas: 
 		"lo_highlight_players  lo_highlight_changes  lo_highlight__selected" 
-		"lo_session_details    lo_pre_predictions    lo_post_predictions";
+		"lo_session_details    lo_pre_predictions    lo_post_predictions"
+		"lo_show_delta         lo_show_delta         lo_show_delta";
 }
 
 .lo_highlight_players   { grid-area: lo_highlight_players; }
@@ -77,6 +78,7 @@ button:hover:disabled { cursor: wait; }
 .lo_session_details     { grid-area: lo_session_details; }
 .lo_pre_predictions     { grid-area: lo_pre_predictions; }
 .lo_post_predictions    { grid-area: lo_post_predictions; }
+.lo_show_delta    		{ grid-area: lo_show_delta; }
 
 .lo_advanced {
   	display: none; /* toggled to grid when displayed */
@@ -89,7 +91,7 @@ button:hover:disabled { cursor: wait; }
 	grid-row-gap: 5px;  
 
 /* TODO: A location filter, a tourneys filter */
-/* TODO: Add a Player selector which "players in current snapshot" and one "players in any snapshot" */
+/* TODO: Add a Player selector which highlights "players in current snapshot" and one "players in any snapshot" */
 
 	grid-template-areas:
 		"label_filtering   selectors_multi         selectors_multi              selectors_multi              selectors_multi"
@@ -204,7 +206,7 @@ table.leaderboard
 }
 
 th.leaderboard, 
-td.leaderboard
+td.leaderboard 
 {
 	border-color: #600;
 	border-style: solid;
@@ -226,13 +228,16 @@ td.leaderboard.highlight_players_on { font-weight: bold !important; }
 td.leaderboard.highlight_selected_off { background-color: #FFF7F0; }
 td.leaderboard.highlight_selected_on {background-color: #FF6161 !important; } 
 
+
 table.leaderboard.wrapper { border-style: none; margin: 10px; }
 
-td.leaderboard.wrapper 
+table.leaderboard.wrapper > tbody > tr > td 
 {
 	vertical-align: top;
 	background-color: transparent;
 	border-style: none;
 	padding-left: 0;
 	padding-right: 15px;
+	padding-top: 0;
+	padding-bottom: 15px;
 }

@@ -1,5 +1,3 @@
-/*eslint-env es6*/
-/*jslint node: true */
 "use strict";
 
 const debug = true;
@@ -16,82 +14,6 @@ const Session = get_session_data();
 	
 	Unknown IDs (Rank, Player, Team, Performance) will carry a string of form "id_n" where n is 0, 1, 2 ...
 	That being a sign that the id is unknown (this data not saved yet and given a database ID)
-	
-	An Individual Play Mode session:
-	
-		    {
-		        "rIDs": [124, 126, 123, 125],   // Rank IDs
-		        "Ranks": {						// RankID to rank value (1st, 2nd, 3rd etc)
-		            "123": 2,
-		            "124": 1,
-		            "125": 2,
-		            "126": 1
-		        },
-		        "Players": {					// Rank ID to Player ID
-		            "123": 6,
-		            "124": 12,
-		            "125": 1,
-		            "126": 10
-		        },
-		        "Teams": {						// Rank ID to Team ID
-		            "123": null,
-		            "124": null,
-		            "125": null,
-		            "126": null
-		        },
-		        "TeamNames": {},				// Team ID to team name (a string)
-		        "TeamPlayers": {},				// Team ID to list of team Player IDs
-		        "pIDs": {						// Player ID to Performance ID 
-		            "1": 125,
-		            "6": 126,
-		            "10": 123,
-		            "12": 124
-		        },
-		        "Weights": {					// Player ID to Partial Play Weighting (a float)
-		            "1": 1,
-		            "6": 1,
-		            "10": 1,
-		            "12": 1
-		        }
-		    }
-	    
-	 And a Team Play Session:
-	 
-		 {
-		    "rIDs": [392, 393],
-		    "Ranks": {
-		        "392": 1,
-		        "393": 2
-		    },
-		    "Players": {
-		        "392": null,
-		        "393": null
-		    },
-		    "Teams": {
-		        "392": 3,
-		        "393": 4
-		    },
-		    "TeamNames": {
-		        "3": "Team 1",
-		        "4": "Team 2"
-		    },
-		    "TeamPlayers": {
-		        "3": [1, 20],
-		        "4": [22, 21]
-		    },
-		    "pIDs": {
-		        "1": 392,
-		        "20": 393,
-		        "21": 394,
-		        "22": 395
-		    },
-		    "Weights": {
-		        "1": 1,
-		        "20": 1,
-		        "21": 1,
-		        "22": 1
-		    }
-		}
 */
 
 
@@ -126,6 +48,13 @@ const name_tinit     	  = team_prefix + 'INITIAL_FORMS';
 const name_rtotal     	  = rank_prefix + "TOTAL_FORMS";
 const name_ptotal     	  = performance_prefix + 'TOTAL_FORMS';
 const name_ttotal     	  = team_prefix + 'TOTAL_FORMS';
+
+const id_rinit     	  	  = id_prefix + name_rinit;
+const id_pinit     	  	  = id_prefix + name_pinit;
+const id_tinit     	  	  = id_prefix + name_tinit;
+const id_rtotal     	  = id_prefix + name_rtotal;
+const id_ptotal     	  = id_prefix + name_ptotal;
+const id_ttotal     	  = id_prefix + name_ttotal;
 
 // Actual model fields
 const name_rank   		  = rank_prefix + form_number + '-rank';						 	// Ranking (1st, 2nd, 3rd)
@@ -185,7 +114,7 @@ function OnLoad(event) {
 	game_selector.on("change", switchGame);
 	
 	// DAL is flakey with the above change event handle. While sorting this I need a way to
-	// manually involke it so we add a button beside it.
+	// manually invoke it so we add a button beside it.
 	//	const target = "$('#" + game_selector[0].id + "')[0]";
 	//	const button = `<button type="button" class="tooltip" id="btnLoad" onclick="${target}.dispatchEvent(new Event('change'));" style="margin-left: 1ch; bottom:-2px;">
 	//					<img src="${reload_icon}"  class="img_button" style="height: 18px;">
@@ -217,8 +146,8 @@ function OnLoad(event) {
 			// which goes on the details row of the teams table just created, in the teams detail cell. 
 			for (let i = 0; i < num_teams; i++) {
 				const rID = Session["rIDs"][i];
-				const tID = Session["Teams"][rID];
-				let num_players = Session["TeamPlayers"][tID].length;
+				const tID = Session["rTeams"][rID];
+				let num_players = Session["tTeamPlayers"][tID].length;
 				if (num_players < game_min_players_per_team) num_players = game_min_players_per_team;  
 				if (num_players > game_max_players_per_team) num_players = game_max_players_per_team; 
 				
@@ -1283,6 +1212,69 @@ function updateManagementForms(div) {
     }
 }
 
+function updateTabIndex(div) {
+// Given a div will find all the Player widgeths and give them a tabl index so that 
+// the most common data entry mode can just tab down the list of players.
+// TODO: Implement this.
+// Find the player widget naming convention
+// Loop through players attach a tabindex attribute to widget.
+// Consider then doing same to ranks then finally to partial play weights.
+}
+
+function insertErrors() {
+// Errors if any are provided in the global related_form_errors
+// These are provided if a formwm as submitted, failed validation 
+// and rerenders with the indent of feeding back error information.
+// 
+// It's a dict, and we want the Rank and performance entries if
+// they exist. The value will be a list, with one entry per form 
+// in the formset.
+
+// In individual mode, we have one row per Rank and Performance
+// inside a table with ID based on tblPlayersTable. 
+
+// In Team mode with one row per team rank and one per player 
+// performance under it. So Rank freedback goes above a team 
+// Rank row in tblTeamsTable and player Performance feedback 
+// above a Performance row in tblTeamPlayersTable.
+
+// We can genralise this by searching for the Rank widget and the TR 
+// its in and instering a tR before it with amessage if there's a 
+// message and doing same for a Performance widget (Player name)
+	if (related_form_errors) {
+		if (related_form_errors.hasOwnProperty("Performance")) {
+			// Look for id "Performance-n-player"
+			for (let i = 0; i < related_form_errors.Performance.length; i++) {
+				const n_errors = Object.keys(related_form_errors.Performance[i]).length
+				if ( n_errors > 0) {
+					const id = id_player.replace(form_number, i);
+					const row = $(`#${id}`).closest('tr'); 
+					for (let j in related_form_errors.Performance[i]) {
+				    	const new_row = $(`<tr class="error"><td colspan=10>Performance error: ${related_form_errors.Performance[i][j]}</td></tr>`);
+				    	new_row.insertBefore(row);
+					}
+				}
+			} 
+		}
+		
+		if (related_form_errors.hasOwnProperty("Rank")) {
+			// Look for id "Rank-n-rank"
+			for (let i = 0; i < related_form_errors.Rank.length; i++) {
+				const n_errors = Object.keys(related_form_errors.Rank[i]).length
+				if ( n_errors > 0) {
+					const id = id_rank.replace(form_number, i);
+					const row = $(`#${id}`).closest('tr'); 
+					for (let j in related_form_errors.Rank[i]) {
+				    	const new_row = $(`<tr class="error"><td colspan=10>Rank error: ${related_form_errors.Rank[i][j]}</td></tr>`);
+				    	new_row.insertBefore(row);
+					}
+				}
+				
+			} 
+		}
+	}
+}
+
 function add_player(select2, player_id) {
 	// Adds a player to a select Django-auto-complete-light select2 widget
 
@@ -1314,14 +1306,17 @@ function add_player(select2, player_id) {
 // row to conform with the session object. 
 function applySessionToRow(session, row, table_type) {
     // Select the values we'll use for those widgets
-    const rids 			= (session && "rIDs" in session) 		? session["rIDs"] 		 : []; 
-    const ranks 		= (session && "Ranks" in session) 		? session["Ranks"] 		 : {}; 
-    const players 		= (session && "Players" in session) 	? session["Players"] 	 : {}; 
-    const teams 		= (session && "Teams" in session) 		? session["Teams"] 		 : {}; 
-    const teamnames 	= (session && "TeamNames" in session) 	? session["TeamNames"] 	 : []; 
-    const teamplayers 	= (session && "TeamPlayers" in session) ? session["TeamPlayers"] : {}; 
-    const pids 			= (session && "pIDs" in session) 		? session["pIDs"] 		 : {}; 
-    const weights 		= (session && "Weights" in session) 	? session["Weights"] 	 : {}; 
+    const rids 			= (session && "rIDs" in session) 		 ? session["rIDs"] 		   : []; 
+    const ranks 		= (session && "rRanks" in session) 		 ? session["rRanks"]	   : {}; 
+    const rplayers 		= (session && "rPlayers" in session) 	 ? session["rPlayers"] 	   : {}; 
+
+    const pids 			= (session && "pIDs" in session) 		 ? session["pIDs"] 		   : []; 
+    const weights 		= (session && "pWeights" in session) 	 ? session["pWeights"] 	   : {}; 
+    const pplayers 		= (session && "pPlayers" in session) 	 ? session["pPlayers"] 	   : {}; 
+
+    const teams 		= (session && "rTeams" in session) 		 ? session["rTeams"] 	   : {}; 
+    const teamnames 	= (session && "tTeamNames" in session) 	 ? session["tTeamNames"]   : {}; 
+    const teamplayers 	= (session && "tTeamPlayers" in session) ? session["tTeamPlayers"] : {}; 
 
     // The row element contains an entry id that is useful for some defaults if session data is missing
     const entry_id = getEntryId(row.id);
@@ -1336,20 +1331,27 @@ function applySessionToRow(session, row, table_type) {
     	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting, a dango field for generic processing
     		
     	    const rank_id 	    = entry_id < rids.length ? rids[entry_id] 	: "";
-    	    const player_id 	= rank_id in players 	 ? players[rank_id] : "";
+			const rank_value 	= rank_id in ranks ? ranks[rank_id] : Number(entry_id)+1;
+
+    	    const perf_id 	    = entry_id < pids.length ? pids[entry_id] 	 : "";
+    	    const player_id 	= perf_id in pplayers 	 ? pplayers[perf_id] : "";
+    	    const player_id2 	= rank_id in rplayers 	 ? rplayers[rank_id] : "";
+			const weight_value  = perf_id in weights     ? weights[perf_id]  : 1;
+
+			console.assert(player_id == player_id2, "Session data seems corrupt. Performance and Rank Player IDs not in agreement.");
     	    
             rid.value 	 = rank_id
-            rank.value 	 = rank_id in ranks 	? ranks[rank_id] 	 : Number(entry_id)+1;
-            player.value = rank_id in players	? players[rank_id] 	 : "";	                               
-            pid.value 	 = player_id in pids 	? pids[player_id] 	 : "";
-            weight.value = player_id in weights ? weights[player_id] : 1;	                               
+            rank.value 	 = rank_value;
+            player.value = player_id;	                               
+            pid.value 	 = perf_id;
+            weight.value = weight_value;
             player_copy.value = player_id;
             
-            if (rid.value in players) {
-	            const select2_player = $("#"+$.escapeSelector(player.id), row)
-	            add_player(select2_player, player_id)
-            }
+			// Set the value of the select2 widget for player 
+            const select2_player = $("#"+$.escapeSelector(player.id), row)
+            add_player(select2_player, player_id)
             
+			// TODO: This is where we migth add tabindex!
 //            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
 //            $("#"+player.id, row).append(newOption)
 //            $("#"+player.id, row).trigger('change');
@@ -1389,10 +1391,6 @@ function applySessionToRow(session, row, table_type) {
             
     	    const player_id 	= tID in teamplayers ? teamplayers[tID][rownum_TeamPlayer] : "";
             
-            //ASAP: This won't work with select 2 player widget.
-            // The code for popularing a select 2 widget is above. 
-            // Given it's used there and will be needed here, should put it 
-            // in a small function.   
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
 
@@ -1496,7 +1494,7 @@ function RenderTable(template, entries, placein, entry_number, session) {
     // should really check all present rows for conformance with the provided
     // session data. This is particularly relevant when switching between modes 
     // (individual and team play for example and back again etc, as prior to
-    // renderig the table we build session data from from the visible form 
+    // rendering the table we build session data from from the visible form 
     // and pass it into this rendering routine. And the session data may
     // have imposed changes on the data (this is especially relevant with 
     // ranks as a move from team play to individual play imposes ranks from
@@ -1620,13 +1618,16 @@ function RenderTable(template, entries, placein, entry_number, session) {
 
     // Update the Django Management forms
     updateManagementForms(getParent(table, 'DIV'));
+    
+    updateTabIndex(getParent(table, 'DIV'));
+    insertErrors();
 
     // Return the table that was drawn
     return(table);
 }
 
-// Given a HTML with a value will adjust the associated table
-// to the number of rows specified in that value.
+// Given a HTML element with a value will adjust the associated 
+// table to the number of rows specified in that value.
 //
 // Is called in three contexts:
 //
@@ -1830,7 +1831,7 @@ function insertAfter(newNode, referenceNode) {
 
 function $$(id, context) {
 //  return document.getElementById(id);
-//  or using jQuery (with an optional context for finding elements not in the document yet): but in that context
+//  but in that context or using jQuery (with an optional context for finding elements not in the document yet): 
 	if (context == undefined)
 		return $('#'+	id)[0];
 	else

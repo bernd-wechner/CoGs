@@ -1,0 +1,109 @@
+{% extends "CoGs/base.html" %}
+{% load static %}
+{% block title %}Session Impact{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/leaderboards.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+{% endblock %}
+
+{#TODO: Write a page/view that summarises sessions between two dates, as I do in mailouts. Speed up mailouts one more step! #}
+
+{% block content %}
+
+{#	The context must provide:	#}
+{#	- The game name	#}
+{#	- The datetime of the session	#}
+{#	- A count of boards rebuilt (0 if none) #}
+{#	- Three leaderboards. 3 of them as outlined below #}
+
+<p>Thanks for submitting the results of your game of {{game}} played on {{date_time}}.</p>
+
+{% if is_latest %}
+	<p>This is the latest result for that game and the resulting leaderboard is:</p>   
+	
+{#	We display just the leaderboard for this game which is the latest#}
+{#	We shoudl maybe provide the one after this game (based on Perfromances) and the latest#}
+{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
+{#	 reporting an integrity error with instructions on how to submit it.#}
+{#	Maybe a button to submit it, which sends an email to admins. #}
+
+	<div id="immediate_impact"></div>
+
+{% else %}
+	<p>This session was not the latest (other sessions after it were already 
+	recorded). This triggered a rebuild of the ratings and hence leaderboard positions
+	from at least {{date_time}} on (a total of {{future_sessions | length}} game session ratings rebuilt).</p>  
+	
+	<p>This is the impact on the current leaderboard AND the immediate leaderboard 
+	after your recorded play session:</p>
+
+	<div id="immediate_impact"></div>
+{#	<table class='leaderboard wrapper'>#}
+{#		<tr>#}
+{#			<td id="immediate_impact"></td>#}
+{#			<td>New Latest board</td>#}
+{#			<td>Prior Latest board</td>#}
+{#		</tr>#}
+{#	</table>#}
+
+{#	TODO: We want actually to show three leaderboards, the one after the current #}
+{#	session then the current board prior to the submission (before rebuild) and #}
+{#	the current board after the submisison(rebuild). TO achieve this I imagine  #}
+{#  we pass in 3 snapshots (the first will have a baseline for deltas, the other two #}
+{#  won't need them of course - they have no meaning in the "latest" sense, and we #}
+{#  shoudl see deltas on the new "latest" board and not on the prior.#}
+
+	
+{% endif %}
+ 
+{% endblock %}
+
+{% block startscript %}
+<script>
+	// The big one! Leaderboards. This is a structure of lists within lists
+	// Games, Snapshots and Players in that order. 
+	//
+	// see view_Leaderboards for specs and generation of what is delivered, but here is
+	// the expectation:
+	// A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
+	// Snapshots is a list of lists which have four values: Date time string, count of plays, count of sessions, Leaderboard
+	// Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
+	//
+	// So lists within lists within a list. This is what we're here to present.
+	//
+	// As a side note, the standard view has one snapshot, the current ratings, and leaderboards pr at some other specified time (as_at) 
+	// Extra snapshots are expected when asked for (for comparisons with history and evolutionary examinations), one
+	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
+	// up to and including the snapshot at as_at or now if as_at isn't specified.  
+
+	let impact = {{leaderboard_snapshots|safe}};
+	
+	// We can't access template variables in the included static javascript so here is 
+	// where we nab what we need for the Javascript and stow in javascript variables that
+	// the code in the included .js file can see.  
+	
+	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
+	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
+	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_list_Sessions = "{% url 'list' 'Session'%}";
+	
+	LB_options = [
+		true,   // highlight_players,
+		true,   // highlight_changes,
+		false,  // highlight_selected,
+		true,   // details,
+		true,   // analysis_pre,
+		true,   // analysis_post,
+		true    // show_delta 
+	];	
+</script>
+{% endblock %}
+
+{% block endscript %}
+<script src="{% static 'CoGs/js/leaderboard.js' %}"></script>
+
+<script>
+	$('#immediate_impact').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));
+</script>
+{% endblock %}

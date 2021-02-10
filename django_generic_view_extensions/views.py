@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
 # Python imports
-import datetime
+import datetime #, sys, traceback
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -345,7 +345,10 @@ class DeleteViewExtended(DeleteView):
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
         self.format = get_object_display_format(self.request.GET)
-        self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
+
+        # By default jump to a list of objects (fomr which htis one was deleted)        
+        if not self.success_url:
+            self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
         
         collect_rich_object_fields(self)
 
@@ -431,6 +434,7 @@ def get_form_generic(self):
     else:
         raise NotImplementedError("Generic get_form only for use by CreateView or UpdateView derivatives.")
     
+    # Attach DAL (Django Autocomplete Light) Select2 widgets to all the mdoel selectors
     for field in form.fields.values():
         if isinstance(field, ModelChoiceField):
             field_model = field.queryset.model
@@ -509,7 +513,7 @@ def post_generic(self, request, *args, **kwargs):
 
     # Get the form
     self.form = self.get_form()
-    
+
     # Just reflect the form data back to client for debugging if requested
     if self.request.POST.get("debug_form_data", "off") == "on":
         html = "<h1>self.form.data:</h1>"   
@@ -520,11 +524,11 @@ def post_generic(self, request, *args, **kwargs):
         return HttpResponse(html)        
 
     # Hook for pre-processing the form (before the data is saved)
-    if callable(getattr(self, 'pre_processor', None)): 
-        post_kwargs = self.pre_processor()
-        if not post_kwargs: post_kwargs = {}
-        if "debug_only" in post_kwargs: 
-            return HttpResponse(post_kwargs["debug_only"])
+    if callable(getattr(self, 'pre_save', None)): 
+        next_kwargs = self.pre_save()
+        if not next_kwargs : next_kwargs  = {}
+        if "debug_only" in next_kwargs: 
+            return HttpResponse(next_kwargs["debug_only"])
    
     log.debug(f"Connection vendor: {connection.vendor}")
     if connection.vendor == 'postgresql':
@@ -542,30 +546,59 @@ def post_generic(self, request, *args, **kwargs):
                     
                     kwargs = self.kwargs
                     kwargs['pk'] = self.object.pk
-                    self.success_url = reverse_lazy('view', kwargs=kwargs)
                     
-                    log.debug(f"Saving the related forms.")
-                    related_forms = RelatedForms(self.model, self.form.data, self.object)
-                    related_forms.save()
-                    log.debug(f"Saved the related forms.")
+                    # By default, on success jump to a view of the obbject just submitted.
+                    if not self.success_url:
+                        self.success_url = reverse_lazy('view', kwargs=kwargs)
                     
-                    if (hasattr(self.object, 'clean_relations') and callable(self.object.clean_relations)):
+                    if isinstance(self, CreateView):
+                        # Having saved the root object we reinitialise related forms
+                        # with that object attached. Failure to this results in the 
+                        # form_clean failing as the formsets don't have populated 
+                        # back references (as we had not object) and it fails with 
+                        # 'This field is required.' erros on the primary keys
+                        self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
+
+                    if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
+                        log.debug(f"Saving the related forms.")
+                        if self.form.related_forms.are_valid():
+                            self.form.related_forms.save()
+                            log.debug(f"Saved the related forms.")
+                        else:
+                            log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
+                            # Attach the newly annotated (with errros) related forms to the 
+                            # form so that theyt reach the response template.
+                            #self.form.related_forms = related_forms
+                            # We raise an exception to break out of the 
+                            # atomic transaction triggering a rollback.
+                            raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
+
+                    # Give the object a chance to cleanup relations before we commit.
+                    # Really a chance for the model to set some standards on relations
+                    # They are all saved in the transaction now and the object can see 
+                    # them all in the ORM (the related objects that is)
+                    if callable(getattr(self.object, 'clean_relations', None)): 
                         self.object.clean_relations()
+
+                    # Finally before committing give the view defintion a chance to so something
+                    # prior to committing the update. 
+                    if callable(getattr(self, 'pre_commit', None)): 
+                        next_kwargs = self.pre_commit(**next_kwargs)
      
                     log.debug(f"Cleaned the relations.")
             except (IntegrityError, ValidationError) as e:
+                # TODO: Work out how to get here with an IntegrityError: what can trigger this
                 # TODO: Report IntegrityErrors too
-                # TODO: if error_dict refers to a non field this crashes, find what the criterion
-                #       in add_error is and then if it's a field that doesn't match this criteron 
-                #       do somethings sensible. We may be able to attach errors to the formsets too!
-                for field, errors in e.error_dict.items():
-                    for error in errors:
-                        self.form.add_error(field, error)
+#                 exc_type, exc_obj, exc_tb = sys.exc_info()
+#                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+#                 print(exc_type, fname, exc_tb.tb_lineno)                
+#                 print(traceback.format_exc())
+                
                 return self.form_invalid(self.form)
 
             # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_processor', None)):
-                self.post_processor(**post_kwargs)
+            if callable(getattr(self, 'post_save', None)):
+                self.post_save(**next_kwargs)
                                       
             return self.form_valid(self.form)
         else:
@@ -578,9 +611,12 @@ def post_generic(self, request, *args, **kwargs):
             related_forms.save()
             
             # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_processor', None)): 
-                self.post_processor(**post_kwargs)
-            
+            if callable(getattr(self, 'post_save', None)): 
+                self.post_save(**next_kwargs)
+
+            if not self.success_url:
+                self.success_url = reverse_lazy('view', kwargs=kwargs)
+
             return self.form_valid(self.form)
         else:
             return self.form_invalid(self.form)
@@ -699,11 +735,7 @@ class UpdateViewExtended(UpdateView):
             self.fields = self.obj.fields_for_model()
         else:           
             self.fields = fields_for_model(self.model)
-        
-        #TODO: Jump to the leaderboard for game showing change (2 boards)
-        # WOrk out the URL for that.
-        self.success_url = reverse_lazy('view', kwargs=self.kwargs)
-         
+
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
         CuserMiddleware.set_user(self.request.user)
          

@@ -100,6 +100,10 @@
 			<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'> 
 			<label for="chk_analysis_post">Show Post-Session TrueSkill Predictions</label>
 		</div>	
+		<div class="low_show_delta">
+			<input type="checkbox" id="chk_show_delta" oninput='DrawTables("tblLB");'> 
+			<label for="chk_show_delta">Show Rank Deltas</label>
+		</div>	
 	</div>	
 	
 	<section class="lo_advanced">
@@ -318,7 +322,7 @@
 	
 	let leaderboards = {{leaderboards|safe}};
 	
-	/// We can't access template variables in the included static javascript so here is 
+	// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that
 	// the code in the included .js file can see.  
 	
@@ -340,6 +344,7 @@
 {% endblock %}
 
 {% block endscript %}
+<script src="{% static 'CoGs/js/leaderboard.js' %}"></script>	
 <script src="{% static 'CoGs/js/view_leaderboards.js' %}"></script>	
 {% endblock %}
 

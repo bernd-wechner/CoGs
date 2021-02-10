@@ -257,6 +257,10 @@ table.results {
     border-collapse: collapse;
 }
 
+tr.error, ul.errorlist {
+	color: red;
+}
+
 td.results, th.results {
     padding: 5px;
     border-style: solid;

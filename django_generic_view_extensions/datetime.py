@@ -34,9 +34,9 @@ def time_str(date_time):
     
     As this is done in many places, to format date_times, it is captured here.
         
-    localtime() - converts date_time from the database stored UTC time, to local time as defined by Django's activate()
+    localtime()  - converts date_time from the database stored UTC time, to local time as defined by Django's activate()
     make_naive() - just strips the timezone info so the default str() representation doesn't have the timezone data
-    localize() - produces the string format defined in Django settings, typically by DATETIME_FORMAT
+    localize()   - produces the string format defined in Django settings, typically by DATETIME_FORMAT
     '''
     # FIXME: the RFC5322 format introduces a bizarre TZ artifact. Grrr. 
     #        Try the DATETIME_FORMAT 'D,  j M Y H:i'
