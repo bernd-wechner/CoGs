@@ -846,6 +846,22 @@ function DrawTables(target, links) {
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
+	const LB_options = [
+		document.getElementById("chk_highlight_players").checked,
+		document.getElementById("chk_highlight_changes").checked,
+		document.getElementById("chk_highlight_selected").checked,
+		document.getElementById("chk_details").checked,
+		document.getElementById("chk_analysis_pre").checked,
+		document.getElementById("chk_analysis_post").checked,
+		document.getElementById("chk_show_delta").checked
+	];
+	
+	// Get the list of players selected in the multi-select box #players
+	const selected_players = $('#players').val().join(",");
+
+	// The name format to use is selected in a #names selector
+	const name_format  = $("#names").val();
+
 	// maxshots is the maximum number of snapshots of any games's boards in the
 	// datase we're about to render. If it's 1 that implies no evolution is being 
 	// displayed just a single snapshot per game.
@@ -867,7 +883,7 @@ function DrawTables(target, links) {
 				if (k < totalboards) {
 					var cell = row.insertCell(j);
 					//cell.className = 'leaderboard wrapper'
-					cell.appendChild(LBtable(leaderboards[k], 0, links));
+					cell.appendChild(LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_players, name_format));
 				}
 			}
 		}
@@ -894,7 +910,7 @@ function DrawTables(target, links) {
 			for (var j = 0; j < snaps; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
-				cell.appendChild(LBtable(leaderboards[lb], j, links));
+				cell.appendChild(LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format));
 			}
 			lb++; 
 		}			

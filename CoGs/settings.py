@@ -24,6 +24,9 @@ STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 # And this is the URL where static files will be expected by django pages
 STATIC_URL = "/static/"
 
+# This is where FileField will store files
+MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
+
 import platform
 HOSTNAME = platform.node().lower()
    
@@ -98,6 +101,7 @@ INSTALLED_APPS = (
     'dal_select2',
     'cuser',
     'timezone_field',
+    'mapbox_location_field',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -108,7 +112,7 @@ INSTALLED_APPS = (
     'django.contrib.flatpages',
     'django_extensions',
     'reset_migrations',
-    'Leaderboards',
+    'Leaderboards'
 )
 
 MIDDLEWARE = (
@@ -121,7 +125,7 @@ MIDDLEWARE = (
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django_generic_view_extensions.middleware.TimezoneMiddleware',
-    'cuser.middleware.CuserMiddleware',
+    'cuser.middleware.CuserMiddleware'
 )
 
 if SITE_IS_LIVE:
@@ -193,6 +197,9 @@ TIME_ZONE = str(get_localzone())
 DATETIME_FORMAT = 'D, j M Y H:i'
 
 DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S%z'] + global_settings.DATETIME_INPUT_FORMATS
+
+# The MapBox key for mapbox_location_field
+MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9.1R5AO1qnzLzmTawb3ykFnQ"
 
 # Use the Pickle Serializer. It comes with a warning when using the cookie backend
 # but we're using the default database backend so are safe. Basically if:

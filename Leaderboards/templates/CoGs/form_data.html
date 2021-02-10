@@ -160,6 +160,92 @@
 			<script src="{% static 'CoGs/js/form_rankings.js'%}"></script>
 		    {% include "CoGs/form_rankings.html" %}
 		</table>
+	{% elif model_name == 'Game' %}
+	{#		Add a BGG fetch button 	#}
+		<script>
+			const id = $('#id_BGGid')
+			const id_td = id.closest('td');
+			const id_tr = id.closest('tr');
+
+			const button = `
+			<div class="tooltip">
+				<input style="margin-left: 4ch" type="button" value="Fetch from BGG" id="BGG_fetch"/>
+				<span class='tooltiptext' style='width: 300%;'>Looks this ID up on boardgamegeek.com and fetches what metadata can be found to populate this form.</span>
+			</div>`;
+
+			id_td.append(button);
+			$('#BGG_fetch').on('click', BGG_fetch);
+
+			function BGG_fetch(event) {
+				const game_id = id.val();
+			
+				const REQUEST = new XMLHttpRequest();
+				
+				REQUEST.onreadystatechange = function () {
+				    if (this.readyState === 4 && this.status === 200){
+				        // the request is complete, parse data 
+				        const response = JSON.parse(this.responseText);
+				        
+						// BGG stoes many names for a game
+						// only one is primary
+						const names = response.name;
+						const name = names == undefined
+								   ? undefined 
+								   : names.length 
+								   ? names.find(element => element['@primary']) 
+								   : names;
+						const game_name = (name != undefined) ? name['#text'] : undefined;
+						$('#id_name').val(game_name);
+						
+						// BGG encodes team play as a board game mechanic
+						const mechanics = response.boardgamemechanic;
+						const mech = mechanics == undefined 
+								   ? undefined
+								   : mechanics.length 
+								   ? mechanics.find(element => element['@objectid'] == 2019)
+								   : mechanics['@objectid'] == 2019
+								   ? mechanics
+								   : undefined;
+						teamplay = mech != undefined;  
+						
+						$('#id_team_play').prop('checked', teamplay);
+						$('#id_individual_play').prop('checked', !teamplay);
+
+				        $('#id_min_players').val(response.minplayers);
+				        $('#id_max_players').val(response.maxplayers);
+				        
+				        // BGG doens't store information regarding min and maximum team size
+				        // so we can't set id_min_players_per_team and id_max_players_per_team
+				        // sensibly from BGG data.
+				        
+				        // TODO: playing time is somethingw e should add to the form and game 
+				        // 		 props as it allows us to better provide default times for 
+				        //		session submissions.
+						// response.playingtime;
+						
+						// To indicate success we grab the thumbnail and display it
+						const thumbnailURL = response.thumbnail;
+						const thumbnailIMG = $('#BGGthumbnail');
+						const thumbnailA = $('#BGGthumbnailLink');
+						const gameURL = `https://boardgamegeek.com/boardgame/${game_id}`;
+						
+						if (thumbnailIMG.length) {
+							thumbnailIMG.prop('src', thumbnailURL);
+							thumbnailA.prop('href', gameURL);
+						} else {
+							id_tr.append(`<td rowspan=7><a href='${gameURL}' id='BGGthumbnailLink'><img src='${thumbnailURL}' id='BGGthumbnail'></a></td>`);
+						}
+				    }
+				};
+			
+				if (game_id) {
+					const BGG_API_URL = '{% url 'get_bgg_game_props' 1 %}'.replace(/\d+$/, game_id);
+					
+					REQUEST.open("GET", BGG_API_URL, true);
+					REQUEST.send(null);
+				}
+			};
+		</script>
 	{% endif %}
 
 	<input type="submit" value="Submit" style="margin-top:20px;"/>

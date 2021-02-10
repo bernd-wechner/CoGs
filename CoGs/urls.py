@@ -47,6 +47,9 @@ urlpatterns = [
     path('edit/<model>/<pk>', views.view_Edit.as_view(), name='edit'),
     path('delete/<model>/<pk>', views.view_Delete.as_view(), name='delete'),
     
+    # A success URL for submission of sessions
+    path('impact/<model>/<pk>', views.view_Impact, name='impact'),
+    
     # A special view for database object inspectors where implemented
     path('inspect/<model>/<pk>', views.view_Inspect, name='inspect'),
    
@@ -57,6 +60,7 @@ urlpatterns = [
     # Specific URLS first
     path('json/leaderboards/', views.ajax_Leaderboards, name='json_leaderboards'),
     path('json/game/<pk>', views.ajax_Game_Properties, name='get_game_props'),
+    path('json/bgg_game/<pk>', views.ajax_BGG_Game_Properties, name='get_bgg_game_props'),
     
     # General patterns next
     path('json/<model>', views.ajax_List, name='get_list_html'),

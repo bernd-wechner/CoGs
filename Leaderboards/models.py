@@ -3,6 +3,8 @@ import trueskill
 import html
 import re
 import pytz
+import os
+
 from collections import OrderedDict
 from math import isclose
 from scipy.stats import norm
@@ -26,6 +28,7 @@ from django.conf import settings
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 from timezone_field import TimeZoneField
+from mapbox_location_field.models import LocationField  
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
@@ -38,6 +41,20 @@ from django_generic_view_extensions.queryset import get_SQL
 from django_generic_view_extensions.util import AssertLog
 
 from CoGs.logging import log
+from django.db.models.fields.related import ForeignKey
+
+# TODO: Next round of model enhancements
+#
+# Add a Score field to Performance and Rank.
+# Add a Scores field to Game. Default to false for backward compatibility.
+# Add expected play time to Game
+# Add a location (lat/lon) field to Location. 
+# Add a Tourney model https://github.com/bernd-wechner/CoGs/issues/10
+# Add an Event model: https://github.com/bernd-wechner/CoGs/issues/12
+# Add an Impact model https://github.com/bernd-wechner/CoGs/issues/2
+# Add a RatingRebuildLog model to store timings of ratings rebuilds.
+
+# TODO: Use @cached_property in place of @property everywhere. See no reason not to!
 
 # CoGs Leaderboard Server Data Model
 #
@@ -105,13 +122,13 @@ class RatingModel(TimeZoneMixIn, AdminModel):
     that a player has players) are stored in the database.
     
     This is an abstract model defining the table structure that us used
-    by Rating and Backup_Rating. The latter being a place to copy Rating 
+    by Rating and BackupRating. The latter being a place to copy Rating 
     before a complete rebuild of ratings. 
     
     The preferred way of fetching a Rating is through Player.rating(game) or Game.rating(player).
     '''
-    player = models.ForeignKey('Player', verbose_name='Player', related_name='%(class)ss', on_delete=models.CASCADE)
-    game = models.ForeignKey('Game', verbose_name='Game', related_name='%(class)ss', on_delete=models.CASCADE)
+    player = models.ForeignKey('Player', verbose_name='Player', related_name='%(class)ss', on_delete=models.CASCADE) # If the player is deleted delete the raiting
+    game = models.ForeignKey('Game', verbose_name='Game', related_name='%(class)ss', on_delete=models.CASCADE)       # If the game is deleted delete the raiting
 
     plays = models.PositiveIntegerField('Play Count', default=0)
     victories = models.PositiveIntegerField('Victory Count', default=0)
@@ -155,7 +172,7 @@ class Rating(RatingModel):
     '''
     This is the actual repository of ratings that describe leaderboards.
     
-    Its partner Backup_Rating stores a backup (form before the last rebuild) 
+    Its partner BackupRating stores a backup (form before the last rebuild) 
     '''
     @property
     def last_performance(self) -> 'Performance':
@@ -312,7 +329,7 @@ class Rating(RatingModel):
         for performance in session.performances.all():
             rating = Rating.get(performance.player, session.game) # Create a new rating if needed
             player_rating[performance.player] = rating
-            is_latest[performance.player] = session.date_time < rating.last_play
+            is_latest[performance.player] = session.date_time <= rating.last_play
         
         log.debug(f"Update rating for session {session.id}: {session}.")
         log.debug(f"Is latest session of {session.game} for {[k for (k,v) in is_latest.items() if v]}")
@@ -364,17 +381,19 @@ class Rating(RatingModel):
             r.save()
     
     @classmethod
-    def rebuild(cls, Game=None, From=None):
+    def rebuild(cls, Game=None, From=None, Sessions=None):
         '''
         Rebuild the ratings for a specific game from a specific time
         
-        If neither Game nor From specified, rebuilds ALL ratings
+        If neither Game nor From nor Sessions are specified, rebuilds ALL ratings
         If both Game and From specified rebuilds ratings only for that game for sessions from that datetime
         If only Game is specified, rebuilds all ratings for that game
-        If only From is specified rebuilds ratings fro all games from that datetime
+        If only From is specified rebuilds ratings for all games from that datetime
+        If only Sessions is specified rebuilds only the nominated Sessions
         
-        :param Game: A Game object
-        :param From: A datetime 
+        :param Game:     A Game object
+        :param From:     A datetime 
+        :param Sessions: A list of Session objects or a QuerySet of Sessions.    
         '''
         # If ever performed keep a record of duration overall and per 
         # session to permit a cost estimate should it happen again. 
@@ -385,24 +404,24 @@ class Rating(RatingModel):
         # if a rebuild is underway and if so schedule an update ro
         
         # TODO:        
-        # Copy the whole Ratings table to a backup table
-        # Erase the current table
-        # Walk through the sessions in chronological order rebuilding it.
-        # Create a single abstract model and have both of your models inherit from there: 
-        # https://docs.djangoproject.com/en/1.10/topics/db/models/#abstract-base-classes
-        
-        # Create an entry in Rebuild_Log
+        # Create an entry in a Rebuild_Log
         # Start timer and counter
-        # Copy all ratings to Backup_Rating
+        # Record timings when done
         
         # Bypass admin fields updates for a rating rebuild
         cls.__bypass_admin__ = True
                         
-        if not Game and not From:
+        if Sessions:
+            assert not Game and not From, "Invalid ratings rebuild requested."
+            sessions = Sessions
+        elif not Game and not From:
             log.debug(f"Rebuilding ALL leaderboard ratings.")
 
             sessions = Session.objects.all().order_by('date_time')
         else:
+            # TODO in fact only need to rebuild those that contain players in this session!
+            # Those with completely independent players don't need to be rebuilt. We can use
+            # a method on the session to return a queryset of such sessions.
             log.debug(f"Rebuilding leaderboard ratings for {getattr(Game, 'name', None)} from {From}")
             
             sfilterg = Q(game=Game) if Game else Q()
@@ -410,10 +429,10 @@ class Rating(RatingModel):
            
             sessions = Session.objects.filter(sfilterg&sfilterf).order_by('date_time')
 
-        log.debug(f"{sessions.count()} Sessions to process.")
+        log.debug(f"{len(sessions)} Sessions to process.")
 
-        # Delete all Backup_Rating objects
-        Backup_Rating.reset()
+        # Delete all BackupRating objects
+        BackupRating.reset()
             
         # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
         backedup = set()
@@ -430,7 +449,7 @@ class Rating(RatingModel):
                 if not rkey in backedup:
                     try:
                         rating = Rating.get(p.player, s.game)
-                        Backup_Rating.clone(rating)
+                        BackupRating.clone(rating)
                     except:
                         # Ignore errors, We just won't record that rating as backedup. 
                         pass 
@@ -444,7 +463,7 @@ class Rating(RatingModel):
         
         log.debug("Done.")
         
-        return Backup_Rating.html_diff()
+        return BackupRating.html_diff()
    
     def check_integrity(self, passthru=True):
         '''
@@ -501,7 +520,7 @@ class Rating(RatingModel):
         # Rating should match the last performance
         # TODO: When do we land here? And how do we sync with self.update? 
 
-class Backup_Rating(RatingModel):
+class BackupRating(RatingModel):
     '''
     A simple container for a complete backup of Rating.
     
@@ -620,13 +639,12 @@ class League(AdminModel):
     '''
     name = models.CharField('Name of the League', max_length=MAX_NAME_LENGTH, validators=[RegexValidator(regex=f'^{ALL_LEAGUES}$', message=f'{ALL_LEAGUES} is a reserved league name', code='reserved', inverse_match=True)])
     
-    manager = models.ForeignKey('Player', verbose_name='Manager', related_name='leagues_managed', null=True, on_delete=models.SET_NULL)
+    manager = models.ForeignKey('Player', verbose_name='Manager', related_name='leagues_managed', null=True, on_delete=models.SET_NULL) # if the manager is deletect, keep the league!
 
     locations = models.ManyToManyField('Location', verbose_name='Locations', blank=True, related_name='leagues_playing_here')
     players = models.ManyToManyField('Player', verbose_name='Players', blank=True, related_name='member_of_leagues')
     games = models.ManyToManyField('Game', verbose_name='Games', blank=True, related_name='played_by_leagues')
 
-    # TODO: Use @cached_property (everywhere)
     @property
     def leaderboards(self) -> list:
         '''
@@ -649,7 +667,7 @@ class League(AdminModel):
         the leaderboard for a specified game or if no game is provided, a dictionary of such 
         lists keyed on game.
         
-        # TODO: consider as_at support
+        # TODO: consider asat support
         '''
         if game is None:
             lb = {}
@@ -680,7 +698,7 @@ class League(AdminModel):
             league = session.get('filter',{}).get('league', None)
             if league:
                 # TODO: It's a bit odd to filter leagues on league. Might consider instead to filter
-                #       one related leagues, that is the more complex question, for a selected league,
+                #       on related leagues, that is the more complex question, for a selected league,
                 #       itself and all leagues that share one or players with this league. These are
                 #       conceivably related fields.
                 qs = qs.filter(pk=league)
@@ -801,7 +819,7 @@ class Player(PrivacyMixIn, AdminModel):
     leagues = models.ManyToManyField('League', through=League.players.through, verbose_name='Leagues', blank=True, related_name='players_in_league')
 
     # A default or preferred league for each player. Optional. Can be used to customise views.
-    league = models.ForeignKey(League, verbose_name='Preferred League', related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL)
+    league = models.ForeignKey(League, verbose_name='Preferred League', related_name="preferred_league_of", blank=True, null=True, default=None, on_delete=models.SET_NULL) 
 
     # account
     user = models.OneToOneField(User, verbose_name='Username', related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
@@ -973,7 +991,8 @@ class Player(PrivacyMixIn, AdminModel):
         ideally to allow a client to choose rendering in Javascript
         rather than fixing the rendering at server side.
         '''        
-        # TODO: flexi has touse a delimeter that cannot be in a name and that should be enforced (names have them escaped
+        # TODO: flexi has to use a delimeter that cannot be in a name and that should be enforced (names have them escaped
+        #       currently using comma, but names can stil have commas! 
         return (self.name_nickname if style == "nick" 
            else self.full_name if style == "full" 
            else self.complete_name if style == "complete" 
@@ -1057,7 +1076,61 @@ class Player(PrivacyMixIn, AdminModel):
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
     formfield_overrides = { BitField: {'widget': BitFieldCheckboxSelectMultiple}, }
+
+class TourneyRules(AdminModel):
+    '''
+    A custom Through table for Tourney-Games that specifies the rules that apply to a given game in a gioven torueny 
+    especially the a weight for each game for both TrueSkill mu and sigma and a minimim play count for each game.
     
+    The weight is used in building an aggregate rating by summing weighted mus, and summming weighted sigmas.
+    
+    Weights should be normalised in such an application.  
+    '''
+    tourney = models.ForeignKey('Tourney', on_delete=models.CASCADE) # If the tourney is deleted delete this rule
+    game = models.ForeignKey('Game', on_delete=models.CASCADE)       # If the game is deleted delete this rule
+    
+    # Require a minimum number of plays inhtis game to rank the tourney
+    min_plays = models.PositiveIntegerField('Minimum number of plays to rank in tourney')
+    
+    # Skill weights for this game (shoudl be normalised across all games in thee tourney when used)
+    weight_mu    = models.FloatField()
+    weight_sigma = models.FloatField()
+
+class Tourney(AdminModel):
+    '''A Tourney is simply a group of games that can present a shared leaderboard according to specified weights.'''
+    games = models.ManyToManyField('Game', verbose_name='Games', through=TourneyRules)
+
+    # Require a certain play balance among the tourney games. 
+    # This is the coefficient of variation between play counts (for all game sin the tourney by a given player)
+    # 0 requires that all games be played the same number of times.
+    # 1 is extremely tolerant, allowing the the mean value between them 
+    #    for a two game tourney allows all play imblance
+    #    for a many game tourney not quite guaranteed (outliers may be ecluded still)
+    # See: https://en.wikipedia.org/wiki/Coefficient_of_variation
+    #
+    # TODO: A player should have a view that shows them what game(s) They need to play more to
+    #       qualify for ranking in a given tourney.    
+    allowed_imbalance = models.FloatField('Maximum play count imbalance to rank in tourney')
+
+    @property
+    def players(self) -> set:
+        '''
+        Return a set of players who qualify for this tournament.
+          
+        #TODO: Implement. This is a set of players
+        '''
+        # Build a query that finds all players who played all three games at least n times
+        pass
+    
+    def gameplays_needed(self, player) -> dict:
+        '''
+        For a given player returns a dict keyed on Game which has an integer count stating the number 
+        of times they need to play those games to qualify for this tourney.
+         
+        :param player: an instance of Player
+        '''
+        pass
+
 class Game(AdminModel):
     '''A game that Players can be Rated on and which has a Leaderboard (global and per League). Defines Game specific Trueskill settings.'''
     name = models.CharField('Name of the Game', max_length=200)
@@ -1066,7 +1139,27 @@ class Game(AdminModel):
     # Which play modes the game supports. This will decide the formats the session submission form supports
     individual_play = models.BooleanField('Supports individual play', default=True)
     team_play = models.BooleanField('Supports team play',default=False)
-
+    
+    # Game scoring options
+    # Game scores are not used by TrueSkill but can be used for ranking implicitly
+    NO_SCORES                   = 0
+    INDIVIDUAL_HIGH_SCORE_WINS  = 1
+    INDIVIDUAL_LOW_SCORE_WINS   = 2
+    TEAM_HIGH_SCORE_WINS        = 3
+    TEAM_LOW_SCORE_WINS         = 4
+    ScoringChoices = (
+        (NO_SCORES, 'No scores'),
+        ('Individual Scores', (
+            (INDIVIDUAL_HIGH_SCORE_WINS, 'High Score wins'),
+            (INDIVIDUAL_LOW_SCORE_WINS,  'Low Score wins'),
+        )),
+        ('Team Scores', (
+            (TEAM_HIGH_SCORE_WINS, 'High score wins'),
+            (TEAM_LOW_SCORE_WINS,  'Low score wins'),
+        ))
+    )    
+    scoring = models.PositiveSmallIntegerField(choices=ScoringChoices, default=NO_SCORES, blank=False)
+    
     # Player counts, also inform the session logging form how to render
     min_players = models.PositiveIntegerField('Minimum number of players', default=2)
     max_players = models.PositiveIntegerField('Maximum number of players', default=4)
@@ -1074,8 +1167,15 @@ class Game(AdminModel):
     min_players_per_team = models.PositiveIntegerField('Minimum number of players in a team', default=2)
     max_players_per_team = models.PositiveIntegerField('Maximum number of players in a team', default=4)
 
+    # Can be used to offer suggested session times in forms when entering a series of results.
+    # (i.e. last game time plus this games expected play time).
+    expected_play_time = models.DurationField('Expected play time', default=timedelta(minutes=90))
+
     # Which leagues play this game? A way to keep the game selector focussed on games a given league actually plays. 
     leagues = models.ManyToManyField('League', verbose_name='Leagues', blank=True, related_name='games_played', through=League.games.through)
+
+    # Which tourneys (if any) is this game a part of?
+    tourneys = models.ManyToManyField('Tourney', verbose_name='Tourneys', blank=True, through=TourneyRules)
 
     # Game specific TrueSkill settings
     # tau: 0- describes the luck element in a game. 
@@ -1388,7 +1488,7 @@ class Game(AdminModel):
             lb_filter = Q(game=self)
             if leagues:
                 # TODO: FIXME: This is bold. player__leagues is a set, and leagues is a set
-                # Does this yield the intersection or not?
+                # Does this yield the intersection or not? Requires a test!
                 lb_filter = lb_filter & Q(player__leagues__in=leagues)
                 
             # These come pre-sorted by -eta (so in the right order for the leaderboard).
@@ -1432,7 +1532,7 @@ class Game(AdminModel):
                             trueskill_mu, 
                             trueskill_sigma, 
                             plays, 
-                            victories,                                
+                            victories,
                             last_play, 
                             [l.pk for l in r.player.leagues.all()])
             lb.append(lb_entry)
@@ -1455,10 +1555,59 @@ class Game(AdminModel):
                 raise ValueError("Database error: more than one rating for {} at {}".format(player.name_nickname, self.name))
             return r
         else:
-            # Use the Performance model (and time stamped associated sessions_ to construct 
+            # Use the Performance model (and time stamped associated sessions) to construct 
             # a rating object as at a specific date/time
             # TODO: Implement
-            pass  
+            pass
+        
+    def future_sessions(self, asat, players=None) -> list:
+        '''
+        Returns a list of sessions ordered by date_time that are in future from 
+        the perspective of asat for the players provided, or for everyone if None.
+        
+        This is needed for rebuilding ratings when a historic game session 
+        detail changes.
+        
+        :param asat:       a datetime from which persepective the "future" is.   
+        :param players:    a QuerySet of Players or a list of Players.
+        '''
+        # We want session in the future only of course
+        dfilter = Q(date_time__gt=asat)
+        
+        # We want only sessions for this game
+        gfilter = Q(game=self)
+        
+        # For each player we find all future sessions playing this game
+        pfilter = Q(performances__player__in=players) if players else Q()
+            
+        # Combine the filters
+        filters = dfilter & gfilter & pfilter
+        
+        future_sessions = Session.objects.filter(filters).distinct().order_by('date_time')
+        
+        sessions_so_far = list(future_sessions)
+
+        # If no players were provided we alreadyhave ALL the futre sessions of this game
+        # If we specified some players, then we only have those that involved those players    
+        # We need recursively to examine that list because any player not in our list who
+        # appears in a session with one these players has a whole future tree of influence 
+        # themselves.
+        if players and future_sessions.count() > 0:
+            # The new future sessions may involve new players which 
+            # requires that we scan them for new future sessions too 
+            for session in future_sessions:
+                # session._get_future_sessions looks for new sessions (excluding sessions_so_far)
+                # If it find any it adds them to sessions_so far and returns the complete list. 
+                new_sessions_so_far = session._get_future_sessions(sessions_so_far)
+                
+                # The returned list is bigger if any were added, else same size.
+                # If it's bigger, sort it bu data_time and use that for the time
+                # round the loop (of future_sessions) 
+                if len(new_sessions_so_far) > len(sessions_so_far):
+                    sessions_so_far = sorted(new_sessions_so_far, key=lambda s: s.date_time)
+
+        # After examining all future sessions, sessions_so_far is the complete list 
+        return sessions_so_far
 
     selector_field = "name"
     @classmethod    
@@ -1531,7 +1680,9 @@ class Location(AdminModel):
     '''
     name = models.CharField('Name of the Location', max_length=MAX_NAME_LENGTH)    
     timezone = TimeZoneField('Timezone of the Location', default=settings.TIME_ZONE)
+    location = LocationField('Geolocation of the Location', blank=True)
     leagues = models.ManyToManyField(League, verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
+    
 
     @property
     def link_internal(self) -> str:
@@ -1539,7 +1690,7 @@ class Location(AdminModel):
 
     selector_field = "name"
     @classmethod    
-    def selector_queryset(cls, query="", session={}, all=False):
+    def selector_queryset(cls, query="", session={}, all=False):  # @ReservedAssignment
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.        
         :param cls: Our class (so we can build a queryset on it to return)
@@ -1573,21 +1724,34 @@ class Location(AdminModel):
     class Meta(AdminModel.Meta):
         ordering = ['name']
 
+class Event(AdminModel):
+    '''
+    A model for defining gaming events. The idea being that we can show all leaderboards 
+    relevant to a particular event (games and tourneys) and specify the time bracket and 
+    venue for the event so that the recorded game sessions belonging to they event can
+    be inferred.
+    
+    Timezones are ignored as they are inferred from the Location which has a timezone.  
+    '''
+    location = ForeignKey(Location, verbose_name='Event location', null=True, blank=-True, on_delete=models.SET_NULL) # If the location is deleted keep the event. 
+    start = models.DateTimeField('Time', default=timezone.now)
+    end = models.DateTimeField('Time', default=timezone.now)
+    registrars = models.ManyToManyField('Player', verbose_name='Registrars', blank=True, related_name='registrar_at')
+
 class Session(TimeZoneMixIn, AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
-    date_time = models.DateTimeField('Time', default=timezone.now)                                          # When the game session was played
+    game = models.ForeignKey(Game, verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)  # If the game is deleted keep the session.
+
+    date_time = models.DateTimeField('Time', default=timezone.now)
     date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
     
-    league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # The league playing this session
-    location = models.ForeignKey(Location, verbose_name='Location', related_name='sessions', null=True, on_delete=models.SET_NULL)   # Where the game sessions was played
-    game = models.ForeignKey(Game, verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)           # The game that was played
+    league = models.ForeignKey(League, verbose_name='League', related_name='sessions', null=True, on_delete=models.SET_NULL)       # If the league is deleted keep the session
+    location = models.ForeignKey(Location, verbose_name='Location', related_name='sessions', null=True, on_delete=models.SET_NULL) # If the location is deleted keep the session
     
     # The game must support team play if this is true, 
     # and conversely, it must support individual play if this false.
-    # TODO: Enforce this constraint
-    # TODO: Let the session form know the modes supported so it can enable/disable the entry modes
     team_play = models.BooleanField('Team Play', default=False)  # By default games are played by individuals, if true, this session was played by teams
     
     # A note on session player records:
@@ -1602,7 +1766,7 @@ class Session(TimeZoneMixIn, AdminModel):
     #     This is because ranks are associated with players in individual play mode but teams in Team play mode, 
     #     while performance is always tracked by player.
 
-    # TODO: consider if we can filter on properties or specify annotations somehow to filter on
+    # TODO: consider if we can filter on properties or specify annotations somehow to filter on them
     filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
     order_options = ['date_time', 'game', 'league']
 
@@ -1786,7 +1950,7 @@ class Session(TimeZoneMixIn, AdminModel):
         the simple and the complicated:
         
         The simple:
-            if the date_time of tis session is after all sessions of the same game, then
+            if the date_time of this session is after all sessions of the same game, then
             this is the current leaderboard and what it would look like after we save this 
             session (remembering this is a prediction).
             
@@ -1800,7 +1964,14 @@ class Session(TimeZoneMixIn, AdminModel):
         from. This is already a defined format in leaderboard_snapshot() below, we'd be
         returning two snapshots, the before and after. 
         
-        TODO: Implement impact_predictions
+        This session may have been added,d eleted or changed and so it may make no sense
+        to do this as a session property (if it was deleted?)) Unless we can pass in this
+        an argument that considers the impact of adding or deleting this session or changing 
+        it? Changing it is hard as we don't know from what to what, and that is done in the 
+        form submisison preprocessor which has the proposed changes. So maybe this method
+        does not need to exist?
+        
+        TODO: Implement impact_predictions, maybe. It may be redundant and this is all don elsewhere.
         '''
         later_sessions = Session.objects.filter(Q(game=self.game) & Q(date_time__gt=self.date_time))
         simple = len(later_sessions) == 0
@@ -1884,7 +2055,21 @@ class Session(TimeZoneMixIn, AdminModel):
         that takes a list of sessions found so far so as to avoid duplicating any 
         sessions in the search.
         
-        sessions_so_far: A list of sessions found so far, that is augmented  and returned
+        Why recursion? Because future sessions is an influence tree where each 
+        node branches a multiple of times. Consider agame that involves four
+        playes P1, P2, P3, P4. We can get all future session in this game that 
+        any of these four players played in with a simple query. BUT in all 
+        those sessions they maybe (probably) played with otehr people. So say 
+        theres a futre session between P1, P2, P5 and P6? Well we need to find 
+        all the future sessions in this game that involve P1, P2, P5 or P6! So 
+        essentially future sessions fromt he simpe query can drag in new players 
+        which form new influence trees. 
+        
+        The premise in building this tree is that it is is far more efficient than 
+        reacuaulating Trueskill ratings on them all. Thus finding a count helps us
+        estimate the cost of performing a rebuild.   
+        
+        sessions_so_far: A list of sessions found so far, that is augmented and returned
         '''
         # We want session in the future only of course
         dfilter = Q(date_time__gt=self.date_time)
@@ -1893,7 +2078,7 @@ class Session(TimeZoneMixIn, AdminModel):
         gfilter = Q(game=self.game)
         
         # For each player we find all future sessions playing this game
-        pfilter = Q(ranks__player__in=self.players) | Q(ranks__team__players__in=self.players)
+        pfilter = Q(performances__player__in=self.players)
             
         # Combine the filters
         filters = dfilter & gfilter & pfilter
@@ -1921,7 +2106,7 @@ class Session(TimeZoneMixIn, AdminModel):
     def future_sessions(self) -> list:
         '''
         Returns the sessions ordered by date_time that are in the future relative to this session
-        that involve any of the players in this session, or players in those sessions.
+        that involve this game and any of the players in this session, or players in those sessions.
         
         Namely every session that needs to be re-evaluated because this one has been inserted before
         it, or edited in some way. 
@@ -1951,7 +2136,7 @@ class Session(TimeZoneMixIn, AdminModel):
         
         The second is the probability associated with that prediction.
         
-        TODO: This should really be in the trueskill package
+        TODO: This should really be in the trueskill package, consider fixing it and submitting a PR.
         '''
         # Rank.performance returns a (mu, sigma) tuple for the ranker
         # TrueSkill modeled performance. And the expected ranking is
@@ -2207,7 +2392,10 @@ class Session(TimeZoneMixIn, AdminModel):
     @property
     def leaderboard_snapshot(self):
         '''
-        Prepares a leaderboard snapshot for passing to a view for rendering. 
+        Prepares a leaderboard snapshot for passing to a view for rendering.
+        
+        That is: the leaderbaord in this game as it stood just after 
+        this session was played. 
         
         A snapshot is defined by a tuple with these entries in order:
         
@@ -2249,7 +2437,7 @@ class Session(TimeZoneMixIn, AdminModel):
                     self.leaderboard_analysis_after(), 
                     self.leaderboard_after)
 
-        return snapshot  
+        return snapshot 
 
     def _html_rankers_ol(self, ordered_ranks, use_rank, expected_performance, name_style, ol_style="margin-left: 8ch;"):
         '''
@@ -2264,18 +2452,15 @@ class Session(TimeZoneMixIn, AdminModel):
                 
         data = []
         if ol_style:
-            detail = u'<OL style="{}">'.format(ol_style)
+            detail = f'<OL style="{ol_style}">'
         else:
-            detail = u'<OL>'
+            detail = '<OL>'
 
         rankers = OrderedDict()
         row = 1
         for r in ordered_ranks:
             if self.team_play:
                 # Teams we can render with the default format
-                # TODO: Check this, they should also respect 
-                #  link and name_style for members and linking of 
-                #     members names when listed!  
                 ranker = field_render(r.team, flt.template)
                 data.append((r.team.pk, None))
             else:
@@ -2480,7 +2665,7 @@ class Session(TimeZoneMixIn, AdminModel):
     
     def following_session(self, player=None):
         '''
-        Returns the previous session that the nominate player played this game in. 
+        Returns the following session that the nominate player played this game in. 
         Or None if no such session exists.
         
         :param player: A Player object. Optional, returns the last session this game was played if not provided.
@@ -2497,6 +2682,25 @@ class Session(TimeZoneMixIn, AdminModel):
             assert foll_session.date_time > self.date_time, f"Database error: Two sessions with identical time, session={self.pk}, previous session={foll_session.pk}, player={player.pk}"
 
         return foll_session
+
+    @property
+    def is_latest(self):
+        '''
+        True if this is the latest session in this game for all the players who played it. That is modifying it
+        would (probably) not trigger any rebuilds (clear exceptions would be if a new player was added, who does
+        have a future session,  or the date_time of the session is changed to be earlier than another session in 
+        this game with one or more of these players, or if the game is chnaged). Basically only true if it is 
+        currently the latest session for all htese players in this game. Can easily change if the session is 
+        edited, or for that matter another one is (moved after this one for example) 
+        '''
+        is_latest = {}
+        for performance in self.performances.all():
+            rating = Rating.get(performance.player, self.game) # Creates a new rating if needed
+            is_latest[performance.player] = self.date_time == rating.last_play
+            assert not self.date_time > rating.last_play, "Rating last_play seems out of sync."
+            
+        return all(is_latest.values())
+    
 
     def previous_victories(self, player):
         '''
@@ -2789,14 +2993,11 @@ class Session(TimeZoneMixIn, AdminModel):
             victors = [field_render(p.name_nickname, link_target_url(p, link)) for p in self.victors]
             
         try:
-            return u'{} - {} - {} - {} - {} {} ({} won)'.format(
-                time_str(self.date_time), 
-                field_render(self.league, link), 
-                field_render(self.location, link), 
-                field_render(self.game, link), 
-                self.num_competitors, 
-                self.str_competitors, 
-                ", ".join(victors))
+            V = ", ".join(victors)
+            P = ", ".join([p.name_nickname for p in self.players])
+            # venue = f"- {field_render(self.location, link)}"
+            return (f'{time_str(self.date_time)} - {field_render(self.league, link)} - '
+                   +f'{field_render(self.game, link)} - {self.num_competitors} {self.str_competitors} ({P}) - {V} won')
         except:
             pass
     
@@ -2869,10 +3070,10 @@ class Session(TimeZoneMixIn, AdminModel):
         rank_values.sort()
         rank_list = ', '.join([str(r) for r in rank_values])
         skip = 0
-        # TODO: Am experimenting here with sensible ranking that has a gap after ties.
-        #       Supports both for now. If enforcing that mode will need a clean_ranks() 
-        #       method on session that tidies them. For now, the checker will pass either 
-        #       consecutive or with tie gaps. 
+        # Supports both odered ranking and tie-gap ordered ranking
+        # As an example of a six player game:
+        # ordered:         1, 2, 2, 3, 4, 5
+        # tie-gap ordered: 1, 2, 2, 4, 5, 6
         for rank in rank_values:
             L.Assert(rank == last_rank_val or rank == last_rank_val+1 or rank == last_rank_val+1+skip, f"{pfx} Ranks must be consecutive. Found rank {rank} following rank {last_rank_val} in ranks {rank_list}. Expected it at {last_rank_val}, {last_rank_val+1} or {last_rank_val+1+skip}.")
 
@@ -3039,15 +3240,16 @@ class Rank(AdminModel):
     Either a player or team is specified, neither or both is a data error.
     Which one, is specified in the Session model where a record is kept of whether this was a Team play session or not (i.e. Individual play)
     '''
-    session = models.ForeignKey(Session, verbose_name='Session', related_name='ranks', on_delete=models.CASCADE)  # The session that this ranking belongs to
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='ranks', on_delete=models.CASCADE)  # if the session is deleted, delete this rank
     rank = models.PositiveIntegerField('Rank')  # The rank (in this session) we are recording, as in 1st, 2nd, 3rd etc.
+    score = models.IntegerField('Score', default=None, null=True, blank=True) # What this team scored if the game has team scores.
 
     # One or the other of these has a value the other should be null (enforce in integrity checks)
     # We coudlof course opt to use a single GenericForeignKey here: 
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
     #    but there are some complexites they introduce that are rather unnatracive as well
-    player = models.ForeignKey(Player, verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # The player who finished the game at this rank (1st, 2nd, 3rd etc.)
-    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # if team play is recorded then a team is created (or used if already in database) to group the rankings of the team members.
+    player = models.ForeignKey(Player, verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # If the player is deleted keep this rank
+    team = models.ForeignKey(Team, verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)        # if the team is deleted keep this rank
 
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
@@ -3056,7 +3258,7 @@ class Rank(AdminModel):
         Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkill specific theory to provide
         a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
         
-        :param after: if true returns predicted performance with ratings after the update. ELse before.
+        :param after: if true returns predicted performance with ratings after the update. Else before.
         '''
         # TODO: Much of this This should really be in the trueskill package not here
         if self.session.team_play:
@@ -3103,7 +3305,7 @@ class Rank(AdminModel):
             return self.player
 
     @property
-    def players(self) -> list:
+    def players(self) -> set:
         '''
         The list of players associated with this rank object (not explicitly at this rank 
         as two Rank objects in one session may have the same rank, i.e. a draw may be recorded)
@@ -3112,19 +3314,18 @@ class Rank(AdminModel):
 
         Returns a list of one one or more players.
         '''
-        # TODO should be a set not a list really. No order.
         session = Session.objects.get(id=self.session.id)
         if session.team_play:
             if self.team is None:
                 raise ValueError("Rank '{}' is associated with a team play session but has no team.".format(self.id))
             else:
                 # TODO: Test that this returns a clean list and not a QuerySet
-                players = list(self.team.players.all())
+                players = set(self.team.players.all())
         else:
             if self.player is None:
                 raise ValueError("Rank '{0}' is associated with an individual play session but has no player.".format(self.id))
             else:
-                players = [self.player]
+                players = {self.player}
         return players
 
     @property
@@ -3227,14 +3428,7 @@ class Rank(AdminModel):
             if self.session.team_play:
                 self.player = None
             else:
-                self.team = None                
-        
-        # Require that self.team/self.player reflects self.session.team_play
-# TODO: House this elsewhere, can't clean relations here as related objects don't exist yet. This clean can only be internal to this model 
-#         if self.team is None and self.session.team_play:
-#             raise ValidationError("Rank {} specifies player while session {} specifies team play".format(self.pk, self.session.pk))
-#         elif self.player is None and not self.session.team_play:
-#             raise ValidationError("Rank {} specifies team while session {} does not specify team play".format(self.pk, self.session.pk))
+                self.team = None
 
     class Meta(AdminModel.Meta):
         ordering = ['rank']
@@ -3252,10 +3446,12 @@ class Performance(AdminModel):
     '''
     TS = TrueskillSettings()
 
-    session = models.ForeignKey(Session, verbose_name='Session', related_name='performances', on_delete=models.CASCADE)  # The session that this weighting belongs to
-    player = models.ForeignKey(Player, verbose_name='Player', related_name='performances', null=True, on_delete=models.SET_NULL)  # The player in that session to whom the weighting applies
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='performances', on_delete=models.CASCADE)           # If the session is deleted, dlete this performance
+    player = models.ForeignKey(Player, verbose_name='Player', related_name='performances', null=True, on_delete=models.SET_NULL)  # if the player is deleted keep this performance
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
+
+    score = models.IntegerField('Score', default=None, null=True, blank=True) # What this player scored if the game has scores.
 
     play_number = models.PositiveIntegerField('The number of this play (for this player at this game)', default=1, editable=False)
     victory_count = models.PositiveIntegerField('The count of victories after this session (for this player at this game)', default=0, editable=False)
@@ -3384,7 +3580,7 @@ class Performance(AdminModel):
             
         else:
             self.play_number = previous.play_number + 1
-            self.victory_count = previous.victory_count + 1 if self.session.rank(self.player).rank == 1 else previous.victory_count  # TODO: Test this. 
+            self.victory_count = previous.victory_count + 1 if self.session.rank(self.player).rank == 1 else previous.victory_count 
             self.trueskill_mu_before = previous.trueskill_mu_after
             self.trueskill_sigma_before = previous.trueskill_sigma_after
             self.trueskill_eta_before = previous.trueskill_eta_after
@@ -3502,7 +3698,7 @@ class Performance(AdminModel):
         self.play_number = previous.play_number + 1
         
         if self.session.rank(self.player):
-            self.victory_count = previous.victory_count + 1 if self.session.rank(self.player).rank == 1 else previous.victory_count  # TODO: Test this. 
+            self.victory_count = previous.victory_count + 1 if self.session.rank(self.player).rank == 1 else previous.victory_count 
 
         # Trueskill Impact is calculated at the session level not the individual performance level.
         # The trueskill after settings for the performance will be calculated there.
@@ -3562,7 +3758,64 @@ class Performance(AdminModel):
 # Administrative models
 #===============================================================================
 
-class Rebuild_Log(TimeZoneMixIn, models.Model):
+class ChangeImpact(AdminModel):
+    '''
+    When we make any changes to any recorded game Session that is NOT the latest game session for 
+    that game and all the players playing in that game session, then it has an impact on the 
+    leaderboards for that game that is distinct from it's own immediate impact. To clarify:
+    
+    When any session is added it has an immediate impact which is how it alters the leaderboard 
+    from the immediately prior played session of that game.
+    
+    If there are future sessuion relative to the session just aded then it also has an impact on
+    the current leaderboard. The immediate impact above is not the current leaderboard (because
+    other session of that game are in its future) and so the impact on the current leaderboard is
+    also useful to see.
+    
+    This is also true if you delet a session that has future sessions or if it is edited in any one
+    of many ratings impacting ways (players change, ranks change, game changes etc).
+        
+    We'd like to show these impacts for any edit before they are committed.
+    
+    The current leaderboard impacts are tricky as the current leaderboards could be changing 
+    while were reviewing our commit for example (other user submitting results). 
+    
+    So we store impacts in this model with a key so that they can be calculated, saved, and the 
+    key passed to a confirmation view where the change can be committed or rolled back.       
+    '''
+    # The game to which the impact applies
+    game = models.ForeignKey('Game', verbose_name='Game', related_name='session_edit_impacts', on_delete=models.CASCADE) # If the game is deleted, delete this impact
+    
+    # The session that caused the impact (if it still exists) - if it was deleted it won't be around any more.
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='change_impacts', null=True, blank=True, on_delete=models.SET_NULL) # If the session is deleted we may NEED the impact of that!
+
+    # Space to store 4 JSON leaderboard snapshots
+    # These are single game snapshots and should fit in a TextField fine. 
+    # If the number of players on the lkeaderboard gorws garagantuan that may change.
+    # TODO: Evaluate the sizing of snapshots and these fields  
+    # Snapshots are stored as a Game.leaderboard in JSON format (i.e serialized to JSON)
+    leaderboard_immediately_before = models.TextField()
+    leaderboard_immediately_after  = models.TextField()
+
+    # If session had no future sessions when entered, deleted or edited, then these two 
+    # can be left blank as they are identical to the two above. They come into their own
+    # when the edit impacts an historic sessioin (one with future sessions), then these two
+    # are the before and after change snapshots of the leaderboard AFTER the last session! 
+    leaderboard_before = models.TextField(blank=True)
+    leaderboard_after = models.TextField(blank=True)
+
+def log_file_dir(instance, filename):
+    '''
+    See: https://docs.djangoproject.com/en/3.1/ref/models/fields/#django.db.models.FileField.upload_to
+    
+    Job is simply to return an absolute file path to use to store the log of rating rebuild impacts.
+    
+    :param instance: an instance of model.FileField
+    :param filename: a filename
+    '''
+    return os.path.join(settings.BASE_DIR, f"logs/rating_rebuilds/{filename}")
+
+class RebuildLog(TimeZoneMixIn, AdminModel):
     '''
     A log of rating rebuilds.
     
@@ -3571,9 +3824,27 @@ class Rebuild_Log(TimeZoneMixIn, models.Model):
     1) Performance measure. Rebuild can be slow and we'd like to know how slow. 
     2) Security. To see who rebuilt when
     '''
+    
     date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
     date_time_tz = TimeZoneField('Time of Ratings Rebuild, Timezone', default=settings.TIME_ZONE, editable=False)
-    ratings = models.PositiveIntegerField('Number of Ratings Built')
+    ratings = models.PositiveIntegerField('Number of Ratings Built') # A Rating rebuild being on session's impact
+    
     duration = models.DurationField('Duration of Rebuild')
-    rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL)
-    reason = models.TextField('Reason for Rebuild')    
+    rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL) # If the user is deleted keep this log
+    reason = models.TextField('Reason for Rebuild')
+    
+    # A record of the arguments of the rebuild request. These can be null. See Rating.rebuild() which
+    # can rebuild all the ratings, or all the ratings for a specific game, or all the ratings from 
+    # a given time, or the ratings fomr a given time fro a specific game or for a specific list of sessions.
+    game = models.ForeignKey('Game', null=True, blank=True, related_name='rating_rebuild_requests', on_delete=models.CASCADE) # If a game is deleted and this was a game specific log, we can delete it
+    date_time_from = models.DateTimeField('Game', null=True, blank=True)
+    sessions = models.ManyToManyField('Session', blank=True, related_name='rating_rebuild_requests')
+
+    # We'd like to store JSON leaderboard impact of the rebuild. As the rebuild can cover the whole database this
+    # can be large beyond simple database storage, and so we should use fileystem storage!
+    # See: https://docs.djangoproject.com/en/3.1/ref/models/fields/#django.db.models.fields.files.FieldFile.save
+    # Note: Filefield can be sued for uploading files, which is not the intent here, we want to write them
+    # when a RebuildLog instance is created. One before the rebuild, and the second after.  
+    leaderboard_before = models.FileField(upload_to=log_file_dir, null=True, blank=True)
+    leaderboard_after = models.FileField(upload_to=log_file_dir, null=True, blank=True)
+
