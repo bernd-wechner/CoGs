@@ -2,7 +2,6 @@ import cProfile, pstats, io
 import re, json, pytz
 from re import RegexFlag as ref # Specifically to avoid a PyDev Error in the IDE. 
 from datetime import datetime, date, timedelta
-from collections import OrderedDict
 from html import escape
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
@@ -24,9 +23,7 @@ from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from django.utils.formats import localize
 from django.utils.timezone import is_aware, make_aware, make_naive, activate, localtime
-from django.http import HttpResponse
-from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect    
-#from django.http.response import HttpResponseRedirect
+from django.http.response import HttpResponse, HttpResponseRedirect #, JsonResponse
 from django.urls import reverse, reverse_lazy  #, resolve
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -124,7 +121,7 @@ def pre_save_handler(self):
         else:
             s = ''
             R = [r]
-            
+             
         for i, t in enumerate(R):
             s += '('
             for j, e in enumerate(t):
@@ -162,7 +159,8 @@ def pre_save_handler(self):
 
         # The time of the session cannot be in the future of course.
         if new_time > localtime():
-            # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.
+            # TODO: there's a bug here in the return. It returns players and ranks onto the error form badly.
+            # As in the disappear from the returned form. 
             # Methinks we want to translate form fields back into Session context as part of bailing
             self.form.add_error("date_time", f"Please choose a time in the past.")
             return None
@@ -224,7 +222,7 @@ def pre_save_handler(self):
                 output(f"Requesting a rebuild of ratings for {len(rebuild)} sessions: {escape(str(rebuild))}")
                 return {'rebuild': rebuild}
             else:
-                output(f"Is the latest session of {new_game} for all of {', '.join(new_players[:-1])} and {new_players[-1]}")
+                output(f"Is the latest session of {new_game} for all of {', '.join([str(p) for p in new_players[:-1]])} and {str(new_players[-1])}")
 
         # or
         #
@@ -561,9 +559,14 @@ def pre_commit_handler(self, rebuild=None):
         # already in the database. Those future (relative to the submission) 
         # sessions need a ratings rebuild.  
         if rebuild:
+            if isinstance(self, CreateViewExtended):
+                reason = f"Session {session.pk} was created." 
+            elif isinstance(self, UpdateViewExtended):
+                reason = f"Session {session.pk} was updated." 
+                 
             J = '\n\t\t' # A log message list item joiner
             log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
-            Rating.rebuild(Sessions=rebuild)
+            Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
         
         # Now check the integrity of the save. For a sessions, this means that:
         #
@@ -609,6 +612,76 @@ def pre_commit_handler(self, rebuild=None):
         # No args to pass to the next handler
         return None
 
+def pre_delete_handler(self):
+    '''
+    Before deleting am object this is called. It can return a kwargs dict that is passed to
+    the post delete handler after the object is deleted.
+    '''
+    model = self.model._meta.model_name
+
+    if model == 'session':
+        # Before deleting a session capture everything we need to know about it for the post delete handler
+        session = self.object
+
+        # The session won't exist after it's deleted, so grab everythinhg the post delete handler
+        # wants to know about a session to do its work.
+        post_kwargs = {'pk': session.pk, 'game': session.game, 'players': session.players, 'victors': session.victors}
+
+        g = session.game
+        dt = session.date_time
+
+        log.debug(f"Deleting Session {session.pk}:")
+        
+        # Check to see if this is the latest play for each player
+        is_latest = True
+        for p in session.players:
+            r = Rating.get(p, g) 
+            if dt < r.last_play:
+                is_latest = False
+        
+        # Request no ratings rebuild by default
+        rebuild = None
+
+        # A rebuild of ratings is triggered if we're deleting a session that is not
+        # the latest session in that game for all its players. All future sessions 
+        # for those players need a ratings rebuild
+        if not is_latest:
+            rebuild = g.future_sessions(dt, session.players)
+            log.debug(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions: {str(rebuild)}")
+            post_kwargs['rebuild'] = rebuild
+        else:
+            log.debug(f"\tIs the latest session of {g} for all of {', '.join(session.players)}")
+
+        return post_kwargs
+    else:
+        return None
+
+def post_delete_handler(self, pk=None, game=None, players=None, victors=None, rebuild=None):
+    '''
+    After deleting an object this is called (before the transaction is committed, so raising an
+    exception can force a rollback on the delete. 
+    
+    :param players:    a set of players that were in a session being deleted
+    :param victors:    a set of victors in the session being deleted
+    :param rebuild:    a list of sessions to rebuild ratings for if a session is being deleted
+    '''
+    model = self.model._meta.model_name
+    
+    if model == 'session':
+        # Execute a requested rebuild
+        if rebuild:
+            reason = f"Session {pk} was deleted."
+            Rating.rebuild(Sessions=rebuild, Reason=reason)
+        else:
+            # A rebuld of ratings finsihes with updated ratings)
+            # If we have no rebuild (by implication we just deleted 
+            # the last session in that games tree for those players)
+            # and so we need to update the ratings ourselves.
+            for p in players:
+                r = Rating.get(p, game)
+                r.reset()
+                r.save()
+
 def html_league_options(session):
     '''
     Returns a simple string of HTML OPTION tags for use in a SELECT tag in a template
@@ -624,7 +697,7 @@ def html_league_options(session):
         options.append(f'<option value="{league.id}"{selected}>{league.name}</option>')
     return "\n".join(options)
 
-def html_selector(model, id, default=0, placeholder="", attrs={}):
+def html_selector(model, id, default=0, placeholder="", attrs={}):  # @ReservedAssignment
     '''
     Returns an HTML string for a model selector. 
     :param model:    The model to provide a selector widget for
@@ -821,13 +894,14 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     pre_commit = pre_commit_handler
 
 class view_Delete(LoginRequiredMixin, DeleteViewExtended):
-    # TODO: Should be atomic for sesssions as a session delete needs us to delete session, ranks and performances
     # TODO: When deleting a session need to check for ratings that refer to it as last_play or last_win
     #        and fix the reference or delete the rating.
     template_name = 'CoGs/delete_data.html'
     operation = 'delete'
     format = object_display_format()
     extra_context_provider = extra_context_provider
+    pre_delete = pre_delete_handler
+    post_delete = post_delete_handler
 
 class view_List(ListViewExtended):
     template_name = 'CoGs/list_data.html'
@@ -862,7 +936,7 @@ def view_Impact(request, model, pk):
         # TODO: If future_sessions.length > 0 add also a before and after 
         # view of latest ratings.
         
-        # TODO: We don't want to add leadrboar_snapshot but a leaderboard game entry
+        # TODO: We don't want to add leaderboard_snapshot but a leaderboard game entry
         # with 1 to 3 snapshots! Build that! Makes it easier to plug in the JS 
         # LeaderboardTable function.
         #
@@ -1187,7 +1261,7 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
                 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
-                    lb = full_snapshot[8]
+                    #lb = full_snapshot[8]
                     
                     snapshot = lo.apply(full_snapshot)
                     lbf = snapshot[8]
@@ -1527,8 +1601,14 @@ def view_RebuildRatings(request):
             From = None 
     else:
         From = None
+
+    if 'reason' in request.GET:
+        reason = request.GET['reason']
+    else:
+        reason = "Explicitly requested rebuild."
+
     
-    html = rebuild_ratings(game, From)
+    html = rebuild_ratings(game, From, reason)
     
     return HttpResponse(html)
 
@@ -1556,7 +1636,7 @@ def view_UnwindToday(request):
     # Now for all ratings remaining we have to reset last_play (if test sessions updated that).
     ratings = Rating.objects.filter(Q(last_play__gte=unwind_to)|Q(last_victory__gte=unwind_to))
     for r in ratings:
-        r.recalculate_last_play_and_victory()
+        r.reset()
 
     html = "Success"
     
@@ -1593,7 +1673,7 @@ def rebuild_play_and_victory_counts():
     print("Done.", flush=True)
     
 
-from django.apps import apps
+#from django.apps import apps
 def view_Fix(request):
 
     rebuild_play_and_victory_counts()
@@ -1700,7 +1780,7 @@ def view_Kill(request, model, pk):
     
     return HttpResponse(html)
 
-def rebuild_ratings(Game=None, From=None):
+def rebuild_ratings(Game=None, From=None, Reason=None):
     activate(settings.TIME_ZONE)
 
     title = "Rebuild of ratings"
@@ -1714,7 +1794,7 @@ def rebuild_ratings(Game=None, From=None):
         
     pr = cProfile.Profile()
     pr.enable()
-    result = Rating.rebuild(Game, From)
+    result = Rating.rebuild(Game=Game, From=From, Reason=Reason)
     pr.disable()
     
     s = io.StringIO()

@@ -1,34 +1,34 @@
 # Python packages
-import trueskill
-import html
-import re
-import pytz
-import os
+import trueskill, html, re, pytz, os, json
 
 from collections import OrderedDict
 from math import isclose
 from scipy.stats import norm
+from statistics import mean, stdev
 from datetime import datetime, timedelta
 from builtins import str
+ 
 
 # Django packages
 from django.db import models, DataError, IntegrityError #, connection, 
-from django.db.models import Sum, Max, Avg, Count, Q, OuterRef, Subquery
+from django.db.models import Sum, Max, Avg, Count, Q, F, OuterRef, Subquery, ExpressionWrapper
+from django.conf import settings
 from django.core.exceptions import NON_FIELD_ERRORS, ValidationError, ObjectDoesNotExist, MultipleObjectsReturned #, PermissionDenied
 from django.core.validators import RegexValidator
-from django.urls import reverse_lazy
+from django.core.serializers.json import DjangoJSONEncoder
+from django.urls import reverse, reverse_lazy
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.formats import localize
 from django.utils.timezone import localtime
 from django.utils.safestring import mark_safe
-from django.conf import settings
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 from timezone_field import TimeZoneField
 from mapbox_location_field.models import LocationField  
+from cuser.middleware import CuserMiddleware
 
 from django_model_admin_fields import AdminModel
 from django_model_privacy_mixin import PrivacyMixIn
@@ -41,7 +41,6 @@ from django_generic_view_extensions.queryset import get_SQL
 from django_generic_view_extensions.util import AssertLog
 
 from CoGs.logging import log
-from django.db.models.fields.related import ForeignKey
 
 # TODO: Next round of model enhancements
 #
@@ -200,57 +199,62 @@ class Rating(RatingModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
-    def reset(self, session):
+    def reset(self, session=None):
         '''
         Given a session, resets this rating object to what it was after this session.
         
+        If no session is specified us the last played session (of that player at that game)
+        
         Allows for a rewind of the rating to what it was at some time in past, so that 
-        it can be rebuilt from that point onward if desired.    
+        it can be rebuilt from that point onward if desired, and/or can be used to ensure
+        that all the rating related data is up to date (as of last session). Remembering
+        that Rating is just a rapid access version of what is stored in Performance 
+        objects (each rating sits in one Performance object somewhere, being the latest 
+        Performance for a given player at a given game.
+        
+        :param session: A Session object (optional)
         '''
-        performance = session.performance(self.player)
+        if not isinstance(session, Session):
+            session = self.player.last_play(self.game)
         
-        self.plays = performance.play_number
-        self.victories = performance.victory_count
-        
-        self.last_play = session.date_time
-        
-        if performance.is_victory:
-            self.last_victory = session.date_time
+        if session:
+            performance = session.performance(self.player)
+            
+            self.plays = performance.play_number
+            self.victories = performance.victory_count
+            
+            self.last_play = session.date_time
+            
+            if performance.is_victory:
+                self.last_victory = session.date_time
+            else:
+                last_victory = session.previous_victory(performance.player)
+                self.last_victory = NEVER if last_victory is None else last_victory.session.date_time   
+            
+            self.trueskill_mu = performance.trueskill_mu_after
+            self.trueskill_sigma = performance.trueskill_sigma_after
+            self.trueskill_eta = performance.trueskill_eta_after
+            
+            self.trueskill_mu0 = performance.trueskill_mu0
+            self.trueskill_sigma0 = performance.trueskill_sigma0
+            self.trueskill_beta = performance.trueskill_beta
+            self.trueskill_delta = performance.trueskill_delta
+    
+            self.trueskill_tau = performance.trueskill_tau
+            self.trueskill_p = performance.trueskill_p
         else:
-            last_victory = session.previous_victory(performance.player)
-            self.last_victory = None if last_victory is None else last_victory.session.date_time   
-        
-        self.trueskill_mu = performance.trueskill_mu_after
-        self.trueskill_sigma = performance.trueskill_sigma_after
-        self.trueskill_eta = performance.trueskill_eta_after
-        
-        self.trueskill_mu0 = performance.trueskill_mu0
-        self.trueskill_sigma0 = performance.trueskill_sigma0
-        self.trueskill_beta = performance.trueskill_beta
-        self.trueskill_delta = performance.trueskill_delta
-
-        self.trueskill_tau = performance.trueskill_tau
-        self.trueskill_p = performance.trueskill_p
-
-    def recalculate_last_play_and_victory(self):
-        '''
-        last_play and last_victory are fields in the Rating model for convenience, quick retrieval and easy querying.
-        
-        They are a statistic on recorded sessions though. This method requests they  be recalculated from the base
-        data.
-        '''
-        self.last_play = self.player.last_play(self.game)
-        self.last_victory = self.player.last_win(self.game)
-        self.save()
+            # If we have no session it means this player never played this game
+            # So we just create new rating (get does that if no rating exists).
+            Rating.get(self.player, self.game)
 
     @classmethod    
     def create(cls, player, game, mu=None, sigma=None):
         '''
         Create a new Rating for player at game, with specified mu and sigma.
 
-        An explicit method, rather than override of __init_ which is called 
+        An explicit method, rather than override of __init__ which is called 
         whenever and object is instantiated which can be when creating a new 
         Rating or when fetching an old one from tthe database. So not appropriate
         to override it for new Ratings.
@@ -314,6 +318,30 @@ class Rating(RatingModel):
         return r 
 
     @classmethod
+    def leaderboard(cls, game) -> list:
+        '''
+        Returns a basic leaderboard for game based on current ratings. 
+        
+        A leaderboard is a list ot player tuples containing:
+        
+        (player.pk, trueskill_eta, trueskill_mu, trueskill_sigma)
+        
+        ordered by rating (descending eta)
+  
+        :param game: an instance of Game
+        '''
+        return [(r.player.pk, r.trueskill_eta, r.trueskill_mu, r.trueskill_sigma) for r in Rating.objects.filter(game=game).order_by('-trueskill_eta')]
+
+    @classmethod
+    def leaderboards(cls, games) -> dict:
+        '''
+        returns cls.leaderboard(game) for each game supplied in a dict keyed on game.pk
+        
+        :param games: a list of QuerySet of Game instances
+        '''
+        return {g.pk: cls.leaderboard(g) for g in games}
+    
+    @classmethod
     def update(cls, session):
         '''
         Update the ratings for all the players of a given session.
@@ -331,9 +359,9 @@ class Rating(RatingModel):
             player_rating[performance.player] = rating
             is_latest[performance.player] = session.date_time <= rating.last_play
         
-        log.debug(f"Update rating for session {session.id}: {session}.")
-        log.debug(f"Is latest session of {session.game} for {[k for (k,v) in is_latest.items() if v]}")
-        log.debug(f"Is not latest session of {session.game} for {[k for (k,v) in is_latest.items() if not v]}")
+#         log.debug(f"Update rating for session {session.id}: {session}.")
+#         log.debug(f"Is latest session of {session.game} for {[k for (k,v) in is_latest.items() if v]}")
+#         log.debug(f"Is not latest session of {session.game} for {[k for (k,v) in is_latest.items() if not v]}")
 
         # Trickle admin bypass down 
         if cls.__bypass_admin__:
@@ -381,7 +409,7 @@ class Rating(RatingModel):
             r.save()
     
     @classmethod
-    def rebuild(cls, Game=None, From=None, Sessions=None):
+    def rebuild(cls, Game=None, From=None, Sessions=None, Reason=None, Trigger=None):
         '''
         Rebuild the ratings for a specific game from a specific time
         
@@ -394,6 +422,8 @@ class Rating(RatingModel):
         :param Game:     A Game object
         :param From:     A datetime 
         :param Sessions: A list of Session objects or a QuerySet of Sessions.    
+        :param Reason:   A string, to log as a reason for the rebuild 
+        :param Trigger:  A Session object if an edit (create, update or delete) of a session triggered this rebuild
         '''
         # If ever performed keep a record of duration overall and per 
         # session to permit a cost estimate should it happen again. 
@@ -403,14 +433,11 @@ class Rating(RatingModel):
         # rebuilding or we could have the update method above check
         # if a rebuild is underway and if so schedule an update ro
         
-        # TODO:        
-        # Create an entry in a Rebuild_Log
-        # Start timer and counter
-        # Record timings when done
-        
         # Bypass admin fields updates for a rating rebuild
         cls.__bypass_admin__ = True
-                        
+
+        # First we collect the sessions that need rebuilding, they are either  
+        # explicity provided or implied by specifying a Game and/or From time.
         if Sessions:
             assert not Game and not From, "Invalid ratings rebuild requested."
             sessions = Sessions
@@ -429,12 +456,31 @@ class Rating(RatingModel):
            
             sessions = Session.objects.filter(sfilterg&sfilterf).order_by('date_time')
 
-        log.debug(f"{len(sessions)} Sessions to process.")
+        affected_games = set([s.game for s in sessions])
+        log.debug(f"{len(sessions)} Sessions to process, affecting {len(affected_games)} games.")
+
+        # We prepare a log entry
+        rlog = RebuildLog(game=Game, 
+                          date_time_from=From, 
+                          ratings=len(sessions),
+                          rebuilt_by=CuserMiddleware.get_user(),
+                          reason=Reason)
+        
+        # Need to save it to get a PK before we can attach the sessions set to the log entry.
+        rlog.save()
+        rlog.sessions.set(sessions)
+
+        # Start the timer
+        start = localtime()
+
+        # Now get the leaderboards for all affected games.
+        rlog.save_leaderboards(Rating.leaderboards(affected_games), "before")
 
         # Delete all BackupRating objects
         BackupRating.reset()
             
         # Traverse sessions in chronological order (order_by is the time of the session) and update ratings from each session
+        ratings_to_reset = set() # Use a set to avoid duplicity
         backedup = set()
         for s in sessions:
             # Backup a rating only the first time we encounter it
@@ -457,13 +503,60 @@ class Rating(RatingModel):
                         backedup.add(rkey)
                 
             cls.update(s)
+            for p in s.players:
+                ratings_to_reset.add((p, s.game))  # Collect a set of player, game tuples.
+            
+        # After having updated all the sessions we need to ensure 
+        # that the Rating objects are up to date. 
+        for rating in ratings_to_reset:
+            log.debug(f"Resetting rating for {rating}")
+            r = Rating.get(*rating) # Unpack the tuple to player, game
+            r.reset()
+            r.save()
             
         # Desist from bypassing admin feield updates
         cls.__bypass_admin__ = False
         
+        # Now get the leaderboards for all affected games again!.
+        rlog.save_leaderboards(Rating.leaderboards(affected_games), "after")
+
+        # Stop the timer and record the duration        
+        end = localtime()
+        rlog.duration = end - start 
+        
+        # And save the complete rebuild log entry
+        rlog.save()
+
+        # If an edit to a session is provided as a trigger for rebuild, save a ChangeLog as well.
+        if isinstance(Trigger, Session):
+            clog = ChangeLog(Trigger, rlog)
+            clog.save()
+
         log.debug("Done.")
         
         return BackupRating.html_diff()
+   
+    @classmethod
+    def estimate_rebuild_cost(cls, n=1):
+        '''
+        Uses the rebuild logs to estimate the cost of rebuilding.
+        
+        :param n: the number of sessions we'll rebuild ratings for.
+        '''
+        Cost = ExpressionWrapper(F('duration')/F('ratings'), output_field=models.DurationField())
+        Costs = RebuildLog.objects.all().annotate(cost=Cost).values_list('cost', flat=True)
+        
+        if Costs:
+            costs = [c.total_seconds() for c in Costs]
+            mean_cost = mean(costs)
+            nstdev_cost = stdev(costs)/mean_cost
+            
+            cost_estimate = timedelta(seconds=n*mean_cost) # The predicted cost of prebuilding n sessions
+            cost_variance = timedelta(seconds=nstdev_cost) # The coeeficient of variance (0 to 1)
+            
+            return cost_estimate, cost_variance
+        else:
+            return None
    
     def check_integrity(self, passthru=True):
         '''
@@ -658,7 +751,7 @@ class League(AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     @property_method
     def leaderboard(self, game=None):
@@ -749,7 +842,7 @@ class Team(AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     add_related = ["players"]
     def __unicode__(self):
@@ -972,7 +1065,7 @@ class Player(PrivacyMixIn, AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
     
     @property
     def link_external(self) -> str:
@@ -1077,27 +1170,49 @@ class Player(PrivacyMixIn, AdminModel):
 class PlayerAdmin(admin.ModelAdmin):
     formfield_overrides = { BitField: {'widget': BitFieldCheckboxSelectMultiple}, }
 
+DEFAULT_TOURNEY_MIN_PLAYS = 2
+DEFAULT_TOURNEY_WEIGHT = 1
+DEFAULT_TOURNEY_ALLOWED_IMBALANCE = 0.5
+
 class TourneyRules(AdminModel):
     '''
-    A custom Through table for Tourney-Games that specifies the rules that apply to a given game in a gioven torueny 
-    especially the a weight for each game for both TrueSkill mu and sigma and a minimim play count for each game.
+    A custom Through table for Tourney-Games that specifies the rules that apply to a given game in a given tourney 
+    especially the a weight for each game and a minimim play count for each game.
     
     The weight is used in building an aggregate rating by summing weighted mus, and summming weighted sigmas.
     
     Weights should be normalised in such an application.  
     '''
-    tourney = models.ForeignKey('Tourney', on_delete=models.CASCADE) # If the tourney is deleted delete this rule
+    tourney = models.ForeignKey('Tourney', related_name="rules", on_delete=models.CASCADE) # If the tourney is deleted delete this rule
     game = models.ForeignKey('Game', on_delete=models.CASCADE)       # If the game is deleted delete this rule
     
     # Require a minimum number of plays inhtis game to rank the tourney
-    min_plays = models.PositiveIntegerField('Minimum number of plays to rank in tourney')
+    min_plays = models.PositiveIntegerField('Minimum number of plays to rank in tourney', default=DEFAULT_TOURNEY_MIN_PLAYS)
     
-    # Skill weights for this game (shoudl be normalised across all games in thee tourney when used)
-    weight_mu    = models.FloatField()
-    weight_sigma = models.FloatField()
+    # Skill weight for this game (shoudl be normalised across all games in thee tourney when used)
+    weight = models.FloatField('The weighting of this games contribution to a Tourney rating', default=DEFAULT_TOURNEY_WEIGHT)
+
+    @property
+    def link_internal(self) -> str:
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    def __unicode__(self): 
+        return f'{self.tourney.name} - {self.game.name}'
+    def __str__(self): return self.__unicode__()
+    def __verbose_str__(self): 
+        return f'{self.tourney.name} - {self.game.name}: min_plays={self.min_plays}, weight={self.weight}'
+    
+    def __rich_str__(self, link=None): 
+        tourney_name = field_render(self.tourney.name, link_target_url(self.tourney, link))
+        game_name = field_render(self.game.name, link_target_url(self.game, link))
+        return f'{tourney_name} - {game_name}: min_plays={self.min_plays}, weight={self.weight}'
+
+    def __detail_str__(self,  link=None):
+        return self.__rich_str__(link)
 
 class Tourney(AdminModel):
     '''A Tourney is simply a group of games that can present a shared leaderboard according to specified weights.'''
+    name = models.CharField('Name of the Tourney', max_length=200)
     games = models.ManyToManyField('Game', verbose_name='Games', through=TourneyRules)
 
     # Require a certain play balance among the tourney games. 
@@ -1107,20 +1222,29 @@ class Tourney(AdminModel):
     #    for a two game tourney allows all play imblance
     #    for a many game tourney not quite guaranteed (outliers may be ecluded still)
     # See: https://en.wikipedia.org/wiki/Coefficient_of_variation
-    #
-    # TODO: A player should have a view that shows them what game(s) They need to play more to
-    #       qualify for ranking in a given tourney.    
-    allowed_imbalance = models.FloatField('Maximum play count imbalance to rank in tourney')
+    allowed_imbalance = models.FloatField('Maximum play count imbalance to rank in tourney', default=DEFAULT_TOURNEY_ALLOWED_IMBALANCE)
 
     @property
     def players(self) -> set:
         '''
-        Return a set of players who qualify for this tournament.
-          
-        #TODO: Implement. This is a set of players
+        Return a QuerySet of players who qualify for this tournament.
         '''
-        # Build a query that finds all players who played all three games at least n times
-        pass
+        # First collect the tourney rules
+        min_plays = {}
+        for r in self.rules.all():
+            min_plays[r.game] = r.min_plays
+
+        # Collect a list of player sets (one that meats each rule)
+        players = []
+        for g in self.games.all():
+            if g in min_plays:
+                players.append(set(Performance.objects.filter(session__game=g).order_by().values_list('player').annotate(playcount=Count('player')).filter(playcount__gte=min_plays[g]).values_list('player', flat=True)))
+
+        # Find the intersection
+        players = set.intersection(*players)
+
+        # Get the players
+        return Player.objects.filter(pk__in=players)
     
     def gameplays_needed(self, player) -> dict:
         '''
@@ -1131,10 +1255,44 @@ class Tourney(AdminModel):
         '''
         pass
 
+    @property
+    def link_internal(self) -> str:
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+
+    def __unicode__(self): 
+        return self.name
+    def __str__(self): return self.__unicode__()
+    def __verbose_str__(self):
+        games = ", ".join([g.name for g in self.games.all()])
+        return f'{self.name} - {games}'
+    
+    def __rich_str__(self, link=None): 
+        name = field_render(self.name, link_target_url(self, link))
+        games = ", ".join([field_render(g.name, link_target_url(g, link)) for g in self.games.all()])
+        return f'{name} - {games}'
+
+    def __detail_str__(self,  link=None):
+        rules = {}
+        for r in self.rules.all():
+            rules[r.game] = r
+        
+        game_detail = {}
+        for g in self.games.all():
+            if g in rules:
+                game_detail[g] = field_render(g.name, link_target_url(g, link)) + f": min_plays={rules[g].min_plays}, weight={rules[g].weight}"
+            else:
+                game_detail[g] = field_render(g.name, link_target_url(g, link)) + "Error: rules are missing!"
+                
+        name = field_render(self.name, link_target_url(self, link))
+        games = "</li><li>".join([game_detail[g] for g in self.games.all()])
+        games = f"<ul><li>{games}</li></ul"
+        return f'{name}:{games}'
+
+
 class Game(AdminModel):
     '''A game that Players can be Rated on and which has a Leaderboard (global and per League). Defines Game specific Trueskill settings.'''
-    name = models.CharField('Name of the Game', max_length=200)
     BGGid = models.PositiveIntegerField('BoardGameGeek ID')  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
+    name = models.CharField('Name of the Game', max_length=200)
 
     # Which play modes the game supports. This will decide the formats the session submission form supports
     individual_play = models.BooleanField('Supports individual play', default=True)
@@ -1267,7 +1425,7 @@ class Game(AdminModel):
    
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
     
     @property
     def link_external(self) -> list:
@@ -1686,7 +1844,7 @@ class Location(AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     selector_field = "name"
     @classmethod    
@@ -1733,7 +1891,7 @@ class Event(AdminModel):
     
     Timezones are ignored as they are inferred from the Location which has a timezone.  
     '''
-    location = ForeignKey(Location, verbose_name='Event location', null=True, blank=-True, on_delete=models.SET_NULL) # If the location is deleted keep the event. 
+    location = models.ForeignKey(Location, verbose_name='Event location', null=True, blank=-True, on_delete=models.SET_NULL) # If the location is deleted keep the event. 
     start = models.DateTimeField('Time', default=timezone.now)
     end = models.DateTimeField('Time', default=timezone.now)
     registrars = models.ManyToManyField('Player', verbose_name='Registrars', blank=True, related_name='registrar_at')
@@ -1921,21 +2079,21 @@ class Session(TimeZoneMixIn, AdminModel):
         return teams
 
     @property
-    def victors(self) -> list:
+    def victors(self) -> set:
         '''
-        Returns the victors, a list of players or teams. Plural because of possible draws.
+        Returns the victors, a set of players or teams. Plural because of possible draws.
         '''
-        victors = []
+        victors = set()
         ranks = Rank.objects.filter(session=self.id)
 
         for rank in ranks:
             # rank is the rank object, rank.rank is the integer rank (1, 2, 3).
             if self.team_play:
                 if rank.rank == 1:
-                    victors.append(rank.team)
+                    victors.add(rank.team)
             else:
                 if rank.rank == 1:
-                    victors.append(rank.player)
+                    victors.add(rank.player)
         return victors
     
     @property
@@ -2115,7 +2273,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     @property
     def actual_ranking(self) -> list:
@@ -2394,7 +2552,7 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         Prepares a leaderboard snapshot for passing to a view for rendering.
         
-        That is: the leaderbaord in this game as it stood just after 
+        That is: the leaderboard in this game as it stood just after 
         this session was played. 
         
         A snapshot is defined by a tuple with these entries in order:
@@ -2970,7 +3128,7 @@ class Session(TimeZoneMixIn, AdminModel):
         return self.trueskill_impacts 
 
     def __unicode__(self): 
-        return u'{} - {}'.format(time_str(self.date_time), self.game)
+        return f'{time_str(self.date_time)} - {self.game}'
     
     def __str__(self): return self.__unicode__()
     
@@ -3350,7 +3508,7 @@ class Rank(AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
 
     #@property_method
     def check_integrity(self, passthru=True):
@@ -3554,7 +3712,7 @@ class Performance(AdminModel):
 
     @property
     def link_internal(self) -> str:
-        return reverse_lazy('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
+        return reverse('view', kwargs={"model":self._meta.model.__name__,"pk": self.pk})
     
     def initialise(self, save=False):
         '''
@@ -3758,30 +3916,30 @@ class Performance(AdminModel):
 # Administrative models
 #===============================================================================
 
-class ChangeImpact(AdminModel):
+class ChangeLog(AdminModel):
     '''
-    When we make any changes to any recorded game Session that is NOT the latest game session for 
-    that game and all the players playing in that game session, then it has an impact on the 
+    When we make any changes to any recorded game Session that is NOT the latest game session (for 
+    that game and all the players playing in that game session) then it has an impact on the 
     leaderboards for that game that is distinct from it's own immediate impact. To clarify:
     
-    When any session is added it has an immediate impact which is how it alters the leaderboard 
+    When any session is changed it has an immediate impact which is how it alters the leaderboard 
     from the immediately prior played session of that game.
     
-    If there are future sessuion relative to the session just aded then it also has an impact on
+    If there are future sessuion relative to the session just changed then it also has an impact on
     the current leaderboard. The immediate impact above is not the current leaderboard (because
     other session of that game are in its future) and so the impact on the current leaderboard is
     also useful to see.
     
-    This is also true if you delet a session that has future sessions or if it is edited in any one
-    of many ratings impacting ways (players change, ranks change, game changes etc).
+    This is true whether a sesison is added, or altered (in any one of many ratings impacting 
+    ways: players change, ranks change, game changes etc)or deleted.
         
     We'd like to show these impacts for any edit before they are committed.
     
     The current leaderboard impacts are tricky as the current leaderboards could be changing 
-    while were reviewing our commit for example (other user submitting results). 
+    while we're reviewing our commit for example (other user submitting results). 
     
     So we store impacts in this model with a key so that they can be calculated, saved, and the 
-    key passed to a confirmation view where the change can be committed or rolled back.       
+    key passed to a confirmation view where the change can be committed or rolled back.
     '''
     # The game to which the impact applies
     game = models.ForeignKey('Game', verbose_name='Game', related_name='session_edit_impacts', on_delete=models.CASCADE) # If the game is deleted, delete this impact
@@ -3789,31 +3947,32 @@ class ChangeImpact(AdminModel):
     # The session that caused the impact (if it still exists) - if it was deleted it won't be around any more.
     session = models.ForeignKey(Session, verbose_name='Session', related_name='change_impacts', null=True, blank=True, on_delete=models.SET_NULL) # If the session is deleted we may NEED the impact of that!
 
-    # Space to store 4 JSON leaderboard snapshots
-    # These are single game snapshots and should fit in a TextField fine. 
-    # If the number of players on the lkeaderboard gorws garagantuan that may change.
-    # TODO: Evaluate the sizing of snapshots and these fields  
-    # Snapshots are stored as a Game.leaderboard in JSON format (i.e serialized to JSON)
-    leaderboard_immediately_before = models.TextField()
-    leaderboard_immediately_after  = models.TextField()
-
-    # If session had no future sessions when entered, deleted or edited, then these two 
-    # can be left blank as they are identical to the two above. They come into their own
-    # when the edit impacts an historic sessioin (one with future sessions), then these two
-    # are the before and after change snapshots of the leaderboard AFTER the last session! 
-    leaderboard_before = models.TextField(blank=True)
-    leaderboard_after = models.TextField(blank=True)
-
-def log_file_dir(instance, filename):
-    '''
-    See: https://docs.djangoproject.com/en/3.1/ref/models/fields/#django.db.models.FileField.upload_to
+    # Space to store 2 JSON leaderboard snapshots
+    leaderboard_immediately_before = models.TextField(verbose_name='Leaderboard before this session', null=True)
+    leaderboard_immediately_after  = models.TextField(verbose_name='Leaderboard after this session', null=True)
     
-    Job is simply to return an absolute file path to use to store the log of rating rebuild impacts.
+    # If this change triggered a rebuild a pointer to the log of that rebuild.
+    # A session change (create, update or delete) that does not trigger a rebuild
+    # does not need a ChangeLog entry, so every ChangeLog entry should have a rebuild_log
+    rebuild_log = models.ForeignKey('RebuildLog', null=True, on_delete=models.SET_NULL)
     
-    :param instance: an instance of model.FileField
-    :param filename: a filename
-    '''
-    return os.path.join(settings.BASE_DIR, f"logs/rating_rebuilds/{filename}")
+    def __init__(self, session, rebuild_log=None):
+        '''
+        :param session: A Session object, the change to which we are logging.
+        '''
+        super().__init__()
+        
+        self.game = session.game
+        self.session = session
+        
+        self.leaderboard_immediately_before = json.dumps(session.leaderboard_before, cls=DjangoJSONEncoder)
+        self.leaderboard_immediately_after = json.dumps(session.leaderboard_after, cls=DjangoJSONEncoder)
+        
+        if isinstance(rebuild_log, RebuildLog):
+            self.rebuild_log = rebuild_log
+
+def rating_rebuild_log_dir():
+    return os.path.join(settings.BASE_DIR, f"logs/rating_rebuilds")
 
 class RebuildLog(TimeZoneMixIn, AdminModel):
     '''
@@ -3827,9 +3986,9 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
     
     date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
     date_time_tz = TimeZoneField('Time of Ratings Rebuild, Timezone', default=settings.TIME_ZONE, editable=False)
-    ratings = models.PositiveIntegerField('Number of Ratings Built') # A Rating rebuild being on session's impact
+    ratings = models.PositiveIntegerField('Number of Ratings Built')
     
-    duration = models.DurationField('Duration of Rebuild')
+    duration = models.DurationField('Duration of Rebuild', null=True)
     rebuilt_by = models.ForeignKey(User, verbose_name='Rebuilt By', related_name='rating_rebuilds', editable=False, null=True, on_delete=models.SET_NULL) # If the user is deleted keep this log
     reason = models.TextField('Reason for Rebuild')
     
@@ -3842,9 +4001,26 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
 
     # We'd like to store JSON leaderboard impact of the rebuild. As the rebuild can cover the whole database this
     # can be large beyond simple database storage, and so we should use fileystem storage!
-    # See: https://docs.djangoproject.com/en/3.1/ref/models/fields/#django.db.models.fields.files.FieldFile.save
-    # Note: Filefield can be sued for uploading files, which is not the intent here, we want to write them
-    # when a RebuildLog instance is created. One before the rebuild, and the second after.  
-    leaderboard_before = models.FileField(upload_to=log_file_dir, null=True, blank=True)
-    leaderboard_after = models.FileField(upload_to=log_file_dir, null=True, blank=True)
+    leaderboard_before = models.FilePathField(path=rating_rebuild_log_dir, null=True, blank=True)
+    leaderboard_after  = models.FilePathField(path=rating_rebuild_log_dir, null=True, blank=True)
+        
+    def save_leaderboards(self, leaderboards, context):
+        '''
+        Saves leaderboards to a disk file and points the context appropriate FileField to it. 
+        
+        :param leaderboards:    The result of Rating.leaderboards(), a serializable representation of leaderboards for one or more games 
+        :param context:         "before" or "after"
+        '''
+        if not context in ["before", "after"]: 
+            raise ValueError(f"RebuildLog.save_leaderboards() context must be 'before' or 'after' but '{context}' was prvided.")
 
+        content = json.dumps(leaderboards, indent='\t', cls=DjangoJSONEncoder)
+        filename = os.path.join(rating_rebuild_log_dir(), f"{self.rebuilt_by.username}-{localtime():%Y-%m-%d-%H-%M-%S}-{context}.json")
+        
+        with open(filename, 'w') as f:
+            f.write(content)
+            
+        if context == "before":
+            self.leaderboard_before = filename
+        elif context == "after":
+            self.leaderboard_after = filename

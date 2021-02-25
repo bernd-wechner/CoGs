@@ -1210,15 +1210,46 @@ function updateManagementForms(div) {
     	// be the number of teams that have IDs.
     	tinit.value = T;
     }
+
+	updateTabIndex(div);
 }
 
 function updateTabIndex(div) {
-// Given a div will find all the Player widgeths and give them a tabl index so that 
-// the most common data entry mode can just tab down the list of players.
-// TODO: Implement this.
-// Find the player widget naming convention
-// Loop through players attach a tabindex attribute to widget.
-// Consider then doing same to ranks then finally to partial play weights.
+    const ptotal = findChildByName(div, name_ptotal);
+    const rtotal = findChildByName(div, name_rtotal);
+
+	const np = Number(ptotal.value);
+	const nr = Number(rtotal.value);
+
+	// Not all the divs this is calle don have all the widgest we're looking for
+	// So this is robust against widgets not being found.
+	for (let i = 0; i<np; i++) {
+		let player = getWidget(div, name_player, i);
+
+		if (player) {
+			// Select 2 widgets are odd in that they remove they select widget from the tab order
+			// i.e. set tabIndex to -1, and then add a span follwoing the select which has a span 
+			// in it which has a span in it which has tabIndex set to (i.e is in the natural tab 
+			// order). It is that one we want to set a tabIndex on. This is empirically determined
+			// as none of these spans have ids or names and so can't be found by id or name and have
+			// to be found by their spatial relationship to the select widget they modify.
+			if (Number(player.tabIndex) == -1 && Number(player.nextSibling.firstChild.firstChild.tabIndex) == 0)
+				player = player.nextSibling.firstChild.firstChild;
+			
+			player.tabIndex = 1+i;
+		}
+	}
+
+	for (let i = 0; i<nr; i++) {
+		const rank = getWidget(div, name_rank, i);
+		if (rank) rank.tabIndex = np+1+i;
+	}
+
+
+	for (let i = 0; i<nr; i++) {
+		const weight = getWidget(div, name_weight, i);
+		if (weight) weight.tabIndex = np+nr+1+i;
+	}
 }
 
 function insertErrors() {
@@ -1351,7 +1382,6 @@ function applySessionToRow(session, row, table_type) {
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
             
-			// TODO: This is where we migth add tabindex!
 //            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
 //            $("#"+player.id, row).append(newOption)
 //            $("#"+player.id, row).trigger('change');
@@ -1394,10 +1424,16 @@ function applySessionToRow(session, row, table_type) {
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
 
+			//This is what we do for a standard select widget (vs. select2)
             //player.value = tID in teamplayers 		? teamplayers[tID][rownum_TeamPlayer] : "";
             
-            weight.value = player_id in weights ? weights[player_id] : 1;	                               
-            pid.value 	 = player_id in pids 	? pids[player_id] 	: "";
+            weight.value = player_id in weights ? weights[player_id] : 1;	    
+
+			// Performance id's a a tad harder here:
+			const perf_id = Object.keys(pplayers).find(key => pplayers[key] == player_id);
+			
+			// Assign the performance id to the pid form element.
+            pid.value 	 = perf_id != undefined ? perf_id : "";
     	}
         break;
     };
@@ -1616,10 +1652,9 @@ function RenderTable(template, entries, placein, entry_number, session) {
         }
     }
 
-    // Update the Django Management forms
+    // Update the Django Management forms (and tabindices)
     updateManagementForms(getParent(table, 'DIV'));
     
-    updateTabIndex(getParent(table, 'DIV'));
     insertErrors();
 
     // Return the table that was drawn
@@ -1669,28 +1704,13 @@ function adjustTable(element, session) {
     // Fetch the the template
     const template = $$(idTemplate);
 
-    // The Number of players in a team is a special case quite distinct
-    // from the number of teams or number of players in a game. Primarily
-    // because it lives in particular row of the parent table there being
-    // a number of players for each team. We'll make a number of decisions 
-    // on this basis down the track. 
-    const is_players 		= (template.id === "templatePlayersTable");      
+    // const is_players 		= (template.id === "templatePlayersTable");      
     const is_teams 			= (template.id === "templateTeamsTable");      
     const is_teamplayers 	= (template.id === "templateTeamPlayersTable");      
-    
-    // The Number of players in a team is a special case quite distinct
-    // from the number of teams or number of players in a game. 
-    let idTable, FormNumber, placein;
-    if (is_teamplayers) {
-        placein = $$(tr.id.replace("Body","DetailCell"));
-        idTable = idTemplate.replace("template","tbl") + getFormNumber(element.name);
-    } else {
-        placein = template.parentNode;
-        idTable = idTemplate.replace("template","tbl");
-    }
 
-    // Fetch the the table
-    const table = $$(idTable);
+	// team_players are special in that they don't become siblings of the tmeplte
+	// they have to go in cell of the Teams table that did. 
+    const placein = is_teamplayers ? $$(tr.id.replace("Body","DetailCell")): template.parentNode;
 
     // If the value is an integer (string of digits) then process it
     if (element.value.match(/^\d+$/)) {   	

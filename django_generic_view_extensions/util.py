@@ -16,6 +16,7 @@ from django.db.models.query import QuerySet
 
 # Package imports
 from .options import odm
+from celery.worker import strategy
 
 class AssertLog:
     ''' A tiny helper to switch between Exception raising asserts and logged assertion failures '''
@@ -73,6 +74,28 @@ def getApproximateArialStringWidth(st):
         elif s in 'QGOMm%W@': size += 135
         else: size += 50
     return size * 6 / 1000.0 # Convert to picas
+
+def isInt(s):
+    try:
+        int(s)
+        return True
+    except:
+        return False
+ 
+def isFloat(s):
+    try:
+        float(s)
+        return True
+    except:
+        return False
+
+def numeric_if_possible(s):
+    if isInt(s):
+        return int(s)
+    elif isFloat(s):
+        return float(s)
+    else:
+        return s
 
 def isListValue(obj):
     '''Given an object returns True if it is a known list type, False if not.'''
