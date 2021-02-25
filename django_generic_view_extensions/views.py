@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.  
 '''
 # Python imports
-import datetime #, sys, traceback
+import os, datetime #, sys, traceback
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -144,13 +144,11 @@ def get_filterset(self):
     else:
         return None
 
-
 def get_ordering(self):
     if (self.format.ordering):
         return self.format.ordering.split(',')              
     else:
         return getattr(self.model._meta, 'ordering', None)
-
 
 class LoginViewExtended(LoginView):
 
@@ -165,7 +163,6 @@ class LoginViewExtended(LoginView):
         form.request.session['timezone'] = form.request.POST['timezone']        
         return response         
 
-
 class TemplateViewExtended(TemplateView):
     '''
     An extension of the basic TemplateView for a home page on the site say (not related to any model)
@@ -178,8 +175,6 @@ class TemplateViewExtended(TemplateView):
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
 
-
-import os;
 class ListViewExtended(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
     # Allowing us to present lists basically with the same flexibility as pre-formattted
@@ -317,52 +312,6 @@ class DetailViewExtended(DetailView):
         add_debug_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context  
-
-class DeleteViewExtended(DeleteView):
-    '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
-    # HTML formatters stolen straight form the Django ModelForm class
-    _html_output = object_html_output
-    as_table = object_as_table
-    as_ul = object_as_ul
-    as_p = object_as_p
-    as_br = object_as_br
-    as_html = object_as_html  # Chooses one of the first three based on request parameters
-
-    # Override properties with values passed as arguments from as_view()
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if ('operation' in kwargs):
-            self.opertion = kwargs['operation']
-
-    # Get the actual object to update
-    def get_object(self, *args, **kwargs):
-        self.app = app_from_object(self)
-        self.model = class_from_string(self, self.kwargs['model'])
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-        
-        self.pk = self.kwargs['pk']
-        self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
-        self.format = get_object_display_format(self.request.GET)
-
-        # By default jump to a list of objects (fomr which htis one was deleted)        
-        if not self.success_url:
-            self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
-        
-        collect_rich_object_fields(self)
-
-        return self.obj
-
-    # Add some model identifiers to the context (if 'model' is passed in via the URL)
-    def get_context_data(self, *args, **kwargs):
-        context = super().get_context_data(*args, **kwargs)
-        add_model_context(self, context, plural=False, title='Delete')
-        add_timezone_context(self, context)
-        add_format_context(self, context)
-        add_debug_context(self, context)
-        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
-        return context
 
 # TODO: Ranks, Performances  etc. Fix edit forms
 # 1. No Creating allowed, only created when a Session is created. Need a way in model to say "no creation"
@@ -506,120 +455,153 @@ def post_generic(self, request, *args, **kwargs):
     if isinstance(self, CreateView):
         # The self.object atttribute MUST exist and be None in a CreateView. 
         self.object = None
-    elif isinstance(self, UpdateView):
+    elif isinstance(self, UpdateView) or isinstance(self, DeleteView):
         self.object = self.get_object()
     else:
         raise NotImplementedError("Generic post only for use by CreateView or UpdateView derivatives.")
 
-    # Get the form
-    self.form = self.get_form()
-
-    # Just reflect the form data back to client for debugging if requested
-    if self.request.POST.get("debug_form_data", "off") == "on":
-        html = "<h1>self.form.data:</h1>"   
-        html += "<table>"   
-        for key in sorted(self.form.data):
-            html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.form.data[key])
-        html += "</table>"         
-        return HttpResponse(html)        
-
-    # Hook for pre-processing the form (before the data is saved)
-    if callable(getattr(self, 'pre_save', None)): 
-        next_kwargs = self.pre_save()
-        if not next_kwargs : next_kwargs  = {}
-        if "debug_only" in next_kwargs: 
-            return HttpResponse(next_kwargs["debug_only"])
-   
-    log.debug(f"Connection vendor: {connection.vendor}")
-    if connection.vendor == 'postgresql':
-        log.debug(f"Is_valid? {self.form.data}")
-        if self.form.is_valid():
-            try:
-                log.debug(f"Open a transaction")
-                with transaction.atomic():
-                    log.debug("Saving form from POST request containing:")
-                    for (key, val) in sorted(self.request.POST.items()):
-                        log.debug(f"\t{key}: {val}")
-                    
-                    self.object = self.form.save()
-                    log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
-                    
-                    kwargs = self.kwargs
-                    kwargs['pk'] = self.object.pk
-                    
-                    # By default, on success jump to a view of the obbject just submitted.
-                    if not self.success_url:
-                        self.success_url = reverse_lazy('view', kwargs=kwargs)
-                    
-                    if isinstance(self, CreateView):
-                        # Having saved the root object we reinitialise related forms
-                        # with that object attached. Failure to this results in the 
-                        # form_clean failing as the formsets don't have populated 
-                        # back references (as we had not object) and it fails with 
-                        # 'This field is required.' erros on the primary keys
-                        self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
-
-                    if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
-                        log.debug(f"Saving the related forms.")
-                        if self.form.related_forms.are_valid():
-                            self.form.related_forms.save()
-                            log.debug(f"Saved the related forms.")
-                        else:
-                            log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
-                            # Attach the newly annotated (with errros) related forms to the 
-                            # form so that theyt reach the response template.
-                            #self.form.related_forms = related_forms
-                            # We raise an exception to break out of the 
-                            # atomic transaction triggering a rollback.
-                            raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
-
-                    # Give the object a chance to cleanup relations before we commit.
-                    # Really a chance for the model to set some standards on relations
-                    # They are all saved in the transaction now and the object can see 
-                    # them all in the ORM (the related objects that is)
-                    if callable(getattr(self.object, 'clean_relations', None)): 
-                        self.object.clean_relations()
-
-                    # Finally before committing give the view defintion a chance to so something
-                    # prior to committing the update. 
-                    if callable(getattr(self, 'pre_commit', None)): 
-                        next_kwargs = self.pre_commit(**next_kwargs)
-     
-                    log.debug(f"Cleaned the relations.")
-            except (IntegrityError, ValidationError) as e:
-                # TODO: Work out how to get here with an IntegrityError: what can trigger this
-                # TODO: Report IntegrityErrors too
-#                 exc_type, exc_obj, exc_tb = sys.exc_info()
-#                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-#                 print(exc_type, fname, exc_tb.tb_lineno)                
-#                 print(traceback.format_exc())
-                
-                return self.form_invalid(self.form)
-
-            # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_save', None)):
-                self.post_save(**next_kwargs)
-                                      
-            return self.form_valid(self.form)
-        else:
-            return self.form_invalid(self.form)
-       
-    else:
-        if self.form.is_valid():
-            self.object = self.form.save()
-            related_forms = RelatedForms(self.model, self.form.data, self.object)
-            related_forms.save()
+    # Delete is handled specially (it's much simpler that Create and Update Views) 
+    if isinstance(self, DeleteView):
+        # Hook for pre-processing steps (before the object is actually deleted)
+        # The handler can return a kwargs dict to pass to the post delete handler.
+        if callable(getattr(self, 'pre_delete', None)):
+            next_kwargs = self.pre_delete()
+            if not next_kwargs : next_kwargs  = {}
+            if "debug_only" in next_kwargs: 
+                return HttpResponse(next_kwargs["debug_only"])
             
-            # Hook for post-processing data (after it's all saved) 
-            if callable(getattr(self, 'post_save', None)): 
-                self.post_save(**next_kwargs)
+        with transaction.atomic():
+            log.debug(f"Deleting: {self.object._meta.object_name} {self.object.pk}.")
+            
+            # For deletes we won't concern ourselves with related forms.
+            # Generally the on_delete property of ForeignKey relations will hanld cascading 
+            # deletes if properly configured in the models, and if any special follow-on 
+            # deletes or other actions are needed the pre_delete and post_delete hooks are 
+            # available for a derived class lient to manage that in code explicitly.
+            response = self.delete(request, *args, **kwargs)
+    
+            # Hook for post-processing steps (after the object is actually deleted)
+            # Accept arguments from the pre_handler
+            if callable(getattr(self, 'post_delete', None)):
+                self.post_delete(**next_kwargs)
+        
+        return response
 
-            if not self.success_url:
-                self.success_url = reverse_lazy('view', kwargs=kwargs)
-
-            return self.form_valid(self.form)
+    # Create and Update are comparatively similar
+    # There's a form that contains the submission and we want to 
+    # validate it before we commit any changes to the database.
+    else:
+        # Get the form
+        self.form = self.get_form()
+    
+        # Just reflect the form data back to client for debugging if requested
+        if self.request.POST.get("debug_form_data", "off") == "on":
+            html = "<h1>self.form.data:</h1>"   
+            html += "<table>"   
+            for key in sorted(self.form.data):
+                html += "<tr><td>{}:</td><td>{}</td></tr>".format(key, self.form.data[key])
+            html += "</table>"         
+            return HttpResponse(html)        
+    
+        # Hook for pre-processing the form (before the data is saved)
+        if callable(getattr(self, 'pre_save', None)): 
+            next_kwargs = self.pre_save()
+            if not next_kwargs : next_kwargs  = {}
+            if "debug_only" in next_kwargs: 
+                return HttpResponse(next_kwargs["debug_only"])
+       
+        log.debug(f"Connection vendor: {connection.vendor}")
+        if connection.vendor == 'postgresql':
+            log.debug(f"Is_valid? {self.form.data}")
+            if self.form.is_valid():
+                try:
+                    log.debug(f"Open a transaction")
+                    with transaction.atomic():
+                        log.debug("Saving form from POST request containing:")
+                        for (key, val) in sorted(self.request.POST.items()):
+                            # See: https://code.djangoproject.com/ticket/1130
+                            # list items are hard to identify it seems in a generic manner
+                            log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
+                        
+                        self.object = self.form.save()
+                        log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")                        
+                        
+                        kwargs = self.kwargs
+                        kwargs['pk'] = self.object.pk
+                        
+                        # By default, on success jump to a view of the obbject just submitted.
+                        if not self.success_url:
+                            self.success_url = reverse_lazy('view', kwargs=kwargs)
+                        
+                        if isinstance(self, CreateView):
+                            # Having saved the root object we reinitialise related forms
+                            # with that object attached. Failure to this results in the 
+                            # form_clean failing as the formsets don't have populated 
+                            # back references (as we had not object) and it fails with 
+                            # 'This field is required.' erros on the primary keys
+                            self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
+    
+                        if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
+                            log.debug(f"Saving the related forms.")
+                            if self.form.related_forms.are_valid():
+                                self.form.related_forms.save()
+                                log.debug(f"Saved the related forms.")
+                            else:
+                                log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
+                                # Attach the newly annotated (with errros) related forms to the 
+                                # form so that theyt reach the response template.
+                                #self.form.related_forms = related_forms
+                                # We raise an exception to break out of the 
+                                # atomic transaction triggering a rollback.
+                                raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
+    
+                        # Give the object a chance to cleanup relations before we commit.
+                        # Really a chance for the model to set some standards on relations
+                        # They are all saved in the transaction now and the object can see 
+                        # them all in the ORM (the related objects that is)
+                        if callable(getattr(self.object, 'clean_relations', None)): 
+                            self.object.clean_relations()
+    
+                        # Finally before committing give the view defintion a chance to so something
+                        # prior to committing the update. 
+                        if callable(getattr(self, 'pre_commit', None)): 
+                            next_kwargs = self.pre_commit(**next_kwargs)
+         
+                        log.debug(f"Cleaned the relations.")
+                except (IntegrityError, ValidationError) as e:
+                    # TODO: Work out how to get here with an IntegrityError: what can trigger this
+                    # TODO: Report IntegrityErrors too
+    #                 exc_type, exc_obj, exc_tb = sys.exc_info()
+    #                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    #                 print(exc_type, fname, exc_tb.tb_lineno)                
+    #                 print(traceback.format_exc())
+                    self.form.add_error(None, e.message)
+                    return self.form_invalid(self.form)
+    
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_save', None)):
+                    self.post_save(**next_kwargs)
+                                          
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
+           
         else:
-            return self.form_invalid(self.form)
+            if self.form.is_valid():
+                self.object = self.form.save()
+                related_forms = RelatedForms(self.model, self.form.data, self.object)
+                related_forms.save()
+                
+                # Hook for post-processing data (after it's all saved) 
+                if callable(getattr(self, 'post_save', None)): 
+                    self.post_save(**next_kwargs)
+    
+                if not self.success_url:
+                    self.success_url = reverse_lazy('view', kwargs=kwargs)
+    
+                return self.form_valid(self.form)
+            else:
+                return self.form_invalid(self.form)
 
 def form_valid_generic(self, form):
     '''
@@ -634,7 +616,6 @@ def form_valid_generic(self, form):
     perform the save in the post not the form_valid method. 
     '''
     return HttpResponseRedirect(self.get_success_url())
-
 
 class CreateViewExtended(CreateView):
     '''
@@ -702,7 +683,6 @@ class CreateViewExtended(CreateView):
 #         response = self.render_to_response(context)
 #         return response
 
-
 class UpdateViewExtended(UpdateView):
     '''
     An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.
@@ -741,6 +721,56 @@ class UpdateViewExtended(UpdateView):
          
         return self.obj    
 
+class DeleteViewExtended(DeleteView):
+    '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
+    # HTML formatters stolen straight form the Django ModelForm class
+    _html_output = object_html_output
+    as_table = object_as_table
+    as_ul = object_as_ul
+    as_p = object_as_p
+    as_br = object_as_br
+    as_html = object_as_html  # Chooses one of the first three based on request parameters
+    post = post_generic
+
+    # Override properties with values passed as arguments from as_view()
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if ('operation' in kwargs):
+            self.opertion = kwargs['operation']
+
+    # Get the actual object to update
+    def get_object(self, *args, **kwargs):
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
+
+        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
+        CuserMiddleware.set_user(self.request.user)
+        
+        self.pk = self.kwargs['pk']
+        self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
+        self.format = get_object_display_format(self.request.GET)
+
+        # By default jump to a list of objects (fomr which htis one was deleted)        
+        if not self.success_url:
+            self.success_url = reverse_lazy('list', kwargs={'model': self.kwargs['model']})
+        
+        collect_rich_object_fields(self)
+
+        return self.obj
+
+    # Add some model identifiers to the context (if 'model' is passed in via the URL)
+    def get_context_data(self, *args, **kwargs):
+        context = super().get_context_data(*args, **kwargs)
+        add_model_context(self, context, plural=False, title='Delete')
+        add_timezone_context(self, context)
+        add_format_context(self, context)
+        add_debug_context(self, context)
+        if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
+        return context
+
+
+
+
 #===============================================================================
 # An Autocomplete view
 #
@@ -748,7 +778,6 @@ class UpdateViewExtended(UpdateView):
 #
 # https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
 #===============================================================================
-
 
 class ajax_Autocomplete(autocomplete.Select2QuerySetView):
     '''
@@ -794,7 +823,6 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
 
         return qs
 
-    
 def ajax_Selector(request, app, model, pk):
     '''
     Support AJAX fetching of a select box text for a given pk.

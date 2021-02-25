@@ -224,17 +224,17 @@
 	    <!-- END Content -->
 	
 	    {% block footer %}
-
-	    <!-- DEBUG: debug is the settings.DEBUG flag and session["debug_mode"] flag -->
-	    {% if debug or debug_mode %}
-			{% include "CoGs/include/timezone_diag.html" %}
-			{% include "CoGs/include/session_spy.html" %}
-		    {% if filters %}
-				{% include "CoGs/include/filter_spy.html" %}
+		    <!-- DEBUG: debug is the settings.DEBUG flag and session["debug_mode"] flag -->
+		    {% if debug or debug_mode %}
+				{% include "CoGs/include/timezone_diag.html" %}
+				{% include "CoGs/include/session_spy.html" %}
+			    {% if filters %}
+					{% include "CoGs/include/filter_spy.html" %}
+		        {% endif %}
 	        {% endif %}
-        {% endif %}
-        
-	    <div id="footer">{{footer}}</div>{% endblock %}
+	        
+		    <div id="footer">{{footer}}</div>
+	    {% endblock %}
 	</div>
 	<!-- END Container -->
 </body>
