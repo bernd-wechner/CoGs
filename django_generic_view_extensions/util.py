@@ -16,7 +16,6 @@ from django.db.models.query import QuerySet
 
 # Package imports
 from .options import odm
-from celery.worker import strategy
 
 class AssertLog:
     ''' A tiny helper to switch between Exception raising asserts and logged assertion failures '''

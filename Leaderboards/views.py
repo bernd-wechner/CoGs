@@ -160,7 +160,7 @@ def pre_save_handler(self):
         # The time of the session cannot be in the future of course.
         if new_time > localtime():
             # TODO: there's a bug here in the return. It returns players and ranks onto the error form badly.
-            # As in the disappear from the returned form. 
+            # As in the disappear from the returned form.
             # Methinks we want to translate form fields back into Session context as part of bailing
             self.form.add_error("date_time", f"Please choose a time in the past.")
             return None
@@ -184,7 +184,7 @@ def pre_save_handler(self):
                 return None
             
             
-            # If we have a player dup0licated bail now (form.is_valid will 
+            # If we have a player dup0licated bail now (form.is_valid will
             # fail after we've added this error)
             if int_player in seen_players:
                 # TODO: there's a bug here in the return. It returns players and ranks onto the eroro form badly.

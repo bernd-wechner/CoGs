@@ -1,7 +1,6 @@
-import re, json
+import json
 from django import template
 from django.template.loader_tags import do_include
-from django.utils.safestring import mark_safe
 from django_generic_view_extensions.model import object_in_list_format
 
 from django_generic_view_extensions.util import numeric_if_possible
@@ -23,7 +22,7 @@ def get_list(form_data, model, attribute):
     Given a form.data dictionary whichcontains formset data extract and return a list of the
     values of the attributes in the named model from the forms in that formset. This is used
     when a form with related_forms fails validation and bounces back, we need to pump the formset
-    data back into the form, and if the formsets are constructed in Javascript they may like 
+    data back into the form, and if the formsets are constructed in Javascript they may like
     lists of values such as produced here.
     
     :param form_data:

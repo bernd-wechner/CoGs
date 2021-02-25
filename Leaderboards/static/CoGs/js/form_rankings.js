@@ -1233,7 +1233,7 @@ function updateTabIndex(div) {
 			// order). It is that one we want to set a tabIndex on. This is empirically determined
 			// as none of these spans have ids or names and so can't be found by id or name and have
 			// to be found by their spatial relationship to the select widget they modify.
-			if (Number(player.tabIndex) == -1 && Number(player.nextSibling.firstChild.firstChild.tabIndex) == 0)
+			if (Number(player.tabIndex) === -1 && Number(player.nextSibling.firstChild.firstChild.tabIndex) === 0)
 				player = player.nextSibling.firstChild.firstChild;
 			
 			player.tabIndex = 1+i;
