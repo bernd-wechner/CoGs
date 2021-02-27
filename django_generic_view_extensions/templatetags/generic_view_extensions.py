@@ -7,22 +7,22 @@ register = template.Library()
 
 class IncludeVariant(template.Node):
     '''
-    A Template Node that tries to include a template file named as a variant 
+    A Template Node that tries to include a template file named as a variant
     of the file it's included in. That is if it's in a template named:
-    
+
         form_data.html
-    
+
     as:
-    
+
         {% include_variant context_var %}
-    
+
     it will try and include:
-    
+
         form_data_context_var.html
     
     where context_var is a context variable.
     
-    For help on custom template tags: 
+    For help on custom template tags:
     https://docs.djangoproject.com/en/3.1/howto/custom-template-tags/#writing-the-compilation-function
     '''
     def __init__(self, parser, token):

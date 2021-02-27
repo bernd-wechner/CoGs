@@ -1,4 +1,4 @@
-import json, os
+import json
 
 from django import template
 #from django.template.loader_tags import do_include
