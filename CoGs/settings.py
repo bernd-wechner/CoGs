@@ -112,6 +112,7 @@ INSTALLED_APPS = (
     'django.contrib.flatpages',
     'django_extensions',
     'reset_migrations',
+    'django_generic_view_extensions',
     'Leaderboards'
 )
 
