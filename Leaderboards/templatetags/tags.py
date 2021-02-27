@@ -1,7 +1,6 @@
 import json, os
 
 from django import template
-from django.template.base import Token
 from django.template.loader_tags import do_include
 
 from django_generic_view_extensions.model import object_in_list_format

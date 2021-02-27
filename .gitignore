@@ -125,3 +125,9 @@ Debugging/
 CoGs\.odb
 
 Leah-COGZ inspection\.ods
+
+logs/rating_rebuilds/
+
+Leaderboards/migrations/
+
+.externalToolBuilders/
