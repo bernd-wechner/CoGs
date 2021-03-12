@@ -89,7 +89,7 @@ function get_and_report_metrics(LB) {
 		// deduct 1 for the baseline board we always request
 		// we request it simply so we can render Rank deltas 
 		// in ALL our boards (otherwise not possible for the 
-		// last one snapshot in one games evolution or at all 
+		// last one snapshot in a game's evolution or at all 
 		// if no evolution options are on.
 		const delivered = LB[g][3].length;
 		const snapshots = delivered - (use_baseline && delivered > 1 ? 1 : 0); 

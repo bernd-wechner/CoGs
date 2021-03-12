@@ -29,16 +29,20 @@ could improve below, and improve it!
 
 ##How to build the CoGs site
 
-1. Install needed dependencies:
+1. Install needed dependencies (in a venv where needed):
 
     ```
-    sudo apt install postgresql pgadmin3
-    sudo apt install python3 python3-pip
     sudo apt install git
-    sudo -H pip3 install wheel trueskill scipy json-datetime tzlocal psycopg2 pyyaml django django-extensions django-timezone-field django-debug-toolbar django-url-filter django-bitfield django-autocomplete-light django-cuser titlecase python-dateutil django-reset-migrations xmltodict django-mapbox-location-field
-    sudo -H pip3 install Django==2.1.1 
+    sudo apt install postgresql pgadmin3
+    sudo apt install python3 python3-pip python3-venv
+    mkdir ~/.virtualenvs
+    python3 -m venv ~/.virtualenvs/CoGs
+    source ~/.virtualenvs/CoGs/bin/activate
+    pip install --upgrade pip
+    pip install wheel
+    pip install -r requirements.txt
     ```
-		
+
 2. Install Eclipse and Pydev
 
    Recommend avoiding the ubuntu package and just going straight to 
