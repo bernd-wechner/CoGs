@@ -15,9 +15,10 @@
 {#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
 {#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
 {#  DAL should not reload either of these two libraries if we have loaded them already!#}
+{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
 	{% if dal_media %}
 		<!-- START DAL media -->
 		{{ dal_media }}
@@ -33,7 +34,7 @@
 {#	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >#}
 	
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
-
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js"></script> 	{# Useful functions #}
 	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css"/ >
 	

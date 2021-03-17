@@ -1313,24 +1313,26 @@ function add_player(select2, player_id) {
 	// trivial, and taken from here: 
 	// 		https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
 	
-    const url = player_selector_url.replace(/\d+$/, player_id)
-    
-    $.ajax({
-        type: 'GET',
-        url: url
-    }).then(function (data) {
-        // create the option and append to Select2
-        var option = new Option(data, player_id, true, true);
-        select2.append(option).trigger('change');
-
-        // manually trigger the `select2:select` event
-        select2.trigger({
-            type: 'select2:select',
-            params: {
-                data: data
-            }
-        });
-    });
+	if (Number(player_id)) {
+	    const url = player_selector_url.replace(/\d+$/, player_id)
+	    
+	    $.ajax({
+	        type: 'GET',
+	        url: url
+	    }).then(function (data) {
+	        // create the option and append to Select2
+	        var option = new Option(data, player_id, true, true);
+	        select2.append(option).trigger('change');
+	
+	        // manually trigger the `select2:select` event
+	        select2.trigger({
+	            type: 'select2:select',
+	            params: {
+	                data: data
+	            }
+	        });
+	    });
+	}
 }
 
 // Given a session object and a table row of specified type will force the widgets in that

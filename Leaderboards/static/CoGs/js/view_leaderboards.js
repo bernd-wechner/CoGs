@@ -11,7 +11,7 @@
 //    can safely ignore cols, and use a table as wide as maxshots.   
 
 
-// Configuranly, shoudla gree with what the view is configured to deliver.
+// Configurable, should agree with what the view is configured to deliver.
 // if the view is delivering baseline boards this should be true and we will
 // not render them and use them only for calculating rank deltas. If it is false
 // the view should idelaly not deliver baslines (or they'll render and not honor
@@ -92,7 +92,9 @@ function get_and_report_metrics(LB) {
 		// last one snapshot in a game's evolution or at all 
 		// if no evolution options are on.
 		const delivered = LB[g][3].length;
-		const snapshots = delivered - (use_baseline && delivered > 1 ? 1 : 0); 
+		const show_baseline = $('#chk_show_baseline').is(":checked");
+		const hide = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
+		const snapshots = delivered - hide; 
 		totalshots += snapshots;
 		if (snapshots > maxshots) maxshots = snapshots;
 	}	 
@@ -162,9 +164,10 @@ function InitControls(options) {
 	// be. If roundtripping from this form they will be, but a URL GET request
 	// can
 	// specify separate lists. We'll priritise game_leagues here.
-	Select2Init($('#games'), options.games)
-	Select2Init($('#leagues'), options.game_leagues)
-	Select2Init($('#players'), options.game_players)
+	const players = _.union(options.game_players, options.players);
+	Select2Init($('#games'), options.games);
+	Select2Init($('#leagues'), options.game_leagues);
+	Select2Init($('#players'), players);
 
 	// ===================================================================================
 	// Initialise the content options
@@ -186,8 +189,35 @@ function InitControls(options) {
 				    : "#chk_" + opt;
 
 		$(chk).prop('checked', enabled.includes(opt)).trigger('input');
-	} 	
-		
+	}
+
+/*	// Disable any checkboxes that don't have supporting data
+	const selected_games = $('#games').val();
+	const selected_leagues = $('#leagues').val();
+	const selected_players = $('#players').val();
+	
+	if (selected_games.length === 0)
+	{
+		$('#chk_games_ex').attr('disabled', true);
+		$('#chk_games_in').attr('disabled', true);
+	}
+
+	if (selected_leagues.length === 0)
+	{
+		$('#chk_game_leagues_any').attr('disabled', true);
+		$('#chk_game_leagues_all').attr('disabled', true);
+		$('#chk_player_leagues_any').attr('disabled', true);
+		$('#chk_player_leagues_all').attr('disabled', true);
+	}
+
+	if (selected_players.length === 0)
+	{
+		$('#chk_game_players_any').attr('disabled', true);
+		$('#chk_game_players_all').attr('disabled', true);
+		$('#chk_players_ex').attr('disabled', true);
+		$('#chk_players_in').attr('disabled', true);
+	}
+*/	
 	// Then the rest of the game selectors
 	$('#num_games').val(options.num_games);         // Mirror of
 													// #num_games_latest
@@ -272,13 +302,16 @@ function InitControls(options) {
 
 	// Then the leaderboard screen layout options
 	$('#cols').val(dval(options.cols, 1));
+	
+	// And the admin options
+	$('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
 
 	// Add the shortcut buttons
 	AddShortcutButtons()	
 	
 	// If we made the options static we want to copy them to address bare and
 	// copy.paste buffer
-	if (options.made_static) { show_url();}		
+	if (options.made_static) { show_url();}
 }
 
 function is_enabled(checkbox_id) {
@@ -863,7 +896,7 @@ function DrawTables(target, links) {
 	const name_format  = $("#names").val();
 
 	// maxshots is the maximum number of snapshots of any games's boards in the
-	// datase we're about to render. If it's 1 that implies no evolution is being 
+	// database we're about to render. If it's 1 that implies no evolution is being 
 	// displayed just a single snapshot per game.
 	if (maxshots == 1) {
 		var totalboards = leaderboards.length;		
@@ -905,8 +938,10 @@ function DrawTables(target, links) {
 			// We deduct 1 from the snapshot count which is the baseline board we always request
 			// So that we can display rank deltas for ALL boards not just those with an earlier 
 			// one. Always a minimum of 1 snap for a game though is displayed.
-			const delivered = leaderboards[lb][3].length;
-			const snaps     = delivered - (use_baseline && delivered > 1 ? 1 : 0); 
+			const delivered     = leaderboards[lb][3].length;
+			const show_baseline = $('#chk_show_baseline').is(":checked");
+			const hide 	        = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
+			const snaps         = delivered - hide; 
 			for (var j = 0; j < snaps; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
@@ -917,5 +952,60 @@ function DrawTables(target, links) {
 	}			 
 }
 
+// ===================================================================================
+// Attach event handlers to the Select2 widgets  
+// (enabling and disabling dependent controls - checkboxes)
+// ===================================================================================
+
+$('#games').on("change", function(e) {
+	const disable = $(this).val().length === 0;
+	$('#chk_games_ex').attr('disabled', disable);
+	$('#chk_games_in').attr('disabled', disable);
+	
+	if (disable) {
+		$('#chk_games_ex').prop('checked', false);
+		$('#chk_games_in').prop('checked', false);
+	}
+});
+
+$('#leagues').on("change", function(e) {
+	const disable = $(this).val().length === 0;
+	$('#chk_game_leagues_any').attr('disabled', disable);
+	$('#chk_game_leagues_all').attr('disabled', disable);
+	$('#chk_player_leagues_any').attr('disabled', disable);
+	$('#chk_player_leagues_all').attr('disabled', disable);
+
+	if (disable) {
+		$('#chk_game_leagues_any').prop('checked', false);
+		$('#chk_game_leagues_all').prop('checked', false);
+		$('#chk_player_leagues_any').prop('checked', false);
+		$('#chk_player_leagues_all').prop('checked', false);
+	}
+});
+
+$('#players').on("change", function(e) {
+	const disable = $(this).val().length === 0;
+	$('#chk_game_players_any').attr('disabled', disable);
+	$('#chk_game_players_all').attr('disabled', disable);
+	$('#chk_players_ex').attr('disabled', disable);
+	$('#chk_players_in').attr('disabled', disable);
+
+	if (disable) {
+		$('#chk_game_players_any').prop('checked', false);
+		$('#chk_game_players_all').prop('checked', false);
+		$('#chk_players_ex').prop('checked', false);
+		$('#chk_players_in').prop('checked', false);
+	}
+});
+
+// ===================================================================================
+// Populate all the controls  
+// ===================================================================================
+
 InitControls(options);
+
+// ===================================================================================
+// Draw the leaderboard tables  
+// ===================================================================================
+
 DrawTables("tblLB");

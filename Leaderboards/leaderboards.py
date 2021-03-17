@@ -1,6 +1,9 @@
 # Django imports
 from django.conf import settings
-from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef  # , F, Window
+from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F  # , Window
+from django.db.models.expressions import Func
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.contrib.postgres.fields.array import ArrayField
 # from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime
@@ -21,7 +24,7 @@ from datetime import datetime, timedelta
 
 # Local imports
 from CoGs.logging import log
-from .models import Game, League, Player, Session
+from .models import Game, League, Player, Session, Performance
 
 # Some useful enums to use in the options. Really just a way of encapsulating related
 # types so we can use them in templates to pupulate selectors and receive them from
@@ -60,25 +63,25 @@ def is_number(s):
 class leaderboard_options:
     '''
     Captures the options that can be made available to and be submitted by a web page when
-    requesting leaderboards. 
-    
+    requesting leaderboards.
+
     Three key parts in the class:
-    
-    1) Some enum defintions for selectable options. Defined as lists of 2-tuples. 
-        The lists and the enums built fromt hem are useful in code and the 
+
+    1) Some enum defintions for selectable options. Defined as lists of 2-tuples.
+        The lists and the enums built fromt hem are useful in code and the
         context of a Leaderboards page (the lists of 2 tuples for example can
         be used to construct select widgets).
-        
-        These are CamelCased  
-        
+
+        These are CamelCased
+
     2) The options themselves. They ar elower case words _ seaprated.
-    
+
     3) Methods:
-    
+
         A constructor that can receives a QueryDcit from requst.GET or reuqest.POST
-        and build an instance on basis of what is submitted. A default instance if 
+        and build an instance on basis of what is submitted. A default instance if
         none is supplied.
-        
+
         A JSONifier to supply context with a dict of JSONified options so the options
         can conveniently be used in a template.
     '''
@@ -258,7 +261,7 @@ class leaderboard_options:
 
     def is_enabled(self, option):
         '''
-        A convenient method to check if an option should be applied, returning True 
+        A convenient method to check if an option should be applied, returning True
         for those that always apply and the enabled status for those that need enabling.
         '''
         return option in self.enabled if option in self.need_enabling else True
@@ -277,17 +280,17 @@ class leaderboard_options:
     def __init__(self, urequest={}, ufilter={}, utz=UTC):
         '''
         Build a leaderboard options instance populated with options from arequest dictionary
-        (could be from request.GET or request.POST). If none is specified build with default 
-        values, i.e.e do nothing here (defaults are specified in attribute declarations above) 
-        
+        (could be from request.GET or request.POST). If none is specified build with default
+        values, i.e.e do nothing here (defaults are specified in attribute declarations above)
+
         :param urequest: a user request, i.e. a request.GET or request.POST dictionary that
                          contains options.
-         
-        :param ufilter: a user filter, i.e request.session.filter dictionary that specifies 
-                        the session default. Currently only 'league' is used to populate the 
-                        options with a default league filter based on session preferences. 
+
+        :param ufilter: a user filter, i.e request.session.filter dictionary that specifies
+                        the session default. Currently only 'league' is used to populate the
+                        options with a default league filter based on session preferences.
                         Is extensible.
-                        
+
         :param utz:      the users timezone. Only used to generating date_time strings where
                          needed so that they are in the users timezone when produced.
         '''
@@ -490,7 +493,7 @@ class leaderboard_options:
             if f'players_{suffix}' in urequest:
                 players = urequest[f'players_{suffix}'].split(",")
                 ex_in = suffix
-                break
+                break  # Use only first one if multiple (possibly conflicting) entries are specified
 
         if players:
             # Validate the players discarding any invalid ones
@@ -507,8 +510,7 @@ class leaderboard_options:
         # where the empty players_ex list falls back on 1,2,3
         elif self.game_players:
             # Already validated list of players
-            self.players = self.game_players
-            self.__enable__(f'players_{ex_in}', self.players)
+            self.players = self.game_players  # game_players_any or _all was already enabled if land here.
 
         # Then an option to discard all but the top num_players of each board
         # As the starting point. Other options can add players of course, this
@@ -725,13 +727,13 @@ class leaderboard_options:
 
     def player_nominated(self, player_pk):
         '''
-        Returns True if a player was nominated specifically to be listed.        
+        Returns True if a player was nominated specifically to be listed.
         '''
         return (self.is_enabled('players_in') or self.is_enabled('players_ex')) and str(player_pk) in self.players
 
     def player_in_league(self, player_pk, league_pks):
         '''
-        Returns True if a player meets the league criteria        
+        Returns True if a player meets the league criteria
         '''
         league_pks = [str(pk) for pk in league_pks]  # We force them to strings as we stored strings in self.player_leagues
         if self.is_enabled('player_leagues_any') and not set(league_pks) & set(self.player_leagues):
@@ -741,9 +743,9 @@ class leaderboard_options:
         return True
 
     def player_ok(self, player_pk, plays, last_play, league_pks):
-        '''        
+        '''
         Returns True if a player with the specified properties passes the criteria specified
-        for them. 
+        for them.
         '''
         # We always include players we've explicitly requested
         if self.is_enabled('players_in') and str(player_pk) in self.players:
@@ -777,20 +779,20 @@ class leaderboard_options:
 
     def no_evolution(self):
         '''
-        Returns True if no evolution options are enabled. 
+        Returns True if no evolution options are enabled.
         '''
         return not (self.is_enabled('compare_with') or self.is_enabled('compare_back_to'))
 
     def apply(self, leaderboard_snapshot):
         '''
-        Given a leaderboard snapshot in the format that Session.leaderboard_snapshot() 
+        Given a leaderboard snapshot in the format that Session.leaderboard_snapshot()
         provides, applies these options to it returning a filtered version of the same
         snapshot as dictated by these options (self).
-    
-        We only filter players. We don't apply name or link formatting here, the 
-        snapshot elements contain sufficient information for the view itself to 
-        implement those rendering options. Our aim here is to send to the view 
-        a filtered snaphot because global leaderboads for a game can grow very 
+
+        We only filter players. We don't apply name or link formatting here, the
+        snapshot elements contain sufficient information for the view itself to
+        implement those rendering options. Our aim here is to send to the view
+        a filtered snaphot because global leaderboads for a game can grow very
         large and most views will be concerned with a subset based on leagues.
         '''
         leaderboard = leaderboard_snapshot[8]
@@ -869,7 +871,7 @@ class leaderboard_options:
     def as_dict(self):
         '''
         Produces a dictionary of JSONified option values which can be passed to context
-        and used in Javascript. 
+        and used in Javascript.
         '''
         d = {}
 
@@ -899,15 +901,15 @@ class leaderboard_options:
 
     def last_session_property(self, field):
         '''
-        Returns a lazy Queryset that when evaluated produces the nominated property of the 
+        Returns a lazy Queryset that when evaluated produces the nominated property of the
         last session played given the current options sepcifying league and perspective.
         This is irrespective of the game, and is intended for the given league or leagues
         to return a property of the last activity as a reference for most recent event
         calculatiuons.
-        
+
         Two properties are interest in most recent event queries:
             'date_time' - to find the date_time that the last gaming event ended.
-            'location'  - to find out where it was played 
+            'location'  - to find out where it was played
         '''
         if settings.DEBUG:
             queries_before = len(connection.queries)
@@ -944,9 +946,9 @@ class leaderboard_options:
 
     def last_event_end_time(self, as_ExpressionWrapper=True):
         '''
-        Returns an Expression (that can be used in filtering sessions) that is the date_time 
-        of the ostensible end of the last gaming event. Being the date_time of the last 
-        session this league or these leagues played. 
+        Returns an Expression (that can be used in filtering sessions) that is the date_time
+        of the ostensible end of the last gaming event. Being the date_time of the last
+        session this league or these leagues played.
         '''
         if as_ExpressionWrapper:
             leet = ExpressionWrapper(Subquery(self.last_session_property('date_time')), output_field=DateTimeField())
@@ -957,13 +959,13 @@ class leaderboard_options:
 
     def last_event_start_time(self, delta_days, as_ExpressionWrapper=True):
         '''
-        Returns an Expression (that can be used in filtering sessions) that is the date_time 
+        Returns an Expression (that can be used in filtering sessions) that is the date_time
         of the ostensible start of the last gaming event. Being the last_event_end_time as above)
-        less the value of delta_days. This could be self.num_days for the game filtering or 
+        less the value of delta_days. This could be self.num_days for the game filtering or
         self.compare_back_to for snapshot capture for example.
-        
+
         :param delta_days:              The number of days before the last session to pin the event start time at
-        :param as_ExpressionWrapper:    Return an ExpressionWrpaper (for a lazy Queryset builder)
+        :param as_ExpressionWrapper:    Return an ExpressionWrapper (for a lazy Queryset builder)
         '''
         if as_ExpressionWrapper:
             lest = ExpressionWrapper(Subquery(self.last_session_property('date_time')) - timedelta(days=delta_days), output_field=DateTimeField())
@@ -974,9 +976,9 @@ class leaderboard_options:
 
     def last_event_location(self, as_ExpressionWrapper=True):
         '''
-        Returns an Expression (that can be used in filtering sessions) that is the location 
-        of the event. Being the location of the last session this league or these leugues 
-        played less 
+        Returns an Expression (that can be used in filtering sessions) that is the location
+        of the event. Being the location of the last session this league or these leugues
+        played less
         '''
         if as_ExpressionWrapper:
             # Note: that ForeignKey is an AutoField which is a class of IntegerField.
@@ -989,12 +991,12 @@ class leaderboard_options:
 
     def games_queryset(self):
         '''
-        Returns a QuerySet of games that these options select (self.game_filters drives this) 
-        
-        As a QuerySet it is lazy and hence efficient to build here. Either way a database query 
-        on the Game model is very cheap compared with the scrape required for a perspective drive 
-        leaderboard construction from recorded Performance objects. To wit we can use a query like 
-        this to determine if a game list for comparison with a cached version of same.  
+        Returns a QuerySet of games that these options select (self.game_filters drives this)
+
+        As a QuerySet it is lazy and hence efficient to build here. Either way a database query
+        on the Game model is very cheap compared with the scrape required for a perspective drive
+        leaderboard construction from recorded Performance objects. To wit we can use a query like
+        this to determine if a game list for comparison with a cached version of same.
         '''
 
         # Start the queryset with an ordered list of all games (lazy, only the SQL created)
@@ -1007,19 +1009,27 @@ class leaderboard_options:
         g_filter = Q()
         s_filter = Q()
 
-        # First restrict the list ot exclusively specified games if present
+        # First restrict the list to exclusively specified games if present
         # If an exclusive list of games is provided we return just those
         if self.is_enabled('games_ex'):
             g_filter &= Q(pk__in=self.games)
+            s_filter &= Q(game_id__in=self.games)
 
         # Restrict the list based on league memberships
+        g_post_filters = []
         if self.is_enabled('game_leagues_any'):
-            g_filter = Q(sessions__league__pk__in=self.game_leagues)
-            s_filter = Q(league__pk__in=self.game_leagues)
+            g_filter = Q(played_by_leagues__pk__in=self.game_leagues)
+            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
         elif self.is_enabled('game_leagues_all'):
+            # Collect post filters as the AND (all) operation demands repeated joins/filters
+            # See: https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
+            # See also USE_ARRAY_AGG  below. This method is overrident by that option
             for pk in self.game_leagues:
-                g_filter &= Q(sessions__league__pk=pk)
-                s_filter &= Q(league__pk=pk)
+                g_post_filters.append(Q(sessions__league__pk=pk))
+
+            # We want to report the latest session playerd among ALL the leagues, so this is
+            # simple search on all session played by ANY league from which we'll get the latest.
+            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
 
         # Respect the perspective request when finding last_play of a game
         # as in last_play before as_at
@@ -1027,16 +1037,35 @@ class leaderboard_options:
             s_filter &= Q(date_time__lte=self.as_at)
 
         # We sort them by a measure of popularity (within the selected leagues)
-        latest_session = top(Session.objects.filter(s_filter).filter(game=OuterRef('pk')).order_by("-date_time"), 1)
+        latest_session_source = Session.objects.filter(s_filter)
+        latest_session = top(latest_session_source.filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
         session_count = Count('sessions', filter=g_filter, distinct=True)
         play_count = Count('sessions__performances', filter=g_filter, distinct=True)
 
-        games = (Game.objects.filter(g_filter)
-                             .annotate(last_play=last_play)
-                             .annotate(session_count=session_count)
-                             .annotate(play_count=play_count)
-                             .filter(session_count__gt=0))
+        USE_ARRAY_AGG = True
+        game_source = Game.objects.filter(g_filter)
+        if g_post_filters:
+            # See https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
+            # For a discussion of methods here. ArrayAgg is the cleanest most efficient but is Postgresql specific.
+            if USE_ARRAY_AGG:
+                game_source = game_source.annotate(player_leagues=ArrayAgg(F('sessions__league'), distinct=True)).filter(player_leagues__contains=self.game_leagues)
+            else:
+                for g_post_filter in g_post_filters:
+                    game_source = game_source.filter(g_post_filter)
+                game_source = game_source.distinct()
+
+        if settings.DEBUG:
+            log.debug("GAME SOURCE:")
+            log.debug(f"\t{get_SQL(game_source, explain=True)}")  # Without explain the SQL is wrong here on an ArrayAgg query
+            log.debug("LATEST SESSION SOURCE:")
+            log.debug(f"\t{get_SQL(latest_session_source)}")
+
+        games = (game_source.annotate(last_play=last_play)
+                            .annotate(session_count=session_count)
+                            .annotate(play_count=play_count)
+                            .filter(session_count__gt=0)
+                            .order_by('-play_count'))
 
         # Now build up gfilter based on the game selectors
         #
@@ -1050,15 +1079,23 @@ class leaderboard_options:
         if self.is_enabled('changed_since'):
             or_filters |= Q(sessions__date_time__gte=self.changed_since)
 
-        # TODO Test this any/all implementation well
-        if self.is_enabled('game_players_any'):
-            or_filters |= Q(sessions__performances__player__pk__in=self.players)
-        elif self.is_enabled('game_players_all'):
-            and_players = Q()
-            for pk in self.players:
-                and_players &= Q(sessions__performances__player__pk=pk)
+        # Filter the games on player participation ...
+        if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
+            if self.is_enabled('game_players_any'):
+                sessions = Session.objects.filter(performances__player__pk__in=self.game_players)
+            elif self.is_enabled('game_players_all'):
+                # Only method I've found is with an intersection. Problem presented here:
+                # https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
+                # sessions = Session.objects.filter(performances__player=self.game_players[0])
+                # for pk in self.game_players[1:]:
+                    # sessions = sessions.intersection(Session.objects.filter(performances__player=pk))
 
-            or_filters |= and_players
+                # Another mothod using joins
+                sessions = Session.objects.filter(performances__player=self.game_players[0])
+                for pk in self.game_players[1:]:
+                    sessions = sessions.filter(performances__player=pk)
+
+            or_filters |= Q(sessions__pk__in=sessions.values_list('pk'))
 
         gfilter = or_filters
 
@@ -1113,7 +1150,7 @@ class leaderboard_options:
                 log.debug("\tSQL was evaluated!")
                 log.debug(f"\t{connection.queries[-1]['sql']}")
 
-            log.debug("SELECTED GAMES:")
+            log.debug(f"SELECTED {len(filtered_games)} GAMES:")
             for game in filtered_games:
                 log.debug(f"\t{game.name}")
 
@@ -1124,43 +1161,43 @@ class leaderboard_options:
         Returns a QuerySet of the Session objects which which provide the foundation
         for historic snapshots selected by these options (self.evolution_options drive
         this).
-        
+
         As a QuerySet this should ideally remain unevaluated on return (remain lazy).
-        
+
         A snapshot is the leaderboard as it appears after a given game session
-        The default and only standard snapshot is the current leaderboard after the 
+        The default and only standard snapshot is the current leaderboard after the
         last session of the game.
-        
+
         But this can be altered by:
-        
+
         A perspective request:
            lo.as_at which asks for the leaderboard as at a given time (not the latest one)
-         
+
         Evolution requests:
            lo.evolution_options documents the possible selections
-               
+
         We build a QeurySet of the sessions after which we want the leaderboard snapshots.
-        
+
         :param game:        A Game object for which the leaderboards are requested
         :param baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
         '''
 
         def sessions_plus(sessions):
             '''
-            Given a sessions queryset adds the prefetches needed to lower the query count later and boost 
+            Given a sessions queryset adds the prefetches needed to lower the query count later and boost
             performance a little.
 
             On one trial of a full leaderboad generation I got this without the prefech:
             STATS:    Total Time:    36213.7 ms    Python Time:    25.0 ms    DB Time:    11.3 ms    Number of Queries:    8,339
-            
+
             and this with the prefetch:
             STATS:    Total Time:    28444.2 ms    Python Time:    18.2 ms    DB Time:    10.3 ms    Number of Queries:    5,739
-            
+
             and on a run with the leaderboard cache:
             STATS:    Total Time:     4448.4 ms    Python Time:     2.0 ms    DB Time:     2.4 ms    Number of Queries:    329
-            
-            Quite a saving (even better of course from the cache). 
-            
+
+            Quite a saving (even better of course from the cache).
+
             :param sessions:
             '''
             return sessions.select_related('league', 'location', 'game').prefetch_related('performances', 'ranks')
@@ -1171,21 +1208,74 @@ class leaderboard_options:
         # Start our Session filter with sessions for the game in question
         sfilter = Q(game=game)
 
-        # Respect the game_leagues filter
-        # This game may be played by different leagues
-        # and we're not interested in their sessions
-        # TODO: TEST this all/any implementation!
-        if self.is_enabled('game_leagues_any'):
-            sfilter &= Q(league__pk__in=self.game_leagues)
-        elif self.is_enabled('game_leagues_all'):
-            for pk in self.game_leagues:
-                sfilter &= Q(league__pk=pk)
-
         # Respect the perspective request
         if self.is_enabled('as_at'):
             sfilter &= Q(date_time__lte=self.as_at)
 
-        # At this stage we have sfilter - a filter on sessions that
+        # Respect the game_leagues filter
+        # This game may be played by different leagues
+        # and we may be interested in a view on one or more leagues that are specified in
+        # game_leagues_any or game_leagues all.
+
+        # A tuning constant. A view over ALL leagues listed affords a Broad and a Narrow
+        # view of the sessions played. Broad includes All the sessions played in any league
+        # in the list. It's simpler, faster and very likely more what is wanted. That is, looking
+        # at a group of leagues, the "latest" leaderboard would be the latest among any of the leagues
+        # and the latest standing relevant to ALL those leagues.
+        #
+        # A Narrow view looks deepr and uses only sessions that contain players from all of the leagues.
+        # This loooks only at elague interactiuon, or promiscuity if you will. And is turned off by default
+        # now because there is no UI to choose between the two. There may never be, it's a tad overwhelmingly
+        # complicated to differentiate between these.
+        BROAD_ALL_VIEW = True
+
+        # ANY is easy, and sessions are played in aleague and we casn just find sessions in any of the leagues
+        # provided in self.game_leagues.
+        if self.is_enabled('game_leagues_any'):
+            sfilter &= Q(league__pk__in=self.game_leagues)
+            session_source = Session.objects.filter(sfilter)
+
+        # ALL can be just as easy. If we are showing the leaderboards for games b=layed by ALL
+        # of a list of leagues, we probbaly want actually to see snapshots, in particular the latetst
+        # snapshot from the list of session played in ANY of those leagues. If so, that's easy. And we
+        # do that here
+        elif self.is_enabled('game_leagues_all') and BROAD_ALL_VIEW:
+            sfilter &= Q(league__pk__in=self.game_leagues)
+            session_source = Session.objects.filter(sfilter)
+
+        # If however for ALL we want a more restruictview fetching snapshots only after sessions that contained
+        # players from ALL the leagues, then this is much trickier to write as a query and needs us to drill down
+        # into the players and their leagues.
+        #
+        # Fames are played in a league (i.e. each session is atttributed to a league), and so any session only
+        # has 'a' league in Session.league. It can be more than one league at the same time and so any AND
+        # constraint placed on it will fail. Instead we use a tailored query that looks at the leagues that players
+        # in the session are in and returns all session which contai players across all the leagues.
+        #
+        # This is A) inconsistent with ANY which looks at the session league and not player leagues, and
+        # B) probably only really useful for two leagues or if there are a lot of highly league promiscuous
+        # players wandering between leagues ;-).
+        elif self.is_enabled('game_leagues_all'):
+            # This is mildly complicated we want the leagues to be ORed because the session query will be joined
+            # with performances and players producing one tuple per player in a session. To wit we need to
+            # bring it back to one tuple per session by annotating with a Count on leagues, and we can then
+            # return session with the full count, namely ALL the leagues represented.
+            #
+            # But we need to filter first for all tuples that are in any of the leagues, so an OR filter.
+            # the AND part arises from the fact that we select onlys essions that have the full distinct count
+            # of leagues associated with thm. Hairy but it works.
+            lfilter = Q()
+            for pk in self.game_leagues:
+                lfilter |= Q(performances__player__leagues__pk__in=pk)
+            sfilter &= lfilter & Q(league_count=len(self.game_leagues))
+
+            session_source = Session.objects.annotate(league_count=Count('performances__player__leagues__pk', distinct=True)).filter(sfilter)
+
+        # With no league filtering, build the session source from the extant sfilter only
+        else:
+            session_source = Session.objects.filter(sfilter)
+
+        # At this stage we have session_source that
         #   Specifies a game
         #   Respects and league constraints specified
         #   Respects any perspective constraint supplied
@@ -1193,13 +1283,11 @@ class leaderboard_options:
         if self.no_evolution():
             # Just get the latest session, one snapshot only
             # And extra one if a baseline is requested.
-            sessions = top(Session.objects.filter(sfilter).order_by("-date_time"), 2 if baseline else 1)
+            sessions = top(session_source.order_by("-date_time"), 2 if baseline else 1)
         else:
             # compare_with or compare_back_to is enabled
             extra_session = None
-            reference_time = None
-
-            sessions = Session.objects.all()
+            earliest_time = None
 
             # We want one extra session, the one just before the reference time.
             # This is a new QuerySet which we'll Union with the main one. We
@@ -1217,23 +1305,23 @@ class leaderboard_options:
                 # requested a second one (not intended for renderig just for rank delta
                 # calculatiuon.
                 if isinstance(self.compare_back_to, numbers.Real):
-                    reference_time = self.last_event_start_time(self.compare_back_to)
+                    earliest_time = self.last_event_start_time(self.compare_back_to)
                 elif isinstance(self.compare_back_to, datetime):
-                    reference_time = self.compare_back_to
+                    earliest_time = self.compare_back_to
                 else:
-                    reference_time = None
+                    earliest_time = None
 
-                if reference_time:
-                    efilter = sfilter & Q(date_time__lt=reference_time)
-                    extra_session = top(sessions_plus(sessions.filter(efilter)), 2 if baseline else 1)
+                if earliest_time:
+                    efilter = sfilter & Q(date_time__lt=earliest_time)
+                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if baseline else 1)
 
                     # The referecce time is of course, also the time that we want all boards from.
                     # We update sfilter AFTER building the extra_session query because sfltter prior
                     # to his constrain is used in defining it.
-                    sfilter &= Q(date_time__gte=reference_time)
+                    sfilter &= Q(date_time__gte=earliest_time)
 
             # Then order the sessions in reverse date_time order
-            sessions = sessions_plus(sessions.filter(sfilter).order_by("-date_time"))
+            sessions = sessions_plus(session_source.filter(sfilter).order_by("-date_time"))
 
             if extra_session:
                 sessions = sessions.union(extra_session).order_by("-date_time")
@@ -1257,10 +1345,11 @@ class leaderboard_options:
                 log.debug("\tSQL is still LAZY")
                 log.debug(f"\t{get_SQL(sessions)}")
             else:
-                log.debug("\tSQL was evaluated!")
-                log.debug(f"\t{connection.queries[-1]['sql']}")
+                log.debug(f"\tSQL was evaluated! It took {queries_after-queries_before} queries to do.")
+                for i in range(queries_after - queries_before):
+                    log.debug(f"\t{-1-i}\t{connection.queries[-1-i]['sql']}")
 
-            log.debug("SELECTED SNAPSHOTS:")
+            log.debug(f"SELECTED {len(sessions)} SNAPSHOTS:")
             for session in sessions:
                 log.debug(f"\t{session.id}: {session.date_time}")
 
@@ -1269,19 +1358,19 @@ class leaderboard_options:
     def titles(self):
         '''
         Builds page title and subtitle based on these leaderboard options
-        
+
         Returns them in a 2-tuple.
-        
+
         Principles at play:
-        
+
         In title:
             Display Top or Latest count if set.
-        
+
             Display a League filter if in effect, using LEagues, and truncating list down
             to two entries and elipsis if possible.
-            
+
             Display a Player Filter on same principle.
-            
+
         In subtitle:
             Display the perspective if any
             Display the evolution options if any
@@ -1379,23 +1468,23 @@ class leaderboard_options:
     def make_static(self, ufilter={}, utz=UTC):
         '''
         Make the relative leaderboard_options more static. Specifically the event based ones.
-        
+
         It's hard to secure a perfectlys tatic leaderboards link becasue anything could change
         in the database over time, players come and go, games come and go whatever, there are
         just too many variables and the closes we could get really is to store the cache that
-        is currently stored in the session in a more persistent database table with an ID. 
-        
-        But can't see much need for that yet. Right now the main aim is that we can rapidly 
-        get the impact of the last evert (prior to as_at) but produce a link that uses 
-        fixed reference times rather than the relative so they can be used in comms and 
+        is currently stored in the session in a more persistent database table with an ID.
+
+        But can't see much need for that yet. Right now the main aim is that we can rapidly
+        get the impact of the last evert (prior to as_at) but produce a link that uses
+        fixed reference times rather than the relative so they can be used in comms and
         have lasting relevance.
-       
-        TODO: add a button to top row on leaderboards page which is of a chain link, and when 
+
+        TODO: add a button to top row on leaderboards page which is of a chain link, and when
         clicked, resubmits current view via this, returning a static rendition of it.
-        
+
         TODO: add a button beside it to show the link in the Address bar (get it out of advanced).
         Need a clear icon for that. Could be an eye with some hint of a URLness to it?
-        
+
         Both can have excellent ToolTips of course.
         '''
 

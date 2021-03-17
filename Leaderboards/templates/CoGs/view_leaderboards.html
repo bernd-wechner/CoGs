@@ -100,9 +100,13 @@
 			<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'> 
 			<label for="chk_analysis_post">Show Post-Session TrueSkill Predictions</label>
 		</div>	
-		<div class="low_show_delta">
+		<div class="lo_show_delta">
 			<input type="checkbox" id="chk_show_delta" oninput='DrawTables("tblLB");'> 
 			<label for="chk_show_delta">Show Rank Deltas</label>
+		</div>	
+		<div class="lo_show_baseline">
+			<input type="checkbox" id="chk_show_baseline" oninput='get_and_report_metrics(leaderboards);DrawTables("tblLB");'> 
+			<label for="chk_show_baseline">Show Baseline</label>
 		</div>	
 	</div>	
 	
@@ -333,9 +337,10 @@
 	let url_leaderboards = "{% url 'leaderboards' %}";
 	let url_json_leaderboards = "{% url 'json_leaderboards' %}"
 	
-	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
-	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
-	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_view_Game = "{% url 'view' 'Game' '00' %}";			// 00 is replaced by PK in the JavaScript code
+	let url_view_Player = "{% url 'view' 'Player' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 		// 00 is replaced by PK in the JavaScript code		
+	let url_view_Session = "{% url 'view' 'Session' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
 	let url_list_Sessions = "{% url 'list' 'Session'%}";
 	
 	// A URL for the Select2 widgets (initilising them is a little involved)
