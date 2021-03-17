@@ -6,7 +6,7 @@ Django settings for CoGs project.
 import os
 
 from tzlocal import get_localzone
-from django.conf import global_settings 
+from django.conf import global_settings
 
 # A custom CoGs setting that enables or disables use of the leaderboard cache.
 # It's great for performance, but gets in the way of performance tests on uncached
@@ -29,7 +29,7 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
 import platform
 HOSTNAME = platform.node().lower()
-   
+
 # The name of the webserver this is running on (used to select deployment settings)
 PRODUCTION = "shelob"
 SANDBOX = "arachne"
@@ -43,13 +43,15 @@ elif HOSTNAME == SANDBOX:
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
 
+
 # Make sure the SITE_TITLE is visible in context
 def site_context(request):  # @UnusedVariable
     return {"SITE_TITLE": SITE_TITLE}
 
+
 ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", "sandbox.leaderboard.space"]
 
-# The Site ID for the django.contrib.sites app, 
+# The Site ID for the django.contrib.sites app,
 # which just a prerequisite for the django.contrib.flatpages app
 # which is used for serving the about page (and any other flat pages).
 SITE_ID = 1
@@ -64,33 +66,33 @@ if SITE_IS_LIVE:
     X_FRAME_OPTIONS = 'DENY'
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
-    from CoGs.settings_development import * 
-    import django # So we have access to the version for reporting
-    import sys    # So we have access to python path (that it searches for imports)
-    import psutil # So we can access process details
-    
+    from CoGs.settings_development import *
+    import django  # So we have access to the version for reporting
+    import sys  # So we have access to python path (that it searches for imports)
+    import psutil  # So we can access process details
+
     def pinfo():
         pid = os.getpid()
         ppid = os.getppid()
         P = psutil.Process(pid)
         PP = psutil.Process(ppid)
-        return {'Me':        f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}', 
+        return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
                 'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
-     
+
     print("Django settings: Development Server")
     print(f"Django version: {django.__version__}")
     print(f"Django loaded from: {django.__file__}")
     print(f"Using Path: {sys.path}")
     print(f"Process Info: {pinfo()}")
     print(f"Debug: {DEBUG}")
-    
+
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 #     #if not sys.gettrace():
 #     def trace_func(frame, event, arg):
 #         with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
 #             print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
 #         return trace_func
-#       
+#
 #     sys.settrace(trace_func)
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 
@@ -126,7 +128,8 @@ MIDDLEWARE = (
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django_generic_view_extensions.middleware.TimezoneMiddleware',
-    'cuser.middleware.CuserMiddleware'
+    'cuser.middleware.CuserMiddleware',
+    'CoGs.logging.LoggingMiddleware'
 )
 
 if SITE_IS_LIVE:
@@ -136,8 +139,8 @@ if SITE_IS_LIVE:
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
 # enable the debug toolbar when needed (it slows things down enormously)
 # else:
-#     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', ) 
-#     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)    
+#     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', )
+#     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)
 
 ROOT_URLCONF = 'CoGs.urls'
 
@@ -193,7 +196,7 @@ USE_TZ = True
 # TIME_ZONE of course should be the time zone the primary audience is in,
 # as it's what we'll use before a user logs in and submits their local timezone
 # via the login form.
-TIME_ZONE = str(get_localzone()) 
+TIME_ZONE = str(get_localzone())
 
 DATETIME_FORMAT = 'D, j M Y H:i'
 
@@ -205,8 +208,8 @@ MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9
 # Use the Pickle Serializer. It comes with a warning when using the cookie backend
 # but we're using the default database backend so are safe. Basically if:
 #    SESSION_ENGINE == 'django.contrib.sessions.backends.signed_cookies'
-# Then this is abad idea. But we have 
-#    SESSION_ENGINE == 'django.contrib.sessions.backends.db'  
+# Then this is abad idea. But we have
+#    SESSION_ENGINE == 'django.contrib.sessions.backends.db'
 # As that is the Django default. That is the actual session data remains local
 # never travels between server and browser or  vice versa and a cookie is only
 # used to ID a local database stored session.
@@ -216,9 +219,9 @@ MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9
 # all session dfdata local and all the data is secure, we're good.
 #
 # We wabtr to use the Pickle Serializer because we want to cache some data
-# in the session that includes datateims that don't serialize with the JSON 
-# serializer. 
-SESSION_SERIALIZER =  'django.contrib.sessions.serializers.PickleSerializer'
+# in the session that includes datateims that don't serialize with the JSON
+# serializer.
+SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/1.8/howto/static-files/
@@ -228,20 +231,19 @@ STATIC_URL = '/static/'
 LOGIN_URL = '/login/'
 
 # The default page to redirect to on login. Generally we return you to the page you
-# were on when you tried to log in, using the next= URL parameter. This the fallback 
+# were on when you tried to log in, using the next= URL parameter. This the fallback
 # if one isn't present.
 LOGIN_REDIRECT_URL = '/leaderboards/'
-
 
 # Configure logging
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters':  
-        { 'dev': { 'format': 
+    'formatters':
+        { 'dev': { 'format':
         '%(prefix)s%(relativeReference)9.4f, %(relativeLast)9.4f, %(filename)20s:%(lineno)4d, %(funcName)20s - %(message)s%(postfix)s'},
-        
-         'live': { 'format': 
+
+         'live': { 'format':
          '%(asctime)s.%(msecs).03d  - %(relativeReference)9.4f - %(relativeLast)9.4f - %(process)d - %(thread)d - %(levelname)8s - %(filename)20s:%(lineno)4d - %(funcName)20s - %(message)s'}
         }
 }
@@ -257,7 +259,7 @@ if SITE_IS_LIVE:
                                     'formatter': 'live'
                                     }
                            }
-    
+
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['file'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 else:
     LOGGING['handlers'] = { 'console': {
@@ -267,10 +269,10 @@ else:
                                     'formatter': 'dev'
                                     }
                            }
-    
+
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
 # Pass our logger to Django Generic View Extensions
-from .logging import log 
+from .logging import log
 import django_generic_view_extensions
 django_generic_view_extensions.log = log
