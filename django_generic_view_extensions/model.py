@@ -63,6 +63,7 @@ from django.db import models
 from django.utils.safestring import mark_safe
 from django.utils.timezone import get_current_timezone
 from django.forms.models import inlineformset_factory
+from django.conf import settings
 
 # Package imports
 from . import log, FIELD_LINK_CLASS, NONE, NOT_SPECIFIED
@@ -499,7 +500,9 @@ def collect_rich_object_fields(view):
         #
         # We also build fields_model and fields_other
 
-        log.debug(f"Collecting Rich Object Field: {field.name}")
+        if settings.DEBUG:
+            log.debug(f"Collecting Rich Object Field: {field.name}")
+
         bucket = (odf.model if field.name in model_fields
             else odf.internal if field.name in internal_fields
             else odf.related if field.name in related_fields
@@ -559,7 +562,9 @@ def collect_rich_object_fields(view):
             names += summaries
 
         for name in names:
-            log.debug(f"Collecting Rich Object Property: {name}")
+            if settings.DEBUG:
+                log.debug(f"Collecting Rich Object Property: {name}")
+
             label = safetitle(name.replace('_', ' '))
 
             # property_methods and summaries are functions, and properties are attributes

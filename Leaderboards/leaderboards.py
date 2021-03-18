@@ -3,7 +3,6 @@ from django.conf import settings
 from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F  # , Window
 from django.db.models.expressions import Func
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.contrib.postgres.fields.array import ArrayField
 # from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime

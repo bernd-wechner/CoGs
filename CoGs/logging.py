@@ -71,7 +71,7 @@ class LoggingMiddleware(object):
         now = time()
         relative_filter.time_reference = now
         if settings.DEBUG:
-            log.debug(f"Reset loogging timer.")
+            log.debug(f"Reset logging timer to 0 at {now}.")
         return self.get_response(request)
 
 

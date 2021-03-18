@@ -450,14 +450,16 @@ class Rating(RatingModel):
             assert not Game and not From, "Invalid ratings rebuild requested."
             sessions = Sessions
         elif not Game and not From:
-            log.debug(f"Rebuilding ALL leaderboard ratings.")
+            if settings.DEBUG:
+                log.debug(f"Rebuilding ALL leaderboard ratings.")
 
             sessions = Session.objects.all().order_by('date_time')
         else:
             # TODO in fact only need to rebuild those that contain players in this session!
             # Those with completely independent players don't need to be rebuilt. We can use
             # a method on the session to return a queryset of such sessions.
-            log.debug(f"Rebuilding leaderboard ratings for {getattr(Game, 'name', None)} from {From}")
+            if settings.DEBUG:
+                log.debug(f"Rebuilding leaderboard ratings for {getattr(Game, 'name', None)} from {From}")
 
             sfilterg = Q(game=Game) if Game else Q()
             sfilterf = Q(date_time__gte=From) if isinstance(From, datetime) else Q()
@@ -465,7 +467,8 @@ class Rating(RatingModel):
             sessions = Session.objects.filter(sfilterg & sfilterf).order_by('date_time')
 
         affected_games = set([s.game for s in sessions])
-        log.debug(f"{len(sessions)} Sessions to process, affecting {len(affected_games)} games.")
+        if settings.DEBUG:
+            log.debug(f"{len(sessions)} Sessions to process, affecting {len(affected_games)} games.")
 
         # We prepare a log entry
         rlog = RebuildLog(game=Game,
@@ -517,7 +520,8 @@ class Rating(RatingModel):
         # After having updated all the sessions we need to ensure
         # that the Rating objects are up to date.
         for rating in ratings_to_reset:
-            log.debug(f"Resetting rating for {rating}")
+            if settings.DEBUG:
+                log.debug(f"Resetting rating for {rating}")
             r = Rating.get(*rating)  # Unpack the tuple to player, game
             r.reset()
             r.save()
@@ -540,7 +544,8 @@ class Rating(RatingModel):
             clog = ChangeLog(Trigger, rlog)
             clog.save()
 
-        log.debug("Done.")
+        if settings.DEBUG:
+            log.debug("Done.")
 
         return BackupRating.html_diff()
 
@@ -1507,8 +1512,9 @@ class Game(AdminModel):
 
         Ps = Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
 
-        log.debug(f"Fetching latest performances for game '{self.name}' as at {asat} for leagues ({leagues}) and players ({players})")
-        log.debug(f"SQL: {get_SQL(Ps)}")
+        if settings.DEBUG:
+            log.debug(f"Fetching latest performances for game '{self.name}' as at {asat} for leagues ({leagues}) and players ({players})")
+            log.debug(f"SQL: {get_SQL(Ps)}")
 
         return Ps
 
@@ -1646,7 +1652,8 @@ class Game(AdminModel):
             else:
                 leagues = []
 
-        log.debug(f"\t\tBuilding leaderboard for {self.name} as at {asat}.")
+        if settings.DEBUG:
+            log.debug(f"\t\tBuilding leaderboard for {self.name} as at {asat}.")
 
         # If a complex  leaderboard is requested we ignore "names" and the caller
         # must perform name formatting (we provide all formats in the tuple). But
@@ -1662,7 +1669,8 @@ class Game(AdminModel):
             elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
                 raise ValueError(f"Unexpected league: {leagues[l]}.")
 
-        log.debug(f"\t\tValidated leagues")
+        if settings.DEBUG:
+            log.debug(f"\t\tValidated leagues")
 
         if asat:
             # Build leaderboard as at a given time as specified
@@ -1689,7 +1697,8 @@ class Game(AdminModel):
             # (descending skill rating). The Rating model ensures this
             ratings = Rating.objects.filter(lb_filter).distinct()
 
-        log.debug(f"\t\tBuilt ratings queryset.")
+        if settings.DEBUG:
+            log.debug(f"\t\tBuilt ratings queryset.")
 
         # Now build a leaderboard from all the ratings for players (in this league) at this game.
         lb = []
@@ -1731,7 +1740,8 @@ class Game(AdminModel):
                             [l.pk for l in r.player.leagues.all()])
             lb.append(lb_entry)
 
-        log.debug(f"\t\tBuilt leaderboard.")
+        if settings.DEBUG:
+            log.debug(f"\t\tBuilt leaderboard.")
 
         return None if len(lb) == 0 else lb
 
@@ -2686,7 +2696,8 @@ class Session(TimeZoneMixIn, AdminModel):
 
         counts = self.game.play_counts(asat=self.date_time)
 
-        log.debug(f"\t\t\tBuilding {self.pk}")
+        if settings.DEBUG:
+            log.debug(f"\t\t\tBuilding {self.pk}")
 
         # Build the snapshot tuple
         snapshot = (self.pk,
@@ -3055,13 +3066,15 @@ class Session(TimeZoneMixIn, AdminModel):
         # Then sort them by rank
         rank_values.sort()
 
-        log.debug(f"\tRank values: {rank_values}")
-        log.debug(f"\tRanks by PK: {ranks_by_pk}")
+        if settings.DEBUG:
+            log.debug(f"\tRank values: {rank_values}")
+            log.debug(f"\tRanks by PK: {ranks_by_pk}")
 
         # Build a map of submited ranks to saving ranks
         rank_map = OrderedDict()
 
-        log.debug(f"\tBuilding rank map")
+        if settings.DEBUG:
+            log.debug(f"\tBuilding rank map")
         expected = 1
         for rank in rank_values:
             # if it's a new rank process it
@@ -3070,16 +3083,20 @@ class Session(TimeZoneMixIn, AdminModel):
                 if rank == expected:
                     rank_map[rank] = rank
                     expected += 1
-                    log.debug(f"\t\tRank {rank} is as expected.")
+                    if settings.DEBUG:
+                        log.debug(f"\t\tRank {rank} is as expected.")
 
                 # Else map all tied ranks to the expected value and update the expectation
                 else:
-                    log.debug(f"\t\tRank {rank} is expected at {expected}.")
+                    if settings.DEBUG:
+                        log.debug(f"\t\tRank {rank} is expected at {expected}.")
                     rank_map[rank] = expected
                     expected += rank_values.count(rank)
-                    log.debug(f"\t\t\tMoved {rank_values.count(rank)} {'teams' if self.team_play else f'players'} to the expected rank and the new expectation is {expected}.")
+                    if settings.DEBUG:
+                        log.debug(f"\t\t\tMoved {rank_values.count(rank)} {'teams' if self.team_play else f'players'} to the expected rank and the new expectation is {expected}.")
 
-        log.debug(f"\tRanks Map: {rank_map}")
+        if settings.DEBUG:
+            log.debug(f"\tRanks Map: {rank_map}")
 
         for From, To in rank_map.items():
             if not From == To:
@@ -3089,7 +3106,8 @@ class Session(TimeZoneMixIn, AdminModel):
                     rank_obj.rank = To
                     rank_obj.save()
                     rkey = rank_obj.team.pk if self.team_play else rank_obj.player.pk
-                    log.debug(f"\tMoved {'Team' if self.team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
+                    if settings.DEBUG:
+                        log.debug(f"\tMoved {'Team' if self.team_play else f'Player'} {rkey} from rank {rank} to {rank_obj.rank}.")
 
         if settings.DEBUG:
             # Grab a pre snapshot

@@ -92,9 +92,10 @@
 				<label for="opt_key">Key</label>		
 			</td>
 		</tr>		
-	{#	Removed the toggle class from these two rows so they remain hidden.#}
+	{#	Removed the toggle class from these two rows so they remain hidde during development  #}
+	{#	Which works because the options class is collapsed by defult and only those with toggle clas are shown. when optionsa re displayed. #}
 	{#	In development and not ready yet.#}
-		<tr id="opt_filters" class='tight options' style="visibility:collapse;">
+		<tr id="opt_filters" class='tight options{% if debug %} toggle{% endif %}' style="visibility:collapse;">
 			<th class='tight options'>
 				Filter on:
 			</th>
@@ -102,8 +103,8 @@
 				{{ widget_filters }}		
 			</td>
 		</tr>
-		<tr id="opt_ordering" class='tight options' style="visibility:collapse;">
-			<th class='tight options'>
+		<tr id="opt_ordering" class='tight options{% if debug %} toggle{% endif %}' style="visibility:collapse;">
+			<th class='tight options' style="vertical-align: top;">
 				Order by:
 			</th>
 			<td class='tight options'>
@@ -168,15 +169,14 @@
 			const index = $('#opt_index').is(':checked') ? "index" : "noindex";
 			const key = $('#opt_key').is(':checked') ? "key" : "nokey";
 			
+			const ordering_opts = ordering_url_opts();	
 			let filter_opts = filter_url_opts();
-			// The filter if specified on the URL may contain condition the filter widget doesn't support
+			// The filter if specified on the URL may contain conditions the filter widget doesn't support
 			// So if  URL supplied filter is not in the widget provided filter opts, include it
 			for (let f in filters)
 				if (filter_opts.indexOf(filters[f]) < 0) 
 					filter_opts.push(filters[f]);
 			Object.freeze(filter_opts);
-	
-			const ordering_opts = ordering_url_opts();	
 	
 			if (elements != default_elements) opts.push(elements);
 			if (complete != default_complete) opts.push(complete);
@@ -185,8 +185,8 @@
 			if (index != default_index) opts.push(index);	
 			if (key != default_key) opts.push(key);	
 					
-			if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
 			if (ordering_opts.length > 0) opts.push(ordering_opts.join("&"));
+			if (filter_opts.length > 0) opts.push(filter_opts.join("&"));
 			
 			let url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 			
@@ -232,7 +232,6 @@
 		// They are here for now to write and test before moving into widgets
 	
 		// Filter widget code seems in order and tested bar:
-		// TODO: add datetimepicker to these
 		// TODO: ignore options who have no value! Don't add them to fopts.
 		// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
 		
@@ -259,35 +258,7 @@
 			$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);
 			return fopts;
 	 	}
-	  	
-		// Ordering widget code seems in order and tested. Need to move this into widget def.	 
-	  	function CollectOrderingField(index, value) {fields.push($(value).attr('name'));}
-	  	function CollectOrderingDir(index, value) {dirs.push($(value).text());}
-	
-		function get_ordering_dir(text) {
-		  if (text == String.fromCharCode(9650)) return "";
-		  else if (text == String.fromCharCode(9660)) return "-";
-		  else if (text == String.fromCharCode(9644)) return null;
-		  else return null;
-		}
-	
-	 	function ordering_url_opts() {
-			const widgetid = "session_ordering_widget";  	
-			let fields = [];  let dirs = [];
-			$("#"+widgetid).find("span[id^='ordering_field']").each(CollectOrderingField);
-			$("#"+widgetid).find("span[id^='ordering_dir']").each(CollectOrderingDir);
-			
-			let opts = [];
-			for (let i = 0; i < fields.length; i++) {
-				pfx = get_ordering_dir(dirs[i]);
-				if (pfx != null) { 
-					opts.push(pfx+fields[i]);
-				}
-			}
-			
-			return opts.length > 0 ? ["ordering=" + opts.join(",")] : [];
-		}
-		
+
 		function show_url() {
 			const url = URL_page + URLopts();
 			window.history.pushState("","", url);

@@ -35,6 +35,7 @@ from django.db.utils import IntegrityError
 from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect
 from django.http.request import QueryDict
 from django.forms.models import fields_for_model, ModelChoiceField, ModelMultipleChoiceField
+from django.conf import settings
 from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # 3rd Party package imports (dependencies)
@@ -194,31 +195,47 @@ class ListViewExtended(ListView):
 
     # Fetch all the objects for this model
     def get_queryset(self, *args, **kwargs):
-        # log.debug(f"Getting Queryset for List View. Process ID: {os.getpid()}.")
+        if settings.DEBUG:
+            log.debug(f"Getting Queryset for List View. Process ID: {os.getpid()}.")
+            if len(self.request.GET) > 0:
+                log.debug(f"GET parameters:")
+                for key, val in self.request.GET.items():
+                    log.debug(f"\t{key}={val}")
+            else:
+                log.debug(f"No GET parameters!")
+
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
 
         # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
         CuserMiddleware.set_user(self.request.user)
 
-        # If the URL has GET parameters (following a ?) then self.request.GET
-        # will contain a dictionary of name: value pairs that FilterSet uses
-        # construct a new filtered queryset.
-        self.filterset = None
         self.format = get_list_display_format(self.request.GET)
+
         self.ordering = get_ordering(self)
 
-        self.queryset = self.model.objects.all()
+        self.filterset = None  # Default
+
+        fs = None
         if len(self.request.GET) > 0 or len(self.request.session.get("filter", {})) > 0:
+            # If the URL has GET parameters (following a ?) then self.request.GET
+            # will contain a dictionary of name: value pairs that FilterSet uses
+            # construct a new filtered queryset.
             fs = get_filterset(self)
 
-            # If there is a filter specified in the URL
-            if not fs is None:
-                self.filterset = fs
-                self.queryset = fs.filter()
+        # If there is a filter specified in the URL
+        if fs:
+            self.filterset = fs
+            self.queryset = fs.filter()
+        else:
+            self.queryset = self.model.objects.all()
 
         if (self.ordering):
             self.queryset = self.queryset.order_by(*self.ordering)
+
+        if settings.DEBUG:
+            log.debug(f"ordering  = {self.ordering}")
+            log.debug(f"filterset = {self.filterset.get_specs()}")
 
         self.count = len(self.queryset)
 

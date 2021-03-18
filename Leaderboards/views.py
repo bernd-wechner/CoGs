@@ -116,10 +116,11 @@ def pre_save_handler(self):
             html += f"{m}\n"
         else:
             m = message.replace('\n', ' ')
-            log.debug(m)
+            if settings.DEBUG:
+                log.debug(m)
 
     def STR(r):
-        '''Quick and dirty preyty-printer for tuples and lists of tuples requests (as the repr defaults suck)'''
+        '''Quick and dirty pretty-printer for tuples and lists of tuples requests (as the repr defaults suck)'''
         if isinstance(r, list):
             s = '['
             R = r
@@ -387,7 +388,8 @@ def pre_commit_handler(self, rebuild=None):
     #    A general are you sure? system for edits is worth implementing.
         session = self.object
 
-        log.debug(f"POST-PROCESSING Session {session.pk} submission.")
+        if settings.DEBUG:
+            log.debug(f"POST-PROCESSING Session {session.pk} submission.")
 
         team_play = session.team_play
 
@@ -496,7 +498,8 @@ def pre_commit_handler(self, rebuild=None):
                 for player in team_players_post:
                     teams = teams.filter(players=player)
 
-                log.debug(f"Team Check: {len(teams)} teams that have these players: {team_players_post}.")
+                if settings.DEBUG:
+                    log.debug(f"Team Check: {len(teams)} teams that have these players: {team_players_post}.")
 
                 # If not found, then create a team object with those players and
                 # link it to the rank object and save that.
@@ -514,7 +517,9 @@ def pre_commit_handler(self, rebuild=None):
                     team.save()
                     rank.team = team
                     rank.save()
-                    log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
+
+                    if settings.DEBUG:
+                        log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
 
                 # If one is found, then link it to the approriate rank object and
                 # check its name against the submission (updating if need be)
@@ -523,7 +528,9 @@ def pre_commit_handler(self, rebuild=None):
 
                     # If the name changed and is not a placeholder of form "Team n" save it.
                     if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name:
-                        log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
+                        if settings.DEBUG:
+                            log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
+
                         team.name = new_name
                         team.save()
 
@@ -531,7 +538,9 @@ def pre_commit_handler(self, rebuild=None):
                     if (rank.team != team):
                         rank.team = team
                         rank.save()
-                        log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
+
+                        if settings.DEBUG:
+                            log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
 
                 # Weirdness, we can't legally have more than one team with the same set of players in the database
                 else:
@@ -570,7 +579,9 @@ def pre_commit_handler(self, rebuild=None):
                 reason = f"Session {session.pk} was updated."
 
             J = '\n\t\t'  # A log message list item joiner
-            log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+            if settings.DEBUG:
+                log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+
             Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
 
         # Now check the integrity of the save. For a sessions, this means that:
@@ -636,7 +647,8 @@ def pre_delete_handler(self):
         g = session.game
         dt = session.date_time
 
-        log.debug(f"Deleting Session {session.pk}:")
+        if settings.DEBUG:
+            log.debug(f"Deleting Session {session.pk}:")
 
         # Check to see if this is the latest play for each player
         is_latest = True
@@ -653,10 +665,12 @@ def pre_delete_handler(self):
         # for those players need a ratings rebuild
         if not is_latest:
             rebuild = g.future_sessions(dt, session.players)
-            log.debug(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions: {str(rebuild)}")
+            if settings.DEBUG:
+                log.debug(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions: {str(rebuild)}")
             post_kwargs['rebuild'] = rebuild
         else:
-            log.debug(f"\tIs the latest session of {g} for all of {', '.join(session.players)}")
+            if settings.DEBUG:
+                log.debug(f"\tIs the latest session of {g} for all of {', '.join(session.players)}")
 
         return post_kwargs
     else:
@@ -1194,10 +1208,13 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
     #######################################################################################################
     # # FOR ALL THE GAMES WE SELECTED build a leaderboard (with any associated snapshots)
     #######################################################################################################
-    log.debug(f"Preparing leaderboards for {len(games)} games.")
+    if settings.DEBUG:
+        log.debug(f"Preparing leaderboards for {len(games)} games.")
+
     leaderboards = []
     for game in games:
-        log.debug(f"Preparing leaderboard for: {game}")
+        if settings.DEBUG:
+            log.debug(f"Preparing leaderboard for: {game}")
 
         # FIXME: Here is a sweet spot. Some or all sessions are available in the
         #        cache already. We need the session only for:
@@ -1205,7 +1222,7 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
         #  1) it's datetime - cheap
         #  2) to build the three headers
         #     a) session player list     - cheap
-        #     b) analisys pre            - expensive
+        #     b) analysis pre            - expensive
         #     c) analysis post           - expensive
         #
         # We want to know if the session is already in a cached snapshot.
@@ -1225,7 +1242,8 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
             # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure
             # now. That is assemble the actualy leaderbards after each of the collected sessions.
 
-            log.debug(f"\tPreparing {len(boards)} boards/snapshots.")
+            if settings.DEBUG:
+                log.debug(f"\tPreparing {len(boards)} boards/snapshots.")
 
             # We want to build a list of snapshots to add to the leaderboards list
             snapshots = []
@@ -1250,15 +1268,18 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
                 #       game.play_counts and game.session_list might run faster with one query rather
                 #       than two.
 
-                log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")
+                if settings.DEBUG:
+                    log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")
 
                 # First fetch the global (unfiltered) snapshot for this board/session
                 if board.pk in lb_cache:
                     full_snapshot = lb_cache[board.pk]
-                    log.debug(f"\t\tFound it in cache!")
+                    if settings.DEBUG:
+                        log.debug(f"\t\tFound it in cache!")
 
                 else:
-                    log.debug(f"\t\tBuilding it!")
+                    if settings.DEBUG:
+                        log.debug(f"\t\tBuilding it!")
                     full_snapshot = board.leaderboard_snapshot
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
@@ -1273,7 +1294,8 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
                 # Alternately make snapshots a class with attrs? What are the
                 # consequences of that for caching, JSONifying to context and
                 # AJAX callers?
-                log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
+                if settings.DEBUG:
+                    log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
@@ -1282,7 +1304,8 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
                     snapshot = lo.apply(full_snapshot)
                     lbf = snapshot[8]
 
-                    log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
+                    if settings.DEBUG:
+                        log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
 
                     # Counts supplied in the full_snapshot are global and we want to constrain them to
                     # the leagues in question.
@@ -1452,7 +1475,8 @@ def receive_ClientInfo(request):
     '''
     if (request.POST):
         if "clear_session" in request.POST:
-            log.debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+            if settings.DEBUG:
+                log.debug(f"referrer = {request.META.get('HTTP_REFERER')}")
             session_keys = list(request.session.keys())
             for key in session_keys:
                 del request.session[key]
@@ -1460,16 +1484,19 @@ def receive_ClientInfo(request):
 
         # Check for the timezone
         if "timezone" in request.POST:
-            log.debug(f"Timezone = {request.POST['timezone']}")
+            if settings.DEBUG:
+                log.debug(f"Timezone = {request.POST['timezone']}")
             request.session['timezone'] = request.POST['timezone']
             activate(request.POST['timezone'])
 
         if "utcoffset" in request.POST:
-            log.debug(f"UTC offset = {request.POST['utcoffset']}")
+            if settings.DEBUG:
+                log.debug(f"UTC offset = {request.POST['utcoffset']}")
             request.session['utcoffset'] = request.POST['utcoffset']
 
         if "location" in request.POST:
-            log.debug(f"location = {request.POST['location']}")
+            if settings.DEBUG:
+                log.debug(f"location = {request.POST['location']}")
             request.session['location'] = request.POST['location']
 
     return HttpResponse()
@@ -1487,7 +1514,8 @@ def receive_Filter(request):
     if (request.POST):
         # Check for league
         if "league" in request.POST:
-            log.debug(f"League = {request.POST['league']}")
+            if settings.DEBUG:
+                log.debug(f"League = {request.POST['league']}")
             save_league_filters(request.session, int(request.POST.get("league", 0)))
 
     return HttpResponse()

@@ -290,3 +290,14 @@ div.inspector td
 { 
 	vertical-align: top;
 } 
+
+.ordering_widget {
+     display:        inline-block;
+     color:          #444;
+     border:         1px solid #CCC;
+     background:     #DDD;
+     padding:        5px;
+     box-shadow:     0 0 5px -1px rgba(0,0,0,0.2);
+     text-align:     right;
+     vertical-align: middle;
+ }
