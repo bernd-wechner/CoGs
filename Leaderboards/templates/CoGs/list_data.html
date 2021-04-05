@@ -233,7 +233,8 @@
 	
 		// Filter widget code seems in order and tested bar:
 		// TODO: ignore options who have no value! Don't add them to fopts.
-		// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).	
+		// TODO: Hmmm, have to support relations, like ranks_player (which should in fact be performances_player anyhow).
+		// datetime encoding is broken.	
 		
 	 	function filter_url_opts() {
 			const widgetid = "session_filtering_widget";
@@ -252,7 +253,7 @@
 		  			val = field.find(":selected").val();
 		
 				if (val != 'None' && val != "")
-					fopts.push(opt + "=" + val);
+					fopts.push(opt + "=" + encodeURIComponent(val));
 		  	}
 	
 			$("#"+widgetid).find(":input[id^='filter_field']").each(CollectFilterField);

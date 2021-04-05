@@ -2038,7 +2038,7 @@ class Session(TimeZoneMixIn, AdminModel):
     #     while performance is always tracked by player.
 
     # TODO: consider if we can filter on properties or specify annotations somehow to filter on them
-    filter_options = ['date_time__gt', 'date_time__lt', 'league', 'game']
+    filter_options = ['date_time__gt', 'date_time__lt', 'game']
     order_options = ['date_time', 'game', 'league']
 
     # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:

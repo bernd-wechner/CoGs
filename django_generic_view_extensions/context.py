@@ -13,9 +13,12 @@ from django.views.generic import base
 from django.http.request import HttpRequest
 
 # Python imports
+import dal
+import django
 import pytz
 import sqlparse
 from datetime import datetime
+from pkg_resources import get_distribution
 # import json
 
 # Package imports
@@ -267,6 +270,13 @@ def add_debug_context(view_request, context):
     else:
         raise ValueError("Internal Error: add_time_context requested with invalid view/request")
 
+    context['DEBUG'] = settings.DEBUG
     context['debug_mode'] = request.session.get("debug_mode", False)
+
+    context['Django_source'] = django.__spec__.origin  # @UndefinedVariable
+    context['Django_version'] = django.__version__
+
+    context['DAL_source'] = dal.__spec__.origin  # @UndefinedVariable
+    context['DAL_version'] = get_distribution("django-autocomplete-light").version
 
     return context

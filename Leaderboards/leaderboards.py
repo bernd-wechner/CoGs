@@ -1477,14 +1477,6 @@ class leaderboard_options:
         get the impact of the last evert (prior to as_at) but produce a link that uses
         fixed reference times rather than the relative so they can be used in comms and
         have lasting relevance.
-
-        TODO: add a button to top row on leaderboards page which is of a chain link, and when
-        clicked, resubmits current view via this, returning a static rendition of it.
-
-        TODO: add a button beside it to show the link in the Address bar (get it out of advanced).
-        Need a clear icon for that. Could be an eye with some hint of a URLness to it?
-
-        Both can have excellent ToolTips of course.
         '''
 
         # Map self.compare_back_to number to self.compare_back_to datetime

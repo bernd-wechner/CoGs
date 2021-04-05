@@ -19,7 +19,9 @@
 </p>
 
 <form id="formData" action="" method="post">
+	<!-- START FORM media -->
 	{{ form.media }}
+	<!-- END FORM media -->
 	{% csrf_token %}
 	<table>
 	    {{ form.as_table }}

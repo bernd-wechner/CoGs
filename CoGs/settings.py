@@ -4,6 +4,7 @@ Django settings for CoGs project.
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
 import os
+import sys
 
 from tzlocal import get_localzone
 from django.conf import global_settings
@@ -64,40 +65,12 @@ if SITE_IS_LIVE:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
+    DEBUG = False
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
     from CoGs.settings_development import *
-    import django  # So we have access to the version for reporting
-    import sys  # So we have access to python path (that it searches for imports)
-    import psutil  # So we can access process details
-
-    def pinfo():
-        pid = os.getpid()
-        ppid = os.getppid()
-        P = psutil.Process(pid)
-        PP = psutil.Process(ppid)
-        return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
-                'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
-
-    print("Django settings: Development Server")
-    print(f"Django version: {django.__version__}")
-    print(f"Django loaded from: {django.__file__}")
-    print(f"Using Path: {sys.path}")
-    print(f"Process Info: {pinfo()}")
-    print(f"Debug: {DEBUG}")
-
-#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
-#     #if not sys.gettrace():
-#     def trace_func(frame, event, arg):
-#         with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
-#             print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
-#         return trace_func
-#
-#     sys.settrace(trace_func)
-#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
 
 # Application definition
-
 INSTALLED_APPS = (
     'dal',
     'dal_select2',
@@ -223,11 +196,7 @@ MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9
 # serializer.
 SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
 
-# Static files (CSS, JavaScript, Images)
-# https://docs.djangoproject.com/en/1.8/howto/static-files/
-
-STATIC_URL = '/static/'
-
+# The login URL
 LOGIN_URL = '/login/'
 
 # The default page to redirect to on login. Generally we return you to the page you
@@ -274,5 +243,47 @@ else:
 
 # Pass our logger to Django Generic View Extensions
 from .logging import log
+from logging import DEBUG as loglevel_DEBUG
+import logging.config
+
 import django_generic_view_extensions
 django_generic_view_extensions.log = log
+
+# Log some config debugs
+
+if DEBUG:
+    import django  # So we have access to the version for reporting
+    import psutil  # So we can access process details
+
+    def pinfo():
+        pid = os.getpid()
+        ppid = os.getppid()
+        P = psutil.Process(pid)
+        PP = psutil.Process(ppid)
+        return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
+                'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
+
+    # Unsure why, byt logging seems not enabled yet at this point, so to be be able to log we need to enable it for DEBUG
+    # explicitly and load the config above explicitly. It works outside of settings.py without this, not sure why in herr
+    # the logger appear unconfigured at this point.
+    log.setLevel(loglevel_DEBUG)
+    logging.config.dictConfig(LOGGING)
+
+    log.debug(f"Django settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
+    log.debug(f"Django version: {django.__version__}")
+    log.debug(f"Django loaded from: {django.__file__}")
+    log.debug(f"Using Path: {sys.path}")
+    log.debug(f"Process Info: {pinfo()}")
+    log.debug(f"Static root: {STATIC_ROOT}")
+    log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+    log.debug(f"Debug: {DEBUG}")
+
+#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+#     #if not sys.gettrace():
+#     def trace_func(frame, event, arg):
+#         with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
+#             print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
+#         return trace_func
+#
+#     sys.settrace(trace_func)
+#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())

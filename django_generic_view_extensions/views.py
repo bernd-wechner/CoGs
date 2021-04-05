@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.
 '''
 # Python imports
-import os, datetime  # , sys, traceback
+import os, datetime, dal  # , sys, traceback
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -40,8 +40,9 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 
 # 3rd Party package imports (dependencies)
 from url_filter.filtersets import ModelFilterSet
-from cuser.middleware import CuserMiddleware
+from url_filter.constants import StrictMode
 from dal import autocomplete
+from cuser.middleware import CuserMiddleware
 
 # Package imports
 from . import log
@@ -76,67 +77,85 @@ def get_filterset(self):
 
     qs = self.model.objects.all()
 
+    # Create a mutable QueryDict (default ones are not mutable)
     qd = QueryDict('', mutable=True)
 
-    # Add the GET parameter sunconditionally, a user request overrides
+    # Add the GET parameters unconditionally, a user request overrides a session saved filter
     if hasattr(self.request, 'GET'):
         qd.update(self.request.GET)
 
     # Use the session stored filter as a fall back, it is expected
     # in session["filter"] as a dictionary of (pseudo) fields and
-    # values. Thatis to say, they are  nominally fields in the model,
+    # values. That is to say, they are  nominally fields in the model,
     # but don't need to be, as long as they are keys into
     # session["filter_priorities"] which defines prioritised lists of
-    # fields for that key.
+    # fields for that key. We do that because the same thing (that a
+    # pseudo field or key describes) may exist in different models in
+    # different fields of different names. Commonly the case when
+    # spanning relationships to get from this model to the pseudo field.
+    #
+    # To cut a fine example consider an Author model and a Book model,
+    # in which the Author has name and each book has a name and a ForeignKey
+    # related field author__name. We might have a psuedo field authors_name
+    # as the key and a list of filter_priorities of [author__name, name]
+    # And so if this model has author__name we use than and if not if it has
+    # name we use that. Clearly this cannot cover all confusions and requires
+    # careful model, field and filter design to support a clear naming
+    # convention ...
     session = self.request.session
     if 'filter' in session:
         model = self.model
 
-        # the filters we make a copy of as we may be modifying them
+        # the session filters we make a copy of as we may be modifying them
         # based on the filter_priorities, and don't want to modify
         # the session stored filters (our mods are only used for
         # selecting the model field to filter on based on stated
         # priorities).
-        filters = session["filter"].copy()
+        session_filters = session["filter"].copy()
         priorities = session.get("filter_priorities", {})
 
         # Now if priority lists are supplied we apply them keeping only the highest
-        # priority field in any priority list in the list of priorities.
+        # priority field in any priority list in the list of priorities. The highest
+        # priority one being the lowest index in the list that list which is a field
+        # we can filter on.
         for f in session["filter"]:
             if f in priorities:
                 p = priorities[f]
-                highest = len(p)  # Initial value, one greater than the largest index in the list
-                for i, field in enumerate(reversed(p)):
+
+                # From the list of priorites, find the highest priority one that
+                # is a field we could actually filter on
+                filter_field = None
+                for field in p:
                     if is_filter_field(model, field):
-                        highest = len(p) - i - 1
+                        filter_field = field
+                        break
 
                 # If we found one or more fields in the priority list that are
                 # filterable we must now have the highest priority one, we replace
                 # the pseudo filter field with this field.
-                if highest < len(p):
-                    F = p[highest]
-                    val = filters[f]
-                    del filters[f]
-                    filters[F] = val
+                if filter_field and not filter_field == f:
+                    val = session_filters[f]
+                    del session_filters[f]
+                    session_filters[filter_field] = val
 
-        # Now the GET filters were already to qd, so we throw out any
-        # session filters already in there as we provide priority to
-        # user specified filters in the GET params over the session
-        # defined fall backs.
-        F = filters.copy()
-        for f in filters:
+        # Te GET filters were already added to qd, so before we add session filters
+        # we throw out any that are already in there as we provide priority to
+        # user specified filters in the GET params over the session defined fall backs.
+        F = session_filters.copy()
+        for f in session_filters:
             if f in qd:
                 del F[f]
 
-        qd.update(F)
+        if F:
+            qd.update(F)
 
     # TODO: test this with GET params and session filter!
-    fs = FilterSet(data=qd, queryset=qs)
+    fs = FilterSet(data=qd, queryset=qs, strict_mode=StrictMode.fail)
 
     # get_specs raises an Empty exception if there are no specs, and a ValidationError if a value is illegal
     try:
         specs = fs.get_specs()
-    except:
+    except Exception as E:
         specs = []
 
     if len(specs) > 0:
@@ -235,7 +254,7 @@ class ListViewExtended(ListView):
 
         if settings.DEBUG:
             log.debug(f"ordering  = {self.ordering}")
-            log.debug(f"filterset = {self.filterset.get_specs()}")
+            log.debug(f"filterset = {self.filterset.get_specs() if self.filterset else None}")
 
         self.count = len(self.queryset)
 
@@ -360,6 +379,9 @@ def get_context_data_generic(self, *args, **kwargs):
 
     This is code shared by the two views so peeled out into a generic.
     '''
+    if settings.DEBUG:
+        log.debug("Preparing context data.")
+
     # We need to set self.model here
     self.app = app_from_object(self)
     self.model = class_from_string(self, self.kwargs['model'])
@@ -398,6 +420,9 @@ def get_form_generic(self):
 
     This is code shared by the two views so peeled out into a generic.
     '''
+    if settings.DEBUG:
+        log.debug("Building form.")
+
     model = self.model
     selector = getattr(model, "selector_field", None)
 
@@ -408,7 +433,7 @@ def get_form_generic(self):
     else:
         raise NotImplementedError("Generic get_form only for use by CreateView or UpdateView derivatives.")
 
-    # Attach DAL (Django Autocomplete Light) Select2 widgets to all the mdoel selectors
+    # Attach DAL (Django Autocomplete Light) Select2 widgets to all the model selectors
     for field in form.fields.values():
         if isinstance(field, ModelChoiceField):
             field_model = field.queryset.model
@@ -465,6 +490,9 @@ def post_generic(self, request, *args, **kwargs):
 
     This is code shared by the two views so peeled out into a generic.
     '''
+    if settings.DEBUG:
+        log.debug("Received POST data.")
+
     # Just reflect the POST data back to client for debugging if requested
     if self.request.POST.get("debug_post_data", "off") == "on":
         html = "<h1>self.request.POST:</h1>"
@@ -684,6 +712,9 @@ class CreateViewExtended(CreateView):
         Returns a dictionary of values keyed on model field names that are used to populated the form widgets
         with initial values.
         '''
+        if settings.DEBUG:
+            log.debug("Getting initial data from defaults.")
+
         initial = super().get_initial()
 
         try:
@@ -733,6 +764,8 @@ class UpdateViewExtended(UpdateView):
 
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
+        log.debug("Getting initial data from an existing object.")
+
         self.pk = self.kwargs['pk']
         self.model = class_from_string(self, self.kwargs['model'])
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
