@@ -35,7 +35,6 @@ cat > $exclusion_file <<-EOF
 	__pycache__
 	*.pyc
 	migrations
-	static
 EOF
 
 # Now collect the static files
@@ -46,9 +45,9 @@ $source_dir/manage.py collectstatic  --verbosity 0 --noinput > /dev/null
 
 # Now publish the site
 echo "Copying site to $server_name..."
-site=(static CoGs Leaderboards Scripts django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin manage.py uwsgi_shelob.ini)
+site=(requirements.txt static CoGs Leaderboards Scripts django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin manage.py uwsgi_shelob.ini)
 for source in ${site[@]}; do
-	# If we're excluding static dirs, we still want to copy the static folder
+	# If we're excluding an app subdir type we still want to copy a root level version (probably). Calssic example, if "static" is in $exclusion_file
 	if grep -q $source $exclusion_file; then
 		exclude=""
 	else
@@ -58,8 +57,17 @@ for source in ${site[@]}; do
 	rsync -r $exclude $source_dir/$source $server_mount_dir
 done
 
-# We need to restart the uwsgi service for changes to take effect
-echo "Restarting UWSGI service on $server_name ..."
-ssh -o IdentityFile=$rsa_file $server_account sudo service uwsgi restart
+# March 2021 I found we need to collectstatic on the server, because the local collectstatic isn't providing the minimised file
+# My best guess is, this is because locally we have debug settigs and on the server live settings, and in the latter collectstatic
+# provides the minified JS files.
+#
+# To do so, we have to cd to to the sites home directory, activate the venv and then run manage.py collectstatic. 
+echo "Collecting static files ..."
+ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; python manage.py collectstatic --noinput --clear"
+
+# We need to reloading the uwsgi services for changes to take effect
+echo "Reloading UWSGI services on $server_name ..."
+# Restart is very slow. Reload is faster - and generally works.
+ssh -o IdentityFile=$rsa_file $server_account sudo service uwsgi reload
 
 echo "Done."

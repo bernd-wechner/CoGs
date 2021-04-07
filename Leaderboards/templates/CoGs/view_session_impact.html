@@ -17,6 +17,15 @@
 {#	- A count of boards rebuilt (0 if none) #}
 {#	- Three leaderboards. 3 of them as outlined below #}
 
+{% if user.is_authenticated %}
+	<p>
+		[<a href="{% url 'add' model_name %}">Add annother {{ model_name.title }}</a>]
+		[<a href="{% url 'edit' model_name object_id %}">Edit this {{ model_name.title }} again</a>]
+		[<a href="{% url 'list' model_name %}">List all {{ model_name_plural.title }}</a>]
+		[<a href="{% url 'list' model_name %}?game={{game.pk}}">List {{game.name}} {{ model_name_plural.title }}</a>]
+	</p>
+{% endif %}	   
+
 <p>Thanks for submitting the results of your game of {{game}} played on {{date_time}}.</p>
 
 {% if is_latest %}
@@ -52,7 +61,7 @@
 {#	the current board after the submisison(rebuild). TO achieve this I imagine  #}
 {#  we pass in 3 snapshots (the first will have a baseline for deltas, the other two #}
 {#  won't need them of course - they have no meaning in the "latest" sense, and we #}
-{#  shoudl see deltas on the new "latest" board and not on the prior.#}
+{#  should see deltas on the new "latest" board and not on the prior.#}
 
 	
 {% endif %}
@@ -86,6 +95,7 @@
 	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
 	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
 	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_view_Session = "{% url 'view' 'Session' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
 	let url_list_Sessions = "{% url 'list' 'Session'%}";
 	
 	LB_options = [
@@ -97,6 +107,13 @@
 		true,   // analysis_post,
 		true    // show_delta 
 	];	
+	
+	// Configurable, should agree with what the Django view is configured to deliver.
+	// if the Django view is delivering baseline boards this should be true and we will
+	// not render them and use them only for calculating rank deltas. If it is false
+	// the view should idelaly not deliver baslines (or they'll render and not honor
+	// the leaderboard options accurately).
+	const use_baseline = true;		
 </script>
 {% endblock %}
 

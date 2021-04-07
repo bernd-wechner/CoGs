@@ -15,26 +15,26 @@
 {#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
 {#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
 {#  DAL should not reload either of these two libraries if we have loaded them already!#}
+{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
-	{% if dal_media %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
+	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
 		<!-- END DAL media -->
-	{% else %}
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>	
 	{% endif %}
 
 	{# Bootstrap theme for select2 widget #}
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css">
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
 
-{# TODO: I don't think we use jQuery-ui yet. But I think we want to some time: https://jqueryui.com/demos/#}
-{#	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js"></script>#}
-{#	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >#}
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}	
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js"></script>
+	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >
 	
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
-
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js"></script> 	{# Useful functions #}
 	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
 	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css"/ >
 	
@@ -127,9 +127,6 @@
 	        </div>
 	        {% endblock %}
 
-{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
-{#			<pre> {{ request.META }}  </pre>#}
-	        
 	        {% block menu %}
 	        <div id="menu-line" style="display: flex;">
 		        <div id="menu" style="float: left;">
@@ -165,7 +162,7 @@
 		        </div>
 		        <div id="login" style="float: right; margin-right:50px;">
 					{% if user.is_authenticated %}
-			        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}"">Logout</a> | 
+			        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> | 
 					{% else %}
 			        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a> |
 					{% endif %}
@@ -212,6 +209,22 @@
 	        </ul>
 	        {% endif %}
 	    {% endblock messages %}
+
+{#			DEBUGGING OUTPUT	#}
+{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
+{#			<pre> {{ request.META }}  </pre>#}
+{#	<pre id="version_debug_info">#}
+{#	Django source: {{ Django_source }}#}
+{#	Django version: {{ Django_version }}#}
+{#	DAL source: {{ DAL_source }}#}
+{#	DAL version: {{ DAL_version }}#}
+{#	</pre> #}
+{#	<script>#}
+{#		const v1 = jQuery.fn.jquery;#}
+{#		const v2 = $().jquery;#}
+{#		const e = document.getElementById("version_debug_info");#}
+{#		e.innerText = e.innerText + "JQuery fn version: " + v1 + "\n\tJQuery $ version: " + v2;#}
+{#	</script>#}
 	
 	    <!-- Content -->
 	    <div id="content" class="content">
@@ -224,8 +237,8 @@
 	    <!-- END Content -->
 	
 	    {% block footer %}
-		    <!-- DEBUG: debug is the settings.DEBUG flag and session["debug_mode"] flag -->
-		    {% if debug or debug_mode %}
+			{#	DEBUG is the settings.DEBUG flag and session["debug_mode"] flag#}
+		    {% if DEBUG or debug_mode %}
 				{% include "CoGs/include/timezone_diag.html" %}
 				{% include "CoGs/include/session_spy.html" %}
 			    {% if filters %}
