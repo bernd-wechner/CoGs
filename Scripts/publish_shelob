@@ -65,8 +65,9 @@ done
 echo "Collecting static files ..."
 ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; python manage.py collectstatic --noinput --clear"
 
-# We need to restart the uwsgi service for changes to take effect
-echo "Restarting UWSGI service on $server_name ..."
-ssh -o IdentityFile=$rsa_file $server_account sudo service uwsgi restart
+# We need to reloading the uwsgi services for changes to take effect
+echo "Reloading UWSGI services on $server_name ..."
+# Restart is very slow. Reload is faster - and generally works.
+ssh -o IdentityFile=$rsa_file $server_account sudo service uwsgi reload
 
 echo "Done."

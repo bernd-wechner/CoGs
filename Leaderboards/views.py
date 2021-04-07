@@ -582,6 +582,9 @@ def pre_commit_handler(self, rebuild=None):
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
+            # TODO: Seems spurious rebuilds on a simple time_date change inside of the window between surrounding session of that game.
+            # Hard to diagnose and pin down. The tests are all peformed in the pre-save_handler and on test that trips will trigger a
+            # rebuild, we should record what test that was, that tripped it, in the log and report on the impact view.
             Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
 
         # Now check the integrity of the save. For a sessions, this means that:
@@ -983,9 +986,13 @@ def view_Impact(request, model, pk):
         except:
             pass
 
-        snapshots = [snapshot]
+        snapshots = [snapshot, baseline]
 
-        c = {"game": o.game,
+        c = {"model": m,
+             "model_name": model,
+             "model_name_plural": m._meta.verbose_name_plural,
+             "object_id": o.id,
+             "game": o.game,
              "date_time": o.date_time,
              "is_latest": o.is_latest,
              "leaderboard_snapshots": json.dumps(leaderboard_tuple_game(o.game, snapshots), cls=DjangoJSONEncoder)}

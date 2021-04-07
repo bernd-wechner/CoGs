@@ -191,33 +191,41 @@ function InitControls(options) {
 		$(chk).prop('checked', enabled.includes(opt)).trigger('input');
 	}
 
-/*	// Disable any checkboxes that don't have supporting data
-	const selected_games = $('#games').val();
-	const selected_leagues = $('#leagues').val();
-	const selected_players = $('#players').val();
+	// Disable any checkboxes that don't have supporting data
+	// An option. I don't think it wise, as it might be nice to 
+	// click the checkbox then ad the data for example. But the 
+	// code rests here in case of  achnage of mind and as a model 
+	// for how to do such things.
+	const disable_options_lacking_data = false;
 	
-	if (selected_games.length === 0)
-	{
-		$('#chk_games_ex').attr('disabled', true);
-		$('#chk_games_in').attr('disabled', true);
+	if (disable_options_lacking_data) {
+		const selected_games = $('#games').val();
+		const selected_leagues = $('#leagues').val();
+		const selected_players = $('#players').val();
+		
+		if (selected_games.length === 0)
+		{
+			$('#chk_games_ex').attr('disabled', true);
+			$('#chk_games_in').attr('disabled', true);
+		}
+	
+		if (selected_leagues.length === 0)
+		{
+			$('#chk_game_leagues_any').attr('disabled', true);
+			$('#chk_game_leagues_all').attr('disabled', true);
+			$('#chk_player_leagues_any').attr('disabled', true);
+			$('#chk_player_leagues_all').attr('disabled', true);
+		}
+	
+		if (selected_players.length === 0)
+		{
+			$('#chk_game_players_any').attr('disabled', true);
+			$('#chk_game_players_all').attr('disabled', true);
+			$('#chk_players_ex').attr('disabled', true);
+			$('#chk_players_in').attr('disabled', true);
+		}
 	}
-
-	if (selected_leagues.length === 0)
-	{
-		$('#chk_game_leagues_any').attr('disabled', true);
-		$('#chk_game_leagues_all').attr('disabled', true);
-		$('#chk_player_leagues_any').attr('disabled', true);
-		$('#chk_player_leagues_all').attr('disabled', true);
-	}
-
-	if (selected_players.length === 0)
-	{
-		$('#chk_game_players_any').attr('disabled', true);
-		$('#chk_game_players_all').attr('disabled', true);
-		$('#chk_players_ex').attr('disabled', true);
-		$('#chk_players_in').attr('disabled', true);
-	}
-*/	
+	
 	// Then the rest of the game selectors
 	$('#num_games').val(options.num_games);         // Mirror of
 													// #num_games_latest
@@ -352,50 +360,43 @@ function encodeDateTime(datetime) {
 }
 
 function URLopts(make_static) {
-	// The opposite so to speal of InitControls() here we read those same
-	// controls and prepare
-	// URL options for self same to submit an AJAX request for updates (or
-	// simply display on
-	// the address bar if desired).
+	// The opposite so to speak of InitControls() here we read those same
+	// controls and prepare URL options for self same to submit an AJAX 
+	// request for updates (or simply display on the address bar if desired).
 	//
 	// make_static: just passes the same request to server to return the options
-	// more
-	// static than we submit them. Mainly to do with latest event options
-	// which will come back as pinned dates.
+	// more static than we submit them. Mainly to do with latest event options
+	// which will come back as pinned dates rather that relative to now.
 	//
-	// Again we'll follow the same order as in InitControls and
-	// Leaderboards.views.leaderboard_options
-	// but in the URL we will only include values that deviate form the defaults
-	// (in the interests of
-	// brevity and efficiency. Also, the broader game and evolution only
-	// submitting options relevant
-	// to that option (again, for brevity and efficiency)
+	// We want to submit the state of all controls somehow too so that when 
+	// the URL generated with these options here is loaded the controls are 
+	// initialised with options as they stand.
 		
 	// For the radio buttons we just fetch the selected value
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
 	
 	// Then get the values of the three multiselect game specifierd
-	const games = $('#games').val().join(",");
+	const games   = $('#games').val().join(",");
 	const leagues = $('#leagues').val().join(",");
 	const players = $('#players').val().join(",");
 	
 	// Then the rest of the game selectors
-	const num_games = $('#num_games').val();
+	const num_games        = $('#num_games').val();
 	const num_games_latest = $('#num_games_latest').val();
-	const changed_since = $("#changed_since").val();
-	const num_days = $('#num_days').val();
-	const num_days_ev = $('#num_days_ev').val();
+	const changed_since    = $("#changed_since").val();
+	const num_days         = $('#num_days').val();
+	const num_days_ev      = $('#num_days_ev').val();
 	
 	// Then the player selectors
-	const num_players_top = $('#num_players_top').val();
+	const num_players_top   = $('#num_players_top').val();
 	const num_players_above = $('#num_players_above').val();
 	const num_players_below = $('#num_players_below').val();
-	const min_plays = $('#min_plays').val();
-	const played_since = $('#played_since').val();
+	const min_plays         = $('#min_plays').val();
+	const played_since      = $('#played_since').val();
 	
 	// Then the perspective and snapshot selectors
-	const as_at = $('#as_at').val();
-	const compare_with = $('#compare_with').val();
+	const as_at           = $('#as_at').val();
+	const compare_with    = $('#compare_with').val();
 	const compare_back_to = $('#compare_back_to').val();
 	
 	// The the content formatting options
@@ -404,10 +405,11 @@ function URLopts(make_static) {
 	const highlight_selected = $('#chk_highlight_selected').is(":checked");
 
 	// Then the extra info options for leaderboard headers
-	const details = $('#chk_details').is(":checked");
-	const analysis_pre = $('#chk_analysis_pre').is(":checked");
+	const details       = $('#chk_details').is(":checked");
+	const analysis_pre  = $('#chk_analysis_pre').is(":checked");
 	const analysis_post = $('#chk_analysis_post').is(":checked");	
-	const show_delta = $('#chk_show_delta').is(":checked");	
+	const show_delta    = $('#chk_show_delta').is(":checked");	
+	const show_baseline = $('#chk_show_baseline').is(":checked");	
 	
 	const names = $('#names').val();	
 	const links = $('#links').val();
@@ -423,21 +425,83 @@ function URLopts(make_static) {
 	// initial page load)
 	let opts = ["no_defaults"];
 
-	// Start with the game filters:
-	//
 	// TODO: Add a Location filter, so we can narrow
 	// sessions down to games played at a given
 	// location.
 	//
 	// TODO: Implement Tourneys and a Tourney filter.
-	if (is_enabled("chk_games_ex") && games)
-		// An exclusive list of games if we asked for them.
-		opts.push("games_ex="+encodeList(games));
-	
-	if (is_enabled("chk_games_in") && games)
-		// An inclusive list of games if we asked for them.
-		opts.push("games_in="+encodeList(games));
 
+	// Handle the Game list based options	
+	const game_list = encodeList(games);
+
+	if (game_list.length > 0) {
+		let game_options = [];
+	
+		if      (is_enabled("chk_games_ex")) game_options.push("games_ex");
+		else if (is_enabled("chk_games_in")) game_options.push("games_in");
+
+		if (game_options.length > 0)
+			for (i=0; i<game_options.length; i++) opts.push(game_options[i]+"="+game_list);
+		else	
+			// If no context supplied for the games, then submit them in the 
+			// transport option (no filter, just transports the list to server 
+			// for rendering the inital value of the games selector)
+			opts.push("games="+game_list);
+	}
+	
+	// Handle the Player list options
+	const player_list = encodeList(players);
+			
+	// We submit the list of leagues in context if any context demands it
+	// else in a basic form for transport to the server, to provide back in
+	// template context for initialising the leagues selector.
+	if (player_list.length > 0) {
+		let player_options = [];
+
+		// The first context to check is on the player filters
+		if      (is_enabled("chk_players_ex")) player_options.push("players_ex");			
+		else if (is_enabled("chk_players_in")) player_options.push("players_in");
+
+		// The second context to check is on the game filters
+		if      (is_enabled("chk_game_players_any")) player_options.push("game_players_any");
+		else if (is_enabled("chk_game_players_all")) player_options.push("game_players_all");
+
+		if (player_options.length > 0)
+			for (i=0; i<player_options.length; i++) opts.push(player_options[i]+"="+player_list);
+		else	
+			// If no context supplied for the players, then submit them in the 
+			// transport option (no filter, just transports the list to server 
+			// for rendering the inital value of the players selector)
+			opts.push("players="+player_list);
+	}
+	
+	// Handle the League list options
+	const league_list = encodeList(leagues);
+	
+	// We submit the list of leagues in context if any context demands it
+	// else in a basic form for transport to the server, to provide back in
+	// template context for initialising the leagues selector.
+	if (league_list.length > 0) {
+		let league_options = [];
+		
+		// The first context to check is on the game filters
+		if      (is_enabled("chk_game_leagues_any")) league_options.push("game_leagues_any");
+		else if (is_enabled("chk_game_leagues_all")) league_options.push("game_leagues_all");
+	
+		// The second  context to check is on the player filters
+		     if (is_enabled("chk_player_leagues_any")) league_options.push("player_leagues_any");
+		else if (is_enabled("chk_player_leagues_all")) league_options.push("player_leagues_all");
+
+		if (league_options.length > 0)
+			for (i=0; i<league_options.length; i++) opts.push(league_options[i]+"="+league_list);
+		else	
+			// If no context supplied for the leagues, then submit them in the 
+			// transport option (no filter, just transports the list to server 
+			// for rendering the inital value of the leagues selector)
+			opts.push("leagues="+league_list);
+	}
+	
+	// Handle the rest of the Game filters
 	if (is_enabled("chk_top_games") && num_games)
 		// We submit num_games with an integer to enable this option.
 		// If num_games is not submited or 0, the server should not
@@ -450,35 +514,8 @@ function URLopts(make_static) {
 		// consider a latest_games request in force.
 		opts.push("latest_games="+encodeURIComponent(num_games_latest));	
 	
-	const league_list = encodeList(leagues);
-	// We submit the list of leagues only if an any or all request is in place
-	// and
-	// we use the name of the request to flag how to use the list. But it's one
-	// or
-	// the other and if neither is present no league list is submitted and no
-	// league
-	// filter should be applied at server end. The defaults should include
-	// game_league_any = preferred_league from the session filter and that
-	// should
-	// see the chk_game_league_any checked when we initControls.
-	if (is_enabled("chk_game_leagues_any") && leagues)
-		opts.push("game_leagues_any="+league_list);	
-	else if (is_enabled("chk_game_leagues_all") && leagues)
-		opts.push("game_leagues_all="+league_list);
 
-	const player_list = encodeList(players);		
-	// We submit the list of players only if an any or all request is in place
-	// and
-	// we use the name of the request to flag how to use the list. But it's one
-	// or
-	// the other and if neither is present no league list is submitted and no
-	// league
-	// filter should be applied at server end.
-	if (is_enabled("chk_game_players_any") && players)
-		opts.push("game_players_any="+player_list);
-	else if (is_enabled("chk_game_players_all") && players)
-		opts.push("game_players_all="+player_list);
-
+	// Handle the rest of the Player filters
 	if (is_enabled("chk_changed_since") && changed_since)
 		// We submit changed_since with a date/time. If it's not submitted
 		// or submitted as an empty string then the server should not be
@@ -497,15 +534,6 @@ function URLopts(make_static) {
 		// other event.
 		opts.push("num_days="+encodeURIComponent(num_days));
 	
-	// Then the player filters:
-	if (is_enabled("chk_players_ex") && players)
-		// If we want to show only selected players (exclusive).
-		opts.push("players_ex="+player_list);			
-	
-	if (is_enabled("chk_players_in") && players)
-		// If we want to forecfully include selected players.
-		opts.push("players_in="+player_list);			
-
 	if (is_enabled("chk_num_players_top") && num_players_top)
 		// If we want to show only the top n players on every leaderboard this
 		// is the
@@ -543,22 +571,7 @@ function URLopts(make_static) {
 		// played a game in the last period of interest, to grab a leaderboard
 		// of currently active players.
 		opts.push("played_since="+encodeDateTime(played_since));		
-		
-	// We submit the list of leagues only if an any or all request is in place
-	// and
-	// we use the name of the request to flag how to use the list. But it's one
-	// or
-	// the other and if neither is present no league list is submitted and no
-	// league
-	// filter should be applied at server end. The defaults should include
-	// player_league_any = preferred_league from the session filter and that
-	// should
-	// see the chk_player_league_any checked when we initControls.
-	if (is_enabled("chk_player_leagues_any") && leagues)
-		opts.push("player_leagues_any="+league_list);
-	if (is_enabled("chk_player_leagues_all") && leagues) 
-		opts.push("player_leagues_all="+league_list);			
-	
+			
 	// Then the perspective option
 	if (as_at)
 		// We submit the the persepective request (pretend the submitted date is
@@ -567,15 +580,11 @@ function URLopts(make_static) {
 
 	// And the evolution option
 	switch(evolution_selection) {
-	  // Evolution asks each leaderboard to be presented ith one or more
-		// historic leaderboards
-	  // so we can see the change in the leaderboards each session produces
-		// (the default
-	  // leaderboard is of course the one current (now or as_at). But in this
-		// case only one
-	  // option makes sense. The default is of course "none" and we submit
-		// nothing if that is
-	  // selected.
+		// Evolution asks each leaderboard to be presented with one or more
+		// historic leaderboards so we can see the change in the leaderboards 
+		// each session produces (the default leaderboard is of course the one 
+		// current (now or as_at). But in this case only one option makes sense. 
+		// The default is of course "nothing" and we submit nothing if that is selected.
 	  case "compare_with":
 		  	if (compare_with)
 		  		// We submit a number of past session to compare the current one
@@ -593,34 +602,27 @@ function URLopts(make_static) {
 		  			opts.push("compare_back_to="+encodeDateTime(compare_back_to));
 		    break;
 	  case "num_days_ev":
-		  	if (num_days_ev)
-		  		// The partner to the game filter above is a back to request
-				// which asks to show
-		  		// all the leaderboard evolution during that game session. So
-				// should present
-		  		// the leaderboard in effect when that session started and one
-				// after each game
-		  		// session in that broader session (not we use the term session
-				// to denote the
-		  		// play of one game and recording of its results or alternately
-				// the play of a load
-		  		// of games over a day or days ...).
-		  		//
-		  		// We encode the number of days in the back to request as a
-				// plain int, as opposed
-		  		// to a date/time and this is how the server knows it's a
-				// session relative request.
+			if (num_days_ev)
+				// The partner to the game filter above is a back-to request
+				// which asks to show all the leaderboard evolution during that
+				// gaming event. So should present the leaderboard in effect 
+				// when that event started and one after each game session during 
+				// that event.
+				//
+				// We encode the number of days in the back-to request as a
+				// plain int, as opposed to a date/time and this is how the 
+				// server knows it's an event based request.
 				if (num_days_ev == num_days)
-		  			opts.push("compare_back_to");
+					opts.push("compare_back_to");
 				else
-		  			opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
-		    break;
+					opts.push("compare_back_to=" + encodeURIComponent(num_days_ev));
+			break;
 	}		
 	
 	// These have valid defaults, on or off, and we only have to submit
 	// deviations from that default.
-	if (highlight_players != defaults.highlight_players) opts.push("highlight_players="+encodeURIComponent(highlight_players));
-	if (highlight_changes != defaults.highlight_changes) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
+	if (highlight_players  != defaults.highlight_players) opts.push("highlight_players="+encodeURIComponent(highlight_players));
+	if (highlight_changes  != defaults.highlight_changes) opts.push("highlight_changes="+encodeURIComponent(highlight_changes));
 	if (highlight_selected != defaults.highlight_selected) opts.push("highlight_selected="+encodeURIComponent(highlight_changes));
 	
 	if (names != defaults.names) opts.push("names="+encodeURIComponent(names));
@@ -629,10 +631,11 @@ function URLopts(make_static) {
 	// Then the extra info options for leaderboard headers
 	// These too have valid defaults, on or off, and we only have to submit
 	// deviations from that default.
-	if (details != defaults.details) opts.push("details="+encodeURIComponent(details));
-	if (analysis_pre != defaults.analysis_pre) opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (details       != defaults.details)       opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre  != defaults.analysis_pre)  opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
 	if (analysis_post != defaults.analysis_post) opts.push("analysis_post="+encodeURIComponent(analysis_post));
-	if (show_delta != defaults.show_delta) opts.push("show_delta="+encodeURIComponent(show_delta));
+	if (show_delta    != defaults.show_delta)    opts.push("show_delta="+encodeURIComponent(show_delta));
+	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from
@@ -660,23 +663,17 @@ function URLopts(make_static) {
 let shortcut_buttons = [null]; 
 
 // TODO: The aim here is to provide programable shortcut buttons. The general
-// gist is
-// that we've defined an array structure here, and we would have a default set
-// for
-// anonymous users and for logged in users we'd get it passed in with the AJAX
-// leaderboards
-// request or in the template on page load (as we do leaderboards), for the
-// logged in user.
+// gist is that we've defined an array structure here, and we would have a default 
+// set for anonymous users and for logged in users we'd get it passed in with the 
+// AJAX leaderboards request or in the template on page load (as we do leaderboards), 
+// for the logged in user.
+
 // TODO: We need to code up a means of saving options. My thought is on the
-// Advanced Options
-// drop down, deside the Apply button is a "Save As Shortcut" button, and beside
-// it some
-// controls, an int selector that runs 1 to the current number of buttons plus
-// one (so we can
-// overwrite a given slot or create new one, and two checkboxes, one for
-// override_content, and
-// one for override_presentation, and then a name which should support template
-// items like:
+// Advanced Options drop down, beside the Apply button is a "Save As Shortcut" 
+// button, and beside it some controls, an int selector that runs 1 to the current 
+// number of buttons plus one (so we can overwrite a given slot or create new one, 
+// and two checkboxes, one for override_content, and one for override_presentation, 
+// and then a name which should support template items like:
 // {league} for the preferred league
 // {leagues} for the selected league(s) - properly formated as "a,b,c and/or d"
 // {players} for the selected player(s) - properly formated as "a,b,c and/or d"
@@ -684,10 +681,8 @@ let shortcut_buttons = [null];
 // and of course when we add them {tourneys} and {locations} as well.
 //
 // These need to be saved to a Django model which is keyed on user and button ID
-// (number)
-// and possibly with context (leaderboards) so in future we can support
-// programmable
-// buttons on other views too.
+// (number) and possibly with context (leaderboards) so in future we can support
+// programmable buttons on other views too.
 
 function GetShortcutButtons() {
 	pl_id = preferred_league[0];
@@ -996,6 +991,11 @@ $('#players').on("change", function(e) {
 		$('#chk_players_ex').prop('checked', false);
 		$('#chk_players_in').prop('checked', false);
 	}
+	
+	// If the player list changes while highlight_selected is on we need 
+	// to redraw the tables to render the highlights on the approriate players.
+	const highlight_selected = $('#chk_highlight_selected').is(":checked");
+	if (highlight_selected) DrawTables("tblLB");
 });
 
 // ===================================================================================

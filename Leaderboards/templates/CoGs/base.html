@@ -17,13 +17,12 @@
 {#  DAL should not reload either of these two libraries if we have loaded them already!#}
 {#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
 		<!-- END DAL media -->
-	{% else %}
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
 	{% endif %}
 
 	{# Bootstrap theme for select2 widget #}

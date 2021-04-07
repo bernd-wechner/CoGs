@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.
 '''
 # Python imports
-import os, datetime, dal  # , sys, traceback
+import os, datetime  # , dal, sys, traceback
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -623,13 +623,18 @@ def post_generic(self, request, *args, **kwargs):
 
                         log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
-                    # TODO: Work out how to get here with an IntegrityError: what can trigger this
-                    # TODO: Report IntegrityErrors too
-    #                 exc_type, exc_obj, exc_tb = sys.exc_info()
-    #                 fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-    #                 print(exc_type, fname, exc_tb.tb_lineno)
-    #                 print(traceback.format_exc())
-                    self.form.add_error(None, e.message)
+                    # Validation errors arrive with a message.
+                    # Integrity errors tend to arise when the Models don't reflect the Database schema
+                    #    that is migrations should be made and applied. The don't have a message but
+                    #    a message can be found in the first argument.
+
+                    # Some tracback generation for debugging if needed
+                    # exc_type, exc_obj, exc_tb = sys.exc_info()
+                    # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                    # print(exc_type, fname, exc_tb.tb_lineno)
+                    # print(traceback.format_exc())
+                    message = getattr(e, 'message', e.args[0])
+                    self.form.add_error(None, message)
                     return self.form_invalid(self.form)
 
                 # Hook for post-processing data (after it's all saved)

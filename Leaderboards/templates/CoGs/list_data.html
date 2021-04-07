@@ -7,7 +7,7 @@
 
 {% block content %}
 	{% if user.is_authenticated %}
-		<p><a href="/add/{{model_name}}">Add {{ model_name.title }}</a></p>
+		<p><a href="{% url 'add' model_name %}">Add {{ model_name.title }}</a></p>
 	{% endif %}	   
 	
 	<p>Displaying 

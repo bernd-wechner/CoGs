@@ -108,6 +108,7 @@ class TrueskillSettings(models.Model):
     def __str__(self): return self.__unicode__()
 
     class Meta:
+        verbose_name = "Trueskill settings"
         verbose_name_plural = "Trueskill settings"
 
 #===============================================================================
@@ -626,6 +627,10 @@ class Rating(RatingModel):
         # Rating should match the last performance
         # TODO: When do we land here? And how do we sync with self.update?
 
+    class Meta(AdminModel.Meta):
+        verbose_name = "Rating"
+        verbose_name_plural = "Ratings"
+
 
 class BackupRating(RatingModel):
     '''
@@ -839,6 +844,9 @@ class League(AdminModel):
         return detail
 
     class Meta(AdminModel.Meta):
+        verbose_name = "League"
+        verbose_name_plural = "Leagues"
+
         ordering = ['name']
         constraints = [ models.UniqueConstraint(fields=['name'], name='unique_league_name') ]
 
@@ -914,6 +922,10 @@ class Team(AdminModel):
             detail += "<LI>{}</LI>".format(field_render(p, link))
         detail += "</UL>"
         return detail
+
+    class Meta(AdminModel.Meta):
+        verbose_name = "Team"
+        verbose_name_plural = "Teams"
 
 
 class Player(PrivacyMixIn, AdminModel):
@@ -1194,6 +1206,8 @@ class Player(PrivacyMixIn, AdminModel):
 
     # TODO: clean() method to force test that player is in a league!
     class Meta(AdminModel.Meta):
+        verbose_name = "Player"
+        verbose_name_plural = "Players"
         ordering = ['name_nickname']
 
 
@@ -1244,6 +1258,10 @@ class TourneyRules(AdminModel):
 
     def __detail_str__(self, link=None):
         return self.__rich_str__(link)
+
+    class Meta(AdminModel.Meta):
+        verbose_name = "Rule"
+        verbose_name_plural = "Rules"
 
 
 class Tourney(AdminModel):
@@ -1327,6 +1345,8 @@ class Tourney(AdminModel):
         return f'{name}:{games}'
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Tourney"
+        verbose_name_plural = "Tourneys"
         ordering = ['name']
         constraints = [ models.UniqueConstraint(fields=['name'], name='unique_tourney_name') ]
 
@@ -1936,6 +1956,8 @@ class Game(AdminModel):
         return L.assertion_failures
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Game"
+        verbose_name_plural = "Games"
         ordering = ['name']
         constraints = [ models.UniqueConstraint(fields=['name'], name='unique_game_name') ]
 
@@ -1991,6 +2013,8 @@ class Location(AdminModel):
         return u"{} (used by: {})".format(field_render(self, link), ", ".join(leagues))
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Location"
+        verbose_name_plural = "Locations"
         ordering = ['name']
 
 
@@ -2007,6 +2031,10 @@ class Event(AdminModel):
     start = models.DateTimeField('Time', default=timezone.now)
     end = models.DateTimeField('Time', default=timezone.now)
     registrars = models.ManyToManyField('Player', verbose_name='Registrars', blank=True, related_name='registrar_at')
+
+    class Meta(AdminModel.Meta):
+        verbose_name = "Event"
+        verbose_name_plural = "Events"
 
 
 class Session(TimeZoneMixIn, AdminModel):
@@ -2910,7 +2938,7 @@ class Session(TimeZoneMixIn, AdminModel):
             prev_session = None
         else:
             prev_session = prev_sessions[1]
-            assert prev_sessions[0].date_time == self.date_time, f"Query error: current session not in previous sessions list for session={self.pk}, player={player.pk}"
+            assert prev_sessions[0].id == self.id, f"Query error: current session not in previous sessions list for session={self.pk}, player={player.pk}"
             assert prev_session.date_time < self.date_time, f"Database error: Two sessions with identical time, session={self.pk}, previous session={prev_session.pk}, player={player.pk}"
 
         return prev_session
@@ -3510,6 +3538,8 @@ class Session(TimeZoneMixIn, AdminModel):
 #         raise ValidationError(errors)
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Session"
+        verbose_name_plural = "Sessions"
         ordering = ['-date_time']
 
 
@@ -3715,6 +3745,8 @@ class Rank(AdminModel):
                 self.team = None
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Rank"
+        verbose_name_plural = "Ranks"
         ordering = ['rank']
 
 
@@ -4042,6 +4074,8 @@ class Performance(AdminModel):
         return detail
 
     class Meta(AdminModel.Meta):
+        verbose_name = "Performance"
+        verbose_name_plural = "Performances"
         ordering = ['session', 'player']
 
 #===============================================================================
@@ -4051,31 +4085,19 @@ class Performance(AdminModel):
 
 class ChangeLog(AdminModel):
     '''
-    When we make any changes to any recorded game Session that is NOT the latest game session (for
-    that game and all the players playing in that game session) then it has an impact on the
-    leaderboards for that game that is distinct from it's own immediate impact. To clarify:
+    A model for storing a log of edits to recorded sessions. Any such edit has an immediate impact,
+    on a leaderboard (i.e a leaderboard before it happened and a learboard after it happened. These
+    are stored here in this model). A log is written any time a session is added or edited, and the
+    Admin fields on the entry record who did that, when while the obeject store leaderboard snaphots
+    before and after (the session, not the edit).
 
-    When any session is changed it has an immediate impact which is how it alters the leaderboard
-    from the immediately prior played session of that game.
+    TODO: This is a place to store impacts for reporting and presentation for review before
+    confirming a commit. That will rely on a transaction manager (in the making) which can hold
+    a database transaction open across a few views.
 
-    If there are future sessuion relative to the session just changed then it also has an impact on
-    the current leaderboard. The immediate impact above is not the current leaderboard (because
-    other session of that game are in its future) and so the impact on the current leaderboard is
-    also useful to see.
-
-    This is true whether a sesison is added, or altered (in any one of many ratings impacting
-    ways: players change, ranks change, game changes etc)or deleted.
-
-    We'd like to show these impacts for any edit before they are committed.
-
-    The current leaderboard impacts are tricky as the current leaderboards could be changing
-    while we're reviewing our commit for example (other user submitting results).
-
-    So we store impacts in this model with a key so that they can be calculated, saved, and the
-    key passed to a confirmation view where the change can be committed or rolled back.
+    The idea is that we can store impacts in this model with a key so that they can be calculated,
+    saved, and the key passed to a confirmation view where the change can be committed or rolled back.
     '''
-    # The game to which the impact applies
-    game = models.ForeignKey('Game', verbose_name='Game', related_name='session_edit_impacts', on_delete=models.CASCADE)  # If the game is deleted, delete this impact
 
     # The session that caused the impact (if it still exists) - if it was deleted it won't be around any more.
     session = models.ForeignKey(Session, verbose_name='Session', related_name='change_impacts', null=True, blank=True, on_delete=models.SET_NULL)  # If the session is deleted we may NEED the impact of that!
@@ -4095,7 +4117,6 @@ class ChangeLog(AdminModel):
         '''
         super().__init__()
 
-        self.game = session.game
         self.session = session
 
         self.leaderboard_immediately_before = json.dumps(session.leaderboard_before, cls=DjangoJSONEncoder)
@@ -4103,6 +4124,10 @@ class ChangeLog(AdminModel):
 
         if isinstance(rebuild_log, RebuildLog):
             self.rebuild_log = rebuild_log
+
+    class Meta(AdminModel.Meta):
+        verbose_name = "Change Log"
+        verbose_name_plural = "Change Logs"
 
 
 def rating_rebuild_log_dir():
@@ -4116,7 +4141,27 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
     Kept for two reasons:
 
     1) Performance measure. Rebuild can be slow and we'd like to know how slow.
-    2) Security. To see who rebuilt when
+    2) Security. To see who rebuilt what when
+
+    When we make any changes to any recorded game Session that is NOT the latest game session (for
+    that game and all the players playing in that game session) then it has an impact on the
+    leaderboards for that game that is distinct from it's own immediate impact. To clarify:
+
+    When any session is changed it has an immediate impact which is how it alters the leaderboard
+    from the immediately prior played session of that game.
+
+    If there are future sessions relative to the session just changed then it also has an impact on
+    the current leaderboard. The immediate impact above is not the current leaderboard (because
+    other session of that game are in its future) and so the impact on the current leaderboard is
+    also useful to see.
+
+    This is true whether a session is added, or altered (in any one of many ratings impacting
+    ways: players change, ranks change, game changes etc)or deleted.
+
+    We'd like to show these impacts for any edit before they are committed.
+
+    The current leaderboard impacts are tricky as the current leaderboards could be changing
+    while we're reviewing our commit for example (other user submitting results).
     '''
 
     date_time = models.DateTimeField('Time of Ratings Rebuild', default=timezone.now)
@@ -4150,7 +4195,11 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
             raise ValueError(f"RebuildLog.save_leaderboards() context must be 'before' or 'after' but '{context}' was prvided.")
 
         content = json.dumps(leaderboards, indent='\t', cls=DjangoJSONEncoder)
-        filename = os.path.join(rating_rebuild_log_dir(), f"{self.rebuilt_by.username}-{localtime():%Y-%m-%d-%H-%M-%S}-{context}.json")
+        directory = rating_rebuild_log_dir()
+        filename = os.path.join(directory, f"{self.rebuilt_by.username}-{localtime():%Y-%m-%d-%H-%M-%S}-{context}.json")
+
+        # Ensure the directory exists
+        os.makedirs(directory, exist_ok=True)
 
         with open(filename, 'w') as f:
             f.write(content)
@@ -4159,3 +4208,7 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
             self.leaderboard_before = filename
         elif context == "after":
             self.leaderboard_after = filename
+
+    class Meta(AdminModel.Meta):
+        verbose_name = "Rebuild Log"
+        verbose_name_plural = "Rebuild Logs"

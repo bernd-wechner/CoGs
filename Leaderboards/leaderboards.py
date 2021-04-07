@@ -98,8 +98,8 @@ class leaderboard_options:
 
     # Options that we accept that will filter the list of games presented
     # (i.e. define the subset of all games to return)
-    game_filters = {'games_ex',  # Exclusively the listed self.games
-                    'games_in',  # Including the listed self.games
+    game_filters = {'games_ex',  # Exclusively those listed in self.games
+                    'games_in',  # Including those listed in self.games
                     'top_games',  # The top (most popular) self.num_games
                     'latest_games',  # The latest self.num_games
                     'game_leagues_any',  # Games played in any of self.game_leagues
@@ -111,8 +111,8 @@ class leaderboard_options:
 
     # Options that we accept that will filter the list of players presented on leaderboards
     # (i.e. define the subset of all players that have played that game)
-    player_filters = {'players_ex',  # Exclusively the listed self.players
-                      'players_in',  # Including the listed self.players
+    player_filters = {'players_ex',  # Exclusively those listed in self.players
+                      'players_in',  # Including those listed in self.players
                       'num_players_top',  # The top self.num_players_top players
                       'num_players_above',  # self.num_players_above players above any players selected by self.players_in
                       'num_players_below',  # self.num_players_below players below any players selected by self.players_in
@@ -120,6 +120,16 @@ class leaderboard_options:
                       'played_since',  # Players who have played the game since self.played_since
                       'player_leagues_any',  # Players in any of self.player_leagues
                       'player_leagues_all'}  # Players in all of self.player_leagues
+
+    # There are multi-select lists boxes that can provide the data for options like games_ex/in,
+    # game_leagues_any/all, game_players_any/all, players_ex/in, player_leagues_any/all
+    # If the ese contain data, BUT no explicit option using the data is on, we still want to
+    # transport the data so that it comes back to a refreshed view and can inform any options that
+    # are client side implemented (in Javascript). In short we don't want to lose that data in a
+    # submission but we retatain it in a neutral (no filtering) fashion.These can aslo provide fallback
+    # reference for any of the afforementioend options which can be URL specified without a list, if the
+    # list is provided via one of tehse transporters.
+    transport_options = {'games', 'players', 'leagues'}
 
     # Options that affect the perspective of a leadeboard view.
     # Really only one, what the effective "now" or "current" view is,
@@ -155,7 +165,7 @@ class leaderboard_options:
     # ALL the options, a set against which we can filter incoming requests to
     # weed out all the things that don't matter, or to asses if the request is in
     # fact one that includes any leaderboard options or not.
-    all_options = content_options | presentation_options
+    all_options = content_options | presentation_options | transport_options | admin_options
 
     # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.
@@ -185,7 +195,7 @@ class leaderboard_options:
     # makes checking whether an option is to be applied easy.
     need_enabling = set()
 
-    # Now we defione the attributes that back these options up.
+    # Now we define the attributes that back these options up.
     # NOTE: These attributes are not self-standing so to speak but
     #       relate to 'enabled' as well, which turns thes on or off
     #       and/or describes how they are to be used (in the case of
@@ -243,6 +253,7 @@ class leaderboard_options:
     analysis_pre = False  # Show the TrueSkill Pre-session analysis
     analysis_post = False  # Show the TrueSkill Post-session analysis
     show_delta = False  # Show the delta (movement) in ranking this session caused
+    show_baseline = False  # Show the baseline (if any)
 
     # Options for laying out leaderboards on screen
     cols = 3  # Display boards in this many columns (ignored when comparing with historic boards)
@@ -331,7 +342,27 @@ class leaderboard_options:
             self.compare_back_to = None
 
         # Keeping the same order as the properties above and recommended for
-        # form fields and the JS processor of those field ...
+        # form fields and the JS processor of those field ... with the exception
+        # of transporters that we collect up front.
+
+        ##################################################################
+        # COLLECT TRANSPORTERS
+        games = None
+        players = None
+        leagues = None
+
+        if f'games' in urequest:
+            games = urequest[f'games'].split(",")
+
+        if f'players' in urequest:
+            players = urequest[f'players'].split(",")
+
+        # TODO check if we can spefic NO league filterig. That is where does preferred league come from?
+        preferred_league = ufilter.get('league', None)
+        if f'leagues' in urequest:
+            leagues = urequest[f'leagues'].split(",")
+            if preferred_league and not leagues:
+                leagues = [str(preferred_league)]
 
         ##################################################################
         # GAME FILTERS
@@ -345,23 +376,40 @@ class leaderboard_options:
         # to show leaderboards for those games only (exlusive) or at least
         # those games (inclusive). The option specifies the context and
         # only one of them can be specified at a time with any sense.
-        games = None
         self.need_enabling.add('games_ex')
         self.need_enabling.add('games_in')
+        ex_in = None
+        game_games = games  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'games_{suffix}' in urequest:
-                games = urequest[f'games_{suffix}'].split(",")
+                game_games = urequest[f'games_{suffix}'].split(",")
+
+                # Use the transport option "games" if no list provided for games ex/in
+                # This enables URLs like
+                #    ?games_in=1,2,3
+                #    ?games=1,2,3&games_in
+                if not game_games:
+                    game_games = games
+
                 ex_in = suffix
                 break
 
-        if games:
+        # Copy games to self.games if they exist, and enable a filter option if needed.
+        if game_games:
             # Validate the games discarding any invalid ones
             self.games = []
-            for game in games:
+            for game in game_games:
                 if Game.objects.all().filter(pk=game).exists():
                     self.games.append(game)
 
+        # If we found an ex or in option
+        if ex_in:
             self.__enable__(f'games_{ex_in}', self.games)
+
+        # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
+        else:
+            self.__enable__('game_ex', False)
+            self.__enable__('game_in', False)
 
         # A number of games if submitted request that we list no
         # more than that many games (the top games when sorted by
@@ -377,43 +425,35 @@ class leaderboard_options:
             self.num_games = int(urequest["latest_games"])
             self.__enable__('latest_games', self.num_games)
 
-        # We can acccept leagues in an any or all form but
-        # above all we have a fallback to the session specified
-        # default filter if neither is specified. We support
-        # specifying an empty valye of either to avoid applying
-        # the sessioni default, an explicit rewuest for no
-        # league filtering
+        # We can acccept leagues in an any or all form
         self.need_enabling.add('game_leagues_any')
         self.need_enabling.add('game_leagues_all')
-        preferred_league = None
-        if 'game_leagues_any' in urequest:
-            if urequest['game_leagues_any']:
-                leagues = urequest['game_leagues_any'].split(",")
-            else:
-                leagues = None
-        elif 'game_leagues_all' in urequest:
-            if urequest['game_leagues_all']:
-                leagues = urequest['game_leagues_all'].split(",")
-            else:
-                leagues = None
-        elif not urequest:
-            preferred_league = ufilter.get('league', None)
-            # We use a list of strings as IDs come in that way in request data
-            leagues = [str(preferred_league)] if preferred_league else []
-        else:
-            leagues = None
+        any_all = None
+        game_leagues = leagues  # Use the transport option as a fallback.
+        for suffix in ("any", "all"):
+            if f'game_leagues_{suffix}' in urequest:
+                game_leagues = urequest[f'game_leagues_{suffix}'].split(",")
 
-        if leagues:
+                # Use the transport option "leagues" if no list provided for game_leagues
+                # This enables URLs like
+                #    ?game_leagues_any=1,2,3
+                #    ?leagues=1,2,3&game_leagues_any
+                if not game_leagues:
+                    game_leagues = leagues
+
+                any_all = suffix
+                break
+
+        if game_leagues:
             # Validate the leagues  discarding any invalid ones
             self.game_leagues = []
-            for league in leagues:
+            for league in game_leagues:
                 if League.objects.all().filter(pk=league).exists():
                     self.game_leagues.append(league)
 
-            # We need to enable one of these for each of the three posible outcomes above,
-            # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('game_leagues_any', self.game_leagues and ('game_leagues_any' in urequest or preferred_league))
-            self.__enable__('game_leagues_all', self.game_leagues and 'game_leagues_all' in urequest)
+        # If we found an any or all option
+        if any_all:
+            self.__enable__(f'game_leagues_{any_all}', self.game_leagues)
 
         # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:
@@ -427,24 +467,34 @@ class leaderboard_options:
         # players, or those played by all of the listed players.
         self.need_enabling.add('game_players_any')
         self.need_enabling.add('game_players_all')
-        if 'game_players_any' in urequest:
-            players = urequest['game_players_any'].split(",")
-        elif 'game_players_all' in urequest:
-            players = urequest['game_players_all'].split(",")
-        else:
-            players = []  # # Must be a a Falsey value
+        any_all = None
+        game_players = players  # Use the transport option as a fallback.
+        for suffix in ("any", "all"):
+            if f'game_players_{suffix}' in urequest:
+                game_players = urequest[f'game_players_{suffix}'].split(",")
 
-        if players:
+                # Use the transport option "players" if no list provided for game_players
+                # This enables URLs like
+                #    ?game_players_any=1,2,3
+                #    ?players=1,2,3&game_players_any
+                if not game_players:
+                    game_players = players
+
+                any_all = suffix
+                break
+
+        if game_players:
             # Validate the players discarding any invalid ones
             self.game_players = []
-            for player in players:
+            for player in game_players:
                 if Player.objects.all().filter(pk=player).exists():
                     self.game_players.append(player)
 
-            self.__enable__('game_players_any', self.game_players and 'game_players_any' in urequest)
-            self.__enable__('game_players_all', self.game_players and 'game_players_all' in urequest)
+        # If we found an any or all option
+        if any_all:
+            self.__enable__(f'game_players_{any_all}', self.game_players)
 
-        # In case one or the other was enabled in the defaults above, if we lack any players we ensure they are both disabled
+        # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:
             self.__enable__('game_players_any', False)
             self.__enable__('game_players_all', False)
@@ -485,23 +535,33 @@ class leaderboard_options:
         # to show those players only (exlusive) or at least those players
         # (inclusive). The option specifies the context and only one of
         # them can be specified at a time with any sense.
-        players = None
         self.need_enabling.add('players_ex')
         self.need_enabling.add('players_in')
+        ex_in = None
+        player_players = players  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'players_{suffix}' in urequest:
-                players = urequest[f'players_{suffix}'].split(",")
+                player_players = urequest[f'players_{suffix}'].split(",")
+
+                # Use the transport option "players" if no list provided for players ex/in
+                # This enables URLs like
+                #    ?players_in=1,2,3
+                #    ?players=1,2,3&players_in
+                if not player_players:
+                    player_players = players
+
                 ex_in = suffix
                 break  # Use only first one if multiple (possibly conflicting) entries are specified
 
-        if players:
+        if player_players:
             # Validate the players discarding any invalid ones
             self.players = []
-            for player in players:
+            for player in player_players:
                 if Player.objects.all().filter(pk=player).exists():
                     self.players.append(player)
 
-            self.__enable__(f'players_{ex_in}', self.players)
+            if ex_in:
+                self.__enable__(f'players_{ex_in}', self.players)
 
         # If "players" is an empty list fall back on the game_players if they
         # were submitted. This enables a URL like:
@@ -552,48 +612,35 @@ class leaderboard_options:
 
             self.__enable__('played_since', self.played_since)
 
-        # We support a league filter, as with games, and again with an any or all
-        # logical operation requested. We also support reference values to the
-        # possibly already supplied game_leagues_any or game_leagues_all.
+        # We can acccept leagues in an any or all form
         self.need_enabling.add('player_leagues_any')
         self.need_enabling.add('player_leagues_all')
-        if 'player_leagues_any' in urequest:
-            if urequest['player_leagues_any']:
-                leagues = urequest['player_leagues_any'].split(",")
-            else:
-                leagues = None
-        elif 'player_leagues_all' in urequest:
-            if urequest['player_leagues_all']:
-                leagues = urequest['player_leagues_all'].split(",")
-            else:
-                leagues = None
-        elif not urequest:
-            preferred_league = ufilter.get('league', None)
-            # We use a list of strings as IDs come in that way in request data
-            leagues = [str(preferred_league)] if preferred_league else []
-        else:
-            leagues = None
+        any_all = None
+        player_leagues = leagues  # Use the transport option as a fallback.
+        for suffix in ("any", "all"):
+            if f'player_leagues_{suffix}' in urequest:
+                player_leagues = urequest[f'player_leagues_{suffix}'].split(",")
 
-        if leagues:
-            # Validate the leagues discarding any invalid ones
+                # Use the transport option "leagues" if no list provided for player_leagues
+                # This enables URLs like
+                #    ?player_leagues_any=1,2,3
+                #    ?leagues=1,2,3&player_leagues_any
+                if not player_leagues:
+                    player_leagues = leagues
+
+                any_all = suffix
+                break
+
+        if player_leagues:
+            # Validate the leagues  discarding any invalid ones
             self.player_leagues = []
-            for league in leagues:
+            for league in player_leagues:
                 if League.objects.all().filter(pk=league).exists():
                     self.player_leagues.append(league)
 
-            # We need to enable one of these for each of the three posible outcomes above,
-            # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in urequest or preferred_league))
-            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in urequest)
-
-        elif ('player_leagues_any' in urequest  or 'player_leagues_all' in urequest) and self.game_leagues:
-            # Already validated list of players
-            self.player_leagues = self.game_leagues
-
-            # We need to enable one of these for each of the three posible outcomes above,
-            # An explicti request for any league, all leagues or a fallback on preferred league.
-            self.__enable__('player_leagues_any', self.player_leagues and ('player_leagues_any' in urequest or preferred_league))
-            self.__enable__('player_leagues_all', self.player_leagues and 'player_leagues_all' in urequest)
+        # If we found an any or all option
+        if any_all:
+            self.__enable__(f'player_leagues_{any_all}', self.player_leagues)
 
         # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:
@@ -1468,13 +1515,13 @@ class leaderboard_options:
         '''
         Make the relative leaderboard_options more static. Specifically the event based ones.
 
-        It's hard to secure a perfectlys tatic leaderboards link becasue anything could change
+        It's hard to secure a perfectly static leaderboards link becasue anything could change
         in the database over time, players come and go, games come and go whatever, there are
-        just too many variables and the closes we could get really is to store the cache that
+        just too many variables and the closest we could get really is to store the cache that
         is currently stored in the session in a more persistent database table with an ID.
 
         But can't see much need for that yet. Right now the main aim is that we can rapidly
-        get the impact of the last evert (prior to as_at) but produce a link that uses
+        get the impact of the last event (prior to as_at) but produce a link that uses
         fixed reference times rather than the relative so they can be used in comms and
         have lasting relevance.
         '''
