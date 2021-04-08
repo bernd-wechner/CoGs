@@ -166,9 +166,18 @@ class RatingModel(TimeZoneMixIn, AdminModel):
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
 
-    def __unicode__(self): return  u'{} - {} - {:.1f} teeth, from (µ={:.1f}, σ={:.1f} after {} plays)'.format(self.player, self.game, self.trueskill_eta, self.trueskill_mu, self.trueskill_sigma, self.plays)
+    def __unicode__(self): return  f'{self.player} - {self.game} - {self.trueskill_eta:.1f} teeth'
 
     def __str__(self): return self.__unicode__()
+
+    def __verbose_str__(self):
+        return  f'{self.player} - {self.game} - {self.trueskill_eta:.1f} teeth, from (µ={self.trueskill_mu:.1f}, σ={self.trueskill_sigma:.1f} after {self.plays} plays)'
+
+    def __rich_str__(self, link=None):
+        return  f'{field_render(self.player, link)} - {field_render(self.game, link)} - {self.trueskill_eta:.1f} teeth, from (µ={self.trueskill_mu:.1f}, σ={self.trueskill_sigma:.1f} after {self.plays} plays)'
+
+    def __detail_str__(self, link=None):
+        return self.__rich_str__(link)
 
     class Meta(AdminModel.Meta):
         ordering = ['-trueskill_eta']
@@ -456,9 +465,6 @@ class Rating(RatingModel):
 
             sessions = Session.objects.all().order_by('date_time')
         else:
-            # TODO in fact only need to rebuild those that contain players in this session!
-            # Those with completely independent players don't need to be rebuilt. We can use
-            # a method on the session to return a queryset of such sessions.
             if settings.DEBUG:
                 log.debug(f"Rebuilding leaderboard ratings for {getattr(Game, 'name', None)} from {From}")
 
