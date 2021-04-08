@@ -14,7 +14,7 @@ from django_generic_view_extensions.context import add_timezone_context, add_deb
 from cuser.middleware import CuserMiddleware
 
 from CoGs.logging import log
-from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
+from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections
 from .BGG import BGG
 
@@ -202,15 +202,9 @@ def pre_save_handler(self):
             new_weights.append(float(str_weight))
             seen_players.add(int_player)
 
-        # Check to see if this is the latest play for each player
-        is_latest = True
-        for player in new_players:
-            rating = Rating.get(player, new_game)
-            if new_time < rating.last_play:
-                is_latest = False
-
         # Rebuild nothing by default
         rebuild = None
+        reason = None
 
         # A rebuild of ratings is triggered under any of the following circumstances:
         #
@@ -222,12 +216,23 @@ def pre_save_handler(self):
         #    recorded already.
         if isinstance(self, CreateViewExtended):
             output(f"New Session")
+
+            # Check to see if this is the latest play for each player
+            is_latest = True
+            for player in new_players:
+                rating = Rating.get(player, new_game)
+                if new_time < rating.last_play:
+                    is_latest = False
+                    reason = f"New Session. Not latest session for {player.complete_name} playing {new_game.name} "
+
             if not is_latest:
                 rebuild = new_game.future_sessions(new_time, new_players)
-                output(f"Requesting a rebuild of ratings for {len(rebuild)} sessions: {escape(str(rebuild))}")
-                return {'rebuild': rebuild}
+                output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions: {escape(str(rebuild))}")
+                output(f"\t\tBecause: {reason}")
+                return {'rebuild': rebuild, 'reason': reason}
             else:
                 output(f"Is the latest session of {new_game} for all of {', '.join([str(p) for p in new_players[:-1]])} and {str(new_players[-1])}")
+                return None
 
         # or
         #
@@ -264,7 +269,10 @@ def pre_save_handler(self):
                 old_sessions = old_session.game.future_sessions(old_session.date_time, old_session.players)
                 new_sessions = new_game.future_sessions(new_time, new_players)
                 rebuild = sorted(old_sessions + new_sessions, key=lambda s: s.date_time)
-                output(f"\tGame changed. Requesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                reason = f"Session Edit. Game changed (from {old_session.game.name} to {new_game.name}."
+
+                output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                output(f"\t\tBecause: {reason}")
 
             else:
                 # Divine the play mode
@@ -275,23 +283,32 @@ def pre_save_handler(self):
                     assert 'num_players' in self.form.data, "Bad form submission, team_play off but no num_players."
                     new_team_play = False
 
-                # If the play mode changed rebuild this  games rating tree from
-                # this session on.
+                # Set up some rebuild shorthands
+                old_game = old_session.game
+                old_time = old_session.date_time
+                from_time = min(old_time, new_time)
+
+                # If the play mode changed rebuild this games rating tree from this session on.
                 if not new_team_play == old_session.team_play:
-                    rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
-                    output(f"\tPlay mode changed from {'team' if old_session.team_play else 'individual'} to {'team' if new_team_play else 'individual'}.\n\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                    rebuild = old_game.future_sessions(from_time, all_players)
+                    reason = f"Session Edit. Play mode changed (from {'Team' if old_session.team_play else 'Individual'} to {'Team' if new_team_play else 'Individual'})."
 
-                # If any players were added, remove or changed, rebuild this
-                # games rating tree from this session on.
+                    output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                    output(f"\t\tBecause: {reason}")
+
+                # If any players were added, remove or changed, rebuild this games rating tree from this session on.
                 elif not set(new_players) == set(old_players):
-                    rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
-                    output(f"\tPlayers changed. Requesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                    rebuild = old_game.future_sessions(from_time, all_players)
+                    reason = f"Session Edit. Players changed (from {sorted([p.complete_name for p in old_players])} to {sorted([p.complete_name for p in new_players])})."
 
-                # Otherwise check for othe rating impacts
+                    output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                    output(f"\t\tBecause: {reason}")
+
+                # Otherwise check for other rating impacts
                 else:
-                    output(f"Checking for general rating impacts ....")
-                    # Grab the ranks
-                    # As no players have be added or deleted and
+                    # Check for a change in ranks
+
+                    # As no players have been added or deleted and
                     # the play mode has not changed we can feel
                     # pretty confident that each of the ranks in
                     # the form has an id (none were DELETED)
@@ -305,62 +322,57 @@ def pre_save_handler(self):
                     # sequence numbers, which the form must ensure).
                     old_ranks = [old_session.rank(p).rank for p in new_players]
 
-                    rank_changed = not new_ranks == old_ranks
-                    if rank_changed: output(f"\tRanks changed from {old_ranks} to {new_ranks}.")
+                    if not new_ranks == old_ranks:
+                        rebuild = old_game.future_sessions(from_time, all_players)
+                        reason = f"Session Edit. Ranks changed (from {old_ranks} to {new_ranks})."
 
-                    # Check for a session sequence change
-                    # If for any player this session moves out of the bounds of prev session
-                    # and following session the sequence changed
-                    sequence_changed = False
-                    # We can loop over new or old players because if they are not the same
-                    # a rebuild is triggered anyhow.
-                    for p in new_players:
-                        prev_sess = old_session.previous_session(p)
-                        foll_sess = old_session.following_session(p)
-
-                        # min and max are TX unaware (naive), and session.date_time is UTC
-                        # So we make session.date_time naive for the comparison to come.
-                        time_window = (make_naive(prev_sess.date_time) if prev_sess else datetime.min,
-                                       make_naive(foll_sess.date_time) if foll_sess else datetime.max)
-
-                        # Easiest way is empircially to find a game that's been played like three time in a row and
-                        # move the middle one.
-                        if not time_window[0] < nt < time_window[1]:
-                            sequence_changed = True
-                            output(f"\tSession sequence changed for {p}.\n\tOld time: {make_naive(old_session.date_time)}\n\tWindow: {STR(time_window)}.\n\tNew time: {nt}")
-                            break
-
-                    # Check for a partial play weighting change on any player
-                    weight_changed = False
-                    for i, p in enumerate(new_players):
-                        w = new_weights[i]
-                        if not w == old_session.performance(p).partial_play_weighting:
-                            weight_changed = True
-                            output(f"\tPartial play weighting changed for {p}.\nFrom {old_session.performance(p).partial_play_weighting} to {w}.")
-                            break
-
-                    # Determine if a rating impacting change took place.
-                    rating_impact = (not new_team_play == old_session.team_play
-                                     or rank_changed
-                                     or weight_changed
-                                     or sequence_changed)
-
-                    # If a rating impact has been assess, request a rebuild.
-                    if rating_impact:
-                        rebuild = old_session.game.future_sessions(min(old_session.date_time, new_time), all_players)
                         output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                        output(f"\t\tBecause: {reason}")
                     else:
-                        output(f"\tNo rating impact found. No rebuild requested.")
+                        # Check for a partial play weighting change on any player
+                        old_weights = [old_session.performance(p).partial_play_weighting for p in new_players]
 
-            if debug_only:
-                html += "</pre>\n</section>\n"
-                return {'debug_only': html}
-            else:
-                # Return the kwargs for the next handler
-                return {'rebuild': rebuild}
+                        if not new_weights == old_weights:
+                            rebuild = old_game.future_sessions(from_time, all_players)
+                            reason = f"Session Edit. Weights changed (from {old_weights} to {new_weights})."
+
+                            output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                            output(f"\t\tBecause: {reason}")
+                        else:
+                            # Check for a Session sequence change for any player
+                            for p in new_players:
+                                prev_sess = old_session.previous_session(p)
+                                foll_sess = old_session.following_session(p)
+
+                                # min and max are TZ unaware (naive), and session.date_time is UTC
+                                # So we make session.date_time naive for the comparison to come.
+                                time_window = (make_naive(prev_sess.date_time) if prev_sess else datetime.min,
+                                               make_naive(foll_sess.date_time) if foll_sess else datetime.max)
+
+                                if not time_window[0] < nt < time_window[1]:
+                                    rebuild = old_game.future_sessions(from_time, all_players)
+
+                                    if nt < time_window[0]:
+                                        reason = f"Session Edit. Sequence changed (session moved to {new_time}, before {prev_sess.date_time_local} when {p.complete_name} also played {new_game.name})."
+                                    else:
+                                        reason = f"Session Edit. Sequence changed (session moved to {new_time}, after {foll_sess.date_time_local} when {p.complete_name} also played {new_game.name})."
+
+                                    output(f"\tRequesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
+                                    output(f"\t\tBecause: {reason}")
+                                else:
+                                    output(f"\tNo rating impact found. No rebuild requested.")
+
+        if debug_only:
+            html += "</pre>\n</section>\n"
+            return {'debug_only': html}
+        elif rebuild:
+            # Return the kwargs for the next handler
+            return {'rebuild': rebuild, 'reason': reason}
+        else:
+            return None
 
 
-def pre_commit_handler(self, rebuild=None):
+def pre_commit_handler(self, rebuild=None, reason=None):
     '''
     When a model form is POSTed, this function is called AFTER the form is saved.
 
@@ -374,6 +386,7 @@ def pre_commit_handler(self, rebuild=None):
     the save should be tested and if not passed, then throw an IntegrityError.
 
     :param rebuild: An optional game, player tuple or list two such tuples nominating ratings rebuilds we should request.
+    :param reason: A string. The reason for a rebuild if any is provided.
     '''
     model = self.model._meta.model_name
 
@@ -382,10 +395,10 @@ def pre_commit_handler(self, rebuild=None):
         #       call updated_user_from_form() above
         pass
     elif model == 'session':
-    # TODO: When saving sessions, need to do a confirmation step first, reporting the impacts.
-    #       Editing a session will have to force recalculation of all the rating impacts of sessions
-    #       all the participating players were in that were played after the edited session.
-    #    A general are you sure? system for edits is worth implementing.
+        # TODO: When saving sessions, need to do a confirmation step first, reporting the impacts.
+        #       Editing a session will have to force recalculation of all the rating impacts of sessions
+        #       all the participating players were in that were played after the edited session.
+        #    A general are you sure? system for edits is worth implementing.
         session = self.object
 
         if settings.DEBUG:
@@ -573,18 +586,10 @@ def pre_commit_handler(self, rebuild=None):
         # already in the database. Those future (relative to the submission)
         # sessions need a ratings rebuild.
         if rebuild:
-            if isinstance(self, CreateViewExtended):
-                reason = f"Session {session.pk} was created."
-            elif isinstance(self, UpdateViewExtended):
-                reason = f"Session {session.pk} was updated."
-
             J = '\n\t\t'  # A log message list item joiner
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
-            # TODO: Seems spurious rebuilds on a simple time_date change inside of the window between surrounding session of that game.
-            # Hard to diagnose and pin down. The tests are all peformed in the pre-save_handler and on test that trips will trigger a
-            # rebuild, we should record what test that was, that tripped it, in the log and report on the impact view.
             Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
 
         # Now check the integrity of the save. For a sessions, this means that:
@@ -996,6 +1001,15 @@ def view_Impact(request, model, pk):
              "date_time": o.date_time,
              "is_latest": o.is_latest,
              "leaderboard_snapshots": json.dumps(leaderboard_tuple_game(o.game, snapshots), cls=DjangoJSONEncoder)}
+
+        # TODO: We need to do this smarter.
+        #  1. Store ChangeLog.
+        #  2. The ChangeLog should have a FreignKey to RebuildLog which cna be null if no Rebuild was triggered.
+        #  3. Differentiate betwene Session Imact (this view/template) and Edit impact
+        #        Session Impact is local (the chnage this session caused on a leaderboard as it stoof just before this session.
+        #        Edit Impact is keyed on a ChangeLog entry which may refer to a RebuildLog Entry.
+        #  4. Save a ChangelLog only on Session Edits and any Session Create or Edit that triggers a rebuild.
+        #     That way we don't have a log for every single session in the system just the relevant changes.
 
         rebuilt = request.GET.get("rebuilt", None)
         session_pks = request.session.get(rebuilt, None)

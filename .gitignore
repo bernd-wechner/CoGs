@@ -112,22 +112,14 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+.gitignore.bak
 Backups/
-
-test\.out
-
+logs/
 Debugging/
-
-
-
-\.gitignore\.bak
-
-CoGs\.odb
-
-Leah-COGZ inspection\.ods
-
-logs/rating_rebuilds/
-
+Seed Data/
+Notes/
 Leaderboards/migrations/
-
 .externalToolBuilders/
+CoGs.odb
+test.out
+Leah-COGZ inspection.ods
