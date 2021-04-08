@@ -1,4 +1,5 @@
 # Local things to exclude
+Testing/
 .gitignore.bak
 Backups/
 logs/
