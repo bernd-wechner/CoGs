@@ -1,7 +1,15 @@
-Pydev Collpase Keys\.png
-Temporary Notes\.txt
-Working Notes\.txt
-Data/
+# Local things to exclude
+.gitignore.bak
+Backups/
+logs/
+Debugging/
+Seed Data/
+Notes/
+Leaderboards/migrations/
+Scripts/publish-exclusions
+.externalToolBuilders/
+CoGs.odb
+test.out
 
 # Byte-compiled / optimized / DLL files
 *.pyc
@@ -111,15 +119,3 @@ venv.bak/
 
 # mypy
 .mypy_cache/
-
-.gitignore.bak
-Backups/
-logs/
-Debugging/
-Seed Data/
-Notes/
-Leaderboards/migrations/
-.externalToolBuilders/
-CoGs.odb
-test.out
-Leah-COGZ inspection.ods
