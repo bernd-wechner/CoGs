@@ -14,7 +14,7 @@ from django_generic_view_extensions.context import add_timezone_context, add_deb
 from cuser.middleware import CuserMiddleware
 
 from CoGs.logging import log
-from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
+from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, LEADERBOARD_STYLE, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections
 from .BGG import BGG
 
@@ -99,7 +99,7 @@ def pre_save_handler(self):
     self is an instance of CreateViewExtended or UpdateViewExtended.
 
     If it returns a dict that will be used as a kwargs dict into the
-    the configured post processor (pre_commit_handler below).
+    the configured post processor (post_save_pre_commit_handler below).
     '''
     model = self.model._meta.model_name
 
@@ -352,6 +352,21 @@ def pre_save_handler(self):
                                 if not time_window[0] < nt < time_window[1]:
                                     rebuild = old_game.future_sessions(from_time, all_players)
 
+                                    # The list of sessions in rebuild may contain the current session
+                                    # because it has not yet been saved with new_time, it sits in the database
+                                    # under old_time. from_time is the earlier of new_time and old_time and so
+                                    # if new_time is earlier than old_time then the the current session (the
+                                    # one being saved here) will appear in the list.
+                                    #
+                                    # It can safely be removed from the list because the current session will
+                                    # have its ratings updated before a rebuild is triggered and the rebuild
+                                    # will no longer see this session nor need to (as it's been brought forward).
+                                    if new_time < old_time:
+                                        for i, s in enumerate(rebuild):
+                                            if s.pk == old_session.pk:
+                                                rebuild.pop(i)
+                                                break
+
                                     if nt < time_window[0]:
                                         reason = f"Session Edit. Sequence changed (session moved to {new_time}, before {prev_sess.date_time_local} when {p.complete_name} also played {new_game.name})."
                                     else:
@@ -372,7 +387,7 @@ def pre_save_handler(self):
             return None
 
 
-def pre_commit_handler(self, rebuild=None, reason=None):
+def post_save_pre_commit_handler(self, rebuild=None, reason=None):
     '''
     When a model form is POSTed, this function is called AFTER the form is saved.
 
@@ -385,7 +400,7 @@ def pre_commit_handler(self, rebuild=None, reason=None):
     a number of models at the same time that are all related. The integrity of relations after
     the save should be tested and if not passed, then throw an IntegrityError.
 
-    :param rebuild: An optional game, player tuple or list two such tuples nominating ratings rebuilds we should request.
+    :param rebuild: A list of sessions to rebuild.
     :param reason: A string. The reason for a rebuild if any is provided.
     '''
     model = self.model._meta.model_name
@@ -575,7 +590,6 @@ def pre_commit_handler(self, rebuild=None, reason=None):
         # Team processing fetches ranks based on the POST submitted rank for the team. After
         # we clean them that relationshop is lost. So we should clean the ranks as last
         # thing just before calculating TrueSkill impacts.
-
         session.clean_ranks()
 
         # update ratings on the saved session.
@@ -590,7 +604,15 @@ def pre_commit_handler(self, rebuild=None, reason=None):
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
-            Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
+            # This saves a RebuildLog entry and a ChangeLog entry
+            clog = Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
+
+        # If not rebuild for edits only, save a Change Log entry
+        elif isinstance(self, UpdateViewExtended):
+            clog = ChangeLog.create(session)
+            clog.save()
+        else:
+            clog = None
 
         # Now check the integrity of the save. For a sessions, this means that:
         #
@@ -610,26 +632,10 @@ def pre_commit_handler(self, rebuild=None, reason=None):
         # TODO: Do these checks. Then do test of the transaction rollback and error catch by
         #       simulating an integrity error.
 
-        # If there was a rebuild we store the PKs of all rebuilt sessions in the users login session
-        # (unfortunate double meaning of session here). We can dot hat because you MUST be logged in
-        # to submit and edit sessions and so have a user session. This is theeasiest way to pass a
-        # list of unknown length to the success_url, we only need to pass it the session key to retrieve
-        # the list. We do want to ensure the session key is unique and new (on the off and very bizarre
-        # chance that this one user is saving multiple sessions at exactly the same time!
-        #
-        # The success URL should make this key available so that a user could using the key revisit the
-        # impact while they ar elogged in and their user session remains of course.
+        # If there was a change logged (and/or a rebuild triggered)
         get_params = ""
-        if rebuild:
-            rebuild_key = f"rating_rebuild_{localtime():%Y-%m-%d_%H:%M:%S}"
-            offset = 0
-            while rebuild_key in self.request.session:
-                offset += 1
-                delta = datetime.timedelta(seconds=offset)
-                rebuild_key = f"rating_rebuild_{localtime()+delta:%Y-%m-%d_%H:%M:%S}"
-
-            self.request.session[rebuild_key] = [s.pk for s in rebuild]
-            get_params = f"?rebuilt={rebuild_key}"
+        if clog:
+            get_params = f"?changed={clog.pk}"
 
         self.success_url = reverse_lazy('impact', kwargs={'model': 'Session', 'pk': session.pk}) + get_params
 
@@ -900,7 +906,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     # fields = '__all__'
     extra_context_provider = extra_context_provider
     pre_save = pre_save_handler
-    pre_commit = pre_commit_handler
+    pre_commit = post_save_pre_commit_handler
     #
     # TODO The success URL should go a new page, an impact view which
     # shows the impact of the added board. Here's a JSON URL that gets it:
@@ -928,7 +934,7 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     operation = 'edit'
     extra_context_provider = extra_context_provider
     pre_save = pre_save_handler
-    pre_commit = pre_commit_handler
+    pre_commit = post_save_pre_commit_handler
 
 
 class view_Delete(LoginRequiredMixin, DeleteViewExtended):
@@ -974,51 +980,62 @@ def view_Impact(request, model, pk):
     o = m.objects.get(pk=pk)
 
     if model == "Session":
-        # TODO: If future_sessions.length > 0 add also a before and after
-        # view of latest ratings.
+        # TODO: on creating new session we don't save a Changelog. We can however pass the impact
+        # via a session variable, and of course also compare against latest board too, they are always available.
 
-        # TODO: We don't want to add leaderboard_snapshot but a leaderboard game entry
-        # with 1 to 3 snapshots! Build that! Makes it easier to plug in the JS
-        # LeaderboardTable function.
-        #
-        # TODO: Add a baseline snapshot. That is for the previous session in this game.
-        snapshot = o.leaderboard_snapshot
+        # TODO: If not is_latest )future_sessions.length > 0) add also a before and after view of latest ratings.
+
+        snapshot_after = o.leaderboard_snapshot
+        snapshot_before = None
+        baseline = None
+
+        op = o.previous_session()
+        if op:
+            snapshot_before = op.leaderboard_snapshot
+            snapshot_after = augment_with_deltas(snapshot_after, snapshot_before)
+
+            opp = op.previous_session()
+
+            if opp:
+                baseline = o.previous_session().leaderboard_snapshot
+                snapshot_before = augment_with_deltas(snapshot_before, baseline)
+
+        snapshots = [snapshot_after]
+        if snapshot_before: snapshots += [snapshot_before]
+        if baseline: snapshots += [baseline]
+
+        islatest = o.is_latest
+        isfirst = o.is_first
+
+        if not islatest:
+            latest = o.game.leaderboard(style=LEADERBOARD_STYLE.rich)
+        else:
+            latest = ()
 
         try:
-            baseline = o.previous_session().leaderboard_snapshot
-            snapshot = augment_with_baseline(snapshot, baseline)
-        # If there is no baseline to use don't sweat it
+            changed = request.GET.get("changed", None)
+
+            # If no change is provided in the GET params try and get the last logged change for this session.
+            if not changed:
+                changed = ChangeLog.objects.filter(session=o).order_by("-created_on").first().pk
+
+            clog = ChangeLog.objects.get(pk=int(changed))
         except:
-            pass
+            clog = None
 
-        snapshots = [snapshot, baseline]
-
+        # TODO: Include more info for the template to report How many players ratings were affected.
         c = {"model": m,
              "model_name": model,
              "model_name_plural": m._meta.verbose_name_plural,
              "object_id": o.id,
              "game": o.game,
              "date_time": o.date_time,
-             "is_latest": o.is_latest,
-             "leaderboard_snapshots": json.dumps(leaderboard_tuple_game(o.game, snapshots), cls=DjangoJSONEncoder)}
-
-        # TODO: We need to do this smarter.
-        #  1. Store ChangeLog.
-        #  2. The ChangeLog should have a FreignKey to RebuildLog which cna be null if no Rebuild was triggered.
-        #  3. Differentiate betwene Session Imact (this view/template) and Edit impact
-        #        Session Impact is local (the chnage this session caused on a leaderboard as it stoof just before this session.
-        #        Edit Impact is keyed on a ChangeLog entry which may refer to a RebuildLog Entry.
-        #  4. Save a ChangelLog only on Session Edits and any Session Create or Edit that triggers a rebuild.
-        #     That way we don't have a log for every single session in the system just the relevant changes.
-
-        rebuilt = request.GET.get("rebuilt", None)
-        session_pks = request.session.get(rebuilt, None)
-        if session_pks:
-            sessions = Session.objects.filter(pk__in=session_pks)
-        else:
-            sessions = []
-
-        c["future_sessions"] = sessions
+             "is_latest": islatest,
+             "is_first": isfirst,
+             "diagnose": len(snapshot_after) > 9,  # Snapshot tuples have 9 elements, or 10 if a diagnosis board is included
+             "leaderboard": json.dumps(o.game.wrapped_leaderboard(latest, snap=False), cls=DjangoJSONEncoder),
+             "leaderboard_snapshots": json.dumps(o.game.wrapped_leaderboard(snapshots, snap=True), cls=DjangoJSONEncoder),
+             "changed": clog}
 
         return render(request, 'CoGs/view_session_impact.html', context=c)
     else:
@@ -1105,21 +1122,7 @@ def view_Leaderboards(request):
 #===============================================================================
 
 
-def leaderboard_tuple_game(game, snapshots):
-    '''
-    A central defintion of the first tier of a the AJAX leaderboard view.
-
-    The second tier is a list snapshots and they are defined in
-
-        Session.leaderboard_snapshot.
-
-    :param game:        a Game object
-    :param snapshots:   a list of leaderboard snaphots for that game
-    '''
-    return (game.pk, game.BGGid, game.name, snapshots)
-
-
-def augment_with_baseline(snapshot, baseline):
+def augment_with_deltas(snapshot, baseline):
     '''
     Given a leaderboard snapshot and a baseline to compare it against, will
     augment the snapshot with a delta measure.
@@ -1133,7 +1136,7 @@ def augment_with_baseline(snapshot, baseline):
 
     # Extract the leaderboards from the snapshot and baseline.
     ilb = 8
-    lb_snapshot = snapshot[ilb]
+    lb_snapshot = list(snapshot[ilb])
     lb_baseline = baseline[ilb]
 
     previous_rank = {}
@@ -1350,11 +1353,11 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
                              +snapshot[4:8]
                              +(lbf,))
 
-                    # Augmemnt the snapshot with the delta from baseline if we have one
+                    # Augmment the snapshot with the delta from baseline if we have one
                     if baseline:
-                        snapshot = augment_with_baseline(snapshot, baseline)
+                        snapshot = augment_with_deltas(snapshot, baseline)
 
-                    # Store the baselien for next iteration
+                    # Store the baseline for next iteration
                     baseline = snapshot
 
                     snapshots.append(snapshot)
@@ -1369,7 +1372,7 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
             snapshots.reverse()
 
             # Then build the game tuple with all its snapshots
-            leaderboards.append(leaderboard_tuple_game(game, snapshots))
+            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True))
 
     if settings.USE_LEADERBOARD_CACHE:
         request.session["leaderboard_cache"] = lb_cache
@@ -1646,6 +1649,7 @@ def view_CheckIntegrity(request):
 
     if do_all or 'Rank' in request.GET:
         print("Checking all Ranks for internal integrity.", flush=True)
+
         for R in Rank.objects.all():
             fails = R.check_integrity()
 
@@ -1669,8 +1673,21 @@ def view_CheckIntegrity(request):
                 assertion_failures += fails
 
     if do_all or 'Rating' in request.GET:
-        print("Checking all Ratings for internal integrity.", flush=True)
-        for R in Rating.objects.all():
+        rfilter = Q()
+        try:
+            if 'game' in request.GET:
+                rfilter &= Q(game__pk=int(request.GET['game']))
+        except:
+            pass
+
+        try:
+            if 'player' in request.GET:
+                rfilter &= Q(player__pk=int(request.GET['player']))
+        except:
+            pass
+
+        print("Checking Ratings for internal integrity.", flush=True)
+        for R in Rating.objects.all().filter(rfilter).order_by('last_play'):
             fails = R.check_integrity()
 
             print(f"Rating {R.id}: {rich(R)}. {len(fails)} assertion failures.", flush=True)
@@ -1690,9 +1707,12 @@ def view_CheckIntegrity(request):
 def view_RebuildRatings(request):
     CuserMiddleware.set_user(request.user)
 
+    reason = "Explicitly requested rebuild"
+
     if 'game' in request.GET and request.GET['game'].isdigit():
         try:
             game = Game.objects.get(pk=request.GET['game'])
+            reason += f" for {game.name} (id: {game.id})"
         except Game.DoesNotExist:
             game = None
     else:
@@ -1701,6 +1721,7 @@ def view_RebuildRatings(request):
     if 'from' in request.GET:
         try:
             From = decodeDateTime(request.GET['from'])
+            reason += f" from {From}"
         except:
             From = None
     else:
@@ -1709,7 +1730,7 @@ def view_RebuildRatings(request):
     if 'reason' in request.GET:
         reason = request.GET['reason']
     else:
-        reason = "Explicitly requested rebuild."
+        reason += "."
 
     html = rebuild_ratings(game, From, reason)
 

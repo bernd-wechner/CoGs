@@ -10,6 +10,7 @@ but also supporting numerous options that can be passed in through a request (vi
 import html
 import re
 import six
+import pytz
 from re import RegexFlag as ref  # Specifically to avoid a PyDev Error in the IDE.
 from datetime import datetime
 
@@ -26,6 +27,8 @@ from .util import isListValue, isDictionary, isPRE, emulatePRE, indentVAL, getAp
 from .datetime import time_str
 from .options import list_display_format, object_display_format, object_display_modes, flt, osf, odm, odf, lmf
 from .filterset import format_filterset
+
+NEVER = pytz.utc.localize(datetime.min)  # Used for times to indicate never (intentionally the minimal time as never is less than any time)
 
 
 def fmt_str(obj, safe=False):
@@ -82,7 +85,10 @@ def fmt_str(obj, safe=False):
         else:
             text = braces[0] + csv_delim.join(lines) + braces[1]
     elif isinstance(obj, datetime):
-        text = force_text(time_str(obj))
+        if obj == NEVER:
+            text = "NEVER"
+        else:
+            text = force_text(time_str(obj))
     else:
         text = force_text(str(obj))
 
@@ -96,7 +102,7 @@ def fmt_str(obj, safe=False):
 
 def odm_str(obj, fmt, safe=False):
     '''
-    Return an object's representative string respecting the ODM (sum_format and link) and privacy configurations.
+    Return an object's representative string respecting the Object Display Mode (ODM) and privacy configurations.
 
     FIXME:  This should take one path for Django models and another for standard data types!
     Models have rich and verbose and normal str methods. Standard data types have only str but we want to

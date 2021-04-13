@@ -1,5 +1,6 @@
 {% extends "CoGs/base.html" %}
 {% load static %}
+{% load tags %}
 {% block title %}Session Impact{% endblock %}
 
 {% block styles %}
@@ -19,7 +20,7 @@
 
 {% if user.is_authenticated %}
 	<p>
-		[<a href="{% url 'add' model_name %}">Add annother {{ model_name.title }}</a>]
+		[<a href="{% url 'add' model_name %}">Add another {{ model_name.title }}</a>]
 		[<a href="{% url 'edit' model_name object_id %}">Edit this {{ model_name.title }} again</a>]
 		[<a href="{% url 'list' model_name %}">List all {{ model_name_plural.title }}</a>]
 		[<a href="{% url 'list' model_name %}?game={{game.pk}}">List {{game.name}} {{ model_name_plural.title }}</a>]
@@ -28,65 +29,166 @@
 
 <p>Thanks for submitting the results of your game of {{game}} played on {{date_time}}.</p>
 
-{% if is_latest %}
-	<p>This is the latest result for that game and the resulting leaderboard is:</p>   
-	
-{#	We display just the leaderboard for this game which is the latest#}
-{#	We shoudl maybe provide the one after this game (based on Perfromances) and the latest#}
-{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
-{#	 reporting an integrity error with instructions on how to submit it.#}
-{#	Maybe a button to submit it, which sends an email to admins. #}
+{#<p>Changed: {{ changed }}</p>#}
+{#<p>Is Latest: {{ is_latest }}</p>#}
+{#<p>Is First: {{ is_first }}</p>#}
+{#<p>Rebuild log: {{ changed.rebuild_log }}</p>#}
+{#<p>Sessions: {{ changed.rebuild_log.sessions }}</p>#}
+{#<p>Session Objects: {{ changed.rebuild_log.sessions.objects }}</p>#}
+{#<p>All Session Objects: {{ changed.rebuild_log.sessions.all }}</p>#}
+{#<p>All Session Objects Count: {{ changed.rebuild_log.sessions.all.count }}</p>#}
 
-	<div id="immediate_impact"></div>
+{% if changed %}
+	{% if changed.rebuild_log %}
+		<p>This submission triggered a rebuild of the ratings and hence leaderboard positions
+		from {{changed.rebuild_log.date_time_from}} (a total of {{changed.rebuild_log.sessions.all.count}} 
+		game session ratings were rebuilt).</p>  
+		
+		{% if is_first %}
+		<p>It is the first session recorded for {{game}}, and so no leaerboard existed prior to it.</p>   
+		{% endif %}
+		
+		<p>This is the impact on the current leaderboard AND the immediate leaderboard 
+		after your recorded play session:</p>
+	
+		<table class='leaderboard wrapper'>
+			<tr>
+				<th>Current Latest Leaderboard<br>(After the Rebuild)</th>
+				<th>Prior Latest Leaderboard<br>(Before the Rebuild)</th>
+				<th>Leaderboard After Playing<br>(Result after this Session)</th>
+				{% if not is_first %}
+				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
+				{% endif %}
+			</tr>
+			<tr>
+				<td><div id="latest_board"></div></td>
+				<td><div id="prior_board"></div></td>
+				<td><div id="after_board"></div></td>
+				{% if not is_first %}
+				<td><div id="before_board"></div></td>
+				{% endif %}
+			</tr>
+		</table>
+		
+		
+	{% elif is_latest %}
+		{#	Subtle use of "was" to differentiate from creation below that uses "is" #}
+		<p>This was the latest result for that game and the resulting leaderboard is:</p>   
+		
+		{#	We display just the leaderboard for this game which is the latest#}
+		{#	We should maybe provide the one after this game (based on Performances) and the latest#}
+		{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
+		{#	 reporting an integrity error with instructions on how to submit it.#}
+		{#	Maybe a button to submit it, which sends an email to admins. #}
+	
+		{#	Include a diagnostic board if needed. #}
+		{% if diagnose %}
+			<table class='leaderboard wrapper'>
+				<tr>
+					<th>Leaderboard After Playing<br>(Result after this Session)</th>
+					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
+					<th>Diagnostic Leaderboard<br>(Something went wrong)</th>
+				</tr>
+				<tr>
+					<td><div id="after_board"></div></td>
+					<td><div id="before_board"></div></td>
+					<td><div id="diagnostic_board"></div></td>
+				</tr>
+			</table>
+		{% else %}
+			<table class='leaderboard wrapper'>
+				<tr>
+					<th>Leaderboard After Playing<br>(Result after this Session)</th>
+					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
+				</tr>
+				<tr>
+					<td><div id="after_board"></div></td>
+					<td><div id="before_board"></div></td>
+				</tr>
+			</table>
+		{% endif %}
+		
+	{% else  %}
+		{% if is_first %}
+		<p>This was the first result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
+		{% else  %}
+		<p>This was not the latest result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
+		{% endif %}
+
+		<table class='leaderboard wrapper'>
+			<tr>
+				<th>Current Latest Leaderboard<br>(Unchanged by this Submission)</th>
+				<th>Leaderboard After Playing<br>(Result after this Session)</th>
+				{% if not is_first %}
+				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
+				{% endif %}
+			</tr>
+			<tr>
+				<td><div id="latest_board"></div></td>
+				<td><div id="after_board"></div></td>
+				{% if not is_first %}
+				<td><div id="before_board"></div></td>
+				{% endif %}
+			</tr>
+		</table>
+	{% endif %}
 
 {% else %}
-	<p>This session was not the latest (other sessions after it were already 
-	recorded). This triggered a rebuild of the ratings and hence leaderboard positions
-	from at least {{date_time}} on (a total of {{future_sessions | length}} game session ratings rebuilt).</p>  
+	<p>This is the latest result for that game and the resulting leaderboard is:</p>   
+
+	{# TODO: test and consider how to do htis. Currently not saving changelog for every newly created session. Why flood the database?#}
+	{#	Thought: in the creation case the view receives the info it needs from a changelog instead from a session key saved  #}
+	{#	That's the system I first trialled/ Such reports are ephemeral of course. #}
+	{#	But if it's the latest it can also always fall back on the actual latest board!#}
 	
-	<p>This is the impact on the current leaderboard AND the immediate leaderboard 
-	after your recorded play session:</p>
+	{#	We display just the leaderboard for this game which is the latest#}
+	{#	We should maybe provide the one after this game (based on Performances) and the latest#}
+	{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
+	{#	 reporting an integrity error with instructions on how to submit it.#}
+	{#	Maybe a button to submit it, which sends an email to admins. #}
 
-	<div id="immediate_impact"></div>
-{#	<table class='leaderboard wrapper'>#}
-{#		<tr>#}
-{#			<td id="immediate_impact"></td>#}
-{#			<td>New Latest board</td>#}
-{#			<td>Prior Latest board</td>#}
-{#		</tr>#}
-{#	</table>#}
-
-{#	TODO: We want actually to show three leaderboards, the one after the current #}
-{#	session then the current board prior to the submission (before rebuild) and #}
-{#	the current board after the submisison(rebuild). TO achieve this I imagine  #}
-{#  we pass in 3 snapshots (the first will have a baseline for deltas, the other two #}
-{#  won't need them of course - they have no meaning in the "latest" sense, and we #}
-{#  should see deltas on the new "latest" board and not on the prior.#}
-
-	
+	{#	Include a diagnostic board if needed. #}
+	{% if diagnose %}
+		<table class='leaderboard wrapper'>
+			<tr>
+				<th>Leaderboard Before Playing</th>
+				<th>Leaderboard After Playing</th>
+				<th>Diagnostic Leaderboard</th>
+			</tr>
+			<tr>
+				<td><div id="before_board"></div></td>
+				<td><div id="after_board"></div></td>
+				<td><div id="diagnostic_board"></div></td>
+			</tr>
+		</table>
+	{% else %}
+		<table class='leaderboard wrapper'>
+			<tr>
+				<th>Leaderboard Before Playing</th>
+				<th>Leaderboard After Playing</th>
+			</tr>
+			<tr>
+				<td><div id="before_board"></div></td>
+				<td><div id="after_board"></div></td>
+			</tr>
+		</table>
+	{% endif %}
 {% endif %}
  
 {% endblock %}
 
 {% block startscript %}
 <script>
-	// The big one! Leaderboards. This is a structure of lists within lists
-	// Games, Snapshots and Players in that order. 
-	//
-	// see view_Leaderboards for specs and generation of what is delivered, but here is
-	// the expectation:
-	// A list of lists which have four values: Game PK, Game BGGid, Game name, Snapshots
-	// Snapshots is a list of lists which have four values: Date time string, count of plays, count of sessions, Leaderboard
-	// Leaderboard is a list of lists which have six values: Player PK, Player BGGid, Player name, Trueskill rating, Play count, Victory count
-	//
-	// So lists within lists within a list. This is what we're here to present.
-	//
-	// As a side note, the standard view has one snapshot, the current ratings, and leaderboards pr at some other specified time (as_at) 
-	// Extra snapshots are expected when asked for (for comparisons with history and evolutionary examinations), one
-	// extra snapshot per compare_with (a number specifying how many) or a variable number if compare_back_to is specified, 
-	// up to and including the snapshot at as_at or now if as_at isn't specified.  
-
+	// Up to three snaptshots, the leaderboard after the sessiuon, before the session and a baseline as available.
 	let impact = {{leaderboard_snapshots|safe}};
+	
+	// The latest leaderboard 
+	let leaderboard = {{leaderboard|safe}};
+	
+	// The prior leaderboard (prior to a rebuild)
+	{% if changed and changed.rebuild_log%}
+	let prior = {% leaderboard_before_rebuild changed.rebuild_log game %}
+	{% endif %}
 	
 	// We can't access template variables in the included static javascript so here is 
 	// where we nab what we need for the Javascript and stow in javascript variables that
@@ -113,7 +215,7 @@
 	// not render them and use them only for calculating rank deltas. If it is false
 	// the view should idelaly not deliver baslines (or they'll render and not honor
 	// the leaderboard options accurately).
-	const use_baseline = true;		
+	const use_baseline = true;
 </script>
 {% endblock %}
 
@@ -121,6 +223,16 @@
 <script src="{% static 'CoGs/js/leaderboard.js' %}"></script>
 
 <script>
-	$('#immediate_impact').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));
+	$('#after_board').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));	
+	$('#before_board').append(LeaderboardTable(impact, 1, "CoGs", LB_options, null, "nick"));	
+	
+	const lb = $('#latest_board')
+	if (lb) lb.append(LeaderboardTable(leaderboard, null, "CoGs", LB_options, null, "nick"));
+
+	const pb = $('#prior_board')
+	if (pb) pb.append(LeaderboardTable(prior, null, "CoGs", LB_options, null, "nick"));
+	
+	const db = $('#diagnostic_board');
+	if (db) db.append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick", 1));
 </script>
 {% endblock %}

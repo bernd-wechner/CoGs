@@ -1,6 +1,7 @@
 import json
 
 from django import template
+from django.utils.safestring import mark_safe
 # from django.template.loader_tags import do_include
 
 from django_generic_view_extensions.model import object_in_list_format
@@ -12,7 +13,7 @@ register = template.Library()
 @register.simple_tag(takes_context=True)
 def list_format(context, obj):
     '''
-    
+
     :param context:
     :param obj:
     '''
@@ -27,7 +28,7 @@ def get_list(form_data, model, attribute):
     when a form with related_forms fails validation and bounces back, we need to pump the formset
     data back into the form, and if the formsets are constructed in Javascript they may like
     lists of values such as produced here.
-    
+
     :param form_data:
     :param model:
     :param attribute:
@@ -43,3 +44,21 @@ def get_list(form_data, model, attribute):
 
         # if not attr_list: breakpoint()
     return json.dumps(attr_list)
+
+
+@register.simple_tag()
+def leaderboard_before_rebuild(rebuild_log, game):
+    '''
+    :param rebuild_log: an instance of RebuildLog
+    :param game: an instance of Game:
+    '''
+    return mark_safe(rebuild_log.leaderboard_before(game))
+
+
+@register.simple_tag()
+def leaderboard_after_rebuild(rebuild_log, game):
+    '''
+    :param rebuild_log: an instance of RebuildLog
+    :param game: an instance of Game:
+    '''
+    return mark_safe(rebuild_log.leaderboard_after(game))

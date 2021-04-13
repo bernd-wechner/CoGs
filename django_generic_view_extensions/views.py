@@ -394,14 +394,16 @@ def get_context_data_generic(self, *args, **kwargs):
     if isinstance(self, CreateView):
         # Note that the super.get_context_data initialises the form with get_initial
         context = super(CreateView, self).get_context_data(*args, **kwargs)
+        title = 'New'
     elif isinstance(self, UpdateView):
         # Note that the super.get_context_data initialises the form with get_object
         context = super(UpdateView, self).get_context_data(*args, **kwargs)
+        title = 'Edit'
     else:
         raise NotImplementedError("Generic get_context_data only for use by CreateView or UpdateView derivatives.")
 
     # Now add some context extensions ....
-    add_model_context(self, context, plural=False, title='New')
+    add_model_context(self, context, plural=False, title=title)
     add_timezone_context(self, context)
     add_debug_context(self, context)
     if callable(getattr(self, 'extra_context_provider', None)):

@@ -78,27 +78,13 @@ function copyElementToClipboard(JQelement) {
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
 function get_and_report_metrics(LB) {
-	let snapshots = 0; 
+	metrics = leaderboard_metrics(LB); 
 
 	// Globals that we'll set here
-	boardcount = LB.length; // The number of games we are displaying
-	maxshots = 0;			// We want to discover the widest game (maxium number of snapshots)
-	totalshots = 0;			// The total nbumber of snapshots we'll be displaying
+	boardcount = metrics[0]; // The number of games we are displaying
+	maxshots   = metrics[1]; // We want to discover the widest game (maxium number of snapshots)
+	totalshots = metrics[2]; // The total nbumber of snapshots we'll be displaying
 	
-	for (let g=0; g<boardcount; g++) {
-		// deduct 1 for the baseline board we always request
-		// we request it simply so we can render Rank deltas 
-		// in ALL our boards (otherwise not possible for the 
-		// last one snapshot in a game's evolution or at all 
-		// if no evolution options are on.
-		const delivered = LB[g][3].length;
-		const show_baseline = $('#chk_show_baseline').is(":checked");
-		const hide = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
-		const snapshots = delivered - hide; 
-		totalshots += snapshots;
-		if (snapshots > maxshots) maxshots = snapshots;
-	}	 
-
 	lblTotalCount = document.getElementById("lblTotalCount");
 	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
 	
