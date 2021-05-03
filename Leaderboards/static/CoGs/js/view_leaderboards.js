@@ -21,6 +21,7 @@ const use_baseline = true;
 let boardcount = 0;
 let maxshots = 0;
 let totalshots = 0;
+let boardshots = [];
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
@@ -78,12 +79,13 @@ function copyElementToClipboard(JQelement) {
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
 function get_and_report_metrics(LB) {
-	metrics = leaderboard_metrics(LB); 
+	const metrics = leaderboard_metrics(LB); 
 
 	// Globals that we'll set here
 	boardcount = metrics[0]; // The number of games we are displaying
 	maxshots   = metrics[1]; // We want to discover the widest game (maxium number of snapshots)
-	totalshots = metrics[2]; // The total nbumber of snapshots we'll be displaying
+	totalshots = metrics[2]; // The total number of snapshots we'll be displaying
+	boardshots = metrics[3]; // The number of snapshots on each leaderboard
 	
 	lblTotalCount = document.getElementById("lblTotalCount");
 	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
@@ -211,6 +213,12 @@ function InitControls(options) {
 			$('#chk_players_in').attr('disabled', true);
 		}
 	}
+
+	// cols is special. It is on only respected when maxshots is 1. 
+	// On any view with evolution it's not used disable it if it's 
+	// not used.
+	$('#cols').val(dval(options.cols, 1));
+	$('#cols').attr('disabled', maxshots > 1);
 	
 	// Then the rest of the game selectors
 	$('#num_games').val(options.num_games);         // Mirror of
@@ -293,9 +301,6 @@ function InitControls(options) {
 	$('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
 	$('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
 	$('#chk_show_delta').prop('checked', dval(options.show_delta, false));
-
-	// Then the leaderboard screen layout options
-	$('#cols').val(dval(options.cols, 1));
 	
 	// And the admin options
 	$('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
@@ -798,7 +803,9 @@ function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(
 function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
-	$("#leaderboard_options :input").prop("disabled", !yes_or_no);	
+	$("#leaderboard_options :input").prop("disabled", !yes_or_no);
+	// When enabling them, reinitialise them (in case any are disabled during initialisation)
+	if (yes_or_no) InitControls(options);
 }
 
 function got_new_leaderboards() {
@@ -916,14 +923,7 @@ function DrawTables(target, links) {
 		var lb = 0; 
 		for (var i = 0; i < rows; i++) {
 			var row = table.insertRow(i);
-			// We deduct 1 from the snapshot count which is the baseline board we always request
-			// So that we can display rank deltas for ALL boards not just those with an earlier 
-			// one. Always a minimum of 1 snap for a game though is displayed.
-			const delivered     = leaderboards[lb][3].length;
-			const show_baseline = $('#chk_show_baseline').is(":checked");
-			const hide 	        = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
-			const snaps         = delivered - hide; 
-			for (var j = 0; j < snaps; j++) {
+			for (var j = 0; j < boardshots[lb]; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
 				cell.appendChild(LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format));

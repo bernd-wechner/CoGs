@@ -176,3 +176,32 @@ def indentVAL(string, indent=odm.indent):
     else:
         return string
 
+
+def pythonify(json_data):
+    '''
+        json.dumps converts int keys into strings.
+        json.loads then loads them as sirings
+
+        When using Django primary keys as a dict keys and travelling via JSON
+        this can cause mild havoc.
+
+        This function will convert all conveertible dict keys back to int.
+
+        Credit for this lies here: https://stackoverflow.com/a/55842620/4002633
+    '''
+    correctedDict = {}
+
+    for key, value in json_data.items():
+        if isinstance(value, list):
+            value = [pythonify(item) if isinstance(item, dict) else item for item in value]
+        elif isinstance(value, dict):
+            value = pythonify(value)
+
+        try:
+            key = int(key)
+        except:
+            pass
+
+        correctedDict[key] = value
+
+    return correctedDict

@@ -9,15 +9,18 @@ from datetime import datetime, timedelta
 from builtins import str
 from enum import Enum
 
+# Local packages
+from .trueskill_helpers import Skill, TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
+
 # Django packages
 from django.db import models, DataError, IntegrityError  # , connection,
 from django.db.models import Sum, Max, Avg, Count, Q, F, OuterRef, Subquery, ExpressionWrapper
 from django.db.models.expressions import Func
 from django.conf import settings
-from django.core.exceptions import NON_FIELD_ERRORS, ValidationError, ObjectDoesNotExist, MultipleObjectsReturned  # , PermissionDenied
+from django.core.exceptions import ValidationError, ObjectDoesNotExist, MultipleObjectsReturned  # , PermissionDenied, NON_FIELD_ERRORS
 from django.core.validators import RegexValidator
 from django.core.serializers.json import DjangoJSONEncoder
-from django.urls import reverse, reverse_lazy
+from django.urls import reverse  # , reverse_lazy
 from django.db.models.query import QuerySet
 from django.contrib import admin
 from django.contrib.auth.models import User
@@ -42,7 +45,7 @@ from django_generic_view_extensions.model import field_render, link_target_url, 
 from django_generic_view_extensions.decorators import property_method
 from django_generic_view_extensions.datetime import time_str, fix_time_zone
 from django_generic_view_extensions.queryset import get_SQL
-from django_generic_view_extensions.util import AssertLog
+from django_generic_view_extensions.util import AssertLog, pythonify
 from django_generic_view_extensions.html import NEVER
 
 from CoGs.logging import log
@@ -91,6 +94,23 @@ class LEADERBOARD_STYLE(Enum):
     ratings = 3  # An ordered list of tuples (name, rating, mu, sigma)
     simple = 4  # An ordered list of tuples (name, rating, mu, sigma, plays, wins)
     rich = 5  # simple plus lots more player info for rendering rich leaderboards.
+
+
+class LEADERBOARD_STRUCTURE(Enum):
+    '''
+    Leaderboards are passed around ina few different structure. We can use this enum to describe a given
+    structure to inform a function (that supports it) where to find the juice, the player list.
+    '''
+    player_list = 0  # A simple list of player tuples
+    session_wrapped_player_list = 1  # A session tuple containing an player_list as an element
+    game_wrapped_player_list = 2  # A game tuple containing an player_list as an element
+    game_wrapped_session_wrapped_player_list = 3  # A session tuple containing an session_wrapped_player_list as an element
+
+    # This is defined by what Session.leaderboard_snapshot() produces
+    session_data_element = 8  # In a session wrapper, which element contains the player_list
+
+    # This is defined by what Game.wrapped_leaderboard() produces
+    game_data_element = 6  # In a game wrapper, which element caries the dataa (either session wrapper, or player_list)
 
 #===============================================================================
 # The support models, that store all the play records that are needed to
@@ -365,7 +385,7 @@ class Rating(RatingModel):
 
         :param games: a list of QuerySet of Game instances
         '''
-        return {g.pk: g.leaderboard(style) for g in games}
+        return {g.pk: g.leaderboard(style=style) for g in games}
 
     @classmethod
     def update(cls, session):
@@ -517,7 +537,7 @@ class Rating(RatingModel):
         # We save them in a rich format for feedback rendering
         # TODO: The rich format is excessive alas. The simple one is too simple.
         # We need to consider more leaderboard style options
-        rlog.save_leaderboards(Rating.leaderboards(affected_games, simple_style=False), "before")
+        rlog.save_leaderboards(Rating.leaderboards(affected_games, style=LEADERBOARD_STYLE.data), "before")
 
         # Delete all BackupRating objects
         BackupRating.reset()
@@ -565,7 +585,7 @@ class Rating(RatingModel):
         # We save them in a rich format for feedback rendering
         # TODO: The rich format is excessive alas. The simple one is too simple.
         # We need to consider more leaderboard style options
-        rlog.save_leaderboards(Rating.leaderboards(affected_games, simple_style=False), "after")
+        rlog.save_leaderboards(Rating.leaderboards(affected_games, style=LEADERBOARD_STYLE.data), "after")
 
         # Stop the timer and record the duration
         end = localtime()
@@ -1042,7 +1062,7 @@ class Player(PrivacyMixIn, AdminModel):
 
         plays = Session.objects.filter(sFilter).order_by('-date_time')
 
-        return NEVER if (plays is None or plays.count() == 0) else plays[0]
+        return None if (plays is None or plays.count() == 0) else plays[0]
 
     @property_method
     def last_win(self, game=None) -> object:
@@ -1055,7 +1075,7 @@ class Player(PrivacyMixIn, AdminModel):
 
         plays = Session.objects.filter(sFilter).order_by('-date_time')
 
-        return NEVER if (plays is None or plays.count() == 0) else plays[0]
+        return None if (plays is None or plays.count() == 0) else plays[0]
 
     @property
     def last_plays(self) -> list:
@@ -1528,6 +1548,10 @@ class Game(AdminModel):
         else:
             return None
 
+    @property
+    def last_session(self):
+        return Session.objects.filter(game=self).order_by('-date_time').first()
+
     @property_method
     def last_performances(self, leagues=[], players=[], asat=None) -> object:
         '''
@@ -1674,7 +1698,7 @@ class Game(AdminModel):
         return pc
 
     @property_method
-    def leaderboard(self, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple) -> tuple:
+    def leaderboard(self, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
         '''
         Return an ordered tuple of tuples (one per player) that represents the leaderboard for
         specified leagues, or for all leagues if None is specified. As at a given date/time if
@@ -1688,6 +1712,9 @@ class Game(AdminModel):
                           LEADERBOARD_STYLE.rich is special in that it will ignore league filtering and name formatting
                           providing rich data sufficent for the recipient to do that (choose what leagues to present and
                           how to present names.
+        :param data:      If style is LEADERBOARD_STYLE.rich, optionally this can provide a leaderboard in the style
+                          LEADERBOARD.data to use as s ource rather than the database! This is for restyling externally
+                          leaderboard data.
         '''
         # If a single league was provided make a list with one entry.
         if not isinstance(leagues, list):
@@ -1705,9 +1732,14 @@ class Game(AdminModel):
         # with "names" and not simple ...
         if style == LEADERBOARD_STYLE.rich:
             if names != "nick":
-                raise ValueError("Game.leaderboards requested in rich style. Expected no names submitted but got: {names}")
+                raise ValueError(f"Game.leaderboards requested in rich style. Expected no names submitted but got: {names}")
             if leagues != []:
-                raise ValueError("Game.leaderboards requested in rich style. Expected no names leagues but got: {leagues}")
+                raise ValueError(f"Game.leaderboards requested in rich style. Expected no names leagues but got: {leagues}")
+            if asat and data:
+                raise ValueError(f"Game.leaderboards requested in rich style. Expected either asat or data and for {asat=} and {data=}")
+        else:
+            if data:
+                raise ValueError(f"Game.leaderboards requested with {data=} and {style=}. data is only allowed with the rich style: {LEADERBOARD_STYLE.rich}")
 
         # We can accept leagues as League instances or PKs but want a PK list for the queries.
         if leagues:
@@ -1720,7 +1752,9 @@ class Game(AdminModel):
             if settings.DEBUG:
                 log.debug(f"\t\tValidated leagues")
 
-        if asat:
+        if data:
+            ratings = data
+        elif asat:
             # Build leaderboard as at a given time as specified
             # Can't use the Ratings model as that stores current ratings. Instead use the Performance
             # model which records ratings after every game session and the sessions have a date/time
@@ -1749,6 +1783,9 @@ class Game(AdminModel):
             # r may be a Rating object or a Performance object. They both have a player
             # but other metadata is specific. So we fetch them based on their accessibility
             if isinstance(r, Rating):
+                player = r.player
+                player_pk = player.pk
+                player_name = player.name(names)
                 trueskill_eta = r.trueskill_eta
                 trueskill_mu = r.trueskill_mu
                 trueskill_sigma = r.trueskill_sigma
@@ -1756,39 +1793,56 @@ class Game(AdminModel):
                 victories = r.victories
                 last_play = r.last_play_local
             elif isinstance(r, Performance):
+                player = r.player
+                player_pk = player.pk
+                player_name = player.name(names)
                 trueskill_eta = r.trueskill_eta_after
                 trueskill_mu = r.trueskill_mu_after
                 trueskill_sigma = r.trueskill_sigma_after
                 plays = r.play_number
                 victories = r.victory_count
                 last_play = r.session.date_time_local
+            elif isinstance(r, tuple) or isinstance(r, list):
+                # Unpack the data tuple
+                player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories = r
+                try:
+                    player = Player.objects.get(pk=player_pk)
+                    player_name = player.name(names)
+                except Player.DoesNotExist:
+                    player = None  # TODO: what to do?
+                    player_name = "<unknown>"
+
+                # TODO: consider the consequences of this choice of last_play in the rebuild log reporting.
+                last_play = self.last_session.date_time_local
             else:
                 raise ValueError(f"Progamming error in Game.leaderboard(). Unextected rating type: {type(r)}.")
 
             if style == LEADERBOARD_STYLE.none:
-                lb_entry = r.player.name(names)
+                lb_entry = player_name
             elif style == LEADERBOARD_STYLE.data:
-                lb_entry = (r.player.pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
+                lb_entry = (player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
             elif style == LEADERBOARD_STYLE.rating:
-                lb_entry = (r.player.name(names), trueskill_eta)
+                lb_entry = (player_name, trueskill_eta)
             elif style == LEADERBOARD_STYLE.ratings:
-                lb_entry = (r.player.name(names), trueskill_eta, trueskill_mu, trueskill_sigma)
+                lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma)
             elif style == LEADERBOARD_STYLE.simple:
-                lb_entry = (r.player.name(names), trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
+                lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
             elif style == LEADERBOARD_STYLE.rich:
+                # There's a slim chance that "player" does not exist (notably when 'data' is provided
+                # So access player properties cautiously with fallback.
                 lb_entry = (i + 1,
-                            r.player.pk,
-                            r.player.BGGname,
-                            r.player.name('nick'),
-                            r.player.name('full'),
-                            r.player.name('complete'),
+                            player_pk,
+                            player.BGGname if player else '',
+                            player.name('nick') if player else '',
+                            player.name('full') if player else '',
+                            player.name('complete') if player else '',
                             trueskill_eta,
                             trueskill_mu,
                             trueskill_sigma,
                             plays,
                             victories,
                             last_play,
-                            [l.pk for l in r.player.leagues.all()])
+                            [l.pk for l in player.leagues.all()] if player else [])
             else:
                 raise ValueError(f"Programming error in Game.leaderboard(): Illegal style submitted: {style}")
 
@@ -1800,7 +1854,7 @@ class Game(AdminModel):
         return None if len(lb) == 0 else tuple(lb)  # Return a tuple (immutable list)
 
     @property_method
-    def wrapped_leaderboard(self, data=None, snap=False) -> tuple:
+    def wrapped_leaderboard(self, leaderboard=None, snap=False, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
         '''
         A central defintion of the first tier of a the AJAX leaderboard view,
         a game header, which wraps a data delivery, the data being a
@@ -1809,16 +1863,31 @@ class Game(AdminModel):
             Game.leaderboard
             Session.leaderboard_snapshot
 
-        :param data:        a leaderboard or a list of leaderboard snaphots for this game
-        :param snap:        if data is a list of snapshots, true, if data is a leaderboard, false
+        A game wrapper contains:
+            game.pk,
+            game.BGGid
+            game.name
+            total number of plays
+            total number sessions played
+            data format identifier
+            data (a playerlist or a session snapshot - session wrapped player list)
+
+        :param leaderboard: a leaderboard or a list of leaderboard snaphots for this game
+        :param snap:         if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
+        :param leagues:      self.leaderboards argument passed through
+        :param asat:         self.leaderboards argument passed through
+        :param names:        self.leaderboards argument passed through
+        :param style:        self.leaderboards argument passed through
+        :param data:         self.leaderboards argument passed through
         '''
-        if data is None:
-            data = self.leaderboard()
+        if leaderboard is None:
+            leaderboard = self.leaderboard(leagues, asat, names, style, data)
+            snap = False
 
         # Permit submission of an empty tuple () to return an empty tuple.
-        if data:
+        if leaderboard:
             counts = self.play_counts()
-            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, data)
+            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, leaderboard)
         else:
             return ()
 
@@ -2493,6 +2562,41 @@ class Session(TimeZoneMixIn, AdminModel):
         rankers = sorted(self.ranks.all(), key=lambda r: r.rank)
         return rankers
 
+    def _predicted_ranking(self, before=False):
+        '''
+        Returns a list of ranks in the predicted order as the first
+        element in a tuple.
+
+        The second is the probability associated with that prediction.
+
+        :param before: if True, performs the anslys with TrueSkill ratings before this session, else after
+        '''
+        # Rank.performance returns a (mu, sigma) tuple for the ranker
+        # TrueSkill modeled performance. And the expected ranking is
+        # ranking by expected performance which is mu of the performance.
+        distinct_expectations = set()
+        expected_performances = {}
+        for r in self.ranks.all():
+            expected_performances[r] = r.performance[0] if before else r.performance_after[0]
+            distinct_expectations.add(expected_performances[r])
+
+        rankers = []
+        ordered_expectations = sorted(distinct_expectations, reverse=True)  # Highest to lowest expeced performance
+        for p in ordered_expectations:
+            tied_rankers = []
+            for r in self.ranks.all():
+                if expected_performances[r] == p:
+                    tied_rankers.append(r)
+            rankers.append(tuple(tied_rankers))
+
+        # rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
+
+        g = self.game
+        ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
+        prob = ts.P_ranking(rankers)
+
+        return (tuple(rankers), prob)
+
     @property
     def predicted_ranking(self) -> tuple:
         '''
@@ -2500,25 +2604,8 @@ class Session(TimeZoneMixIn, AdminModel):
         element in a tuple.
 
         The second is the probability associated with that prediction.
-
-        TODO: This should really be in the trueskill package, consider fixing it and submitting a PR.
         '''
-        # Rank.performance returns a (mu, sigma) tuple for the ranker
-        # TrueSkill modeled performance. And the expected ranking is
-        # ranking by expected performance which is mu of the performance.
-        rankers = sorted(self.ranks.all(), key=lambda r: r.performance[0], reverse=True)
-
-        # TODO: This should be in the trueskill package
-        # See my doc "Understanding Trueskill" for the math on this
-        prob = 1
-        for r in range(len(rankers) - 1):
-            perf1 = rankers[r].performance
-            perf2 = rankers[r + 1].performance
-            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1] ** 2 + perf2[1] ** 2) ** 0.5
-            p = norm.cdf(x)
-            prob *= p
-
-        return (rankers, prob)
+        return self._predicted_ranking(before=True)
 
     @property
     def predicted_ranking_after(self) -> tuple:
@@ -2530,22 +2617,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         TODO: This should really be in the trueskill package
         '''
-        # Ranks.performance returns a (mu, sigma) tuple for the rankers
-        # TrueSkill modeled performance. And the expected ranking is
-        # ranking by expected performance which is mu of the performance.
-        rankers = sorted(self.ranks.all(), key=lambda r: r.performance_after[0], reverse=True)
-
-        # TODO: This should be in the trueskill package
-        # See my doc "Understanding Trueskill" for the math on this
-        prob = 1
-        for r in range(len(rankers) - 1):
-            perf1 = rankers[r].performance
-            perf2 = rankers[r + 1].performance
-            x = (perf1[0] - perf2[0] - trueskill.DELTA) / (perf1[1] ** 2 + perf2[1] ** 2) ** 0.5
-            p = norm.cdf(x)
-            prob *= p
-
-        return (rankers, prob)
+        return self._predicted_ranking(before=False)
 
     @property
     def relationships(self) -> set:
@@ -2588,7 +2660,7 @@ class Session(TimeZoneMixIn, AdminModel):
         for performance1 in performances:
             for performance2 in performances:
                 # Only need relationships where 1 beats 2 or there's a draw
-                if performance1.rank <= performance2.rank and performance1.player != performance2.player:
+                if performance1.rank.rank <= performance2.rank.rank and performance1.player != performance2.player:
                     relationship = (performance1.player, performance2.player)
                     back_relationship = (performance2.player, performance1.player)
                     if not back_relationship in relationships:
@@ -2612,8 +2684,16 @@ class Session(TimeZoneMixIn, AdminModel):
             rank_dict = {}
             r = 1
             for rank in ordered_ranks:
-                rank_dict[rank.ranker] = r
+                if isinstance(rank, list) or isinstance(rank, tuple):
+                    tied_ranks = rank
+                else:
+                    tied_ranks = [rank]
+
+                for tied_rank in tied_ranks:
+                    rank_dict[tied_rank.ranker] = r
+
                 r += 1
+
             return rank_dict
 
         actual_rank = dictify(self.actual_ranking)
@@ -2806,6 +2886,7 @@ class Session(TimeZoneMixIn, AdminModel):
                     result)
 
         # Append the latest only for diagnostics if it's expected to be same and isn't! So we have the two to compare diagnostically!
+        # if this is the latest sesion, then the latest leaderbouard shoudl be teh same as this session's snapshot!
         if self.is_latest:
             latest = self.game.leaderboard(style=LEADERBOARD_STYLE.rich)
             include_latest = not result == latest
@@ -2824,12 +2905,12 @@ class Session(TimeZoneMixIn, AdminModel):
 
         :param ordered_ranks:           Rank objects in order we'd like them listed.
         :param use_rank:                Use Rank.rank to permit ties, else use the row number
-        :param expected_performance:    Name of Rank method that returns a Predicted Performance summary
+        :param expected_performance:    Name of Rank property that supplies a Predicted Performance summary
         :param name_style:              The style in which to render names
         :param ol_style:                A style to apply to the OL if any
         '''
 
-        data = []
+        data = []  # A list of (PK, BGGname) tuples as data for a template view to build links to BGG if desired.
         if ol_style:
             detail = f'<OL style="{ol_style}">'
         else:
@@ -2837,44 +2918,55 @@ class Session(TimeZoneMixIn, AdminModel):
 
         rankers = OrderedDict()
         row = 1
-        for r in ordered_ranks:
-            if self.team_play:
-                # Teams we can render with the default format
-                ranker = field_render(r.team, flt.template)
-                data.append((r.team.pk, None))
+        for rank in ordered_ranks:
+            if isinstance(rank, list) or isinstance(rank, tuple):
+                tied_ranks = rank
             else:
-                # Render the field first as a template which has:
-                # {Player.PK} in place of the players name, and a
-                # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
-                ranker = field_render(r.player, flt.template, osf.template)
+                tied_ranks = [rank]
 
-                # Replace the player name template item with the formatted name of the player
-                ranker = re.sub(fr'{{Player\.{r.player.pk}}}', r.player.name(name_style), ranker)
-
-                # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
-                PK = r.player.pk
-                BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname
-                data.append((PK, BGG))
-
-            # Add expected performance to the ranker string if requested
-            eperf = ""
-            if not expected_performance is None:
-                perf = getattr(r, expected_performance, None)  # (mu, sigma)
-                if not perf is None:
-                    eperf = perf[0]  # mu
-
-            if eperf:
-                tip = "<span class='tooltiptext' style='width: 600%;'>Expected performance (teeth)</span>"
-                ranker += " (<div class='tooltip'>{:.1f}{}</div>)".format(eperf, tip)
-
-            if use_rank:
-                if r.rank in rankers:
-                    rankers[r.rank].append(ranker)
+            tied_rankers = []
+            for r in tied_ranks:
+                if self.team_play:
+                    # Teams we can render with the default format
+                    ranker = field_render(r.team, flt.template)
+                    data.append((r.team.pk, None))  # No BGGname for a team
                 else:
-                    rankers[r.rank] = [ranker]
-            else:
-                rankers[row] = [ranker]
+                    # Render the field first as a template which has:
+                    # {Player.PK} in place of the player's name, and a
+                    # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
+                    ranker = field_render(r.player, flt.template, osf.template)
 
+                    # Replace the player name template item with the formatted name of the player
+                    ranker = re.sub(fr'{{Player\.{r.player.pk}}}', r.player.name(name_style), ranker)
+
+                    # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
+                    PK = r.player.pk
+                    BGG = None if (r.player.BGGname is None or len(r.player.BGGname) == 0 or r.player.BGGname.isspace()) else r.player.BGGname
+                    data.append((PK, BGG))
+
+                # Add expected performance to the ranker string if requested
+                eperf = ""
+                if not expected_performance is None:
+                    perf = getattr(r, expected_performance, None)  # (mu, sigma)
+                    if not perf is None:
+                        eperf = perf[0]  # mu
+
+                if eperf:
+                    tip = "<span class='tooltiptext' style='width: 600%;'>Expected performance (teeth)</span>"
+                    ranker += f" (<div class='tooltip'>{eperf:.1f}{tip}</div>)"
+
+                tied_rankers.append(ranker)
+
+                # TODO: REMOVE posty testing. Methnks this was an erswhile tie handler.
+                # if use_rank:
+                    # if r.rank in rankers:
+                        # rankers[r.rank].append(ranker)
+                    # else:
+                        # rankers[r.rank] = [ranker]
+                # else:
+                    # rankers[row] = [ranker]
+
+            rankers[row] = [", ".join(tied_rankers)]
             row += 1
 
         row = 1
@@ -3653,36 +3745,16 @@ class Rank(AdminModel):
 
     add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
-    def _performance(self, after=False) -> tuple:
-        '''
-        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkill specific theory to provide
-        a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
-
-        :param after: if true returns predicted performance with ratings after the update. Else before.
-        '''
-        # TODO: Much of this This should really be in the trueskill package not here
-        if self.session.team_play:
-            players = list(self.team.players.all())
-        else:
-            players = [self.player]
-
-        mu = 0
-        var = 0
-        for player in players:
-            performance = self.session.performance(player)
-            w = performance.partial_play_weighting
-            mu += w * (performance.trueskill_mu_after if after else performance.trueskill_mu_before)
-            sigma = performance.trueskill_sigma_after if after else performance.trueskill_sigma_before
-            var += w ** 2 * (sigma ** 2 + performance.trueskill_tau ** 2 + performance.trueskill_beta ** 2)
-        return (mu, var ** 0.5)
-
     @property
     def performance(self):
         '''
-        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkil specific theory to provide
+        Returns a TrueSkill Performance for this ranking player or team. Uses very TrueSkill specific theory to provide
         a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill Performance prediction.
         '''
-        return self._performance()
+        g = self.session.game
+        ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
+
+        return ts.Rank_performance(self, after=False)
 
     @property
     def performance_after(self):
@@ -3691,7 +3763,10 @@ class Rank(AdminModel):
         Uses very TrueSkil specific theory to provide a tuple of mean and standard deviation (mu, sigma) that describes TrueSkill
         Performance prediction.
         '''
-        return self._performance(True)
+        g = self.session.game
+        ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
+
+        return ts.Rank_performance(self, after=True)
 
     @property
     def ranker(self) -> object:
@@ -3916,7 +3991,7 @@ class Performance(AdminModel):
         ipfilter = Q(player=self.player)
         tpfilter = Q(team__players=self.player)
         rfilter = sfilter & (ipfilter | tpfilter)
-        return Rank.objects.filter(rfilter)
+        return Rank.objects.filter(rfilter).first()
 
     @property
     def is_victory(self) -> bool:
@@ -4292,12 +4367,72 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
     # We'd like to store JSON leaderboard impact of the rebuild. As the rebuild can cover the whole database this
     # can be large beyond simple database storage, and so we should use fileystem storage!
     rebuild_log_dir = "logs/rating_rebuilds"
-    leaderboards_before = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)
-    leaderboards_after = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)
+    leaderboards_before_rebuild = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)
+    leaderboards_after_rebuild = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)
 
     @property
     def date_time_local(self):
         return fix_time_zone(self.date_time, self.date_time_tz)
+
+    @property
+    def leaderboards_before(self) -> dict:
+        log_file = os.path.join(settings.BASE_DIR, self.leaderboards_before_rebuild)
+        try:
+            with open(log_file, 'r') as f:
+                leaderboards = json.load(f)
+        except:
+            leaderboards = {}
+
+        return pythonify(leaderboards)
+
+    @property
+    def leaderboards_after(self) -> dict:
+        log_file = os.path.join(settings.BASE_DIR, self.leaderboards_after_rebuild)
+        try:
+            with open(log_file, 'r') as f:
+                leaderboards = json.load(f)
+        except:
+            leaderboards = {}
+
+        return pythonify(leaderboards)
+
+    @property_method
+    def players_affected(self, game=None) -> tuple:
+        '''
+        Returns a tuple of the players whose ratings were affected by by this rebuild.
+
+        Each element is a tuple of (pk, nickname, delta) and these are orderd in ascending delta.
+
+        :param game: An instance of Game. The game to consider, if not specified the whole rebuild is  considered.
+        '''
+
+        before = self.leaderboards_before
+        after = self.leaderboards_after
+
+        if game:
+            games = [game]
+        else:
+            games = before.keys()
+
+        affected = []
+        deltas = []
+        for g in games:
+            old = self.player_positions(before[g.pk])
+            new = self.player_positions(after[g.pk])
+
+            for p in old:
+                if not new[p] == old[p]:
+                    delta = new[p] - old[p]
+                    affected.append(p)
+                    deltas.append((p, delta))
+
+        names = {p[0]:p[1] for p in Player.objects.filter(pk__in=affected).values_list('pk', 'name_nickname')}
+
+        result = []
+        for d in sorted(deltas, key=lambda d: d[1]):
+            result.append((d[0], names[d[0]], d[1]))
+
+        return result
 
     def save_leaderboards(self, leaderboards, context):
         '''
@@ -4323,25 +4458,22 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
             f.write(content)
 
         if context == "before":
-            self.leaderboards_before = rel_filename
+            self.leaderboards_before_rebuild = rel_filename
         elif context == "after":
-            self.leaderboards_after = rel_filename
+            self.leaderboards_after_rebuild = rel_filename
 
     def leaderboard_before(self, game):
         '''
         Returns the leaderboard for a game as it was before this Rebuild (which was logged)
 
-        TODO: Currently we're saving and loading rich leaderboards.
-        Waste of space really. See Rating.leaderboard for ideas on rationalising
-        leaderboard styles (and proving one for saving and restoring here, from which any other
-        style can be generated).
-
         :param game: an instance of Game
         '''
-        log_file = os.path.join(settings.BASE_DIR, self.leaderboards_before)
-        with open(log_file, 'r') as f:
-            leaderboards = json.load(f)
-        return json.dumps(game.wrapped_leaderboard(leaderboards.get(str(game.pk), ())), cls=DjangoJSONEncoder)
+        leaderboards = self.leaderboards_before
+        game_board = tuple(leaderboards.get(game.pk, []))
+        rich_game_board = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=game_board)
+        wrapped_game_board = game.wrapped_leaderboard(rich_game_board)
+        return wrapped_game_board
+        # return json.dumps(wrapped_game_board, cls=DjangoJSONEncoder)
 
     def leaderboard_after(self, game):
         '''
@@ -4349,10 +4481,43 @@ class RebuildLog(TimeZoneMixIn, AdminModel):
 
         :param game: an instance of Game
         '''
-        log_file = os.path.join(settings.BASE_DIR, self.leaderboards_after)
-        with open(log_file, 'r') as f:
-            leaderboards = json.load(f)
-        return json.dumps(game.wrapped_leaderboard(leaderboards.get(str(game.pk), ())), cls=DjangoJSONEncoder)
+        leaderboards = self.leaderboards_after
+        game_board = tuple(leaderboards.get(game.pk, []))
+        rich_game_board = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=game_board)
+        wrapped_game_board = game.wrapped_leaderboard(rich_game_board)
+        return wrapped_game_board
+        # return json.dumps(wrapped_game_board, cls=DjangoJSONEncoder)
+
+    def leaderboard_delta(self, game):
+        '''
+        Returns leaderboard_after and leaderboard_before as two boards under one game wrapper.
+
+        :param game: an instance of Game
+        '''
+        after = self.leaderboards_after
+        before = self.leaderboards_before
+
+        after_board = tuple(after.get(game.pk, []))
+        before_board = tuple(before.get(game.pk, []))
+
+        rich_after = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=after_board)
+        rich_before = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=before_board)
+
+        wrapped = game.wrapped_leaderboard([rich_after, rich_before])
+        return json.dumps(wrapped, cls=DjangoJSONEncoder)
+
+    def player_positions(self, leaderboard):
+        '''
+        Returns a dict keyed on player pk, with leaderboard position as the value
+
+        :param leaderboard: A leaderboard in the style of LEADERBOARD_STYLE.data
+        '''
+        positions = {}
+        for pos, tup in enumerate(leaderboard):
+            pk = tup[0]  # LEADERBOARD_STYLE.data encodes player pk as first element of tuple
+            positions[pk] = pos
+
+        return positions
 
     class Meta(AdminModel.Meta):
         verbose_name = "Rebuild Log"

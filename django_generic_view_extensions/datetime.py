@@ -1,7 +1,7 @@
 '''
 Django Generic View Extensions
 
-Datetime management   
+Datetime management
 '''
 # Python imports
 import pytz
@@ -10,7 +10,8 @@ from dateutil import parser
 
 # Django imports
 from django.utils.formats import localize
-from django.utils.timezone import make_naive, localtime
+from django.utils.timezone import make_naive, localtime, get_current_timezone
+
 
 def datetime_format_python_to_PHP(python_format_string):
     '''Given a python datetime format string, attempts to convert it to the nearest PHP datetime format string possible.'''
@@ -22,99 +23,112 @@ def datetime_format_python_to_PHP(python_format_string):
 
     return php_format_string
 
-def is_dst(zonename):
-    '''Given the name of Timezone will attempt determine if that timezone is in Daylight Saving TIMe now (DST)'''
-    tz = pytz.timezone(zonename)
-    now = pytz.utc.localize(datetime.utcnow())
-    return now.astimezone(tz).dst() != timedelta(0)
+
+def is_dst(zonename=None, when=None):
+    '''Given the name of Timezone will attempt determine if that timezone is in Daylight Saving Time now (DST)'''
+    # This gist may be better: https://gist.github.com/dpapathanasiou/09bd2885813038d7d3eb
+    if zonename:
+        tz = pytz.timezone(zonename)
+    else:
+        tz = get_current_timezone()
+    if when:
+        testing_time = when
+    else:
+        testing_time = pytz.utc.localize(datetime.utcnow())
+
+    return testing_time.astimezone(tz).dst() != timedelta(0)
+
 
 def time_str(date_time):
     '''
     A very simple one liner to return a formatted local naive date time from a database time.
-    
+
     As this is done in many places, to format date_times, it is captured here.
-        
+
     localtime()  - converts date_time from the database stored UTC time, to local time as defined by Django's activate()
     make_naive() - just strips the timezone info so the default str() representation doesn't have the timezone data
     localize()   - produces the string format defined in Django settings, typically by DATETIME_FORMAT
     '''
-    # FIXME: the RFC5322 format introduces a bizarre TZ artifact. Grrr. 
+    # FIXME: the RFC5322 format introduces a bizarre TZ artifact. Grrr.
     #        Try the DATETIME_FORMAT 'D,  j M Y H:i'
     return localize(make_naive(localtime(date_time)))
 
+
 UTC = pytz.timezone('UTC')
+
 
 def fix_time_zone(dt, tz=UTC):
     '''
-    A simple function that takes a datetime object and if it has no tzinfo will give it some 
+    A simple function that takes a datetime object and if it has no tzinfo will give it some
     assuming its UTC.
     '''
-    if not dt is None: 
+    if not dt is None:
         if dt.tzinfo == None:
             return tz.localize(dt)
         elif dt.tzinfo != tz:
             return dt.astimezone(tz)
-        
+
     return dt
+
 
 def decodeDateTime(dt):
     '''
-    decodes a DateTime that was URL encoded. 
-    Has to agree with the URL encoding chosen by the Javascript that 
+    decodes a DateTime that was URL encoded.
+    Has to agree with the URL encoding chosen by the Javascript that
     fetches leaderboards though an AJAX call of course.
-    
-    The colons are encoded as : - Works on Chrome even though it's 
-    a reserved character not encouraged for URL use. 
-    
+
+    The colons are encoded as : - Works on Chrome even though it's
+    a reserved character not encouraged for URL use.
+
     The space between date and time is encoded as + and so arrives
-    as a space. 
-    
+    as a space.
+
     A - introducing the timezone passes through unencoded.
-    
+
     A + introducing the timezone arrives here as a space
-    
+
     Just in case : in the URL does cause an issue, up front we'll
-    support - which travels undamaged from URL to here, as the 
+    support - which travels undamaged from URL to here, as the
     hh mm ss separator.
-    
+
     All the while we are using the ISO 8601 format for datetimes,
     or encoded versions of it that we try to decode here.
-    
+
     ref1 and ref 2 are ISO 8601 datetimes with and without timezone
-    used do our work here.                         
-    
+    used do our work here.
+
     :param dt: A URL encoded date time
     '''
     ref1 = "2019-03-01 18:56:16+1100"
     ref2 = "2019-03-01 18:56:16"
     ref3 = "2019-03-01"
-    
-    # strings are immutable and we need to listify them to 
+
+    # strings are immutable and we need to listify them to
     # make character referenced substitutions
     new = list(dt)
-    
+
     if not len(dt) in [len(ref1), len(ref2), len(ref3)]:
         return dt
-    
+
     if len(dt) == len(ref1):
         if dt[-5] == " ":
             new[-5] = "+"
-    
+
     if len(dt) >= len(ref2):
         # The first time colon (was encoded as -)
         if dt[13] == "-":
             new[13] = ":"
-    
+
         # The second time colon (was encoded as -)
         if dt[16] == "-":
             new[16] = ":"
 
-    # The n stringify the list again. 
+    # The n stringify the list again.
     decoded = "".join(new)
-    
+
     return fix_time_zone(parser.parse(decoded))
 
-# A Javascript function that encodes a datetime (the partner of decodeDateTime above. 
+# A Javascript function that encodes a datetime (the partner of decodeDateTime above.
 #
 #         function encodeDateTime(datetime) {
 #             // We communicate datetimes in the ISO 8601 format:

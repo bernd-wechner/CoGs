@@ -9,6 +9,7 @@ django-cuser==2017.3.16
 django-debug-toolbar==3.2
 django-extensions==3.1.1
 django-mapbox-location-field==1.7.1
+django-relativefilepathfield==1.0.3
 django-reset-migrations==0.4.0
 django-timezone-field==4.1.1
 django-url-filter==0.3.15

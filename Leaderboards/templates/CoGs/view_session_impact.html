@@ -1,6 +1,7 @@
 {% extends "CoGs/base.html" %}
 {% load static %}
 {% load tags %}
+{% load filters %}
 {% block title %}Session Impact{% endblock %}
 
 {% block styles %}
@@ -37,17 +38,19 @@
 {#<p>Session Objects: {{ changed.rebuild_log.sessions.objects }}</p>#}
 {#<p>All Session Objects: {{ changed.rebuild_log.sessions.all }}</p>#}
 {#<p>All Session Objects Count: {{ changed.rebuild_log.sessions.all.count }}</p>#}
+{#<p>Players Affected: {{ players_affected }}</p>#}
+{#<p>Leaderboard: {{ leaderboard_after | safe }}</p>#}
 
 {% if changed %}
-	{% if changed.rebuild_log %}
+	{% if changed.rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
 		<p>This submission triggered a rebuild of the ratings and hence leaderboard positions
 		from {{changed.rebuild_log.date_time_from}} (a total of {{changed.rebuild_log.sessions.all.count}} 
-		game session ratings were rebuilt).</p>  
+		game session ratings were rebuilt and {{ num_players_affected }} player's ratings were affected).</p>  
 		
 		{% if is_first %}
-		<p>It is the first session recorded for {{game}}, and so no leaerboard existed prior to it.</p>   
+		<p>It is the first session recorded for {{game}}, and so no leaderboard existed prior to it.</p>   
 		{% endif %}
-		
+
 		<p>This is the impact on the current leaderboard AND the immediate leaderboard 
 		after your recorded play session:</p>
 	
@@ -61,17 +64,22 @@
 				{% endif %}
 			</tr>
 			<tr>
-				<td><div id="latest_board"></div></td>
-				<td><div id="prior_board"></div></td>
-				<td><div id="after_board"></div></td>
+				<td><div id="game_board_after"></div></td>
+				<td><div id="game_board_before"></div></td>
+				<td><div id="session_board_after"></div></td>
 				{% if not is_first %}
-				<td><div id="before_board"></div></td>
+				<td><div id="session_board_before"></div></td>
 				{% endif %}
 			</tr>
 		</table>
 		
+		{% if players_affected %}
+		<p>These player's ratings were affected by the rebuild:</p>
+		<div id="affected_players"></div>
+		{% endif %}
 		
-	{% elif is_latest %}
+		
+	{% elif is_latest and not is_first %} {# This was the latest session of submitted game and no rebuild was needed #}
 		{#	Subtle use of "was" to differentiate from creation below that uses "is" #}
 		<p>This was the latest result for that game and the resulting leaderboard is:</p>   
 		
@@ -90,9 +98,9 @@
 					<th>Diagnostic Leaderboard<br>(Something went wrong)</th>
 				</tr>
 				<tr>
-					<td><div id="after_board"></div></td>
-					<td><div id="before_board"></div></td>
-					<td><div id="diagnostic_board"></div></td>
+					<td><div id="session_board_after"></div></td>
+					<td><div id="session_board_before"></div></td>
+					<td><div id="session_board_diagnostic"></div></td>
 				</tr>
 			</table>
 		{% else %}
@@ -102,39 +110,39 @@
 					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
 				</tr>
 				<tr>
-					<td><div id="after_board"></div></td>
-					<td><div id="before_board"></div></td>
+					<td><div id="session_board_after"></div></td>
+					<td><div id="session_board_before"></div></td>
 				</tr>
 			</table>
 		{% endif %}
 		
-	{% else  %}
+	{% else %}  {# This was not the latest session of submitted game, but no rebuuild was triggered #}	
 		{% if is_first %}
-		<p>This was the first result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
+		<p>This was the first result for that game, and so no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
 		{% else  %}
 		<p>This was not the latest result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
 		{% endif %}
 
 		<table class='leaderboard wrapper'>
 			<tr>
-				<th>Current Latest Leaderboard<br>(Unchanged by this Submission)</th>
+				<th>Current Latest Leaderboard<br>(Unaffected by this submission)</th>
 				<th>Leaderboard After Playing<br>(Result after this Session)</th>
 				{% if not is_first %}
 				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
 				{% endif %}
 			</tr>
 			<tr>
-				<td><div id="latest_board"></div></td>
-				<td><div id="after_board"></div></td>
+				<td><div id="game_board_after"></div></td>
+				<td><div id="session_board_after"></div></td>
 				{% if not is_first %}
-				<td><div id="before_board"></div></td>
+				<td><div id="session_board_before"></div></td>
 				{% endif %}
 			</tr>
 		</table>
 	{% endif %}
 
 {% else %}
-	<p>This is the latest result for that game and the resulting leaderboard is:</p>   
+	<p>This is the {% if is_first %} first and {% endif %}latest result for that game and the resulting leaderboard is:</p>   
 
 	{# TODO: test and consider how to do htis. Currently not saving changelog for every newly created session. Why flood the database?#}
 	{#	Thought: in the creation case the view receives the info it needs from a changelog instead from a session key saved  #}
@@ -147,8 +155,18 @@
 	{#	 reporting an integrity error with instructions on how to submit it.#}
 	{#	Maybe a button to submit it, which sends an email to admins. #}
 
+	{% if is_first %}
+	{#	First submitted session is a bit special #}
+		<table class='leaderboard wrapper'>
+			<tr>
+				<th>Leaderboard After Playing</th>
+			</tr>
+			<tr>
+				<td><div id="session_board_after"></div></td>
+			</tr>
+		</table>
+	{% elif diagnose %}
 	{#	Include a diagnostic board if needed. #}
-	{% if diagnose %}
 		<table class='leaderboard wrapper'>
 			<tr>
 				<th>Leaderboard Before Playing</th>
@@ -156,8 +174,8 @@
 				<th>Diagnostic Leaderboard</th>
 			</tr>
 			<tr>
-				<td><div id="before_board"></div></td>
-				<td><div id="after_board"></div></td>
+				<td><div id="game_board_before"></div></td>
+				<td><div id="game_board_after"></div></td>
 				<td><div id="diagnostic_board"></div></td>
 			</tr>
 		</table>
@@ -168,8 +186,8 @@
 				<th>Leaderboard After Playing</th>
 			</tr>
 			<tr>
-				<td><div id="before_board"></div></td>
-				<td><div id="after_board"></div></td>
+				<td><div id="game_board_before"></div></td>
+				<td><div id="game_board_after"></div></td>
 			</tr>
 		</table>
 	{% endif %}
@@ -180,19 +198,20 @@
 {% block startscript %}
 <script>
 	// Up to three snaptshots, the leaderboard after the sessiuon, before the session and a baseline as available.
-	let impact = {{leaderboard_snapshots|safe}};
+	const impact = {{session_snapshots|safe}};
 	
-	// The latest leaderboard 
-	let leaderboard = {{leaderboard|safe}};
-	
-	// The prior leaderboard (prior to a rebuild)
 	{% if changed and changed.rebuild_log%}
-	let prior = {% leaderboard_before_rebuild changed.rebuild_log game %}
+{#	const leaderboard = {% leaderboard_after_rebuild changed.rebuild_log game %};#}
+{#	const prior = {% leaderboard_before_rebuild changed.rebuild_log game %};#}
+	const leaderboard = {{ game_board_after | safe }};
+	const prior = {{ game_board_before | safe }};
+	{% else %}
+	let leaderboard = {{game_board_after | safe}};
 	{% endif %}
 	
-	// We can't access template variables in the included static javascript so here is 
-	// where we nab what we need for the Javascript and stow in javascript variables that
-	// the code in the included .js file can see.  
+	{% if players_affected %}
+	const players_affected = {{ players_affected | safe }};
+	{% endif %}
 	
 	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
 	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
@@ -200,7 +219,7 @@
 	let url_view_Session = "{% url 'view' 'Session' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
 	let url_list_Sessions = "{% url 'list' 'Session'%}";
 	
-	LB_options = [
+	const LB_options = [
 		true,   // highlight_players,
 		true,   // highlight_changes,
 		false,  // highlight_selected,
@@ -223,16 +242,33 @@
 <script src="{% static 'CoGs/js/leaderboard.js' %}"></script>
 
 <script>
-	$('#after_board').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));	
-	$('#before_board').append(LeaderboardTable(impact, 1, "CoGs", LB_options, null, "nick"));	
+	$('#session_board_after').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));
+	$('#session_board_before').append(LeaderboardTable(impact, 1, "CoGs", LB_options, null, "nick"));
 	
-	const lb = $('#latest_board')
+	const db = $('#session_board_diagnostic');
+	if (db) db.append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick", 1));
+	
+	const lb = $('#game_board_after');
 	if (lb) lb.append(LeaderboardTable(leaderboard, null, "CoGs", LB_options, null, "nick"));
 
-	const pb = $('#prior_board')
+	const pb = $('#game_board_before');
 	if (pb) pb.append(LeaderboardTable(prior, null, "CoGs", LB_options, null, "nick"));
+		
+	function player_delta_list(parent, players) { 
+		const ul = document.createElement('ul'); 
+		 
+		players.forEach(function(p) { 
+			const li = document.createElement('li'); 
+			const sign = p[2] > 0 ? '+'  : '';
+			li.appendChild(document.createTextNode(`${sign}${p[2]} spots: ${p[1]}`)); 
+			ul.appendChild(li); 
+		}); 
+
+		parent.append(ul); 
+	} 
+ 
+	const ap = $('#affected_players');
+	if (ap) player_delta_list(ap, players_affected);
 	
-	const db = $('#diagnostic_board');
-	if (db) db.append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick", 1));
 </script>
 {% endblock %}

@@ -128,7 +128,9 @@ function OnLoad(event) {
 	const prepare_submission = $$("prepare_submission");
 	if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit) 
 	
-	if (operation === "edit") {		
+	//if (operation === "edit") {
+	// We have Session data if it's an edit operation or if it's an add operation that is being rerendered (with feedback).
+	if (Session.provided) {
 		if (is_team_play) {
 			$$(id_indiv_div).style.display = 'none';
 			$$(id_teams_div).style.display = 'block';
@@ -1690,7 +1692,7 @@ function adjustTable(element, session) {
     const tableControl = getParent(tr, "TABLE");    
     
     // Determine which session data to use (if none supplied use the Global set on edits and nothing on adds)
-    if (!session && operation === "edit") session = Session;
+    if (!session && Session.provided) session = Session;
     
     // Define a map from the holding table to the contained table 
     // that we want to adjust

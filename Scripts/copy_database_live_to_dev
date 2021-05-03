@@ -5,6 +5,10 @@
 # For use on the development machine to faciltate rapid 
 # import of a live databse for use in development.
 
+# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
+# without it prompting for one mid stream on some command.
+sudo echo "Copying Live database to Dev machine"
+
 # Find the source dir (we assume this script is living in a directory
 # just below the source directory for now like $source_dir/Scripts.
 source_dir=$(cd `dirname $0`/.. && pwd)

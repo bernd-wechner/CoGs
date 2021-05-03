@@ -30,9 +30,10 @@ from django.contrib.auth.views import LoginView
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.db import connection, transaction
-from django.db.models.query import QuerySet
+# from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
-from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect
+from django.http.response import HttpResponse, HttpResponseRedirect  # , JsonResponse
+from django.template.response import TemplateResponse
 from django.http.request import QueryDict
 from django.forms.models import fields_for_model, ModelChoiceField, ModelMultipleChoiceField
 from django.conf import settings
@@ -673,11 +674,27 @@ def form_valid_generic(self, form):
 
     This is code shared by the two views so peeled out into a generic.
 
-    This is specifically intended NOT to call Djangos form_valid()
+    This is specifically intended NOT to call Django's form_valid()
     implementation which saves the object. In these Extensions we
     perform the save in the post not the form_valid method.
     '''
     return HttpResponseRedirect(self.get_success_url())
+
+
+def form_invalid_generic(self, form):
+    '''
+    If the form is invalid, reload the form with the rich context
+
+    :param self: and instance of CreateView or UpdateView
+
+    This is code shared by the two views so peeled out into a generic.
+
+    This is specifically intended NOT to call Django's form_invalid()
+    implementation which renders the simple form directly to response
+    without aboy related form data.
+    '''
+    # return self.render_to_response(self.get_context_data(form=form))
+    return TemplateResponse(self.request, self.template_name, self.get_context_data())
 
 
 class CreateViewExtended(CreateView):
@@ -713,6 +730,7 @@ class CreateViewExtended(CreateView):
     get_form = get_form_generic
     post = post_generic
     form_valid = form_valid_generic
+    form_invalid = form_invalid_generic
 
     def get_initial(self):
         '''
@@ -768,6 +786,7 @@ class UpdateViewExtended(UpdateView):
     get_form = get_form_generic
     post = post_generic
     form_valid = form_valid_generic
+    form_invalid = form_invalid_generic
 
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''

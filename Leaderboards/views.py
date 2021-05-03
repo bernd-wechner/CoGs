@@ -7,14 +7,14 @@ from html import escape
 
 from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended, DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import datetime_format_python_to_PHP, decodeDateTime
+from django_generic_view_extensions.datetime import datetime_format_python_to_PHP, decodeDateTime, is_dst
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
 from cuser.middleware import CuserMiddleware
 
 from CoGs.logging import log
-from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, LEADERBOARD_STYLE, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
+from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, LEADERBOARD_STYLE, LEADERBOARD_STRUCTURE, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections
 from .BGG import BGG
 
@@ -161,7 +161,7 @@ def pre_save_handler(self):
             nt = make_naive(localtime(new_time, timezone.utc))
         else:
             nt = new_time
-            new_time = make_aware(new_time)
+            new_time = make_aware(new_time, is_dst=is_dst(when=new_time))
 
         # The time of the session cannot be in the future of course.
         if new_time > localtime():
@@ -684,7 +684,7 @@ def pre_delete_handler(self):
             post_kwargs['rebuild'] = rebuild
         else:
             if settings.DEBUG:
-                log.debug(f"\tIs the latest session of {g} for all of {', '.join(session.players)}")
+                log.debug(f"\tIs the latest session of {g} for all of {', '.join([p.name() for p in session.players])}")
 
         return post_kwargs
     else:
@@ -979,11 +979,16 @@ def view_Impact(request, model, pk):
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
 
+    game = o.game
+    # TODO: Problem. Any properties of o that we report are in the database now.
+    # If we are looking at impact at a later date, o may have changed and these
+    # don't reflect the impact of the change. Consider the ways of handling this:
+    #   Though: Store the needed information in the changelog don't use any propery of o!
+    #           Using o at all is in fact dangerous maybe don't have o at all.
+
     if model == "Session":
         # TODO: on creating new session we don't save a Changelog. We can however pass the impact
         # via a session variable, and of course also compare against latest board too, they are always available.
-
-        # TODO: If not is_latest )future_sessions.length > 0) add also a before and after view of latest ratings.
 
         snapshot_after = o.leaderboard_snapshot
         snapshot_before = None
@@ -1007,10 +1012,8 @@ def view_Impact(request, model, pk):
         islatest = o.is_latest
         isfirst = o.is_first
 
-        if not islatest:
-            latest = o.game.leaderboard(style=LEADERBOARD_STYLE.rich)
-        else:
-            latest = ()
+        # Get the latest leaderboard for this game
+        latest = game.wrapped_leaderboard(style=LEADERBOARD_STYLE.rich)
 
         try:
             changed = request.GET.get("changed", None)
@@ -1020,22 +1023,49 @@ def view_Impact(request, model, pk):
                 changed = ChangeLog.objects.filter(session=o).order_by("-created_on").first().pk
 
             clog = ChangeLog.objects.get(pk=int(changed))
+
+            if clog.rebuild_log:
+                rlog = clog.rebuild_log
+            else:
+                rlog = None
         except:
             clog = None
+            rlog = None
 
-        # TODO: Include more info for the template to report How many players ratings were affected.
+        # If there's a rebuild log, we can add the prior board to the latest for a delta view.
+        if rlog:
+            before = rlog.leaderboard_before(game)
+            after = augment_with_deltas(rlog.leaderboard_after(game), before, structure=LEADERBOARD_STRUCTURE.game_wrapped_player_list)
+
+            players_affected = rlog.players_affected(game)
+
+            # TODO: confirm format is comparable!
+            # This can happen if we are looking at the impact of a dated rebuild (i.e. global
+            # leaderboards have progressed some since that rebuild happened).
+            view_is_dated = not after == latest
+        else:
+            before = None
+            after = latest
+            players_affected = []
+            view_is_dated = False  # Not relevant really as there was no rebuild
+
         c = {"model": m,
              "model_name": model,
              "model_name_plural": m._meta.verbose_name_plural,
-             "object_id": o.id,
-             "game": o.game,
-             "date_time": o.date_time,
-             "is_latest": islatest,
-             "is_first": isfirst,
+             "changed": clog,
+             "object_id": pk,
+             "game": game,
+             "date_time": o.date_time,  # Time of the edited session
+             "is_latest": islatest,  # The edited/submitted session is the latest in that game
+             "is_first": isfirst,  # The edited/submitted session is the first in that game
+             "view_is_dated": view_is_dated,  # The current leaderboard after a rebuild is NOT the current leaderboard (it has changed since)
+             "players_affected": json.dumps(players_affected, cls=DjangoJSONEncoder),  # The players affected by this rebuild (if any, rebuild or players affected)
+             "num_players_affected": len(players_affected),
              "diagnose": len(snapshot_after) > 9,  # Snapshot tuples have 9 elements, or 10 if a diagnosis board is included
-             "leaderboard": json.dumps(o.game.wrapped_leaderboard(latest, snap=False), cls=DjangoJSONEncoder),
-             "leaderboard_snapshots": json.dumps(o.game.wrapped_leaderboard(snapshots, snap=True), cls=DjangoJSONEncoder),
-             "changed": clog}
+             "game_board_after": json.dumps(after, cls=DjangoJSONEncoder),
+             "game_board_before": json.dumps(before, cls=DjangoJSONEncoder),
+             "session_snapshots": json.dumps(game.wrapped_leaderboard(snapshots, snap=True), cls=DjangoJSONEncoder)
+             }
 
         return render(request, 'CoGs/view_session_impact.html', context=c)
     else:
@@ -1122,22 +1152,49 @@ def view_Leaderboards(request):
 #===============================================================================
 
 
-def augment_with_deltas(snapshot, baseline):
+def augment_with_deltas(master, baseline, structure=LEADERBOARD_STRUCTURE.session_wrapped_player_list):
     '''
-    Given a leaderboard snapshot and a baseline to compare it against, will
-    augment the snapshot with a delta measure.
+    Given a master leaderboard and a baseline to compare it against, will
+    augment the master with a delta measure (adding a previous rank element
+    to each player tuple.
 
-    A leaderboard snapshot is a list of tuples with a contents defined
-    by Game.leaderboard
+    This isvery flexible with structures and formats. Accepts JSON and Python and
+    each of the leaderboard structures and returns the same. General purpose augmenter
+    of playlists with a previous rank item based on the baseline.
 
-    :param snapshot:    a leaderboard snapshot
-    :param baseline:    a leaderboard snapshot to compare with
+
+    :param master:      a leaderboard
+    :param baseline:    a leaderboard to compare with
+    :param snaps:        True is leaderboard is s snapshot (i.e. has a session wrapper)
+                        False if it's a simple leaderboard.
     '''
 
-    # Extract the leaderboards from the snapshot and baseline.
-    ilb = 8
-    lb_snapshot = list(snapshot[ilb])
-    lb_baseline = baseline[ilb]
+    if isinstance(master, str):
+        _master = json.loads(master)
+    else:
+        _master = master
+
+    if isinstance(baseline, str):
+        _baseline = json.loads(baseline)
+    else:
+        _baseline = baseline
+
+    if structure == LEADERBOARD_STRUCTURE.session_wrapped_player_list:
+        ilb = LEADERBOARD_STRUCTURE.session_data_element.value
+        lb_master = list(_master[ilb])
+        lb_baseline = _baseline[ilb]
+    elif structure == LEADERBOARD_STRUCTURE.game_wrapped_player_list:
+        ilb = LEADERBOARD_STRUCTURE.game_data_element.value
+        lb_master = list(_master[ilb])
+        lb_baseline = _baseline[ilb]
+    elif structure == LEADERBOARD_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        isw = LEADERBOARD_STRUCTURE.game_data_element.value
+        ilb = LEADERBOARD_STRUCTURE.session_data_element.value
+        lb_master = list(_master[isw][ilb])
+        lb_baseline = _baseline[isw][ilb]
+    elif structure == LEADERBOARD_STRUCTURE.player_list:
+        lb_master = list(_master)
+        lb_baseline = _baseline
 
     previous_rank = {}
     # The 8th element of a nsapshot tuple has the leaderboard!
@@ -1146,18 +1203,37 @@ def augment_with_deltas(snapshot, baseline):
         pk = p[1]
         previous_rank[pk] = rank
 
-    for r, p in enumerate(lb_snapshot):
+    for r, p in enumerate(lb_master):
         rank = p[0]
         pk = p[1]
         if pk in previous_rank:
-            lb_snapshot[r] = p + (previous_rank[pk],)
+            lb_master[r] = tuple(p) + (previous_rank[pk],)
+        else:
+            lb_master[r] = tuple(p) + (None,)
 
-    # Use a list as tuple is not mutable
-    augmented_snapshot = list(snapshot)
-    augmented_snapshot[ilb] = lb_snapshot
+    # Return the augmented leaderboard in the same structure as it was provided in
+    if structure == LEADERBOARD_STRUCTURE.session_wrapped_player_list:
+        ilb = LEADERBOARD_STRUCTURE.session_data_element.value
+        result = list(_master)
+        result[ilb] = lb_master
+    elif structure == LEADERBOARD_STRUCTURE.game_wrapped_player_list:
+        ilb = LEADERBOARD_STRUCTURE.game_data_element.value
+        result = list(_master)
+        result[ilb] = lb_master
+    elif structure == LEADERBOARD_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        isw = LEADERBOARD_STRUCTURE.game_data_element.value
+        ilb = LEADERBOARD_STRUCTURE.session_data_element.value
+        result = list(_master)
+        result[isw][ilb] = lb_master
+    elif structure == LEADERBOARD_STRUCTURE.player_list:
+        result = lb_master
 
-    # Back tot uple with frozen result
-    return tuple(augmented_snapshot)
+    if isinstance(master, str):
+        result = json.dumps(result, cls=DjangoJSONEncoder)
+        return result
+    else:
+        # Back to tuple with frozen result
+        return tuple(result)
 
 
 def ajax_Leaderboards(request, raw=False, baseline=True):
@@ -1376,6 +1452,9 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
 
     if settings.USE_LEADERBOARD_CACHE:
         request.session["leaderboard_cache"] = lb_cache
+
+    if settings.DEBUG:
+        log.debug(f"Supplying {len(leaderboards)} leaderboards as {'a python object' if raw else 'as a JSON string'}.")
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

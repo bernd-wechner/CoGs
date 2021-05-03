@@ -11,6 +11,11 @@ server_mount_dir=/home/bernd/Mounts/leaderboard.space.shelob
 server_account=sting@shelob.lan
 server_dir=/data/www/leaderboard.space
 
+# Web Server Backup properties (Same server ame account)
+backup_timestamp=`date +"%s"`
+backup_mount_dir=/home/bernd/Mounts/leaderboard.space.backup.$backup_timestamp
+backup_dir=/data/www/leaderboard.space.backup.$backup_timestamp
+
 # Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
 source_dir=$(cd `dirname $0`/.. && pwd)
 echo "Source directory: $source_dir"
@@ -28,6 +33,27 @@ if [ $? != 0 ];then
 else
 	echo "Destination directory: $server_mount_dir"
 fi
+
+# Ensure the server backup directory is properly mounted (or we can't backup to it)
+mountpoint -q $backup_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $backup_mount_dir ]; then
+		echo "Creating destination directory $backup_mount_dir ..."
+	    mkdir -p $backup_mount_dir
+	fi
+	
+	# Ensure the server hasd a back directory available
+	ssh -o IdentityFile=$rsa_file $server_account mkdir -p $backup_dir
+
+	echo Mounting $backup_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$backup_dir $backup_mount_dir
+else
+	echo "Backup directory: $backup_mount_dir"
+fi
+
+# Backup the server site before we publish
+echo "Backuping up to server directory: $backup_dir"
+rsync -r "$server_mount_dir/" "$backup_mount_dir"
 
 # Build an rsync exclusons file
 exclusion_file="publish-exclusions"
@@ -63,7 +89,7 @@ done
 #
 # To do so, we have to cd to to the sites home directory, activate the venv and then run manage.py collectstatic. 
 echo "Collecting static files ..."
-ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; python manage.py collectstatic --noinput --clear"
+ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; python manage.py collectstatic --verbosity 0 --noinput --clear"
 
 # We need to reloading the uwsgi services for changes to take effect
 echo "Reloading UWSGI services on $server_name ..."
