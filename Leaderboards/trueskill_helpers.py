@@ -1,7 +1,7 @@
 '''
 TrueSkill Helpers
 
-Considerable analysis fo TrueSkill is presented in "Understanding TrueSkill.
+Considerable analysis of TrueSkill is presented in "Understanding TrueSkill".
 
 Some of the methods developed therein are provided here for use in analyses.
 
@@ -10,7 +10,7 @@ Some naming conventions used herein:
 Symbols are generally treu to those used in "Understanding TrueSkill"
 
 1) Greek symbols are spelled out by name
-2)  Roman symbols just use the appropriate letter
+2) Roman symbols just use the appropriate letter
 3) More difficult symbols are adhoc or described
 
 Examples:
@@ -25,6 +25,16 @@ phi       The Normal (Gaussian) CDF
 epsilon   The greek letter epsilon, representing the TrueSkill Draw Margin
 p         (lower case p) The TrueSkill Draw Probability.
 P         (upper case p) A general probability (of something)
+
+Terms of use in reading this code:
+
+skill            a mean and variance pair that models a players skill
+rating           a single number derived from skill to rank players by
+performance      a mean and variance pair that models the performance of player in a game
+player           a single person who plays in a game
+team             a group of players that cooperate/collude and share in their victory or otehr ranking as a unit
+performer        a player or team
+ranker           a performer when dealing with ranks (the ordered outcome of a game, predicted or observed)
 '''
 
 # Python imports
@@ -34,6 +44,7 @@ from collections import namedtuple
 from math import sqrt, prod
 from scipy.special import erf, erfinv
 from scipy.stats import norm
+from sortedcontainers import SortedDict
 
 # Debug logging
 from django.conf import settings
@@ -164,13 +175,13 @@ class TrueSkillHelpers:
         Note: Individual players can be modelled as 1-player teams and this should yield the single players
         performance unchanged.
 
-        :param performances: a list (or tuple) of Performance tuples.
+        :param performances: a list (or tuple) of Performance or Skill tuples.
         '''
         # For flexibility accept a single Performance if provided
         # This empowers a caller to loop over ranks and pass lists of performances (for ties or teams)
         # or Performance tuples for individuals (ranking alone or playing alone) without having to force
         # the singletons into lists (i.e. we do that here).
-        if isinstance(performances, Performance) or isinstance(performances, Skill):
+        if isinstance(performances, (Performance, Skill)):
             performances = [performances]
 
         # Allow for Skill tuples and just build default Performance tuples as needed.
@@ -187,6 +198,73 @@ class TrueSkillHelpers:
                     sum([p.w ** 2 * p.sigma2 for p in performances]),
                     sum([p.w for p in performances])
                 )
+
+    def mean_performance(self, performances):
+        '''
+        team performance is based upon the premise that team members are collaborating.
+
+        If a number of competing performers have tied it can be useful to know the mean performance
+        of all those tied performers. This is especially the case when looking at probabilities later.
+
+        That is in P_win_2players below if performer A or B is a group of tied performers, their
+        mean performance can be used to evaluate the win probability.
+
+        Note: This is in fact the same as team_performance with a forced weighting of 1/n where n is
+        number of performances.
+
+        :param performances: a list (or tuple) of Performance or Skill tuples.
+        '''
+        # For flexibility accept a single Performance if provided
+        # This empowers a caller to loop over ranks and pass lists of performances (for ties or teams)
+        # or Performance tuples for individuals (ranking alone or playing alone) without having to force
+        # the singletons into lists (i.e. we do that here).
+        if isinstance(performances, (Performance, Skill)):
+            performances = [performances]
+        elif isinstance(performances, tuple):
+            performances = list(performances)
+
+        # Allow for Skill tuples and just build default Performance tuples as needed.
+        # The partial play weighting is irrelevant as we are about to force it to 1/n
+        for i, performance in enumerate(performances):
+            if isinstance(performance, Skill):
+                performances[i] = self.performance(performance)
+
+        # Force the partial play weighting to 1/n
+        weight = 1 / len(performances)
+        for i, p in enumerate(performances):
+            performances[i] = Performance(p.mu, p.sigma2, weight)
+
+        return self.team_performance(performances)
+
+    #####################################################################################################
+    # # Predictors
+
+    def predicted_ranking(self, performances):
+        '''
+        Will return an ordered list of keys (or lists of keys), being the predicted
+        ranking based on the expected performances (the mu of the Performance)
+
+        :param performances: A dict with any key containing a Performance tuple
+        '''
+        # Allow for Skill tuples and just build default Performance tuples as needed.
+        # Partial play weightings are meaningless for this prediction.
+        for key, performance in performances.items():
+            if isinstance(performance, Skill):
+                performances[key] = self.performance(performance)
+
+        # SortedDict does the work for us
+        sorted_performances = SortedDict()
+
+        for key, perf in performances.items():
+            if not perf.mu in sorted_performances:
+                sorted_performances[perf.mu] = key
+            elif isinstance(sorted_performances[perf.mu], (list, tuple)):
+                sorted_performances[perf.mu].append(key)
+            else:
+                sorted_performances[perf.mu] = [sorted_performances[perf.mu], key]
+
+        # And return values sorted by the keys
+        return sorted_performances.values()
 
     #####################################################################################################
     # # Win probability calculators
@@ -212,7 +290,14 @@ class TrueSkillHelpers:
         if isinstance(performanceB, Skill):
             performanceB = self.performance(performanceB)
 
-        return phi((performanceA.mu - performanceA.mu - self.epsilon) / sqrt(performanceA.sigma2 + performanceA.sigma2))
+        # Build the performance delta
+        delta = Performance(
+                    performanceA.mu - performanceB.mu,
+                    performanceA.sigma2 + performanceB.sigma2,
+                    performanceA.w - performanceB.w  # Meaningless curio, not TrueSKill defined. But can convey the comparison of team weightings well!
+            )
+
+        return phi((delta.mu - self.epsilon) / sqrt(delta.sigma2))
 
     def P_win_2teams(self, performancesA, performancesB):
         '''
@@ -224,9 +309,9 @@ class TrueSkillHelpers:
         :param performancesB:    a list, tuple or set of Performance tuples for the players in team B
         '''
         # For flexibility accept a single Performance if provided (for a team of 1 player)
-        if isinstance(performancesA, Performance) or isinstance(performancesA, Skill):
+        if isinstance(performancesA, (Performance, Skill)):
             performancesA = [performancesA]
-        if isinstance(performancesB, Performance) or isinstance(performancesB, Skill):
+        if isinstance(performancesB, (Performance, Skill)):
             performancesB = [performancesB]
 
         # Allow for Skill tuples and just build default Performance tuples as needed.
@@ -278,7 +363,14 @@ class TrueSkillHelpers:
         if isinstance(performanceB, Skill):
             performanceB = self.performance(performanceB)
 
-        return erf(self.epsilon / sqrt(2 * (performanceA.sigma2 + performanceB.sigma2)))
+        # Build the performance delta
+        delta = Performance(
+                    performanceA.mu - performanceB.mu,
+                    performanceA.sigma2 + performanceB.sigma2,
+                    performanceA.w - performanceB.w  # Meaningless curio, not TrueSKill defined. But can convey the comparison of team weightings well!
+            )
+
+        return erf(self.epsilon / sqrt(2 * delta.sigma2))
 
     def P_draw_2teams(self, performancesA, performancesB):
         '''
@@ -292,9 +384,9 @@ class TrueSkillHelpers:
         :param performancesB:    a list, tuple or set of Performance tuples for the players in team B
         '''
         # For flexibility accept a single Performance if provided (for a team of 1 player)
-        if isinstance(performancesA, Performance) or isinstance(performancesA, Skill):
+        if isinstance(performancesA, (Performance, Skill)):
             performancesA = [performancesA]
-        if isinstance(performancesB, Performance) or isinstance(performancesB, Skill):
+        if isinstance(performancesB, (Performance, Skill)):
             performancesB = [performancesB]
 
         # Allow for Skill tuples and just build default Performance tuples as needed.
@@ -338,7 +430,6 @@ class TrueSkillHelpers:
         useful in practice.
 
         It should yield exactly the same result as P_ranking_teams with 1 player teams.
-        But P_ranking_teams can be used to model ties (a team being a group of tied people).
 
         :param performances: An ordered list (or tuple) of performances (mu/sigma2 pairs).
                              Ordered by rank (so 0 won, 1 came second, etc.)
@@ -353,13 +444,16 @@ class TrueSkillHelpers:
             if isinstance(performance, Skill):
                 performances[i] = self.performance(performance)
 
-        P = [phi((performances[i].mu - performances[i + 1].mu - self.epsilon) / sqrt(performances[i].sigma2 + performances[i + 1].sigma2)) for i in range(len(performances) - 1)]
+        P = [self.P_win_2players(performances[i], performances[i + 1]) for i in range(len(performances) - 1)]
 
         return prod(P)
 
     def P_ranking_teams(self, performances):
         '''
         The probability of a given ranking of teams.
+
+        Note: This does not support ties! To wit is primarily conceptual and not very
+        useful in practice.
 
         See "The Probability of a Given Ranking" in "Understanding TrueSkill"
 
@@ -372,91 +466,195 @@ class TrueSkillHelpers:
         # or Performance tuples for individuals (ranking alone or playing alone) without having to force
         # the singletons into lists (i.e. we do that here).
         for i, performance in enumerate(performances):
-            if isinstance(performance, Performance) or isinstance(performance, Skill):
+            if isinstance(performance, (Performance, Skill)):
                 performances[i] = [performance]
 
         # Allow for Skill tuples and just build default Performance tuples as needed.
         # This would capture the default partial play weighting of 1. The caller must
         # supply Performance tuples to specify different partial play weightings.
-        for i, performance_list in enumerate(performances):
-            for j, performance in enumerate(performance_list):
+        for i, performance_list in enumerate(performances):  # For each team
+            for j, performance in enumerate(performance_list):  # For each player in the team
                 if isinstance(performance, Skill):
                     performances[i][j] = self.performance(performance)
 
-        # Collect the team performances
-        team_performances = []
-        for performance_list in performances:
-            team_performances.append(self.team_performance(performance_list))
-
-        P = [phi((team_performances[i].mu - team_performances[i + 1].mu - self.epsilon) / sqrt(team_performances[i].sigma2 + team_performances[i + 1].sigma2)) for i in range(len(team_performances) - 1)]
+        P = [self.P_win_2teams(performances[i], performances[i + 1]) for i in range(len(performances) - 1)]
 
         return prod(P)
+
+    def P_ranking_performers(self, performances):
+        '''
+        The probability of a given ranking of performers.
+
+        This generalises P_ranking_players and P_ranking_teams supporting ties. Each entry in the supplied list
+        is a single peerformer or list/tuple of tied performers. These can be player performances or team performances
+        we make no assesment nor do we care here. This generalises well, and they should simply all be player
+        performances or team performances depending upon the style of game being played.
+
+        See "The Probability of a Given Ranking" in "Understanding TrueSkill"
+
+        :param performances: An ordered list (or tuple) of performances or lists (or tuples) of performances (mu/sigma/w triplets).
+                             Ordered by rank (so 0 won, 1 came second, etc.)
+                             A single performance represents a player or team performance (no assessment is made herein the caller takes responsibiltiy)
+                             A list represents tied performers (which could be player or team performances again, callers responsibility).
+                             e.g. ([(mu1, sigma21, w1), (mu2, sigma22, w2)], [(mu3, sigma23, w3)], [(mu4, sigma24, w4)])
+        '''
+
+        # Collect the performances at each rank
+        # For ties we take the mean of all the tied performers
+        ranked_performances = []
+        for performance in performances:
+            if isinstance(performance, Performance):
+                ranked_performances.append(performance)
+            elif isinstance(performance, (list, tuple)):
+                ranked_performances.append(self.mean_performance(performance))
+            else:
+                raise ValueError("Illegal entry in performances (must be Performance or list/tuple")
+
+        # Collect the 2 performer win win probabilities, ie. Probability A beats B for 1/2, 2/3, 3/4 etc.
+        Pwins = self.P_ranking_players(ranked_performances)
+
+        # Collect the draw probabilities for each tied performance
+        Pdraws = []
+        for performance in performances:
+            if not isinstance(performance, (Performance, Skill)) and isinstance(performance, (list, tuple)):
+                for i in range(len(performance) - 1):
+                    Pdraws.append(self.P_draw_2players(performance[i], performance[i + 1]))
+        if Pdraws:
+            Pdraws = prod(Pdraws)
+        else:
+            Pdraws = 1
+
+        return Pwins * Pdraws
 
     #####################################################################################################
     # # Leaderboard app interfaces
 
-    def Rank_performance(self, ranks, after=False):
+    def Update_skills(self, session):
+        pass
+
+    def Predicted_ranking(self, session, after=False):
+        '''
+        Returns a tuple of players or teams that represents the preducted ranking given their skills
+        before (or after) the nominated session and a probability of that ranking in a 2-tuple.
+
+        Each list item can be:
+
+        A player (instance of the Leaderboard app's Player model)
+        A team (instance of the Leaderboard app's Team model)
+        A list of either players or teams - if a tie is predicted at that rank
+
+        :param session: an instance of the leaderboards model Rank
+        :param after: if true, gets and uses skills "after" rather than "before" the present ranks (recorded play session).
+        '''
+
+        # For predicted rankings we assume a partial play weighting of 1 (full participation)
+        # The recorded partial play waighting has no impact on what ranking we would predict for
+        # these performers, before or after the sessions skill updates.
+        def P(player, after):
+            p = session.performance(player)
+            return Performance(
+                            p.trueskill_mu_after if after else p.trueskill_mu_before,
+                            p.trueskill_sigma_after ** 2 if after else p.trueskill_sigma_before ** 2,
+                            1
+                        )
+
+        # One dict to hold the performers and another to hold the performances
+        performers = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
+        performances = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
+
+        if session.team_play:
+            for team in session.teams:
+                p = self.team_performance([P(player, after) for player in team.players.all()])
+                k = -p.mu
+
+                if not k in performers:
+                    performers[k] = []
+                performers[k].append(team)
+
+                if not p.mu in performances:
+                    performances[p.mu] = []
+                performances[p.mu].append(p)
+        else:
+            for player in session.players:
+                p = P(player, after)
+                k = -p.mu
+
+                if not k in performers:
+                    performers[k] = []
+                performers[k].append(player)
+
+                if not k in performances:
+                    performances[k] = []
+                performances[k].append(p)
+
+        # Freeze and flatten
+        for k, tied_performers in performers.items():
+            if len(tied_performers) == 1:
+                performers[k] = tied_performers[0]  # Remove the list
+            else:
+                performers[k] = tuple(tied_performers)  # Freeze the list
+
+        for k, tied_performances in performances.items():
+            if len(tied_performances) == 1:
+                performances[k] = tied_performances[0]  # Remove the list
+            else:
+                performances[k] = tuple(tied_performances)  # Freeze the list
+
+        # Get the probability of this ranking
+        prob = self.P_ranking_performers(tuple(performances.values()))
+
+        # Return the ordered tuple
+        return (tuple(performers.values()), prob)
+
+    def Rank_performance(self, rank, after=False):
         '''
         A Rank can describe a single player or a team. Returns the approriate TrueSkill performance
         using the helpers herein.
 
-        We need to prepare a single perfomance tuple (mu sigma2, w) to return describing
-        the TrueSkill performance of the team (of 1 maybe) that ranked here.
+        We need to prepare a single performance tuple (mu sigma2, w) to return describing
+        the TrueSkill performance of the player or team (of 1 maybe) that ranked here.
 
-        A note on ties: the Rank model captures the player or team and its rank in the game result.
-        In case of ties more than one Rank objecthas the same ranking. These can/should present here
-        as a list (or tuple or set) of Rank objects.
-
-        There are two contexts of use:
-
-        1) Calculating the probability of a ranking (P_ranking below), in which case we want a team
-            performance for everyone in every team that ranked at this spot. A list (or tuple or set)
-            of Rank objects that includes all Ranks tied at this ranking can be passed in for that.
-
-        2) Reporting the TrueSkill performance of a given ranker (player or team), in which case we
-            want a team performance for only that player or team (not all the tied ones) and a single
-            Rank object can be passed in.
-
-        :param ranks: an instance or list (or tupe or set) of instances of the leaderboards model Rank
+        :param rank: an instance of the leaderboards model Rank
+        :param after: if true, gets and uses skills "after" rather than "before" the present ranks (recorded play session).
+                      The ranks submitted influenced player skill ratings, so there's
+                      a before-start context (the probability of this ranking given the skill ratings before play, and
+                      an after-end context (the probability of this ranking given the skill ratings after  play).
         '''
-        # If a single Rank is porvided force a list
-        if not (isinstance(ranks, list) or isinstance(ranks, tuple) or isinstance(ranks, set)):
-            ranks = [ranks]
+        if rank.session.team_play:
+            # Get the performances of the team players
+            ps = [rank.session.performance(player) for player in self.team.players.all()]
 
-        # Build a list of players who tied at this ranking
-        # A list of 1 player is fine for no ties and not teams.
-        players = []
-        for rank in ranks:
-            if rank.session.team_play:
-                players.extend(list(rank.team.players.all()))
-            else:
-                players.append(rank.player)
-
-        # Build a list of Leaderboards Performance objects related to each player
-        Performances = [rank.session.performance(player) for player in players]
-
-        # Build a list of TrueSkill Performance tuples related to each player
-        performances = [Performance(
+            # Convert this to a list of TrueSkill Performance tuples
+            Ps = [Performance(
                             p.trueskill_mu_after if after else p.trueskill_mu_before,
                             p.trueskill_sigma_after ** 2 if after else p.trueskill_sigma_before ** 2,
                             p.partial_play_weighting
-                        ) for p in Performances]
+                        ) for p in ps]
 
-        # Assemble the team performance (team of 1 if individual player)
-        return self.team_performance(performances)
+            #  return the team performance
+            return self.team_performance(Ps)
+        else:
+            # Get the Leaderboards Performance object associated with this rank
+            p = rank.session.performance(rank.player)
 
-    def P_ranking(self, ranks, after=False):
+            # Return  TrueSkill Performance tuple
+            return Performance(
+                            p.trueskill_mu_after if after else p.trueskill_mu_before,
+                            p.trueskill_sigma_after ** 2 if after else p.trueskill_sigma_before ** 2,
+                            p.partial_play_weighting
+                        )
+
+    def Actual_ranking(self, session, after=False):
         '''
-        The probability of a given ranking (before or afgter the ranking was used to adjust player skills),
+        Like Predicted_ranking but retusn the Actual ranking as a tuple of performers/rankers
+        The probability of a recorded ranking (before or after the ranking was used to adjust player skills),
         using Leaderboards app Rank objects in an ordered list or tuple.
 
         We need to build a list ranked performance lists (mu, sigma2, w triplets) to pass to the internal helpers.
 
         These are derived from Django ORM Rank objects, imported in the header.
 
-        :param ranks: an list or tuple of sets, lists or tuples of Rank instances
-                      i.e. each entry in the list or tuple has to be a set of player ranks
-                      so either a team or a set of tied players or teams depending on context.
+        :param session: an instance of the leaderboards model Session
         :param after: if true, gets and uses skills "after" rather than "before" the present ranks (recorded play session).
                       The ranks submitted influenced player skill ratings, so there's
                       a before-start context (the probability of this ranking given the skill ratings before play, and
@@ -465,18 +663,35 @@ class TrueSkillHelpers:
                       probability of this ranking is higher with the updated skills. In short we should see TrueSkill
                       doing it's work if P_ranking(after) is higher than P_ranking(after) for a given set of ranks,
         '''
-        # Permit singletons, that is the elemnts of ranks could be a single rank or a list/tuple of ranks (tied players or teams).
-        for i, rank in enumerate(ranks):
-            if not (isinstance(rank, list) or isinstance(rank, tuple) or isinstance(rank, set)):
-                ranks[i] = [rank]
 
-        # Each item in ranks is itself a list (of tied rankers) which may contain one item, or more
-        performances = []
-        for tied_ranks in ranks:
-            # At each ranking we collect a whole group performance at that ranking (ties and teams all merged)
-            performances.append(self.Rank_performance(tied_ranks, after))
+        # One dict to hold the performers and another to hold the performances
+        performers = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
+        performances = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
 
-        # We use P_ranking_teams as it supports 1 player teams.
-        # Whereas P_ranking_players does not support teams (and is useless to us as a consequence).
-        return self.P_ranking_teams(performances)
+        for rank in session.ranks.all():
+            if not rank.rank in performers:
+                performers[rank.rank] = []
+            performers[rank.rank].append(rank.ranker)
+
+            if not rank.rank in performances:
+                performances[rank.rank] = []
+            performances[rank.rank].append(self.Rank_performance(rank, after))
+
+        # Freeze and flatten
+        for rank, tied_performers in performers.items():
+            if len(tied_performers) == 1:
+                performers[rank] = tied_performers[0]  # Remove the list
+            else:
+                performers[rank] = tuple(tied_performers)  # Freeze the list
+
+        for rank, tied_performances in performances.items():
+            if len(tied_performances) == 1:
+                performances[rank] = tied_performances[0]  # Remove the list
+            else:
+                performances[rank] = tuple(tied_performances)  # Freeze the list
+
+        prob = self.P_ranking_performers(tuple(performances.values()))
+
+        # Return the ranking probability of those performances
+        return (tuple(performers.values()), prob)
 
