@@ -446,7 +446,16 @@ class TrueSkillHelpers:
 
         P = [self.P_win_2players(performances[i], performances[i + 1]) for i in range(len(performances) - 1)]
 
-        return prod(P)
+        if len(P) == 0:
+            prob = 1
+        else:
+            prob = prod(P)
+
+        if settings.DEBUG:
+            log.debug(f"Pwins={P}")
+            log.debug(f"Pwins={prob}")
+
+        return prob
 
     def P_ranking_teams(self, performances):
         '''
@@ -519,10 +528,17 @@ class TrueSkillHelpers:
             if not isinstance(performance, (Performance, Skill)) and isinstance(performance, (list, tuple)):
                 for i in range(len(performance) - 1):
                     Pdraws.append(self.P_draw_2players(performance[i], performance[i + 1]))
+
+        if settings.DEBUG:
+            log.debug(f"{Pdraws=}")
+
         if Pdraws:
             Pdraws = prod(Pdraws)
         else:
             Pdraws = 1
+
+        if settings.DEBUG:
+            log.debug(f"{Pdraws=}")
 
         return Pwins * Pdraws
 
@@ -599,6 +615,11 @@ class TrueSkillHelpers:
                 performances[k] = tied_performances[0]  # Remove the list
             else:
                 performances[k] = tuple(tied_performances)  # Freeze the list
+
+        if settings.DEBUG:
+            log.debug(f"\nPredicted_ranking:")
+            for k in performers:
+                log.debug(f"\t{performers[k]}: {performances[k]}")
 
         # Get the probability of this ranking
         prob = self.P_ranking_performers(tuple(performances.values()))

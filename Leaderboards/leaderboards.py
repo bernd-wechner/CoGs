@@ -713,6 +713,10 @@ class leaderboard_options:
         if 'show_delta' in urequest:
             self.show_delta = json.loads(urequest['show_delta'].lower())  # A boolean value is parsed
 
+        # Snapshot selecting options
+        if 'show_baseline' in urequest:
+            self.show_baseline = json.loads(urequest['show_baseline'].lower())  # A boolean value is parsed
+
         ##################################################################
         # HIGHLIGHT OPTIONS
 
@@ -1202,13 +1206,23 @@ class leaderboard_options:
 
         return filtered_games
 
-    def snapshot_queryset(self, game, baseline=False):
+    def snapshot_queryset(self, game, include_baseline=False):
         '''
-        Returns a QuerySet of the Session objects which which provide the foundation
+        Returns a tuple containing:
+
+        A QuerySet of the Session objects which which provide the foundation
         for historic snapshots selected by these options (self.evolution_options drive
         this).
 
         As a QuerySet this should ideally remain unevaluated on return (remain lazy).
+            In practice if include_baseline is True, it may need evaluation.
+
+        A flag that is set to true if we've been asked to include a baseline and a
+        baseline outside of the requested window of snapshots was found and added.
+        if this is true the client is effictively asked to hide that baseline (the
+        last/earliest) session in the returned QuerySet. if false either no baseline
+        is included or it is but it falls withing the winodow of snapshots requested.
+
 
         A snapshot is the leaderboard as it appears after a given game session
         The default and only standard snapshot is the current leaderboard after the
@@ -1225,7 +1239,7 @@ class leaderboard_options:
         We build a QeurySet of the sessions after which we want the leaderboard snapshots.
 
         :param game:        A Game object for which the leaderboards are requested
-        :param baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
+        :param include_baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
         '''
 
         def sessions_plus(sessions):
@@ -1329,7 +1343,8 @@ class leaderboard_options:
         if self.no_evolution():
             # Just get the latest session, one snapshot only
             # And extra one if a baseline is requested.
-            sessions = top(session_source.order_by("-date_time"), 2 if baseline else 1)
+            sessions = top(session_source.order_by("-date_time"), 2 if include_baseline else 1)
+            hide_baseline = include_baseline  # No evolution window, for the baseline to fall within, so if we include one, we should hide it.
         else:
             # compare_with or compare_back_to is enabled
             extra_session = None
@@ -1345,11 +1360,11 @@ class leaderboard_options:
                 # that window (done here)  and the end of the window ifs defined by
                 # self.as_at or the latest session (no explicit end needed).
 
-                # We want a reference time first being the start of an event or
-                # a time explciitly provided. Well add the snapshot prior to this time
+                # We want a reference time first, being the start of an event or
+                # a time explcitly provided. We'll add the snapshot prior to this time
                 # as a the state of the boartd AT that time, and if a baseline is
-                # requested a second one (not intended for renderig just for rank delta
-                # calculatiuon.
+                # requested a second one (not intended for rendering just for rank delta
+                # calculation. Of course if it is after reference_time it shoudl be rendered.
                 if isinstance(self.compare_back_to, numbers.Real):
                     earliest_time = self.last_event_start_time(self.compare_back_to)
                 elif isinstance(self.compare_back_to, datetime):
@@ -1359,11 +1374,15 @@ class leaderboard_options:
 
                 if earliest_time:
                     efilter = sfilter & Q(date_time__lt=earliest_time)
-                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if baseline else 1)
+                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if include_baseline else 1)
 
-                    # The referecce time is of course, also the time that we want all boards from.
-                    # We update sfilter AFTER building the extra_session query because sfltter prior
-                    # to his constrain is used in defining it.
+                    # If we get only one extra session, or none then we have no distinct
+                    # baseline beyond the evolution window and so we should not hide it.
+                    hide_baseline = include_baseline and extra_session.count() == 2
+
+                    # The reference time is of course, also the time that we want all boards from.
+                    # We update sfilter AFTER building the extra_session query because sfilter prior
+                    # to his constraint is used in defining it.
                     sfilter &= Q(date_time__gte=earliest_time)
 
             # Then order the sessions in reverse date_time order
@@ -1380,7 +1399,11 @@ class leaderboard_options:
                 # least n+1 boards total. But if we've been asked to provide a baselined
                 # we return one more which the caller presumeably doesn't render just used
                 # for delta calculation (it's the hidden baselined for deltas)
-                sessions = top(sessions, self.compare_with + (2 if baseline else 1))
+                sessions = top(sessions, self.compare_with + (2 if include_baseline else 1))
+
+                # If we get only one extra session, or none then we have no distinct
+                # baseline beyond the evolution window and so we should not hide it.
+                hide_baseline = include_baseline and sessions.count() == self.compare_with + 2
 
         if settings.DEBUG:
             queries_after = len(connection.queries)
@@ -1399,7 +1422,7 @@ class leaderboard_options:
             for session in sessions:
                 log.debug(f"\t{session.id}: {session.date_time}")
 
-        return sessions
+        return (sessions, hide_baseline)
 
     def titles(self):
         '''

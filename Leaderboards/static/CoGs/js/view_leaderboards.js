@@ -78,8 +78,8 @@ function copyElementToClipboard(JQelement) {
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
-function get_and_report_metrics(LB) {
-	const metrics = leaderboard_metrics(LB); 
+function get_and_report_metrics(LB, show_baseline) {
+	const metrics = leaderboard_metrics(LB, show_baseline); 
 
 	// Globals that we'll set here
 	boardcount = metrics[0]; // The number of games we are displaying
@@ -94,10 +94,6 @@ function get_and_report_metrics(LB) {
 	lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
 	lblSnapCount.style.display = (totalshots > boardcount) ? "inline" : "none";
 }
-
-// But on first load we have leaderboards that were provided through context, so
-// process those now
-get_and_report_metrics(leaderboards);
 
 // An initialiser for Select2 widgets used. Alas not so trivial to set
 // as descrribed here:
@@ -139,7 +135,12 @@ function Select2Init(selector, values) {
 
 function dval(value, def) { return value !== undefined ? value : def; }
 
-function InitControls(options) {	
+function InitControls(options, exempt) {
+	// options: a dictionary of leaerboard options to set the Controls to
+	// exempt: an optional list of options to leave as is (not set to the value of options)
+	
+	const ex = exempt == undefined ? [] : exempt; 
+	
 	// We'll follow the same order as Leaderboards.views.leaderboard_options
 	// This takes those same options provided in context (or from an ajx call)
 	// as "options" and initialises the controls on the page.
@@ -169,6 +170,7 @@ function InitControls(options) {
 	// and set all the checkboxes they map to:
 	for (i = 0; i < check_box_filters.length; i++) {
 		const opt = check_box_filters[i];
+		if (ex.includes(opt)) continue;
 
 		// compare_back_to is a special option because we share it
 		// between two radio buttons base on its value (int or date)
@@ -217,27 +219,27 @@ function InitControls(options) {
 	// cols is special. It is on only respected when maxshots is 1. 
 	// On any view with evolution it's not used disable it if it's 
 	// not used.
-	$('#cols').val(dval(options.cols, 1));
+	if (!ex.includes("cols")) $('#cols').val(dval(options.cols, 1));
 	$('#cols').attr('disabled', maxshots > 1);
 	
 	// Then the rest of the game selectors
-	$('#num_games').val(options.num_games);         // Mirror of
-													// #num_games_latest
-	$('#num_games_latest').val(options.num_games);  // Mirror of #num_games
-	$('#changed_since').val(options.changed_since);
-	$('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
-	$('#num_days_ev').val(options.num_days);  		// Mirror of num_days
+	if (!ex.includes("num_games")) 		  $('#num_games').val(options.num_games);         // Mirror of #num_games_latest
+	if (!ex.includes("num_games_latest")) $('#num_games_latest').val(options.num_games);  // Mirror of #num_games
+	
+	if (!ex.includes("changed_since"))	$('#changed_since').val(options.changed_since);
+	if (!ex.includes("num_days"))	    $('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
+	if (!ex.includes("num_days"))	    $('#num_days_ev').val(options.num_days);  		// Mirror of num_days
 
 	// Then the player selectors
-	$('#num_players_top').val(options.num_players_top);
-	$('#num_players_above').val(options.num_players_above);
-	$('#num_players_below').val(options.num_players_below);
-	$('#min_plays').val(options.min_plays);
-	$('#played_since').val(options.played_since);
+	if (!ex.includes("num_players_top"))	$('#num_players_top').val(options.num_players_top);
+	if (!ex.includes("num_players_above"))	$('#num_players_above').val(options.num_players_above);
+	if (!ex.includes("num_players_below"))	$('#num_players_below').val(options.num_players_below);
+	if (!ex.includes("min_plays"))	   		$('#min_plays').val(options.min_plays);
+	if (!ex.includes("played_since"))	    $('#played_since').val(options.played_since);
 	
 	// ========================================================================
 	// The perspective option
-	$('#as_at').val(options.as_at);  	// undefined is fine here.
+	if (!ex.includes("as_at")) $('#as_at').val(options.as_at);  	// undefined is fine here.
 
 	// ========================================================================
 	// Evolution options are driven by radio buttons (one only). And so we want
@@ -251,7 +253,8 @@ function InitControls(options) {
 	else if (options.compare_back_to)
 		evolution_selection = "compare_back_to";
 	
-	$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
+	if (!ex.includes("compare_with") && !ex.includes("num_days_ev") && !ex.includes("compare_back_to")) 
+		$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
 	
 	// Then set the values in the Evolution selection area. The defaults are
 	// fine
@@ -267,14 +270,14 @@ function InitControls(options) {
 	// we maximized the view (all games and all players and no hostroic
 	// snapshots is
 	// the position we aim for).
-	$('#compare_with').val(dval(options.compare_with, defaults.compare_with));
+	if (!ex.includes("compare_with")) $('#compare_with').val(dval(options.compare_with, defaults.compare_with));
 	
 	// compare_back_to is in fact a content option we simply recycle here
 	const cbt = dval(options.compare_back_to, defaults.compare_back_to); 
 	if (Number.isInteger(cbt))
-		$('#num_days_ev').val(cbt);
+		if (!ex.includes("num_days_ev")) $('#num_days_ev').val(cbt);
 	else
-		$('#compare_back_to').val(cbt);
+		if (!ex.includes("compare_back_to")) $('#compare_back_to').val(cbt);
 	
 	// ===================================================================================
 	// Initialise the presentation options
@@ -289,26 +292,27 @@ function InitControls(options) {
 	// provides in this case.
 	
 	// The the content formatting options
-	$('#chk_highlight_players').prop('checked', dval(options.highlight_players, false))
-	$('#chk_highlight_changes').prop('checked', dval(options.highlight_changes, false))
-	$('#chk_highlight_selected').prop('checked', dval(options.highlight_selected, false))
+	if (!ex.includes("highlight_players"))  $('#chk_highlight_players').prop('checked', dval(options.highlight_players, false))
+	if (!ex.includes("highlight_changes"))  $('#chk_highlight_changes').prop('checked', dval(options.highlight_changes, false))
+	if (!ex.includes("highlight_selected")) $('#chk_highlight_selected').prop('checked', dval(options.highlight_selected, false))
 	
-	$('#names').val(dval(options.names, "nick"));	
-	$('#links').val(dval(options.links, "none"));
+	if (!ex.includes("names")) $('#names').val(dval(options.names, "nick"));	
+	if (!ex.includes("links")) $('#links').val(dval(options.links, "none"));
 
 	// Then the extra info options for leaderboard headers
-	$('#chk_details').prop('checked', dval(options.details, false));
-	$('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
-	$('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
-	$('#chk_show_delta').prop('checked', dval(options.show_delta, false));
+	if (!ex.includes("details"))       $('#chk_details').prop('checked', dval(options.details, false));
+	if (!ex.includes("analysis_pre"))  $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
+	if (!ex.includes("analysis_post")) $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
+	if (!ex.includes("show_delta"))    $('#chk_show_delta').prop('checked', dval(options.show_delta, false));
+	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
 	
 	// And the admin options
-	$('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
+	if (!ex.includes("ignore_cache")) $('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
 
 	// Add the shortcut buttons
-	AddShortcutButtons()	
+	AddShortcutButtons()
 	
-	// If we made the options static we want to copy them to address bare and
+	// If we made the options static we want to copy them to address bar and
 	// copy.paste buffer
 	if (options.made_static) { show_url();}
 }
@@ -700,7 +704,7 @@ function GetShortcutButtons() {
 		}]);
 
 	if (pl_id)
-		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,  
+		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
 			 "game_leagues": [pl_id],
 		     "num_days": 1,
@@ -746,7 +750,7 @@ function ShortcutButton(button) {
 	const override_content      = def[1];  // If true, override existing content options, else augment them
 	const override_presentation = def[2];  // If true, override existing presentation options, else augment them
 	const opts                  = def[3];  // The options to apply
-
+	
 	// Respect the two override flags when set, by deleting
 	// any options there may be in the respective category.
 	if (override_content) 
@@ -764,7 +768,7 @@ function ShortcutButton(button) {
 			options.enabled.push(key) 		
 	}
 	// Reinitalise all the filter controls
-	InitControls(options)
+	InitControls(options, ["ignore_cache", "show_baseline"])
 
 	// Reload the leaderboards
 	refetchLeaderboards();
@@ -819,10 +823,10 @@ function got_new_leaderboards() {
 		options =  response[2]
 		leaderboards = response[3];
 		
-		// Get the max and total for rendering
-		get_and_report_metrics(leaderboards);
+		// Set some globals to support senible layout and renderig
+		get_and_report_metrics(leaderboards, options.show_baseline);
 
-		// Update options
+		// Update the controls from options
 		InitControls(options);
 		
 		// redraw the leaderboards
@@ -859,11 +863,11 @@ function refetchLeaderboards(reload_icon, make_static) {
 
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure
-	// why.
+	// Oddly the jQuery forms $('#links') and $('#cols') fails here. 
+	// Not sure why.
 	const selLinks = document.getElementById("links");	
 	const selCols = document.getElementById("cols");
-	let cols = parseInt(selCols.options[selCols.selectedIndex].text);	
+	let cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
 
@@ -874,7 +878,8 @@ function DrawTables(target, links) {
 		document.getElementById("chk_details").checked,
 		document.getElementById("chk_analysis_pre").checked,
 		document.getElementById("chk_analysis_post").checked,
-		document.getElementById("chk_show_delta").checked
+		document.getElementById("chk_show_delta").checked,
+		document.getElementById("chk_show_baseline").checked
 	];
 	
 	// Get the list of players selected in the multi-select box #players
@@ -882,29 +887,30 @@ function DrawTables(target, links) {
 
 	// The name format to use is selected in a #names selector
 	const name_format  = $("#names").val();
-
+	
 	// maxshots is the maximum number of snapshots of any games's boards in the
-	// database we're about to render. If it's 1 that implies no evolution is being 
-	// displayed just a single snapshot per game.
+	// database we're about to render. If it's 1 that implies no evolution is 
+	// being displayed just a single snapshot per game. 	
 	if (maxshots == 1) {
-		var totalboards = leaderboards.length;		
-		var rows = totalboards / cols;
-		var remainder = totalboards - rows*cols;
+		const totalboards = leaderboards.length;		
+		const rows = totalboards / cols;
+		const remainder = totalboards - rows*cols;
 		if (remainder > 0) { rows++; }
 
 		// A wrapper table for the leaderboards
-		var table = document.getElementById(target); 
+		const table = document.getElementById(target); 
 		table.innerHTML = "";
 		table.className = 'leaderboard wrapper'
 
-		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
-			for (var j = 0; j < cols; j++) {
+		for (let i = 0; i < rows; i++) {
+			const row = table.insertRow(i);
+			for (let j = 0; j < cols; j++) {
 				k = i*cols+j 
 				if (k < totalboards) {
-					var cell = row.insertCell(j);
+					const cell = row.insertCell(j);
 					//cell.className = 'leaderboard wrapper'
-					cell.appendChild(LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_players, name_format));
+					const board = LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_players, name_format)
+					if (board) cell.appendChild(board);
 				}
 			}
 		}
@@ -926,7 +932,8 @@ function DrawTables(target, links) {
 			for (var j = 0; j < boardshots[lb]; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
-				cell.appendChild(LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format));
+				const board = LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format)
+				if (board) cell.appendChild(board);
 			}
 			lb++; 
 		}			
@@ -983,6 +990,13 @@ $('#players').on("change", function(e) {
 	const highlight_selected = $('#chk_highlight_selected').is(":checked");
 	if (highlight_selected) DrawTables("tblLB");
 });
+
+// ===================================================================================
+// Set some globals describing the leaderboards 
+// (boardcount, maxshots, totalshots, boardshots, lblTotalCount, lblSnapCount)  
+// ===================================================================================
+
+get_and_report_metrics(leaderboards, options.show_baseline);
 
 // ===================================================================================
 // Populate all the controls  

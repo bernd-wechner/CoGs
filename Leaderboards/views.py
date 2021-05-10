@@ -1236,7 +1236,7 @@ def augment_with_deltas(master, baseline, structure=LEADERBOARD_STRUCTURE.sessio
         return tuple(result)
 
 
-def ajax_Leaderboards(request, raw=False, baseline=True):
+def ajax_Leaderboards(request, raw=False, include_baseline=True):
     '''
     A view that returns a JSON string representing requested leaderboards.
 
@@ -1330,9 +1330,9 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
         # Note: the snapshot query does not constrain sessions to the same location as
         # as does the game query. once we have the games that were played at the event,
         # we're happy to include all sessions during the event regardless of where. The
-        # reason being that we want to see evoluton of the leaderboards during the event
+        # reason being that we want to see evolution of the leaderboards during the event
         # even if some people outside of the event are playing it and impacting the board.
-        boards = lo.snapshot_queryset(game, baseline)
+        (boards, hide_baseline) = lo.snapshot_queryset(game, include_baseline)
 
         if boards:
             #######################################################################################################
@@ -1448,7 +1448,7 @@ def ajax_Leaderboards(request, raw=False, baseline=True):
             snapshots.reverse()
 
             # Then build the game tuple with all its snapshots
-            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True))
+            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, hide_baseline=hide_baseline))
 
     if settings.USE_LEADERBOARD_CACHE:
         request.session["leaderboard_cache"] = lb_cache

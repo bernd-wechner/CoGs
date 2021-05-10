@@ -1855,7 +1855,7 @@ class Game(AdminModel):
         return None if len(lb) == 0 else tuple(lb)  # Return a tuple (immutable list)
 
     @property_method
-    def wrapped_leaderboard(self, leaderboard=None, snap=False, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
+    def wrapped_leaderboard(self, leaderboard=None, snap=False, hide_baseline=False, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
         '''
         A central defintion of the first tier of a the AJAX leaderboard view,
         a game header, which wraps a data delivery, the data being a
@@ -1875,6 +1875,7 @@ class Game(AdminModel):
 
         :param leaderboard: a leaderboard or a list of leaderboard snaphots for this game
         :param snap:         if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
+        :param hide_baseline:if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
         :param leagues:      self.leaderboards argument passed through
         :param asat:         self.leaderboards argument passed through
         :param names:        self.leaderboards argument passed through
@@ -1888,7 +1889,7 @@ class Game(AdminModel):
         # Permit submission of an empty tuple () to return an empty tuple.
         if leaderboard:
             counts = self.play_counts()
-            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, leaderboard)
+            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, hide_baseline, leaderboard)
         else:
             return ()
 
@@ -2372,49 +2373,6 @@ class Session(TimeZoneMixIn, AdminModel):
                 if rank.rank == 1:
                     victors.add(rank.player)
         return victors
-
-    @property
-    def total_impact_prediction(self) -> bool:
-        '''
-        Before actual trueskill impacts are calculated and saved we may want predict the
-        impact of this session from the data available (notably to provide feedback to
-        a submitter regarding the impact this session will have on rathings).
-
-        The aim is return two leaderboards the current leaderboard and the leaderbaord
-        after this session is taken into account. There are two possble scenarios here
-        the simple and the complicated:
-
-        The simple:
-            if the date_time of this session is after all sessions of the same game, then
-            this is the current leaderboard and what it would look like after we save this
-            session (remembering this is a prediction).
-
-        The complicated:
-            The the date_time of this session is not after all sessions of this game, then
-            we are inserting a session and the current leaderboard is based on current
-            ratings and the new one based on the impact of this session traced through all
-            later sessions. Called complected, for a reason!
-
-        The aim is to returns a format that the client can build two leaderboard tables
-        from. This is already a defined format in leaderboard_snapshot() below, we'd be
-        returning two snapshots, the before and after.
-
-        This session may have been added,d eleted or changed and so it may make no sense
-        to do this as a session property (if it was deleted?)) Unless we can pass in this
-        an argument that considers the impact of adding or deleting this session or changing
-        it? Changing it is hard as we don't know from what to what, and that is done in the
-        form submisison preprocessor which has the proposed changes. So maybe this method
-        does not need to exist?
-
-        TODO: Implement impact_predictions, maybe. It may be redundant and this is all done elsewhere.
-        '''
-        later_sessions = Session.objects.filter(Q(game=self.game) & Q(date_time__gt=self.date_time))
-        simple = len(later_sessions) == 0
-
-#         before = self.leaderboard_before
-#         after = self.leaderboard_after
-
-        return simple
 
     @property
     def trueskill_impacts(self) -> dict:
@@ -2959,6 +2917,8 @@ class Session(TimeZoneMixIn, AdminModel):
         (ol, data) = self._html_rankers_ol(ordered_rankers, True, None, name_style)
 
         detail += ol
+
+        detail += f"This result was deemed {probability:0.1%} likely."
 
         return (detail, data)
 

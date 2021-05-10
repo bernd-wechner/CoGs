@@ -105,7 +105,7 @@
 			<label for="chk_show_delta">Show Rank Deltas</label>
 		</div>	
 		<div class="lo_show_baseline">
-			<input type="checkbox" id="chk_show_baseline" oninput='get_and_report_metrics(leaderboards);DrawTables("tblLB");'> 
+			<input type="checkbox" id="chk_show_baseline" oninput='get_and_report_metrics(leaderboards, this.checked);DrawTables("tblLB");'> 
 			<label for="chk_show_baseline">Show Baseline</label>
 		</div>	
 	</div>	
