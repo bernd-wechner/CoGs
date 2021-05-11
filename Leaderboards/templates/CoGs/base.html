@@ -204,7 +204,7 @@
 		    <div id="heading">
 		        {% block heading %}
 			        {% block content_title %}<h1><div id='title'>{% autoescape off %}{{ title }}{% endautoescape %}</div></h1>{% endblock %}
-			        {% block content_subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endblock %}
+			        {% block content_subtitle %}{% if subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endif %}{% endblock %}
 		        {% endblock %}
 		    </div>
 	
