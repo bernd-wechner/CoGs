@@ -35,11 +35,11 @@ suffix=$(date +%s)
 
 # Rename CoGs to CoGs_timestamp
 echo "Renaming local database CoGs to CoGs_$suffix..."
-sudo -u postgres psql -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+sudo -u postgres psql -qc "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
 
 # Recreate CoGs Database 
 echo "Recreating (empty) CoGs database..."
-sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+sudo -u postgres psql -qc "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
 
 # Now restore the latest backup
 echo "Restoring local CoGs database from $backup_file..."

@@ -8,6 +8,14 @@
 /* 	border: 1px solid red; */
 /* }	 */
 	
+	
+/* 	
+	TODO: Show only the button row by default, with a drop arrow. 
+	That reveals the basic options, and an Advanced options drop arrow, 
+	which would reveal the advanced options. Thiswill take some redesign 
+	of the grid.  
+*/ 
+
 .leaderboard_options {
 	display: grid;
 	grid-template-columns: min-content min-content 1fr;

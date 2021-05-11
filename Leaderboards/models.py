@@ -79,6 +79,10 @@ ALL_LEAGUES = "Global"  # A reserved key in leaderboard dictionaries used to rep
 ALL_PLAYERS = "Everyone"  # A reserved key for leaderboard filtering representing all players
 ALL_GAMES = "All Games"  # A reserved key for leaderboard filtering representing all games
 
+# TODO: consider a special league that filters all "My" thins
+# So on list views all things I am involved in (my leagues, my games, my players, my locations, my sessions, etc) and on Leaderboards too.
+MY_PSEUDO_LEAGUE = "Mine"
+
 MIN_TIME_DELTA = timedelta.resolution  # A nominally smallest time delta we'll consider.
 
 
@@ -2990,6 +2994,12 @@ class Session(TimeZoneMixIn, AdminModel):
         detail += ol
 
         return (mark_safe(detail), data)
+
+    def leaderboard_analysis_current(self, name_style="flexi"):
+        pass
+        # TODO: Return the probability of the current ranking. So it's not part of
+        # theResults box above and we can rearrgae the optiiopns maybe to have TrueSkill section
+        # with Result Analsyis, Prediction Prior, Prediction Post.
 
     def previous_sessions(self, player=None):
         '''

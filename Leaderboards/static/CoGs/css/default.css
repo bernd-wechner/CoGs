@@ -1,18 +1,32 @@
 @charset "utf-8";
 /* CSS Document */
 
+:root {
+  --background-color: AliceBlue;
+}
+
+
 body {
     font-family: Arial, Helvetica, sans-serif;
-    background-color: AliceBlue;
+    background-color: var(--background-color);
     font-size: 100%;
+}
+
+#headers {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    z-index: 99;
 }
 
 #header {
     width: 100%;
+    padding: 10px;
+	box-sizing: border-box;
+    overflow: hidden;
     background: #4a04cc;
     color: #ffc;
-    overflow: hidden;
-    padding: 10px;
 }
 
 #header a:link, #header a:visited {
@@ -21,6 +35,36 @@ body {
 
 #header a:hover {
     text-decoration: underline;
+}
+
+#heading {
+	background-color: var(--background-color);
+}
+
+/* 	
+	Headings have browser specified margin which is transparent and not welcome in the fixed headers
+	So we convert it to padding here for the heading and subheading of the page 
+*/
+#heading h1 {
+	margin: 0;
+	padding-top: 0.67em;
+	padding-left: 10px;
+	background-color: var(--background-color);
+}
+
+#heading h2 {
+	margin: 0;
+	padding-top: 0.67em;
+	padding-left: 10px;
+	background-color: var(--background-color);
+}
+
+#subheader {
+    width: 100%;
+    padding: 10px;
+	box-sizing: border-box;
+    overflow: hidden;
+    background-color: var(--background-color);
 }
 
 
