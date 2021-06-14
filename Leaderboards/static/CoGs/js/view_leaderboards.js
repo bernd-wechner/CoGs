@@ -139,7 +139,7 @@ function InitControls(options, exempt) {
 	// options: a dictionary of leaerboard options to set the Controls to
 	// exempt: an optional list of options to leave as is (not set to the value of options)
 	
-	const ex = exempt == undefined ? [] : exempt; 
+	const ex = exempt === undefined ? [] : exempt; 
 	
 	// We'll follow the same order as Leaderboards.views.leaderboard_options
 	// This takes those same options provided in context (or from an ajx call)

@@ -129,8 +129,8 @@
 		        {% endblock %}
 	
 		        {% block menu %}
-			        <div id="menu-line" style="display: block;">
-				        <div id="menu" style="float: left;">
+			        <div id="menu-line" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+				        <div id="menu">
 							{% if user.is_authenticated %}	        
 				        		[ <a href="/admin">Admin</a> ]
 							{% endif %}
@@ -155,13 +155,13 @@
 		{#		          1) When logging in, set it to the default league of the logged in user.#}
 		{#						- for this we need to give each logged in user a default league.#}
 		{#		          2) When viewing a session, set it to the league of the session that was loaded.#}
-				        <div id="league_selector" style="margin: 0 auto;">League:
+				        <div id="league_selector">League:
 							<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
 								{{league_options|safe}}
 							</select>
 		{#					{{league_widget|safe}}#}
 				        </div>
-				        <div id="login" style="float: right; margin-right:50px;">
+				        <div id="login"">
 							{% if user.is_authenticated %}
 					        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> | 
 							{% else %}

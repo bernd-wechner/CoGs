@@ -16,6 +16,9 @@ backup_timestamp=`date +"%s"`
 backup_mount_dir=/home/bernd/Mounts/leaderboard.space.backup.$backup_timestamp
 backup_dir=/data/www/leaderboard.space.backup.$backup_timestamp
 
+# Activate the local venv
+source ~/.virtualenvs/CoGs/bin/activate
+
 # Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
 source_dir=$(cd `dirname $0`/.. && pwd)
 echo "Source directory: $source_dir"
@@ -90,6 +93,10 @@ done
 # To do so, we have to cd to to the sites home directory, activate the venv and then run manage.py collectstatic. 
 echo "Collecting static files ..."
 ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; python manage.py collectstatic --verbosity 0 --noinput --clear"
+
+# Make sure any packages we've added are installed
+echo "Making sure python packages are up to date   ..."
+ssh -o IdentityFile=$rsa_file $server_account "cd /data/www/leaderboard.space; source /data/venv/CoGs/bin/activate; pip -q install -r requirements.txt"
 
 # We need to reloading the uwsgi services for changes to take effect
 echo "Reloading UWSGI services on $server_name ..."
