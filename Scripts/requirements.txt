@@ -31,5 +31,5 @@ sqlparse==0.4.1
 titlecase==2.0.0
 trueskill==0.4.5
 tzlocal==2.1
-urllib3==1.26.4
+urllib3==1.26.5
 xmltodict==0.12.0
