@@ -588,8 +588,8 @@ class TrueSkillHelpers:
                 performers[k].append(team)
 
                 if not p.mu in performances:
-                    performances[p.mu] = []
-                performances[p.mu].append(p)
+                    performances[k] = []
+                performances[k].append(p)
         else:
             for player in session.players:
                 p = P(player, after)
@@ -643,7 +643,7 @@ class TrueSkillHelpers:
         '''
         if rank.session.team_play:
             # Get the performances of the team players
-            ps = [rank.session.performance(player) for player in self.team.players.all()]
+            ps = [rank.session.performance(player) for player in rank.team.players.all()]
 
             # Convert this to a list of TrueSkill Performance tuples
             Ps = [Performance(

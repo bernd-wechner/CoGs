@@ -14,7 +14,7 @@ from django_generic_view_extensions.context import add_timezone_context, add_deb
 from cuser.middleware import CuserMiddleware
 
 from CoGs.logging import log
-from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, LEADERBOARD_STYLE, LEADERBOARD_STRUCTURE, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES  # , Location
+from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, LEADERBOARD_STYLE, LEADERBOARD_STRUCTURE, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, RATING_REBUILD_TRIGGER  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections
 from .BGG import BGG
 
@@ -29,6 +29,7 @@ from django.urls import reverse, reverse_lazy  # , resolve
 from django.contrib.auth.models import User, Group
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.serializers.json import DjangoJSONEncoder
+from django.core.exceptions import ObjectDoesNotExist
 from django.forms.models import ModelChoiceIterator, ModelMultipleChoiceField
 from django.conf import settings
 
@@ -256,6 +257,9 @@ def pre_save_handler(self):
             output(f"Editing session {old_session.pk}")
             J = '\n\t\t'  # A log message list item joiner
 
+            # Get a change summary
+            change_summary = old_session.__json__(self.form.data)
+
             # Build a list of all players affected by this submission
             all_players = list(set(old_players) | set(new_players))
             output(f"\tOld players: {escape(', '.join([str(p) for p in old_players]))}")
@@ -376,6 +380,8 @@ def pre_save_handler(self):
                                     output(f"\t\tBecause: {reason}")
                                 else:
                                     output(f"\tNo rating impact found. No rebuild requested.")
+
+        # TODO: Collect all the changes in a dict keyed on field name comntain 2 tupels, before and after value, and return it inthe dict as "changes",
 
         if debug_only:
             html += "</pre>\n</section>\n"
@@ -604,10 +610,17 @@ def post_save_pre_commit_handler(self, rebuild=None, reason=None):
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
-            # This saves a RebuildLog entry and a ChangeLog entry
-            clog = Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=session)
+            if isinstance(self, CreateViewExtended):
+                trigger = RATING_REBUILD_TRIGGER.session_add
+            elif isinstance(self, UpdateViewExtended):
+                trigger = RATING_REBUILD_TRIGGER.session_edit
+            else:
+                raise ValueError("Pre commit handler called from unsupported class.")
 
-        # If not rebuild for edits only, save a Change Log entry
+            # This saves a RebuildLog entry and a ChangeLog entry
+            clog = Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=trigger, Session=session)
+
+        # If no rebuild is requested, for edits only, save a Change Log entry
         elif isinstance(self, UpdateViewExtended):
             clog = ChangeLog.create(session)
             clog.save()
@@ -706,7 +719,7 @@ def post_delete_handler(self, pk=None, game=None, players=None, victors=None, re
         # Execute a requested rebuild
         if rebuild:
             reason = f"Session {pk} was deleted."
-            Rating.rebuild(Sessions=rebuild, Reason=reason)
+            Rating.rebuild(Sessions=rebuild, Reason=reason, Trigger=RATING_REBUILD_TRIGGER.session_delete)
         else:
             # A rebuld of ratings finsihes with updated ratings)
             # If we have no rebuild (by implication we just deleted
@@ -970,6 +983,20 @@ def view_Impact(request, model, pk):
     '''
     A view to show the impact of submitting a session.
 
+    Use cases:
+        Submission feedback for:
+            A session has been added and no rating rebuild was triggered
+            A session was added and a rating rebuild was triggered (i.e. it was not the latest session for for that game and all players in it)
+            A session was edited and no rating rebuild was triggered
+            A session was edited and a rating rebiild was triggered
+        A later check on the impact of that session, it may be that:
+            The session has one or more change logs (it has been added, and edited, one or more times - such loghs are not guranteed to hang around for ever)
+            The session triggered a rebuild one or more times.
+
+            The context of the view can be either:
+                based on ther last change log found if any, or
+                neutral (not change log found for reference)
+
     :param request:    A Django request object
     :param model:      The name of a model (only 'session' supported at present)
     :param pk:         The Primary key of the object of model (i.e of the session)
@@ -979,76 +1006,155 @@ def view_Impact(request, model, pk):
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
 
-    game = o.game
-    # TODO: Problem. Any properties of o that we report are in the database now.
-    # If we are looking at impact at a later date, o may have changed and these
-    # don't reflect the impact of the change. Consider the ways of handling this:
-    #   Though: Store the needed information in the changelog don't use any propery of o!
-    #           Using o at all is in fact dangerous maybe don't have o at all.
-
     if model == "Session":
-        # TODO: on creating new session we don't save a Changelog. We can however pass the impact
-        # via a session variable, and of course also compare against latest board too, they are always available.
+        # The object is a session
+        session = o
 
-        snapshot_after = o.leaderboard_snapshot
-        snapshot_before = None
-        baseline = None
+        if settings.DEBUG:
+            log.debug(f"Impact View for session {session.pk}: {session}")
 
-        op = o.previous_session()
-        if op:
-            snapshot_before = op.leaderboard_snapshot
+        # First decide the context oif the view. Either a specific change log is specified as a get parameter,
+        # or the identified session's latest change log is used if available or none if none are available.
+        clog = rlog = None
+        changed = request.GET.get("changed", None)
+
+        if changed:
+            try:
+                clog = ChangeLog.objects.get(pk=int(changed))
+
+                if settings.DEBUG:
+                    log.debug(f"\tfetched specified logged change: {clog}")
+            except ObjectDoesNotExist:
+                clog = None
+
+        if not clog:
+            clogs = ChangeLog.objects.filter(session=o)
+
+            if clogs:
+                clog = clogs.order_by("-created_on").first()
+
+                if settings.DEBUG:
+                    log.debug(f"\tfetched last logged change: {clog}")
+
+        # Find a rebuild log if there is one associated
+        if clog:
+            if clog.rebuild_log:
+                rlog = clog.rebuild_log
+
+                if settings.DEBUG:
+                    log.debug(f"\tfetched specified logged rebuild: {rlog}")
+            else:
+                rlog = None
+        else:
+            rlogs = RebuildLog.objects.filter(session=o)
+
+            if rlogs:
+                rlog = rlogs.order_by("-created_on").first()
+
+                if settings.DEBUG:
+                    log.debug(f"\tfetched last logged rebuild: {rlog}")
+
+        # RebuildLogs may be more sticky than ChangeLogs (i.e. expire less frequently)
+        # and if so we may bhave found an rlog and no clog yet, and technically there
+        # should not be one (or we'd have found it above!). For completeness in this
+        # case we'll check and if debugging report.
+        if rlog and not clog:
+            clogs = rlog.change_logs.all()
+            if clogs:
+                clog = clogs.first()
+
+                if settings.DEBUG:
+                    log.debug(f"\tUnexpected oddity, found rlog wbut not clog, yet the rlog identifies {clogs.count()} clog(s) and we're using: {clog}")
+
+        # These are nominally all the same ... BUT
+        # session is the current ciopy in database, and if clog was specified subsequent
+        # changes may have changed the sessions game so we preference clog's game. rlog
+        # may have a game and if clog was specified it must really be the same game (rlog
+        # can impact many games, and game is an optional field to restrict it to a specified
+        # game)
+        #
+        # TODO: Check and ensure that if a session is edited and the game is changed that
+        #    a rebuild is requested for both games! Also confirm whathappens to clogs. This
+        #     is a bizarre and speciual edit.
+        game = clog.game if clog else rlog.game if rlog else session.game
+
+        # We seek three snapshots, one after the session, one before the sessions
+        # and a baseline for that session as best we can (so a client can render the before
+        # and after with their deltas.
+        if clog:
+            # If a changelog is available they record  two of these
+            # TODO: can a baseline be sensibly added based on immediately before? Does that eladerboard contain enough info for one?
+            snapshot_after = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=clog.leaderboard_immediately_after)
+            snapshot_before = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=clog.leaderboard_immediately_before)
+
+            # Augment the snapshot after with deltas
             snapshot_after = augment_with_deltas(snapshot_after, snapshot_before)
 
-            opp = op.previous_session()
+            baseline = None
+        else:
+            # An rlog cannot help us here. it contains no record of snapshot before and after
+            # (only records of the global leaderboard before and after a rebuild - a different thing altogether).
+            snapshot_after = session.leaderboard_snapshot
+            snapshot_before = None
+            baseline = None
 
-            if opp:
-                baseline = o.previous_session().leaderboard_snapshot
-                snapshot_before = augment_with_deltas(snapshot_before, baseline)
+            sp = session.previous_session()
+            if sp:
+                snapshot_before = sp.leaderboard_snapshot
+                snapshot_after = augment_with_deltas(snapshot_after, snapshot_before)
 
+                if settings.DEBUG:
+                    log.debug(f"\thas a previous session (for deltas) with id {sp.pk}: {sp} ")
+
+                spp = sp.previous_session()
+
+                if spp:
+                    baseline = o.previous_session().leaderboard_snapshot
+                    snapshot_before = augment_with_deltas(snapshot_before, baseline)
+
+                    if settings.DEBUG:
+                        log.debug(f"\thas a basline session (for deltas) with id {spp.pk}: {spp} ")
+
+        # Build a list of snapshots, 1, 2 or 3 based on what we found (after, before and a baseline for deltas on the before board)
         snapshots = [snapshot_after]
         if snapshot_before: snapshots += [snapshot_before]
         if baseline: snapshots += [baseline]
 
-        islatest = o.is_latest
-        isfirst = o.is_first
+        session_snapshots = game.wrapped_leaderboard(snapshots, snap=True)
+
+        # These are properties of the current session and hence relevant only in the post submission feedback scenario where
+        # TOOD: Not even. On a multiuser system it could be two edits to a session are submitted one hot on the tail of hte other by diferent people
+        #      Submission feedback therefore needs a snapshot of the session htat was saved not what is actually now in hte database.
+        #      We have to pass that in here somehow. That is hard for a complete session object, very hard, and so maybe we do that only for
+        #      the session game and datetime (which is all we've used up to this point. Then we don't use methods but compare dates agsint first
+        #      and last in database.
+        islatest = session.is_latest
+        isfirst = session.is_first
+
+        if settings.DEBUG:
+            log.debug(f"\t{islatest=}, {isfirst=}")
 
         # Get the latest leaderboard for this game
         latest = game.wrapped_leaderboard(style=LEADERBOARD_STYLE.rich)
 
-        try:
-            changed = request.GET.get("changed", None)
-
-            # If no change is provided in the GET params try and get the last logged change for this session.
-            if not changed:
-                changed = ChangeLog.objects.filter(session=o).order_by("-created_on").first().pk
-
-            clog = ChangeLog.objects.get(pk=int(changed))
-
-            if clog.rebuild_log:
-                rlog = clog.rebuild_log
-            else:
-                rlog = None
-        except:
-            clog = None
-            rlog = None
-
-        # If there's a rebuild log, we can add the prior board to the latest for a delta view.
+        # If there was a leaderboard rebuild get the before and after boards
         if rlog:
-            before = rlog.leaderboard_before(game)
-            after = augment_with_deltas(rlog.leaderboard_after(game), before, structure=LEADERBOARD_STRUCTURE.game_wrapped_player_list)
-
-            players_affected = rlog.players_affected(game)
+            latest_before_rebuild = rlog.leaderboard_after(game)
+            latest_after_rebuild = rlog.leaderboard_after(game)
+            latest_after_rebuild = augment_with_deltas(latest_after_rebuild, latest_before_rebuild, structure=LEADERBOARD_STRUCTURE.game_wrapped_player_list)
+            players_affected_by_rebuild = rlog.players_affected(game)
 
             # TODO: confirm format is comparable!
             # This can happen if we are looking at the impact of a dated rebuild (i.e. global
             # leaderboards have progressed some since that rebuild happened).
-            view_is_dated = not after == latest
+            view_is_dated = not latest_after_rebuild == latest
         else:
-            before = None
-            after = latest
-            players_affected = []
+            latest_before_rebuild = None
+            latest_after_rebuild = latest
+            players_affected_by_rebuild = []
             view_is_dated = False  # Not relevant really as there was no rebuild
 
+        # TODO: Consider how bets to pass what we have (this needs rethink)
         c = {"model": m,
              "model_name": model,
              "model_name_plural": m._meta.verbose_name_plural,
@@ -1059,12 +1165,12 @@ def view_Impact(request, model, pk):
              "is_latest": islatest,  # The edited/submitted session is the latest in that game
              "is_first": isfirst,  # The edited/submitted session is the first in that game
              "view_is_dated": view_is_dated,  # The current leaderboard after a rebuild is NOT the current leaderboard (it has changed since)
-             "players_affected": json.dumps(players_affected, cls=DjangoJSONEncoder),  # The players affected by this rebuild (if any, rebuild or players affected)
-             "num_players_affected": len(players_affected),
+             "players_affected": json.dumps(players_affected_by_rebuild, cls=DjangoJSONEncoder),  # The players affected by this rebuild (if any, rebuild or players affected)
+             "num_players_affected": len(players_affected_by_rebuild),
              "diagnose": len(snapshot_after) > 9,  # Snapshot tuples have 9 elements, or 10 if a diagnosis board is included
-             "game_board_after": json.dumps(after, cls=DjangoJSONEncoder),
-             "game_board_before": json.dumps(before, cls=DjangoJSONEncoder),
-             "session_snapshots": json.dumps(game.wrapped_leaderboard(snapshots, snap=True), cls=DjangoJSONEncoder)
+             "game_board_after": json.dumps(latest_after_rebuild, cls=DjangoJSONEncoder),
+             "game_board_before": json.dumps(latest_before_rebuild, cls=DjangoJSONEncoder),
+             "session_snapshots": json.dumps(session_snapshots, cls=DjangoJSONEncoder)
              }
 
         return render(request, 'CoGs/view_session_impact.html', context=c)
@@ -1165,7 +1271,7 @@ def augment_with_deltas(master, baseline, structure=LEADERBOARD_STRUCTURE.sessio
 
     :param master:      a leaderboard
     :param baseline:    a leaderboard to compare with
-    :param snaps:        True is leaderboard is s snapshot (i.e. has a session wrapper)
+    :param snaps:       True is leaderboard is a snapshot (i.e. has a session wrapper)
                         False if it's a simple leaderboard.
     '''
 
@@ -2000,7 +2106,7 @@ def rebuild_ratings(Game=None, From=None, Reason=None):
 
     pr = cProfile.Profile()
     pr.enable()
-    result = Rating.rebuild(Game=Game, From=From, Reason=Reason)
+    result = Rating.rebuild(Game=Game, From=From, Reason=Reason, Trigger=RATING_REBUILD_TRIGGER.user_request)
     pr.disable()
 
     s = io.StringIO()
