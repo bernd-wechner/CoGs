@@ -13,12 +13,6 @@
 
 {% block content %}
 
-{#	The context must provide:	#}
-{#	- The game name	#}
-{#	- The datetime of the session	#}
-{#	- A count of boards rebuilt (0 if none) #}
-{#	- Three leaderboards. 3 of them as outlined below #}
-
 {% if user.is_authenticated %}
 	<p>
 		[<a href="{% url 'add' model_name %}">Add another {{ model_name.title }}</a>]
@@ -28,118 +22,178 @@
 	</p>
 {% endif %}	   
 
-<p>Thanks for submitting the results of your game of {{game}} played on {{date_time}}.</p>
+{% if is_submission_feedback %}
+<p>Thanks for submitting the results of your game of {{ game.name }} played on {{ date_time }}.</p>
+{% else %}
+<p>This is a summary of changescause by the submission of a {{ submission }} on {{ date_time }}.</p>
+{% endif %}
+	   
 
-{#<p>Changed: {{ changed }}</p>#}
-{#<p>Is Latest: {{ is_latest }}</p>#}
-{#<p>Is First: {{ is_first }}</p>#}
-{#<p>Rebuild log: {{ changed.rebuild_log }}</p>#}
-{#<p>Sessions: {{ changed.rebuild_log.sessions }}</p>#}
-{#<p>Session Objects: {{ changed.rebuild_log.sessions.objects }}</p>#}
-{#<p>All Session Objects: {{ changed.rebuild_log.sessions.all }}</p>#}
-{#<p>All Session Objects Count: {{ changed.rebuild_log.sessions.all.count }}</p>#}
-{#<p>Players Affected: {{ players_affected }}</p>#}
-{#<p>Leaderboard: {{ leaderboard_after | safe }}</p>#}
-
-{% if changed %}
-	{% if changed.rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
-		<p>This submission triggered a rebuild of the ratings and hence leaderboard positions
-		from {{changed.rebuild_log.date_time_from}} (a total of {{changed.rebuild_log.sessions.all.count}} 
-		game session ratings were rebuilt and {{ num_players_affected }} player's ratings were affected).</p>  
-		
-		{% if is_first %}
-		<p>It is the first session recorded for {{game}}, and so no leaderboard existed prior to it.</p>   
-		{% endif %}
-
-		<p>This is the impact on the current leaderboard AND the immediate leaderboard 
-		after your recorded play session:</p>
-	
-		<table class='leaderboard wrapper'>
-			<tr>
-				<th>Current Latest Leaderboard<br>(After the Rebuild)</th>
-				<th>Prior Latest Leaderboard<br>(Before the Rebuild)</th>
-				<th>Leaderboard After Playing<br>(Result after this Session)</th>
-				{% if not is_first %}
-				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
-				{% endif %}
-			</tr>
-			<tr>
-				<td><div id="game_board_after"></div></td>
-				<td><div id="game_board_before"></div></td>
-				<td><div id="session_board_after"></div></td>
-				{% if not is_first %}
-				<td><div id="session_board_before"></div></td>
-				{% endif %}
-			</tr>
-		</table>
-		
-		{% if players_affected %}
-		<p>These player's ratings were affected by the rebuild:</p>
-		<div id="affected_players"></div>
-		{% endif %}
-		
-		
-	{% elif is_latest and not is_first %} {# This was the latest session of submitted game and no rebuild was needed #}
-		{#	Subtle use of "was" to differentiate from creation below that uses "is" #}
-		<p>This was the latest result for that game and the resulting leaderboard is:</p>   
-		
-		{#	We display just the leaderboard for this game which is the latest#}
-		{#	We should maybe provide the one after this game (based on Performances) and the latest#}
-		{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
-		{#	 reporting an integrity error with instructions on how to submit it.#}
-		{#	Maybe a button to submit it, which sends an email to admins. #}
-	
-		{#	Include a diagnostic board if needed. #}
-		{% if diagnose %}
-			<table class='leaderboard wrapper'>
-				<tr>
-					<th>Leaderboard After Playing<br>(Result after this Session)</th>
-					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
-					<th>Diagnostic Leaderboard<br>(Something went wrong)</th>
-				</tr>
-				<tr>
-					<td><div id="session_board_after"></div></td>
-					<td><div id="session_board_before"></div></td>
-					<td><div id="session_board_diagnostic"></div></td>
-				</tr>
-			</table>
-		{% else %}
-			<table class='leaderboard wrapper'>
-				<tr>
-					<th>Leaderboard After Playing<br>(Result after this Session)</th>
-					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
-				</tr>
-				<tr>
-					<td><div id="session_board_after"></div></td>
-					<td><div id="session_board_before"></div></td>
-				</tr>
-			</table>
-		{% endif %}
-		
-	{% else %}  {# This was not the latest session of submitted game, but no rebuuild was triggered #}	
-		{% if is_first %}
-		<p>This was the first result for that game, and so no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
-		{% else  %}
-		<p>This was not the latest result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   
-		{% endif %}
-
-		<table class='leaderboard wrapper'>
-			<tr>
-				<th>Current Latest Leaderboard<br>(Unaffected by this submission)</th>
-				<th>Leaderboard After Playing<br>(Result after this Session)</th>
-				{% if not is_first %}
-				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>
-				{% endif %}
-			</tr>
-			<tr>
-				<td><div id="game_board_after"></div></td>
-				<td><div id="session_board_after"></div></td>
-				{% if not is_first %}
-				<td><div id="session_board_before"></div></td>
-				{% endif %}
-			</tr>
-		</table>
+{% if change_log %}
+	{% if rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
+	<p>A rebuild of ratings was triggered by a {{ trigger | lower }}.</p>
+	<p>Ratings and hence leaderboard positions from {{ rebuild_log.date_time_from }} were updated 
+	affecting a total of {{ rebuild_log.sessions.all.count }} game sessions.</p> 
+	<p>Ratings were updated affecting:</p>
+	<ul>
+		<li> leaderboards for {{ games | length }} games</li>
+	 	<li>the ratings for {{ num_players_with_ratings_affected_by_rebuild }} players</li> 
+	 	<li>the rankings (leaderboard positons) for {{num_players_with_rankings_affected_by_rebuild}} players</li>
+	</ul>  
 	{% endif %}
+		
+	{% if is_first %}	
+	<p>It is the first session recorded for {{ game.name }}, and so no leaderboard existed prior to it.</p>   
+	{% endif %}
+
+	<p>The impact of this session <b>after</b> the submitted change:</p>
+
+	<table class='leaderboard wrapper'>
+		<tr>
+			<th>The result of the edited session</th>
+			{% if not is_first %}
+			<th>The result of the session prior</th>
+			{% endif %}
+		</tr>
+		<tr>
+			<td><div id="after_change_session_board_after"></div></td>
+			{% if not is_first %}
+			<td><div id="after_change_session_board_before"></div></td>
+			{% endif %}
+		</tr>
+	</table>
+
+	{% if trigger == "Session Edit" %}	
+	<p>The impact of this session <b>before</b> the submitted change:</p>
+
+	<table class='leaderboard wrapper'>
+		<tr>
+			<th>The result of the edited session</th>
+			{% if not is_first %}
+			<th>The result of the session prior</th>
+			{% endif %}
+		</tr>
+		<tr>
+			<td><div id="before_change_session_board_after"></div></td>
+			{% if not is_first %}
+			<td><div id="before_change_session_board_before"></div></td>
+			{% endif %}
+		</tr>
+	</table>
+	{% endif %}
+
+	{#	This will be for one or two games only on a submission feedback. More are possible on feedback for user requested rebuild#}
+	{#	That is submission_feedback would be false and games would have more than entries.#}
+	
+	{% if rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
+	<p>The impact of the rebuild on the standing leaderboards:</p>
+
+	<table class='leaderboard wrapper'>
+		<tr>
+			{% if rebuild_log_is_dated.games.0.pk %}
+			<th>Current leaderboard<br>(for reference)</th>
+			{% endif %}
+			<th>After the rebuild</th>
+			<th>Before the rebuild</th>
+		</tr>
+		<tr>
+			{% if rebuild_log_is_dated.games.0.pk %}
+			<td><div id="latest_game_board_now0"></div></td>
+			{% endif %}
+			<td><div id="after_change_game_board0"></div></td>
+			<td><div id="before_change_game_board0"></div></td>
+		</tr>
+	</table>
+
+	{% if games|length > 1 %}
+	<p>The impact of the rebuild on the standing leaderboard for {{ games.1 }}:</p>
+
+	<table class='leaderboard wrapper'>
+		<tr>
+			{% if rebuild_log_is_dated.games.1.pk %}
+			<th>Current leaderboard<br>(for reference)</th>
+			{% endif %}
+			<th>After the rebuild"</th>
+			<th>Before the rebuild</th>
+		</tr>
+		<tr>
+			{% if rebuild_log_is_dated.games.1.pk %}
+			<td><div id="latest_game_board_now1"></div></td>
+			{% endif %}
+			<td><div id="after_change_game_board1"></div></td>
+			<td><div id="before_change_game_board1"></div></td>
+		</tr>
+	</table>
+	{% endif %}
+	{% endif %}
+	
+	{% if players_affected %}
+	<p>These player's ratings were affected by the rebuild:</p>
+	<div id="affected_players"></div>
+	{% endif %}
+		
+		
+{#	{% elif is_latest and not is_first %} {# This was the latest session of submitted game and no rebuild was needed #}
+{#		{#	Subtle use of "was" to differentiate from creation below that uses "is" #}
+{#		<p>This was the latest result for that game and the resulting leaderboard is:</p>   #}
+		
+{#		{#	We display just the leaderboard for this game which is the latest#}
+{#		{#	We should maybe provide the one after this game (based on Performances) and the latest#}
+{#		{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
+{#		{#	 reporting an integrity error with instructions on how to submit it.#}
+{#		{#	Maybe a button to submit it, which sends an email to admins. #}
+	
+{#		{#	Include a diagnostic board if needed. #}
+{#		{% if diagnose %}#}
+{#			<table class='leaderboard wrapper'>#}
+{#				<tr>#}
+{#					<th>Leaderboard After Playing<br>(Result after this Session)</th>#}
+{#					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>#}
+{#					<th>Diagnostic Leaderboard<br>(Something went wrong)</th>#}
+{#				</tr>#}
+{#				<tr>#}
+{#					<td><div id="session_board_after"></div></td>#}
+{#					<td><div id="session_board_before"></div></td>#}
+{#					<td><div id="session_board_diagnostic"></div></td>#}
+{#				</tr>#}
+{#			</table>#}
+{#		{% else %}#}
+{#			<table class='leaderboard wrapper'>#}
+{#				<tr>#}
+{#					<th>Leaderboard After Playing<br>(Result after this Session)</th>#}
+{#					<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>#}
+{#				</tr>#}
+{#				<tr>#}
+{#					<td><div id="session_board_after"></div></td>#}
+{#					<td><div id="session_board_before"></div></td>#}
+{#				</tr>#}
+{#			</table>#}
+{#		{% endif %}#}
+		
+{#	{% else %}  {# This was not the latest session of submitted game, but no rebuuild was triggered #}	
+{#		{% if is_first %}#}
+{#		<p>This was the first result for that game, and so no rating rebuilds were triggered, and the resulting leaderboard is:</p>   #}
+{#		{% else  %}#}
+{#		<p>This was not the latest result for that game, but no rating rebuilds were triggered, and the resulting leaderboard is:</p>   #}
+{#		{% endif %}#}
+
+{#		<table class='leaderboard wrapper'>#}
+{#			<tr>#}
+{#				<th>Current Latest Leaderboard<br>(Unaffected by this submission)</th>#}
+{#				<th>Leaderboard After Playing<br>(Result after this Session)</th>#}
+{#				{% if not is_first %}#}
+{#				<th>Leaderboard Before Playing<br>(Result of Prior Session)</th>#}
+{#				{% endif %}#}
+{#			</tr>#}
+{#			<tr>#}
+{#				<td><div id="game_board_after"></div></td>#}
+{#				<td><div id="session_board_after"></div></td>#}
+{#				{% if not is_first %}#}
+{#				<td><div id="session_board_before"></div></td>#}
+{#				{% endif %}#}
+{#			</tr>#}
+{#		</table>#}
+{#	{% endif %}#}
 
 {% else %}
 	<p>This is the {% if is_first %} first and {% endif %}latest result for that game and the resulting leaderboard is:</p>   
@@ -197,22 +251,31 @@
 
 {% block startscript %}
 <script>
-	// Up to three snaptshots, the leaderboard after the sessiuon, before the session and a baseline as available.
-	const impact = {{session_snapshots|safe}};
+	const games = {{ games | json }};
 	
-	{% if changed and changed.rebuild_log%}
-{#	const leaderboard = {% leaderboard_after_rebuild changed.rebuild_log game %};#}
-{#	const prior = {% leaderboard_before_rebuild changed.rebuild_log game %};#}
-	const leaderboard = {{ game_board_after | safe }};
-	const prior = {{ game_board_before | safe }};
-	{% else %}
-	let leaderboard = {{game_board_after | safe}};
+	{% if change_log %}
+	const change_log = {{ change_log.changes | safe }};
+	const changes = {{ changes | safe }};
+	const change_log_is_dated = {{ change_log_is_dated | json }};
+	const change_date_time = "{{ change_date_time }}";
+	const lb_impact_after_change = {{ lb_impact_after_change | json }}; 
+	const lb_impact_before_change = {{ lb_impact_before_change | json }}; 
+	const latest_game_boards_now = {{ latest_game_boards_now | json }};
 	{% endif %}
+
+	{% if rebuild_log %}
+	const rebuild_log_is_dated = {{ rebuild_log_is_dated | json }};
+	const rebuild_date_time = "{{ rebuild_date_time | safe }}";
+	const lb_impact_rebuild = {{ lb_impact_rebuild | json }};
 	
-	{% if players_affected %}
-	const players_affected = {{ players_affected | safe }};
+	const num_players_with_ratings_affected_by_rebuild = {{ num_players_with_ratings_affected_by_rebuild }};
+	const num_players_with_rankings_affected_by_rebuild = {{ num_players_with_rankings_affected_by_rebuild | safe }};
+	const players_with_ratings_affected_by_rebuild = {{ players_with_ratings_affected_by_rebuild | json }};
+	const players_with_rankings_affected_by_rebuild = {{ players_with_rankings_affected_by_rebuild | json }};
+	const player_rating_impacts_of_rebuild = {{ player_rating_impacts_of_rebuild | json }};
+	const player_ranking_impacts_of_rebuild = {{ player_ranking_impacts_of_rebuild | json }};
 	{% endif %}
-	
+
 	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
 	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
 	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
@@ -224,17 +287,17 @@
 		true,   // highlight_changes,
 		false,  // highlight_selected,
 		true,   // details,
-		true,   // analysis_pre,
-		true,   // analysis_post,
+		false,   // analysis_pre,
+		false,   // analysis_post,
 		true    // show_delta 
 	];	
 	
 	// Configurable, should agree with what the Django view is configured to deliver.
 	// if the Django view is delivering baseline boards this should be true and we will
 	// not render them and use them only for calculating rank deltas. If it is false
-	// the view should idelaly not deliver baslines (or they'll render and not honor
+	// the view should ideally not deliver baselines (or they'll render and not honor
 	// the leaderboard options accurately).
-	const use_baseline = true;
+	const use_baseline = false;
 </script>
 {% endblock %}
 
@@ -242,33 +305,80 @@
 <script src="{% static 'CoGs/js/leaderboard.js' %}"></script>
 
 <script>
-	$('#session_board_after').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));
-	$('#session_board_before').append(LeaderboardTable(impact, 1, "CoGs", LB_options, null, "nick"));
+	let board, HTML;
 	
-	const db = $('#session_board_diagnostic');
-	if (db) db.append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick", 1));
-	
-	const lb = $('#game_board_after');
-	if (lb) lb.append(LeaderboardTable(leaderboard, null, "CoGs", LB_options, null, "nick"));
+	{% if change_log %}
+	board = lb_impact_before_change;
+	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
+	$('#before_change_session_board_after').append(HTML)
 
-	const pb = $('#game_board_before');
-	if (pb) pb.append(LeaderboardTable(prior, null, "CoGs", LB_options, null, "nick"));
+	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
+	$('#before_change_session_board_before').append(HTML)
+	
+	board = lb_impact_after_change;
+	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
+	$('#after_change_session_board_after').append(HTML)
+
+	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
+	$('#after_change_session_board_before').append(HTML)	
+    {% endif %} {# change_log #}
+
+	{% if rebuild_log %}
+	board = lb_impact_rebuild;
+	HTML = LeaderboardTable(board[{{games.0.pk}}], 0, "CoGs", LB_options, null, "nick");
+	$('#after_change_game_board0').append(HTML)
+
+	HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
+	$('#before_change_game_board0').append(HTML)
+
+	{% if rebuild_log_is_dated.games.0.pk %}
+	board = latest_game_boards_now;
+	HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
+	$('#latest_game_board_now0').append(HTML)
+	{% endif %} {# rebuild_log_is_dated #}
+
+	{% if games|length > 1 %}
+	HTML = LeaderboardTable(board[{{games.1.pk}}], 0, "CoGs", LB_options, null, "nick");
+	$('#after_change_game_board1').append(HTML)
+
+	HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
+	$('#before_change_game_board1').append(HTML)
+
+	{% if rebuild_log_is_dated.games.1.pk %}
+	board = latest_game_boards_now;
+	HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
+	$('#latest_game_board_now1').append(HTML)
+	{% endif %} {# rebuild_log_is_dated #} 
+	{% endif %} {# games|length > 1 #}
+	
+    {% endif %} {# rebuild_log #}
+
+{#	$('#session_board_after').append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick"));#}
+{#	$('#session_board_before').append(LeaderboardTable(impact, 1, "CoGs", LB_options, null, "nick"));#}
+	
+{#	const db = $('#session_board_diagnostic');#}
+{#	if (db) db.append(LeaderboardTable(impact, 0, "CoGs", LB_options, null, "nick", 1));#}
+	
+{#	const lb = $('#game_board_after');#}
+{#	if (lb) lb.append(LeaderboardTable(leaderboard, null, "CoGs", LB_options, null, "nick"));#}
+
+{#	const pb = $('#game_board_before');#}
+{#	if (pb) pb.append(LeaderboardTable(prior, null, "CoGs", LB_options, null, "nick"));#}
 		
-	function player_delta_list(parent, players) { 
-		const ul = document.createElement('ul'); 
+{#	function player_delta_list(parent, players) { #}
+{#		const ul = document.createElement('ul'); #}
 		 
-		players.forEach(function(p) { 
-			const li = document.createElement('li'); 
-			const sign = p[2] > 0 ? '+'  : '';
-			li.appendChild(document.createTextNode(`${sign}${p[2]} spots: ${p[1]}`)); 
-			ul.appendChild(li); 
-		}); 
+{#		players.forEach(function(p) { #}
+{#			const li = document.createElement('li'); #}
+{#			const sign = p[2] > 0 ? '+'  : '';#}
+{#			li.appendChild(document.createTextNode(`${sign}${p[2]} spots: ${p[1]}`)); #}
+{#			ul.appendChild(li); #}
+{#		}); #}
 
-		parent.append(ul); 
-	} 
+{#		parent.append(ul); #}
+{#	} #}
  
-	const ap = $('#affected_players');
-	if (ap) player_delta_list(ap, players_affected);
-	
+{#	const ap = $('#affected_players');#}
+{#	if (ap) player_delta_list(ap, players_affected);#}
 </script>
 {% endblock %}

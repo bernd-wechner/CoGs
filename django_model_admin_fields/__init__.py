@@ -22,18 +22,9 @@ from django.utils.timezone import get_current_timezone
 UTC = pytz.timezone('UTC')
 
 
-def fix_time_zone(dt, tz=UTC):
-    '''
-    A simple function that takes a datetime object and if it has no tzinfo will give it some
-    assuming its UTC.
-    '''
-    if not dt is None:
-        if dt.tzinfo == None:
-            return tz.localize(dt)
-        elif dt.tzinfo != tz:
-            return dt.astimezone(tz)
-
-    return dt
+def safe_tz(tz):
+    '''A one-line that converts TZ string to a TimeZone object if needed'''
+    return pytz.timezone(tz) if isinstance(tz, str) else tz
 
 
 class AdminModel(models.Model):
@@ -84,11 +75,11 @@ class AdminModel(models.Model):
 
     @property
     def created_on_local(self):
-        return fix_time_zone(self.created_on, self.created_on_tz)
+        return self.created_on.astimezone(safe_tz(self.created_on_tz))
 
     @property
     def last_edited_on_local(self):
-        return fix_time_zone(self.last_edited_on, self.last_edited_on_tz)
+        return self.edited_on.astimezone(safe_tz(self.edited_on_tz))
 
     def save(self, *args, **kwargs):
         if not self.__bypass_admin__:

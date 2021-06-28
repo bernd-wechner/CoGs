@@ -12,7 +12,9 @@ from titlecase import titlecase
 
 # Django imports
 from django.apps import apps
+from django.db.models.base import Model
 from django.db.models.query import QuerySet
+from django.core.serializers.json import DjangoJSONEncoder
 
 # Package imports
 from .options import odm
@@ -205,3 +207,16 @@ def pythonify(json_data):
         correctedDict[key] = value
 
     return correctedDict
+
+
+class DjangoObjectJSONEncoder(DjangoJSONEncoder):
+    """
+    Extends DjangoJSONEncoder to xonvert model instances to their PKs
+    """
+
+    def default(self, o):
+        # See "Date Time String Format" in the ECMA-262 specification.
+        if isinstance(o, Model):
+            return o.pk
+        else:
+            return super().default(o)

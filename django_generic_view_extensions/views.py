@@ -489,6 +489,12 @@ def post_generic(self, request, *args, **kwargs):
     '''
     Processes a form submission.
 
+    Provides three hooks:
+
+        pre_transaction    called before a transaction starts, returns a dir that is unpacked as kwargs for pre_save
+        pre_save           called after form validation and cleaning, a transaction has been opened but before saving, returns a dir that is unpacked as kwargs for pre_commit
+        pre_commit         called just before committing the transaction.
+
     :param self: and instance of CreateView or UpdateView
 
     This is code shared by the two views so peeled out into a generic.
@@ -560,20 +566,25 @@ def post_generic(self, request, *args, **kwargs):
             html += "</table>"
             return HttpResponse(html)
 
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_save', None)):
-            next_kwargs = self.pre_save()
-            if not next_kwargs: next_kwargs = {}
-            if "debug_only" in next_kwargs:
-                return HttpResponse(next_kwargs["debug_only"])
-
         log.debug(f"Connection vendor: {connection.vendor}")
         if connection.vendor == 'postgresql':
             log.debug(f"Is_valid? {self.form.data}")
             if self.form.is_valid():
+                # Hook for pre-processing the form (before a database transaction is opened)
+                if callable(getattr(self, 'pre_transaction', None)):
+                    next_kwargs = self.pre_transaction()
+                    if not next_kwargs: next_kwargs = {}
+                    if "debug_only" in next_kwargs:
+                        return HttpResponse(next_kwargs["debug_only"])
+
                 try:
                     log.debug(f"Open a transaction")
                     with transaction.atomic():
+                        # Hook for pre-processing the form (before the data is saved)
+                        if callable(getattr(self, 'pre_save', None)):
+                            next_kwargs = self.pre_save(**next_kwargs)
+                            if not next_kwargs: next_kwargs = {}
+
                         log.debug("Saving form from POST request containing:")
                         for (key, val) in sorted(self.request.POST.items()):
                             # See: https://code.djangoproject.com/ticket/1130
@@ -622,7 +633,7 @@ def post_generic(self, request, *args, **kwargs):
                         # Finally before committing give the view defintion a chance to so something
                         # prior to committing the update.
                         if callable(getattr(self, 'pre_commit', None)):
-                            next_kwargs = self.pre_commit(**next_kwargs)
+                            self.pre_commit(**next_kwargs)
 
                         log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
@@ -650,6 +661,13 @@ def post_generic(self, request, *args, **kwargs):
 
         else:
             if self.form.is_valid():
+                # Hook for pre-processing the form (before the data is saved)
+                if callable(getattr(self, 'pre_save', None)):
+                    next_kwargs = self.pre_save()
+                    if not next_kwargs: next_kwargs = {}
+                    if "debug_only" in next_kwargs:
+                        return HttpResponse(next_kwargs["debug_only"])
+
                 self.object = self.form.save()
                 related_forms = RelatedForms(self.model, self.form.data, self.object)
                 related_forms.save()

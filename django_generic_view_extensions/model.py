@@ -63,6 +63,7 @@ from django.db import models
 from django.utils.safestring import mark_safe
 from django.utils.timezone import get_current_timezone
 from django.forms.models import inlineformset_factory
+from django.core.exceptions import ObjectDoesNotExist
 from django.conf import settings
 
 # Package imports
@@ -74,6 +75,13 @@ from .decorators import is_property_method
 from .html import odm_str
 
 summary_methods = ["__str__", "__verbose_str__", "__rich_str__", "__detail_str__"]
+
+
+def safe_get(model, pk):
+    try:
+        return model.objects.get(pk=pk)
+    except ObjectDoesNotExist:
+        return None
 
 
 def add_related(model):

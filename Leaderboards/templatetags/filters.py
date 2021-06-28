@@ -1,5 +1,8 @@
-import re
+import re, json as JSON
 from django import template
+
+from django_generic_view_extensions.util import DjangoObjectJSONEncoder
+from django.utils.safestring import mark_safe
 
 register = template.Library()
 
@@ -7,6 +10,11 @@ register = template.Library()
 @register.filter
 def to_name(value):
     return value.__name__
+
+
+@register.filter
+def json(value):
+    return mark_safe(JSON.dumps(value, cls=DjangoObjectJSONEncoder))
 
 
 @register.filter

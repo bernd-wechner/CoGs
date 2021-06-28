@@ -10,7 +10,12 @@ from dateutil import parser
 
 # Django imports
 from django.utils.formats import localize
-from django.utils.timezone import make_naive, localtime, get_current_timezone
+from django.utils.timezone import make_naive, is_naive, localtime, get_current_timezone, make_aware as django_make_aware
+
+
+def safe_tz(tz):
+    '''A one-line that converts TZ string to a TimeZone object if needed'''
+    return pytz.timezone(tz) if isinstance(tz, str) else tz
 
 
 def datetime_format_python_to_PHP(python_format_string):
@@ -26,11 +31,11 @@ def datetime_format_python_to_PHP(python_format_string):
 
 def is_dst(zonename=None, when=None):
     '''Given the name of Timezone will attempt determine if that timezone is in Daylight Saving Time now (DST)'''
-    # This gist may be better: https://gist.github.com/dpapathanasiou/09bd2885813038d7d3eb
     if zonename:
         tz = pytz.timezone(zonename)
     else:
         tz = get_current_timezone()
+
     if when:
         testing_time = when
     else:
@@ -69,6 +74,16 @@ def fix_time_zone(dt, tz=UTC):
             return dt.astimezone(tz)
 
     return dt
+
+
+def make_aware(date_time, timezone=None):
+    '''
+    A quick simple improvement in Django's make_aware which takes into account daylight savings time.
+    '''
+    if is_naive(date_time):
+        return django_make_aware(date_time, timezone=timezone, is_dst=is_dst(when=date_time))
+    else:
+        return date_time
 
 
 def decodeDateTime(dt):

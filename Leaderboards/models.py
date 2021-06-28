@@ -12,7 +12,8 @@ from builtins import str
 from enum import Enum
 
 # Local packages
-from .trueskill_helpers import Skill, TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
+from .trueskill_helpers import TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
+from .leaderboards import styled_player_list, restyle_leaderboard, augment_with_deltas, player_ratings, player_rankings, LB_STRUCTURE, LB_PLAYER_LIST_STYLE, immutable, mutable
 
 # Django packages
 from django.db import models, DataError, IntegrityError  # , connection,
@@ -35,7 +36,6 @@ from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 from timezone_field import TimeZoneField
 from mapbox_location_field.models import LocationField
-from cuser.middleware import CuserMiddleware
 from relativefilepathfield.fields import RelativeFilePathField
 
 from django_model_admin_fields import AdminModel
@@ -43,9 +43,9 @@ from django_model_privacy_mixin import PrivacyMixIn
 
 from django_generic_view_extensions import FIELD_LINK_CLASS
 from django_generic_view_extensions.options import flt, osf
-from django_generic_view_extensions.model import field_render, link_target_url, TimeZoneMixIn
+from django_generic_view_extensions.model import field_render, link_target_url, safe_get, TimeZoneMixIn
 from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.datetime import time_str, fix_time_zone
+from django_generic_view_extensions.datetime import time_str, make_aware, safe_tz
 from django_generic_view_extensions.queryset import get_SQL
 from django_generic_view_extensions.util import AssertLog, pythonify
 from django_generic_view_extensions.html import NEVER
@@ -86,45 +86,14 @@ MY_PSEUDO_LEAGUE = "Mine"
 
 MIN_TIME_DELTA = timedelta.resolution  # A nominally smallest time delta we'll consider.
 
+MISSING_VALUE = -1  # Used primarily for PKs (which are  never negative)
 
-#===============================================================================
-# A structured approach to presenting leaderboards
-#
-# The central purpose of all these models is the storing of data for and
-# presentation of leaderboards.
-#===============================================================================
-class LEADERBOARD_STYLE(Enum):
-    none = 0  # An ordered list of names
-    data = 1  # An ordered list of tuples (playerid, rating, mu, sigma, plays, wins) - For a data store (can recreate any other style from this)
-    rating = 2  # An ordered list of tuples (name, rating)
-    ratings = 3  # An ordered list of tuples (name, rating, mu, sigma)
-    simple = 4  # An ordered list of tuples (name, rating, mu, sigma, plays, wins)
-    rich = 5  # simple plus lots more player info for rendering rich leaderboards.
-
-
-class LEADERBOARD_STRUCTURE(Enum):
-    '''
-    Leaderboards are passed around in a few different structures. We can use this enum to describe a given
-    structure to inform a function (that supports it) where to find the juice, the player list.
-    '''
-    player_list = 0  # A simple list of player tuples
-    session_wrapped_player_list = 1  # A session tuple containing an player_list as an element
-    game_wrapped_player_list = 2  # A game tuple containing an player_list as an element
-    game_wrapped_session_wrapped_player_list = 3  # A session tuple containing an session_wrapped_player_list as an element
-
-    # This is defined by what Session.leaderboard_snapshot() produces
-    session_data_element = 8  # In a session wrapper, which element contains the player_list
-
-    # This is defined by what Game.wrapped_leaderboard() produces
-    game_data_element = 6  # In a game wrapper, which element caries the dataa (either session wrapper, or player_list)
 
 #===============================================================================
 # A structured approach to rating rebuild logging
 #
 # An approach to defining/recording what triggers a rating rebuild
 #===============================================================================
-
-
 class RATING_REBUILD_TRIGGER(Enum):
     user_request = 0  # A rating rebuild was explicitly requested by an authorized user.
     session_add = 1  # A rating rebuild was triggered by a newly added session
@@ -133,10 +102,12 @@ class RATING_REBUILD_TRIGGER(Enum):
 
     choices = (
         (user_request, 'User Request'),
-        (session_add, 'User Request'),
-        (session_edit, 'User Request'),
-        (session_delete, 'User Request')
+        (session_add, 'Session Add'),
+        (session_edit, 'Session Edit'),
+        (session_delete, 'Session Delete')
     )
+
+    labels = {c[0]:c[1] for c in choices}
 
 #===============================================================================
 # The support models, that store all the play records that are needed to
@@ -226,11 +197,11 @@ class RatingModel(TimeZoneMixIn, AdminModel):
 
     @property
     def last_play_local(self):
-        return fix_time_zone(self.last_play, self.last_play_tz)
+        return self.last_play.astimezone(safe_tz(self.last_play_tz))
 
     @property
     def last_victory_local(self):
-        return fix_time_zone(self.last_victory, self.last_victory_tz)
+        return self.last_victory.astimezone(safe_tz(self.last_victory_tz))
 
     def __unicode__(self): return  f'{self.player} - {self.game} - {self.trueskill_eta:.1f} teeth'
 
@@ -402,7 +373,7 @@ class Rating(RatingModel):
         return r
 
     @classmethod
-    def leaderboards(cls, games, style=LEADERBOARD_STYLE.none) -> dict:
+    def leaderboards(cls, games, style=LB_PLAYER_LIST_STYLE.none) -> dict:
         '''
         returns Game.leaderboard(style) for each game supplied in a dict keyed on game.pk
 
@@ -487,7 +458,9 @@ class Rating(RatingModel):
     @classmethod
     def rebuild(cls, Game=None, From=None, Sessions=None, Reason=None, Trigger=None, Session=None):
         '''
-        Rebuild the ratings for a specific game from a specific time
+        Rebuild the ratings for a specific game from a specific time.
+
+        Returns a RebuildLog instance (with an html attribute if not triggered by a session)
 
         If neither Game nor From nor Sessions are specified, rebuilds ALL ratings
         If both Game and From specified rebuilds ratings only for that game for sessions from that datetime
@@ -495,7 +468,6 @@ class Rating(RatingModel):
         If only From is specified rebuilds ratings for all games from that datetime
         If only Sessions is specified rebuilds only the nominated Sessions
 
-        :param cls:
         :param Game:     A Game object
         :param From:     A datetime
         :param Sessions: A list of Session objects or a QuerySet of Sessions.
@@ -549,7 +521,6 @@ class Rating(RatingModel):
         rlog = RebuildLog(game=Game,
                           date_time_from=first_session.date_time_local,
                           ratings=len(sessions),
-                          rebuilt_by=CuserMiddleware.get_user(),
                           reason=Reason)
 
         # Record what triggered the rebuild
@@ -576,7 +547,7 @@ class Rating(RatingModel):
         backedup = set()
         for s in sessions:
             # Backup a rating only the first time we encounter it
-            # Ratings apply to a player/game pair and we wnat a backup
+            # Ratings apply to a player/game pair and we want a backup
             # of the rating before this rebuild process starts to
             # compare the final ratings to. We only want to backup
             # ratings that are being updated though hence first time
@@ -604,7 +575,7 @@ class Rating(RatingModel):
             if settings.DEBUG:
                 log.debug(f"Resetting rating for {rating}")
             r = Rating.get(*rating)  # Unpack the tuple to player, game
-            r.reset()
+            r.reset()  # Sets the rating to that after the ast played session in that game/player that the rating is for
             r.save()
 
         # Desist from bypassing admin field updates
@@ -620,21 +591,17 @@ class Rating(RatingModel):
         # And save the complete Rebuild Log entry
         rlog.save()
 
-        # If an edit to a session is provided as a trigger for rebuild, save a Change Log as well.
-        if not Session is None:
-            clog = ChangeLog.create(Session, rlog)
-            clog.save()
+        if Trigger == RATING_REBUILD_TRIGGER.user_request:
+            if settings.DEBUG:
+                log.debug("Generating HTML diff.")
+
+            # Add an html attribute to rlog (not a database field) so that the caller can render a report.
+            rlog.html = BackupRating.html_diff()
 
         if settings.DEBUG:
             log.debug("Done.")
 
-        # If no Session is provided we've been called by a view that is dedicated to rebuilds, return a HTML report on changes
-        if Session is None:
-            return BackupRating.html_diff()
-
-        # Else return the ChangeLog we saved for the session
-        else:
-            return clog
+        return rlog
 
     @classmethod
     def estimate_rebuild_cost(cls, n=1):
@@ -860,7 +827,7 @@ class League(AdminModel):
         return self.leaderboard()
 
     @property_method
-    def leaderboard(self, game=None, asat=None, style=LEADERBOARD_STYLE.none) -> tuple:
+    def leaderboard(self, game=None, asat=None, style=LB_PLAYER_LIST_STYLE.none) -> tuple:
         '''
         Return a leaderboard for a specified game or if no game is provided, a dictionary of such
         lists keyed on game.
@@ -1222,7 +1189,7 @@ class Player(PrivacyMixIn, AdminModel):
         return r
 
     def leaderboard_position(self, game, leagues=[]):
-        lb = game.leaderboard(leagues, style=LEADERBOARD_STYLE.data)
+        lb = game.leaderboard(leagues, style=LB_PLAYER_LIST_STYLE.data)
         for pos, entry in enumerate(lb):
             if entry[0] == self.pk:
                 return pos + 1  # pos is 0 based, leaderboard positions are 1 based
@@ -1724,11 +1691,11 @@ class Game(AdminModel):
         return pc
 
     @property_method
-    def leaderboard(self, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
+    def leaderboard(self, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
         '''
         Return a a player list.
 
-        The structure is described by LEADERBOARD_STRUCTURE.player_list
+        The structure is described by LB_STRUCTURE.player_list
 
         This is an ordered tuple of tuples (one per player) that represents the leaderboard for
         specified leagues, or for all leagues if None is specified. As at a given date/time if
@@ -1738,8 +1705,8 @@ class Game(AdminModel):
         :param leagues:   Show only players in any of these leagues if specified, else in any league (a single league or a list of leagues)
         :param asat:      Show the leaderboard as it was at this time rather than now, if specified
         :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options.
-        :param style      The style of leaderboard to return, a LEADERBOARD_STYLE value
-                          LEADERBOARD_STYLE.rich is special in that it will ignore league filtering and name formatting
+        :param style      The style of leaderboard to return, a LB_PLAYER_LIST_STYLE value
+                          LB_PLAYER_LIST_STYLE.rich is special in that it will ignore league filtering and name formatting
                           providing rich data sufficent for the recipient to do that (choose what leagues to present and
                           how to present names.
         :param data:      Optionally this can provide a leaderboard in the style LEADERBOARD.data to use as source rather
@@ -1760,9 +1727,9 @@ class Game(AdminModel):
         if asat and data:
             raise ValueError(f"Game.leaderboards: Expected either asat or data and not both. I got {asat=} and {data=}.")
 
-        if style == LEADERBOARD_STYLE.rich:
+        if style == LB_PLAYER_LIST_STYLE.rich:
             # The rich syle contains extra info which allows the recipient to choose the name format (all name styles are included)
-            if names != "nick":
+            if names != "nick":  # The default value
                 raise ValueError(f"Game.leaderboards requested in rich style. Expected no names submitted but got: {names}")
             # The rich syle contains extra info which allows the recipient to filter on league (each player has their leagues identified in the board)
             if leagues:
@@ -1780,7 +1747,10 @@ class Game(AdminModel):
                 log.debug(f"\t\tValidated leagues")
 
         if data:
-            ratings = data
+            if isinstance(data, str):
+                ratings = json.loads(data)
+            else:
+                ratings = data
         elif asat:
             # Build leaderboard as at a given time as specified
             # Can't use the Ratings model as that stores current ratings. Instead use the Performance
@@ -1806,13 +1776,12 @@ class Game(AdminModel):
 
         # Now build a leaderboard from all the ratings for players (in this league) at this game.
         lb = []
-        for i, r in enumerate(ratings):
+        for r in ratings:
             # r may be a Rating object or a Performance object. They both have a player
             # but other metadata is specific. So we fetch them based on their accessibility
             if isinstance(r, Rating):
                 player = r.player
                 player_pk = player.pk
-                player_name = player.name(names)
                 trueskill_eta = r.trueskill_eta
                 trueskill_mu = r.trueskill_mu
                 trueskill_sigma = r.trueskill_sigma
@@ -1822,7 +1791,6 @@ class Game(AdminModel):
             elif isinstance(r, Performance):
                 player = r.player
                 player_pk = player.pk
-                player_name = player.name(names)
                 trueskill_eta = r.trueskill_eta_after
                 trueskill_mu = r.trueskill_mu_after
                 trueskill_sigma = r.trueskill_sigma_after
@@ -1830,73 +1798,38 @@ class Game(AdminModel):
                 victories = r.victory_count
                 last_play = r.session.date_time_local
             elif isinstance(r, tuple) or isinstance(r, list):
-                # Unpack the data tuple (as defined below where LEADERBOARD_STYLE.data tuples are created.
+                # Unpack the data tuple (as defined below where LB_PLAYER_LIST_STYLE.data tuples are created).
                 player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories = r
-                try:
-                    player = Player.objects.get(pk=player_pk)
-                    player_name = player.name(names)
-                except Player.DoesNotExist:
-                    player = None  # TODO: what to do?
-                    player_name = "<unknown>"
-
                 # TODO: consider the consequences of this choice of last_play in the rebuild log reporting.
                 last_play = self.last_session.date_time_local
             else:
                 raise ValueError(f"Progamming error in Game.leaderboard(). Unextected rating type: {type(r)}.")
 
-            if style == LEADERBOARD_STYLE.none:
-                lb_entry = player_name
-            elif style == LEADERBOARD_STYLE.data:
-                lb_entry = (player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
-            elif style == LEADERBOARD_STYLE.rating:
-                lb_entry = (player_name, trueskill_eta)
-            elif style == LEADERBOARD_STYLE.ratings:
-                lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma)
-            elif style == LEADERBOARD_STYLE.simple:
-                lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
-            elif style == LEADERBOARD_STYLE.rich:
-                # There's a slim chance that "player" does not exist (notably when 'data' is provided
-                # So access player properties cautiously with fallback.
-                lb_entry = (i + 1,
-                            player_pk,
-                            player.BGGname if player else '',
-                            player.name('nick') if player else '',
-                            player.name('full') if player else '',
-                            player.name('complete') if player else '',
-                            trueskill_eta,
-                            trueskill_mu,
-                            trueskill_sigma,
-                            plays,
-                            victories,
-                            last_play,
-                            [l.pk for l in player.leagues.all()] if player else [])
-            else:
-                raise ValueError(f"Programming error in Game.leaderboard(): Illegal style submitted: {style}")
-
-            lb.append(lb_entry)
+            player_tuple = (player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories, last_play)
+            lb.append(player_tuple)
 
         if settings.DEBUG:
             log.debug(f"\t\tBuilt leaderboard.")
 
-        return None if len(lb) == 0 else tuple(lb)  # Return a tuple (immutable list)
+        return None if len(lb) == 0 else styled_player_list(lb, style=style, names=names)
 
     @property_method
-    def wrapped_leaderboard(self, leaderboard=None, snap=False, hide_baseline=False, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
+    def wrapped_leaderboard(self, leaderboard=None, snap=False, hide_baseline=False, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
         '''
         Returns a leaderboard (either a single board or a list of session snapshots) wrapped
         in a game propery header.
 
         The structure is decribed as
-            LEADERBOARD_STRUCTURE.game_wrapped_player_list or
-            LEADERBOARD_STRUCTURE.game_wrapped_session_wrapped_player_list
+            LB_STRUCTURE.game_wrapped_player_list or
+            LB_STRUCTURE.game_wrapped_session_wrapped_player_list
 
             depending on the stucturer of the supplied leaderboard which is either a board or a list o snapshots with structure:
 
-            LEADERBOARD_STRUCTURE.player_list
+            LB_STRUCTURE.player_list
 
             or a list of snapshots with structure:
 
-            LEADERBOARD_STRUCTURE.session_wrapped_player_list
+            LB_STRUCTURE.session_wrapped_player_list
 
         A central defintion of the first tier of a the AJAX leaderboard view,
         a game header, which wraps a data delivery, the data being a
@@ -1911,10 +1844,11 @@ class Game(AdminModel):
             game.name
             total number of plays
             total number sessions played
-            data format identifier
+            A flag True if data is a list, false if it is only a single value. The value is either a player_list or session_wrapped_player_list.
+            A flag True to hide display of a baseline snapshot
             data (a playerlist or a session snapshot - session wrapped player list)
 
-        :param leaderboard:  a leaderboard or a list of leaderboard snaphots for this game
+        :param leaderboard:  a leaderboard or a list of session wrapped leaderboard (snaphots) for this game
         :param snap:         if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
         :param hide_baseline:if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
         :param leagues:      self.leaderboard argument passed through
@@ -1930,6 +1864,12 @@ class Game(AdminModel):
         # Permit submission of an empty tuple () to return an empty tuple.
         if leaderboard:
             counts = self.play_counts()
+
+            # TODO: Respect styles. IMportantly .data shoudl be minimlist reoctructable.
+            # none might mean no wrapper
+            # data drops the BGGid and name
+            # rating and ratings map to simple
+            # simple and rich are as currently implemented.
             return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, hide_baseline, leaderboard)
         else:
             return ()
@@ -2258,7 +2198,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
     @property
     def date_time_local(self):
-        return fix_time_zone(self.date_time, self.date_time_tz)
+        return self.date_time.astimezone(safe_tz(self.date_time_tz))
 
     @property
     def num_competitors(self) -> int:
@@ -2809,10 +2749,10 @@ class Session(TimeZoneMixIn, AdminModel):
 
         return html
 
-    def leaderboard(self, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.rich, data=None):
+    def leaderboard(self, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.rich, data=None):
         '''
         Returns the leaderboard for this session's game as at a given time, in the form of
-        LEADERBOARD_STRUCTURE.player_list
+        LB_STRUCTURE.player_list
 
         Primarily to support self.leaderboard_before() and self.leaderboard_after()
 
@@ -2831,32 +2771,50 @@ class Session(TimeZoneMixIn, AdminModel):
         return self.game.leaderboard(leagues, asat, names, style, data)
 
     @property_method
-    def leaderboard_before(self, style=LEADERBOARD_STYLE.rich) -> tuple:
+    def leaderboard_before(self, style=LB_PLAYER_LIST_STYLE.rich, wrap=False) -> tuple:
         '''
         Returns the leaderboard as it was immediately before this session, in the form of
-        LEADERBOARD_STRUCTURE.player_list
+        LB_STRUCTURE.player_list
 
-        :param style: a LEADERBOARD_STYLE to use.
+        :param style: a LB_PLAYER_LIST_STYLE to use.
+        :param wrap: If true puts the previous sessions session wrapper around the leaderboard.
         '''
-        return self.leaderboard(asat=self.date_time - MIN_TIME_DELTA, style=style)
+        session = self.previous_session()
+        player_list = self.leaderboard(asat=self.date_time - MIN_TIME_DELTA, style=style)
+
+        if wrap:
+            leaderboard = session.wrapped_leaderboard(player_list)
+        else:
+            leaderboard = player_list
+
+        return leaderboard
 
     @property_method
-    def leaderboard_after(self, style=LEADERBOARD_STYLE.rich) -> tuple:
+    def leaderboard_after(self, style=LB_PLAYER_LIST_STYLE.rich, wrap=False) -> tuple:
         '''
         Returns the leaderboard as it was immediately after this session, in the form of
-        LEADERBOARD_STRUCTURE.player_list
+        LB_STRUCTURE.player_list
 
-        :param style: a LEADERBOARD_STYLE to use.
+        :param style: a LB_PLAYER_LIST_STYLE to use.
+        :param wrap: If true puts this sessions session wrapper around the leaderboard.
         '''
-        return self.leaderboard(asat=self.date_time, style=style)
+        session = self
+        player_list = self.leaderboard(asat=self.date_time, style=style)
+
+        if wrap:
+            leaderboard = session.wrapped_leaderboard(player_list)
+        else:
+            leaderboard = player_list
+
+        return leaderboard
 
     @property_method
-    def wrapped_leaderboard(self, leaderboard=None, leagues=[], asat=None, names="nick", style=LEADERBOARD_STYLE.simple, data=None) -> tuple:
+    def wrapped_leaderboard(self, leaderboard=None, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
         '''
         Given a leaderboard with structure
-            LEADERBOARD_STRUCTURE.player_list
+            LB_STRUCTURE.player_list
         will wrap it in this session's data to return a board with structure
-            LEADERBOARD_STRUCTURE.session_wrapped_player_list
+            LB_STRUCTURE.session_wrapped_player_list
 
         A session wrapper contains:
             session.pk,
@@ -2886,6 +2844,16 @@ class Session(TimeZoneMixIn, AdminModel):
         # Get the play couns as at asat
         counts = self.game.play_counts(asat=asat)
 
+        # TODO: Respect the style
+        # This is .rich
+        # .data should be minimlist to enable reconstruction
+        # Consider how others would be. Problem is the analysis blocks are rich and not great for storing in ChangeLogs.
+        # It is they that probably need to respect the rich vs simple vs data style.
+        # none might suggest no wrapping?
+        # data be minimalist
+        # rating and ratings could mape to simple
+        # rich is the current default
+
         # Build the snapshot tuple
         return (self.pk,
                 localize(localtime(self.date_time)),
@@ -2902,12 +2870,20 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         Prepares a leaderboard snapshot for passing to a view for rendering.
 
-        The structure is decribed as LEADERBOARD_STRUCTURE.session_wrapped_player_list
+        The structure is decribed as LB_STRUCTURE.session_wrapped_player_list
 
-        That is: the leaderboard in this game as it stood just after
-        this session was played.
+        That is: the leaderboard in this game as it stood just after this session was played.
 
         Such snapshots are often delivered inside a game wrapper.
+
+        This is differs from wrapped_leaderboard only in that it is a shorthand for a
+        common use case and includes a diagnostic snapshot (the latest game board) if
+        this is the last session in this game and the latest board is not the same.
+
+        To clarify, the snapshot builds the board from the latest performances of
+        all players at the time this session was played, while the latest game board
+        uses the ratings as they stand. A difference suggests the ratings don't reflect
+        the performances and a data integrity issue.
         '''
 
         # Get the leaderboard asat the time of this session.
@@ -2923,26 +2899,70 @@ class Session(TimeZoneMixIn, AdminModel):
         # select the name format at render time.
 
         if settings.DEBUG:
-            log.debug(f"\t\t\tBuilding {self.pk}")
+            log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk}")
 
         # Build the snapshot tuple (session wrapped leaderboard)
-        leaderboard = self.leaderboard_after()
+        leaderboard = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.rich)  # returns LB_STRUCTURE.player_list
         snapshot = self.wrapped_leaderboard(leaderboard)
+
+        return snapshot
+
+    @property_method
+    def leaderboard_impact(self, style=LB_PLAYER_LIST_STYLE.rich) -> tuple:
+        '''
+        Returns a game_wrapped_session_wrapped pair of player_lists representing the leaderboard
+        for this session game as it stood before the session was played, and after it was played.
+        '''
+        before = self.leaderboard_before(style=style, wrap=True)  # session wrapped
+        after = self.leaderboard_after(style=style, wrap=True)  # session wrapped
 
         # Append the latest only for diagnostics if it's expected to be same and isn't! So we have the two to compare diagnostically!
         # if this is the latest sesion, then the latest leaderbouard shoudl be the same as this session's snapshot!
         if self.is_latest:
-            latest = self.game.leaderboard(style=LEADERBOARD_STYLE.rich)
-            include_latest = not leaderboard == latest
-            # breakpoint()  # What to do? Bare minimum report on a view_impact. Maybe log and fix?
+            player_list = self.game.leaderboard(style=style)  # returns LB_STRUCTURE.player_list
+
+            # Session wrap it for consistency of structure (even though teh session wrapper is faux, meaning
+            # the latest board for this game is not from this session if it's not the same as this session after board)
+            latest = self.wrapped_leaderboard(player_list)
+
+            include_latest = not after == latest
+
+            if include_latest:
+                # TODO: For now just a diagnostic check but what should be do in general?
+                # Report it on the impact view? Log it? Fix it?
+                # breakpoint()
+                pass
         else:
             include_latest = False
 
+        # Build the tuple of session wrapped boards
         if include_latest:
-            # The latest is of cours enot session_wrapped.
-            snapshot = snapshot + (latest,)
+            sw_boards = (after, before, latest)
+        else:
+            sw_boards = (after, before)
 
-        return snapshot
+        return self.game.wrapped_leaderboard(sw_boards, snap=True, hide_baseline=False)
+
+    @property
+    def player_ranking_impact(self) -> dict:
+        '''
+        Returns a dict keyed on player (whose ratings were affected by by this rebuild) whose value is their rank change on the leaderboard.
+        '''
+
+        before = self.leaderboard_before(style=LB_PLAYER_LIST_STYLE.data, wrap=False)  # NOT session wrapped
+        after = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.data, wrap=False)  # NOT session wrapped
+
+        deltas = {}
+        old = player_rankings(before)
+        new = player_rankings(after)
+
+        for p in old:
+            if not new[p] == old[p]:
+                delta = new[p] - old[p]
+                P = safe_get(Player, p)
+                deltas[P] = delta
+
+        return deltas
 
     def _html_rankers_ol(self, ordered_rankers, use_rank, expected_performance, name_style, ol_style="margin-left: 8ch;"):
         '''
@@ -3556,18 +3576,14 @@ class Session(TimeZoneMixIn, AdminModel):
         detail += u'</OL>'
         return detail
 
-    def __json__(self, form_data=None):
+    @property
+    def dict_from_object(self):
         '''
-        A basic JSON serializer
-
-        If form data is supplied willl build a chnage description by replacing each value
-        with a 2-tuple containing the object value and the form value and add a an element
-        identifying the changed fields.
-
-        :param form_data: optionally submitted for data
+        Returns a dictionary that represents this object (so that it can be serialized).
         '''
         # Convert the session to serializable form (a dict)
         ranks = [r.pk for r in self.ranks.all().order_by("rank")]
+        rankings = [r.rank for r in self.ranks.all().order_by("rank")]
 
         # rankers is a list of team or player Pks based on the mode
         if self.team_play:
@@ -3577,20 +3593,136 @@ class Session(TimeZoneMixIn, AdminModel):
 
         performances = [p.pk for p in self.performances.all().order_by("player__pk")]
         performers = [p.player.pk for p in self.performances.all().order_by("player__pk")]
+        weights = [p.partial_play_weighting for p in self.performances.all().order_by("player__pk")]
 
-        sform = { "model": self._meta.model.__name__,
-                  "id": self.pk,
-                  "game": self.game.pk,
-                  "time": self.date_time_local,
-                  "league": self.league.pk,
-                  "location": self.location.pk,
-                  "team_play": self.team_play,
-                  "ranks": ranks,
-                  "rankers": rankers,
-                  "performances": performances,
-                  "performers": performers}
+        # Createa serializeable form of the (rich) object
+        return { "model": self._meta.model.__name__,
+                 "id": self.pk,
+                 "game": self.game.pk,
+                 "time": self.date_time_local,
+                 "league": self.league.pk,
+                 "location": self.location.pk,
+                 "team_play": self.team_play,
+                 "ranks": ranks,
+                 "rankings": rankings,
+                 "rankers": rankers,
+                 "performances": performances,
+                 "performers": performers,
+                 "weights": weights}
 
-        return json.dumps(sform, cls=DjangoJSONEncoder)
+    @classmethod
+    def dict_from_form(cls, form_data, pk=None):
+        '''
+        Returns a dictionary that represents this form data supplied.
+
+        This centralises form parsing for this model and provides a
+        dict that compares with dict_from_object() above to facilitate
+        change detection on form submissions.
+
+        :param form_data: A Django QueryDict representing a form submission
+        :param pk: Optionally a Prinary Key to add to the dict
+        '''
+        # Extract the form data we need
+        game = int(form_data.get("game", MISSING_VALUE))
+        time = make_aware(parser.parse(form_data.get("date_time", NEVER)))
+        league = int(form_data.get("league", MISSING_VALUE))
+        location = int(form_data.get("location", MISSING_VALUE))
+        team_play = 'team_play' in form_data
+
+        # We expect the ranks and performances to arrive in Django formsets
+        # The forms in the formsets are not in any guranteed order so we collect
+        # data first and sort it.
+        num_ranks = int(form_data.get('Rank-TOTAL_FORMS', 0))
+        rank_data = sorted([(int(form_data.get(f'Rank-{r}-id', MISSING_VALUE)),
+                             int(form_data.get(f'Rank-{r}-rank', MISSING_VALUE)),
+                             int(form_data.get(f'Rank-{r}-team' if team_play else f'Rank-{r}-player', MISSING_VALUE))
+                             ) for r in range(num_ranks)], key=lambda e: e[1])  # Sorted by rank
+
+        num_performances = int(form_data.get('Performance-TOTAL_FORMS', 0))
+        performance_data = sorted([(int(form_data.get(f'Performance-{p}-id', MISSING_VALUE)),
+                             int(form_data.get(f'Performance-{p}-player', MISSING_VALUE)),
+                             float(form_data.get(f'Performance-{p}-partial_play_weighting', MISSING_VALUE))
+                             ) for p in range(num_performances)], key=lambda e: e[1])  # Sorted by player ID
+
+        return { "model": cls.__name__,
+                 "id": pk if pk else MISSING_VALUE,
+                 "game": game,
+                 "time": time,
+                 "league": league,
+                 "location": location,
+                 "team_play": team_play,
+                 "ranks": [r[0] for r in rank_data],
+                 "rankings": [r[1] for r in rank_data],
+                 "rankers": [r[2] for r in rank_data],
+                 "performances": [p[0] for p in performance_data],
+                 "performers": [p[1] for p in performance_data],
+                 "weights": [p[2] for p in performance_data]}
+
+    @property_method
+    def dict_delta(self, form_data=None):
+        '''
+        Given form data (a QueryDict) will return a dict that merges
+        dict_from_object and dict_from_form respectively into one delta
+        dict that captures a summary of changes.
+
+        If no form_data is supplied just returns dict_from_object.
+
+        :param form_data: A Django QueryDict representing a form submission
+        '''
+        from_object = self.dict_from_object
+        result = from_object.copy()
+
+        if form_data:
+            # dict_from_form is a class method so it is available when no model instance is.
+            from_form = self._meta.model.dict_from_form(form_data)
+
+            # Find what changed and take note of it (replaceing the data bvalue with two-tuple and adding the key to the changed set)
+            changes = set()
+
+            def check(key):
+                if from_form[key] != from_object[key]:
+                    # If the form fails to specifiy an Id we assume it refers to
+                    # this instance and don't note the absence as a change
+                    if not (key == "id" and from_form[key] == MISSING_VALUE):
+                        changes.add(key)
+                    result[key] = (from_object[key], from_form[key])
+
+            for key in result:
+                check(key)
+
+            # Some changes are expected to have no impact on leaderboards (for example different location
+            # and league - as boards are global and leagues only used for filtering views). Other changes
+            # impact the leaderboard. If any of those chnage we add a psudo_field "leaderboard" in changes.
+            cause_leaderboard_change = ["game", "team_play", "rankers", "performers", "weights"]
+            for change in changes:
+                if change in cause_leaderboard_change:
+                    changes.add("leaderboard")
+                    break
+
+            # The date_time is a little trickier as it can change as long as the immediately preceding session stays
+            # the same. If that changes, because this date_time change brings it before the existing one puts anotehr
+            # session there (by pushing this session past another) then it will change the leaderboard_before and
+            # hence the leaderboard_after. We can't know this from the delta but we can divine it from this session.
+
+            result["changes"] = tuple(changes)
+
+        return result
+
+    def __json__(self, form_data=None, delta=None):
+        '''
+        A basic JSON serializer
+
+        If form data is supplied willl build a chnage description by replacing each changed
+        value with a 2-tuple containing the object value and recording which values changed
+        (and are now 2-tuples) in the "changes" element.
+
+        :param form_data: optionally submitted form data. A Django QueryDict.
+        :param delta: a self.dict_delta if it's already been produced which is used in place of form_data and simply JSONified.
+        '''
+        if not delta:
+            delta = self.dict_delta(form_data)
+
+        return json.dumps(delta, cls=DjangoJSONEncoder)
 
     def check_integrity(self, passthru=True):
         '''
@@ -4365,6 +4497,20 @@ class ChangeLog(AdminModel):
         a list of ranks (one per ranker, being a team or player depending on mode)
         a list of performances (one per performer, being a player).
 
+
+
+    A given session has two leaderboard of interest, the state of the game's leaderboard before that
+    session was played and after. This is what provides a measure of the impact that session has on a
+    leaderboard (the state of the leaderboard before the session is of course its state immediately
+    after the previous session of that game. This is porovided by session.leaderboard_impact().
+
+    Given we want to record the impact of that session before and after this logged change we have 2
+    such impacts to store (4 leaderboard snapshots). There could be some duplication of data there,
+    specifically if the session game and date_time are not rebuild triggering (changed game or date_time
+    changed to alter sequence of sessions) then the two before snapshot sin these impacts will be
+    identical. In the rather odd case of a logged change that has no impact on the after boards they
+    will  be identical too (though hard to imagine a change worth logging that has no impact!).
+
     TODO: This is a place to store impacts for reporting and presentation for review before
     confirming a commit. That will rely on a transaction manager (in the making) which can hold
     a database transaction open across a few views.
@@ -4376,39 +4522,160 @@ class ChangeLog(AdminModel):
     # The session that caused the impact (if it still exists) - if it was deleted it won't be around any more.
     session = models.ForeignKey(Session, verbose_name='Session', related_name='change_impacts', null=True, blank=True, on_delete=models.SET_NULL)  # If the session is deleted we may NEED the impact of that!
 
-    # TODO add a chage_summary field that summarises all the changes
-    # We creat clogs in two places, in UpdateViewExtended and in  Rating.rebuild
-    # On updates we could sumarise changes in a dict keyed on field with 2 tuples, before and after.
-    # That could be very useful!
-
-    # A record of the game after the change. Kept in the Change log as it defines the game for which the next two fields are relevant.
-    # And because session.game could be different (by subsequent edits for example).
-    game = models.ForeignKey('Game', null=True, blank=True, related_name='session_change_logs', on_delete=models.CASCADE)  # If a game is deleted and this was a game specific log, we can delete it
-
     # A JSON field that stores a change summary produced by Session.__json__()
+    # This shoudl saliently record which fields changed and for those that changed the value before and after the change
     changes = models.TextField(verbose_name='Changes logged for this session', null=True)
 
-    # Space to store 2 JSON leaderboard snapshots
-    leaderboard_immediately_before = models.TextField(verbose_name='Leaderboard before this session', null=True)
-    leaderboard_immediately_after = models.TextField(verbose_name='Leaderboard after this session', null=True)
+    # Any changes to the game a session relates are centrally important to note because
+    # it determines whcih leaderboards are impacted. session.game of course identifies the
+    # game but that is the game the session points to now (and it may have been edited again
+    # after this change). An unlikely scenario of course, but if it happens we want to know
+    # and so a log is doubly important.
+    game_before_change = models.ForeignKey(Game, null=True, blank=True, related_name='session_before_change_logs', on_delete=models.SET_NULL)
+    game_after_change = models.ForeignKey(Game, null=True, blank=True, related_name='session_after_change_logs', on_delete=models.SET_NULL)
+
+    # Space to store 2 JSON leaderboard impacts, one before the change and one after
+    leaderboard_impact_before_change = models.TextField(verbose_name='Leaderboard impact before the change', null=True)
+    leaderboard_impact_after_change = models.TextField(verbose_name='Leaderboard impact after the change', null=True)
+
+    # True if the logged change impacted a leaderboard
+    # i.e. if leaderboard_impact_after_change and leaderboard_impact_before_change are identical
+    # The impacts can be large JSON strings and this flag registers our expectation that they are the same
+    # That is, that no leaderboard impacting change was made. This is also stored in changes above but this
+    # is an extract from that for easy querying and filterig of logs that only have impact or not.Which
+    # can be useful for expiring logs that have low utility.
+    has_impact = models.BooleanField('This change impacted the leaderboard')
 
     # If this change triggered a rebuild a pointer to the log of that rebuild.
-    # A session change (create, update or delete) that does not trigger a rebuild
-    # does not need a ChangeLog entry, so every ChangeLog entry should have a rebuild_log
     rebuild_log = models.ForeignKey('RebuildLog', null=True, on_delete=models.SET_NULL, default=None, related_name='change_logs')
+    # change_logs points back to here from RebuildLog
+
+    @property_method
+    def Leaderboard_impact_before_change(self, unwrap=None):
+        '''
+        Returns the leaderboard impact before the change unpacked into a Python tuple.
+
+        Note that before and after have two contexts.
+            Before and after teh change that was logged.
+            Before and after the logged session was played.
+        We endeavour to be clear at every stage which before and after we're talking about.
+
+        Either as a LB_STRUCTURE.game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
+        or as a LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
+
+        :param unwrap: If "before" or "after" unwraps the before or after player_list
+        '''
+        if self.leaderboard_impact_before_change:
+            igd = LB_STRUCTURE.game_data_element.value
+            isd = LB_STRUCTURE.session_data_element.value
+            leaderboard = immutable(json.loads(self.leaderboard_impact_before_change))
+            if unwrap == "before":
+                return leaderboard[igd][0][isd]
+            elif unwrap == "after":
+                return leaderboard[igd][1][isd]
+            else:
+                return leaderboard
+        else:
+            return None
+
+    @property_method
+    def Leaderboard_impact_after_change(self, unwrap=None):
+        '''
+        Returns the leaderboard impact after the change unpacked into a Python tuple.
+
+        Note that before and after have two contexts.
+            Before and after teh change that was logged.
+            Before and after the logged session was played.
+        We endeavour to be clear at every stage which before and after we're talking about.
+
+        Either as a LB_STRUCTURE.game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
+        or as a LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
+
+        :param unwrap: If "before" or "after" unwraps the before or after player_list
+        '''
+        if self.leaderboard_impact_after_change:
+            igd = LB_STRUCTURE.game_data_element.value
+            isd = LB_STRUCTURE.session_data_element.value
+            leaderboard = immutable(json.loads(self.leaderboard_impact_after_change))
+            if unwrap == "before":
+                return leaderboard[igd][0][isd]
+            elif unwrap == "after":
+                return leaderboard[igd][1][isd]
+            else:
+                return leaderboard
+        else:
+            return None
+
+    def leaderboard_after(self, game):
+        '''
+        Returns the leaderboard after session play (in an impact) for the specified game if it is
+        in self.Games or identified by "before" or "after" (the change)
+
+        :param game: either a Game instance from self.Games, or "before" or "after"
+        '''
+        lb_before_change = self.Leaderboard_impact_before_change(unwrap="after")
+        lb_after_change = self.Leaderboard_impact_after_change(unwrap="after")
+
+        # We check for the game fter change first (which 99.999% of the time is the same
+        # as game before the change anyhow, I mena how often does one enter the game
+        # erroneously needing an after edit) becaiuse if the game wasn't changed then
+        # it's the after session board after the we want.
+        if game == self.game_after_change or game == "after":
+            return lb_after_change
+
+        # Only if the game chnaged, are we interested in checking the before
+        # change game as well and if we have that one, we want its leaderboard impact.
+        elif game == self.game_before_change or game == "before":
+            return lb_before_change
+        else:
+            return None
+
+    @property
+    def Changes(self):
+        if self.changes:
+            return json.loads(self.changes)
+        else:
+            return None
+
+    @property
+    def Games(self):
+        '''
+        Returns a tuple of game instances affected by the chnage
+        '''
+        return (self.game_before_change,) if self.game_after_change == self.game_before_change else (self.game_before_change, self.game_after_change)
 
     @classmethod
-    def create(cls, session, rebuild_log=None):
+    def create(cls, session=None, change_summary=None, rebuild_log=None):
         '''
-        :param session: A Session object, the change to which we are logging. Leaderboards are saved in data format before and after states.
+        Initial creation of a ChangeLog, with the session provided in its before change state.
+
+        Should be called before a submitted form is saved (so the session is in its before change state).
+
+        All args are optional and can be saved now (at time of creation) or later (at time of update).
+        Either way is fine.
+
+        :param session:        A Session object, the change to which we are logging.
+        :param change_summary: A JSON log of change_summary, as produced by session.__json__(form_data)
+        :param rebuild_log:    An instance of RebuildLog (to link to this ChangeLog)
         '''
         # Instantiate a log
         self = cls()
 
-        self.session = session
+        if session:
+            # The change is an edit to an existing session
+            self.session = session
 
-        self.leaderboard_immediately_before = json.dumps(session.leaderboard_before(LEADERBOARD_STYLE.data), cls=DjangoJSONEncoder)
-        self.leaderboard_immediately_after = json.dumps(session.leaderboard_after(LEADERBOARD_STYLE.data), cls=DjangoJSONEncoder)
+            self.game_before_change = session.game
+            # Saves in LB_STRUCTURE. game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
+            self.leaderboard_impact_before_change = json.dumps(session.leaderboard_impact(LB_PLAYER_LIST_STYLE.data), cls=DjangoJSONEncoder)
+        else:
+            # The change is a session submission (no session object exists yet, if it's created then self.update() can add it)
+            pass
+
+        if isinstance(change_summary, str):
+            self.changes = change_summary
+            changes = json.loads(change_summary).get("changes", [])
+            self.has_impact = 'leaderboard' in changes
 
         if isinstance(rebuild_log, RebuildLog):
             self.rebuild_log = rebuild_log
@@ -4416,12 +4683,54 @@ class ChangeLog(AdminModel):
         # Return the instance
         return self
 
+    def update(self, session=None, change_summary=None, rebuild_log=None):
+        '''
+        Update an existing ChangeLog with the after change states.
+
+        Should be called after a submitted form is saved.
+
+        Ideally before it is committed but it matters not the ChangeLog stands
+        either way as long as it is saved in the same transaction as the submitted
+        form and so commits or rolls back in unison with that save.
+
+        change_summary and rebuild_log are optional and can be saved now (at time of update) or earlier (at time of creation).
+        Either way is fine.
+
+        :param session:        A Session object, the change to which we are logging.
+        :param change_summary:        A JSON log of change_summary, as produced by session.__json__(form_data)
+        :param rebuild_log:    An instance of RebuildLog (to link to this ChangeLog)
+        '''
+
+        # session need not be supplied if it was at creation time, conversely if it was not
+        # Generally if logging a session submission (Create) then we expect to receive it now
+        # and if logging a session edit (Update) then we should have the session already (supplied to create() above)
+        if session:
+            if self.session:
+                if not session == self.session:
+                    raise ValueError("Attempt to update ChangeLog with session different to the one it was created with.")
+            else:
+                self.session = session
+        else:
+            if self.session:
+                session = self.session
+            else:
+                raise ValueError("Attempt to update ChangeLog with no related session.")
+
+        self.game_after_change = session.game
+        # Saves in LB_STRUCTURE. game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
+        self.leaderboard_impact_after_change = json.dumps(session.leaderboard_impact(LB_PLAYER_LIST_STYLE.data), cls=DjangoJSONEncoder)
+
+        if isinstance(change_summary, str):
+            self.changes = change_summary
+            changes = json.loads(change_summary).get("changes", [])
+            self.has_impact = 'leaderboard' in changes
+
+        if isinstance(rebuild_log, RebuildLog):
+            self.rebuild_log = rebuild_log
+
     class Meta(AdminModel.Meta):
         verbose_name = "Change Log"
         verbose_name_plural = "Change Logs"
-
-# def rating_rebuild_log_dir():
-    # return os.path.join(settings.BASE_DIR, f"logs/rating_rebuilds")
 
 
 class RebuildLog(AdminModel):
@@ -4505,43 +4814,67 @@ class RebuildLog(AdminModel):
 
         return pythonify(leaderboards)
 
-    @property_method
-    def players_affected(self, game=None) -> tuple:
+    @property
+    def games(self):
         '''
-        Returns a tuple of the players whose ratings were affected by by this rebuild.
+        Returns a tuple of game PKs affected by the rebuild
+        '''
+        return tuple(self.leaderboards_before.keys())
 
-        Each element is a tuple of (pk, nickname, delta) and these are orderd in ascending delta.
+    @property
+    def Games(self):
+        '''
+        Returns a tuple of game instances affected by the rebuild
+        '''
+        return tuple([safe_get(Game, pk) for pk in self.games])
 
-        :param game: An instance of Game. The game to consider, if not specified the whole rebuild is considered.
+    @property
+    def player_rating_impact(self) -> dict:
+        '''
+        Returns a dict of dicts keyed on game then player (whose ratings were affected by by this rebuild).
         '''
 
+        # Game.pk keyed dicts of player lists in data style
         before = self.leaderboards_before
         after = self.leaderboards_after
 
-        if game:
-            games = [game]
-        else:
-            games = before.keys()
-
-        affected = []
-        deltas = []
-        for g in games:
-            old = self.player_positions(before[g.pk])
-            new = self.player_positions(after[g.pk])
+        deltas = {}
+        for g in self.Games:
+            deltas[g] = {}
+            old = player_ratings(before[g.pk], structure=LB_STRUCTURE.player_list, style=LB_PLAYER_LIST_STYLE.data)
+            new = player_ratings(after[g.pk], structure=LB_STRUCTURE.player_list, style=LB_PLAYER_LIST_STYLE.data)
 
             for p in old:
                 if not new[p] == old[p]:
                     delta = new[p] - old[p]
-                    affected.append(p)
-                    deltas.append((p, delta))
+                    P = safe_get(Player, p)
+                    deltas[g][P] = delta
 
-        names = {p[0]:p[1] for p in Player.objects.filter(pk__in=affected).values_list('pk', 'name_nickname')}
+        return deltas
 
-        result = []
-        for d in sorted(deltas, key=lambda d: d[1]):
-            result.append((d[0], names[d[0]], d[1]))
+    @property
+    def player_ranking_impact(self) -> dict:
+        '''
+        Returns a dict of dicts keyed on game then player (whose rankings were affected by by this rebuild).
+        '''
 
-        return result
+        # Game.pk keyed dicts of player lists in data style
+        before = self.leaderboards_before
+        after = self.leaderboards_after
+
+        deltas = {}
+        for g in self.Games:
+            deltas[g] = {}
+            old = player_rankings(before[g.pk], structure=LB_STRUCTURE.player_list, style=LB_PLAYER_LIST_STYLE.data)
+            new = player_rankings(after[g.pk], structure=LB_STRUCTURE.player_list, style=LB_PLAYER_LIST_STYLE.data)
+
+            for p in old:
+                if not new[p] == old[p]:
+                    delta = new[p] - old[p]
+                    P = safe_get(Player, p)
+                    deltas[g][P] = delta
+
+        return deltas
 
     def save_leaderboards(self, games, context):
         '''
@@ -4553,7 +4886,7 @@ class RebuildLog(AdminModel):
         if not context in ["before", "after"]:
             raise ValueError(f"RebuildLog.save_leaderboards() context must be 'before' or 'after' but '{context}' was provided.")
 
-        leaderboards = Rating.leaderboards(games, style=LEADERBOARD_STYLE.data)
+        leaderboards = Rating.leaderboards(games, style=LB_PLAYER_LIST_STYLE.data)  # dict of boards keyed on game.pk
         content = json.dumps(leaderboards, indent='\t', cls=DjangoJSONEncoder)
 
         abs_directory = os.path.join(settings.BASE_DIR, self.rebuild_log_dir)
@@ -4572,41 +4905,57 @@ class RebuildLog(AdminModel):
         elif context == "after":
             self.leaderboards_after_rebuild = rel_filename
 
-    def leaderboard_before(self, game):
+    def leaderboard_before(self, game, wrap=True):
         '''
-        Returns the wrapped rich leaderboard for a game as it was before this Rebuild (which was logged)
+        Returns the leaderboard for a game as it was before this Rebuild (which was logged).
+
+        Returns LB_STRUCTURE.game_wrapped_player_list with LB_PLAYER_LIST_STYLE.rich
+        or LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
 
         :param game: an instance of Game
+        :param wrap: If true, a game wrapped rich player list, else a naked data player list
         '''
-        leaderboards = self.leaderboards_before
-        game_board = tuple(leaderboards.get(game.pk, []))
+        leaderboards = self.leaderboards_before  # dict keyed on game.pk
+        player_list = tuple(leaderboards.get(game.pk, []))
 
-        if game_board:
-            rich_game_board = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=game_board)
-            wrapped_game_board = game.wrapped_leaderboard(rich_game_board)
-            return wrapped_game_board
-            # return json.dumps(wrapped_game_board, cls=DjangoJSONEncoder)
+        if player_list:
+            if wrap:
+                structure = LB_STRUCTURE.player_list
+                style = LB_PLAYER_LIST_STYLE.rich
+                rich_player_list = restyle_leaderboard(player_list, structure=structure, style=style)
+                wrapped_game_board = game.wrapped_leaderboard(rich_player_list)
+                return immutable(wrapped_game_board)
+            else:
+                return immutable(player_list)
         else:
             return None
 
-    def leaderboard_after(self, game):
+    def leaderboard_after(self, game, wrap=True):
         '''
-        Returns the wrapped rich leaderboard for a game as it was after this Rebuild (which was logged)
+        Returns the leaderboard for a game as it was after this Rebuild (which was logged).
+
+        Returns LB_STRUCTURE.game_wrapped_player_list with LB_PLAYER_LIST_STYLE.rich
+        or LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
 
         :param game: an instance of Game
+        :param wrap: If true, a game wrapped rich player list, else a naked data player list
         '''
-        leaderboards = self.leaderboards_after
-        game_board = tuple(leaderboards.get(game.pk, []))
+        leaderboards = self.leaderboards_after  # dict keyed on game.pk
+        player_list = leaderboards.get(game.pk, [])
 
-        if game_board:
-            rich_game_board = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=game_board)
-            wrapped_game_board = game.wrapped_leaderboard(rich_game_board)
-            return wrapped_game_board
-            # return json.dumps(wrapped_game_board, cls=DjangoJSONEncoder)
+        if player_list:
+            if wrap:
+                structure = LB_STRUCTURE.player_list
+                style = LB_PLAYER_LIST_STYLE.rich
+                rich_player_list = restyle_leaderboard(player_list, structure=structure, style=style)
+                wrapped_game_board = game.wrapped_leaderboard(rich_player_list)
+                return immutable(wrapped_game_board)
+            else:
+                return immutable(player_list)
         else:
             return None
 
-    def leaderboard_delta(self, game):
+    def leaderboard_impact(self, game):
         '''
         Returns leaderboard_after and leaderboard_before as two boards under one game wrapper.
 
@@ -4619,26 +4968,25 @@ class RebuildLog(AdminModel):
             after_board = tuple(after.get(game.pk, []))
             before_board = tuple(before.get(game.pk, []))
 
-            rich_after = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=after_board)
-            rich_before = game.leaderboard(style=LEADERBOARD_STYLE.rich, data=before_board)
+            structure = LB_STRUCTURE.player_list
+            style = LB_PLAYER_LIST_STYLE.rich
+            rich_after = restyle_leaderboard(after_board, structure=structure, style=style)
+            rich_before = restyle_leaderboard(before_board, structure, style=style)
+            rich_after = augment_with_deltas(rich_after, rich_before, structure=structure)
 
-            wrapped = game.wrapped_leaderboard([rich_after, rich_before])
-            return json.dumps(wrapped, cls=DjangoJSONEncoder)
+            return game.wrapped_leaderboard([rich_after, rich_before], snap=True)
         else:
             return None
 
-    def player_positions(self, leaderboard):
+    @property
+    def leaderboards_impact(self) -> dict:
         '''
-        Returns a dict keyed on player pk, with leaderboard position as the value
-
-        :param leaderboard: A leaderboard in the style of LEADERBOARD_STYLE.data
+        Returns a Game PK keyed dict of leaderboard impacts (of the rebuild)
         '''
-        positions = {}
-        for pos, tup in enumerate(leaderboard):
-            pk = tup[0]  # LEADERBOARD_STYLE.data encodes player pk as first element of tuple
-            positions[pk] = pos
-
-        return positions
+        impacts = {}
+        for game in self.Games:
+            impacts[game.pk] = self.leaderboard_impact(game)
+        return impacts
 
     class Meta(AdminModel.Meta):
         verbose_name = "Rebuild Log"
