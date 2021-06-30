@@ -577,86 +577,92 @@ def post_generic(self, request, *args, **kwargs):
                     if "debug_only" in next_kwargs:
                         return HttpResponse(next_kwargs["debug_only"])
 
-                try:
-                    log.debug(f"Open a transaction")
-                    with transaction.atomic():
-                        # Hook for pre-processing the form (before the data is saved)
-                        if callable(getattr(self, 'pre_save', None)):
-                            next_kwargs = self.pre_save(**next_kwargs)
-                            if not next_kwargs: next_kwargs = {}
+                # The pre-transaction handler can add form errors
+                if self.form.is_valid():
+                    try:
+                        log.debug(f"Open a transaction")
+                        with transaction.atomic():
+                            # Hook for pre-processing the form (before the data is saved)
+                            if callable(getattr(self, 'pre_save', None)):
+                                next_kwargs = self.pre_save(**next_kwargs)
+                                if not next_kwargs: next_kwargs = {}
 
-                        log.debug("Saving form from POST request containing:")
-                        for (key, val) in sorted(self.request.POST.items()):
-                            # See: https://code.djangoproject.com/ticket/1130
-                            # list items are hard to identify it seems in a generic manner
-                            log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
+                            log.debug("Saving form from POST request containing:")
+                            for (key, val) in sorted(self.request.POST.items()):
+                                # See: https://code.djangoproject.com/ticket/1130
+                                # list items are hard to identify it seems in a generic manner
+                                log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
 
-                        self.object = self.form.save()
-                        log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
+                            self.object = self.form.save()
+                            log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
 
-                        kwargs = self.kwargs
-                        kwargs['pk'] = self.object.pk
+                            kwargs = self.kwargs
+                            kwargs['pk'] = self.object.pk
 
-                        # By default, on success jump to a view of the obbject just submitted.
-                        if not self.success_url:
-                            self.success_url = reverse_lazy('view', kwargs=kwargs)
+                            # By default, on success jump to a view of the obbject just submitted.
+                            if not self.success_url:
+                                self.success_url = reverse_lazy('view', kwargs=kwargs)
 
-                        if isinstance(self, CreateView):
-                            # Having saved the root object we reinitialise related forms
-                            # with that object attached. Failure to this results in the
-                            # form_clean failing as the formsets don't have populated
-                            # back references (as we had not object) and it fails with
-                            # 'This field is required.' erros on the primary keys
-                            self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
+                            if isinstance(self, CreateView):
+                                # Having saved the root object we reinitialise related forms
+                                # with that object attached. Failure to this results in the
+                                # form_clean failing as the formsets don't have populated
+                                # back references (as we had not object) and it fails with
+                                # 'This field is required.' erros on the primary keys
+                                self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
 
-                        if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
-                            log.debug(f"Saving the related forms.")
-                            if self.form.related_forms.are_valid():
-                                self.form.related_forms.save()
-                                log.debug(f"Saved the related forms.")
-                            else:
-                                log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
-                                # Attach the newly annotated (with errros) related forms to the
-                                # form so that theyt reach the response template.
-                                # self.form.related_forms = related_forms
-                                # We raise an exception to break out of the
-                                # atomic transaction triggering a rollback.
-                                raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
+                            if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
+                                log.debug(f"Saving the related forms.")
+                                if self.form.related_forms.are_valid():
+                                    self.form.related_forms.save()
+                                    log.debug(f"Saved the related forms.")
+                                else:
+                                    log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
+                                    # Attach the newly annotated (with errros) related forms to the
+                                    # form so that theyt reach the response template.
+                                    # self.form.related_forms = related_forms
+                                    # We raise an exception to break out of the
+                                    # atomic transaction triggering a rollback.
+                                    raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
 
-                        # Give the object a chance to cleanup relations before we commit.
-                        # Really a chance for the model to set some standards on relations
-                        # They are all saved in the transaction now and the object can see
-                        # them all in the ORM (the related objects that is)
-                        if callable(getattr(self.object, 'clean_relations', None)):
-                            self.object.clean_relations()
+                            # Give the object a chance to cleanup relations before we commit.
+                            # Really a chance for the model to set some standards on relations
+                            # They are all saved in the transaction now and the object can see
+                            # them all in the ORM (the related objects that is)
+                            if callable(getattr(self.object, 'clean_relations', None)):
+                                self.object.clean_relations()
 
-                        # Finally before committing give the view defintion a chance to so something
-                        # prior to committing the update.
-                        if callable(getattr(self, 'pre_commit', None)):
-                            self.pre_commit(**next_kwargs)
+                            # Finally before committing give the view defintion a chance to so something
+                            # prior to committing the update.
+                            if callable(getattr(self, 'pre_commit', None)):
+                                self.pre_commit(**next_kwargs)
 
-                        log.debug(f"Cleaned the relations.")
-                except (IntegrityError, ValidationError) as e:
-                    # Validation errors arrive with a message.
-                    # Integrity errors tend to arise when the Models don't reflect the Database schema
-                    #    that is migrations should be made and applied. The don't have a message but
-                    #    a message can be found in the first argument.
+                            log.debug(f"Cleaned the relations.")
+                    except (IntegrityError, ValidationError) as e:
+                        # Validation errors arrive with a message.
+                        # Integrity errors tend to arise when the Models don't reflect the Database schema
+                        #    that is migrations should be made and applied. The don't have a message but
+                        #    a message can be found in the first argument.
 
-                    # Some tracback generation for debugging if needed
-                    # exc_type, exc_obj, exc_tb = sys.exc_info()
-                    # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                    # print(exc_type, fname, exc_tb.tb_lineno)
-                    # print(traceback.format_exc())
-                    message = getattr(e, 'message', e.args[0])
-                    self.form.add_error(None, message)
+                        # Some tracback generation for debugging if needed
+                        # exc_type, exc_obj, exc_tb = sys.exc_info()
+                        # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        # print(exc_type, fname, exc_tb.tb_lineno)
+                        # print(traceback.format_exc())
+                        message = getattr(e, 'message', e.args[0])
+                        self.form.add_error(None, message)
+                        return self.form_invalid(self.form)
+
+                    # Hook for post-processing data (after it's all saved)
+                    if callable(getattr(self, 'post_save', None)):
+                        self.post_save(**next_kwargs)
+
+                    return self.form_valid(self.form)
+                else:
+                    # Bounced by the pre transaction handler
                     return self.form_invalid(self.form)
-
-                # Hook for post-processing data (after it's all saved)
-                if callable(getattr(self, 'post_save', None)):
-                    self.post_save(**next_kwargs)
-
-                return self.form_valid(self.form)
             else:
+                # Bounced by the first pass of per handled form data
                 return self.form_invalid(self.form)
 
         else:
@@ -712,7 +718,7 @@ def form_invalid_generic(self, form):
     without aboy related form data.
     '''
     # return self.render_to_response(self.get_context_data(form=form))
-    return TemplateResponse(self.request, self.template_name, self.get_context_data())
+    return TemplateResponse(self.request, self.template_name, self.get_context_data(form=form))
 
 
 class CreateViewExtended(CreateView):

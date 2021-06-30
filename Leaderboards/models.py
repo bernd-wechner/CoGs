@@ -2782,10 +2782,13 @@ class Session(TimeZoneMixIn, AdminModel):
         session = self.previous_session()
         player_list = self.leaderboard(asat=self.date_time - MIN_TIME_DELTA, style=style)
 
-        if wrap:
-            leaderboard = session.wrapped_leaderboard(player_list)
+        if player_list:
+            if wrap:
+                leaderboard = session.wrapped_leaderboard(player_list)
+            else:
+                leaderboard = player_list
         else:
-            leaderboard = player_list
+            leaderboard = None
 
         return leaderboard
 
@@ -2925,6 +2928,7 @@ class Session(TimeZoneMixIn, AdminModel):
             # the latest board for this game is not from this session if it's not the same as this session after board)
             latest = self.wrapped_leaderboard(player_list)
 
+            # TODO: Check that this comparison works. It's  aguess for now. probably does NOT WORK
             include_latest = not after == latest
 
             if include_latest:
@@ -2936,12 +2940,11 @@ class Session(TimeZoneMixIn, AdminModel):
             include_latest = False
 
         # Build the tuple of session wrapped boards
-        if include_latest:
-            sw_boards = (after, before, latest)
-        else:
-            sw_boards = (after, before)
+        sw_boards = [after]
+        if before: sw_boards.append(before)
+        if include_latest: sw_boards.append(latest)
 
-        return self.game.wrapped_leaderboard(sw_boards, snap=True, hide_baseline=False)
+        return self.game.wrapped_leaderboard(sw_boards, snap=True, hide_baseline=include_latest)
 
     @property
     def player_ranking_impact(self) -> dict:
@@ -3415,7 +3418,7 @@ class Session(TimeZoneMixIn, AdminModel):
         Ranking = []
 
         if self.team_play:
-            for rank, team in self.teams.items():
+            for rank, team in self.ranked_teams.items():
                 RG = {}
                 RGs.append(RG)
                 for player in team.players.all():
@@ -4569,10 +4572,11 @@ class ChangeLog(AdminModel):
             igd = LB_STRUCTURE.game_data_element.value
             isd = LB_STRUCTURE.session_data_element.value
             leaderboard = immutable(json.loads(self.leaderboard_impact_before_change))
+            has_before = len(leaderboard[igd]) > 1  # The first session added for a game never has a before board!
             if unwrap == "before":
-                return leaderboard[igd][0][isd]
+                return leaderboard[igd][0][isd] if has_before else None
             elif unwrap == "after":
-                return leaderboard[igd][1][isd]
+                return leaderboard[igd][1][isd] if has_before else leaderboard[igd][0][isd]
             else:
                 return leaderboard
         else:
@@ -4597,10 +4601,11 @@ class ChangeLog(AdminModel):
             igd = LB_STRUCTURE.game_data_element.value
             isd = LB_STRUCTURE.session_data_element.value
             leaderboard = immutable(json.loads(self.leaderboard_impact_after_change))
+            has_before = len(leaderboard[igd]) > 1  # The first session added for a game never has a before board!
             if unwrap == "before":
-                return leaderboard[igd][0][isd]
+                return leaderboard[igd][0][isd] if has_before else None
             elif unwrap == "after":
-                return leaderboard[igd][1][isd]
+                return leaderboard[igd][1][isd] if has_before else leaderboard[igd][0][isd]
             else:
                 return leaderboard
         else:
@@ -4642,7 +4647,7 @@ class ChangeLog(AdminModel):
         '''
         Returns a tuple of game instances affected by the chnage
         '''
-        return (self.game_before_change,) if self.game_after_change == self.game_before_change else (self.game_before_change, self.game_after_change)
+        return (self.game_after_change,) if not self.game_before_change or self.game_after_change == self.game_before_change else (self.game_before_change, self.game_after_change)
 
     @classmethod
     def create(cls, session=None, change_summary=None, rebuild_log=None):

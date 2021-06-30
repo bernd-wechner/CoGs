@@ -883,7 +883,7 @@ function DrawTables(target, links) {
 	];
 	
 	// Get the list of players selected in the multi-select box #players
-	const selected_players = $('#players').val().join(",");
+	const selected_players = $('#players').val();
 
 	// The name format to use is selected in a #names selector
 	const name_format  = $("#names").val();

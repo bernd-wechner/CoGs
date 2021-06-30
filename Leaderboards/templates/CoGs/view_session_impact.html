@@ -25,13 +25,13 @@
 {% if is_submission_feedback %}
 <p>Thanks for submitting the results of your game of {{ game.name }} played on {{ date_time }}.</p>
 {% else %}
-<p>This is a summary of changescause by the submission of a {{ submission }} on {{ date_time }}.</p>
+<p>This is a summary of changes caused by the submission of a {{ submission }} on {{ date_time }}.</p>
 {% endif %}
 	   
 
 {% if change_log %}
 	{% if rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
-	<p>A rebuild of ratings was triggered by a {{ trigger | lower }}.</p>
+	<p>A rebuild of ratings was triggered by a {{ rebuild_trigger | lower }}.</p>
 	<p>Ratings and hence leaderboard positions from {{ rebuild_log.date_time_from }} were updated 
 	affecting a total of {{ rebuild_log.sessions.all.count }} game sessions.</p> 
 	<p>Ratings were updated affecting:</p>
@@ -46,7 +46,7 @@
 	<p>It is the first session recorded for {{ game.name }}, and so no leaderboard existed prior to it.</p>   
 	{% endif %}
 
-	<p>The impact of this session <b>after</b> the submitted change:</p>
+	<p>The impact of this {% if lb_impact_before_change %}session <b>after</b> the submitted change{% else %}submission{% endif %}:</p>
 
 	<table class='leaderboard wrapper'>
 		<tr>
@@ -63,7 +63,7 @@
 		</tr>
 	</table>
 
-	{% if trigger == "Session Edit" %}	
+	{% if lb_impact_before_change %}
 	<p>The impact of this session <b>before</b> the submitted change:</p>
 
 	<table class='leaderboard wrapper'>
@@ -94,14 +94,18 @@
 			<th>Current leaderboard<br>(for reference)</th>
 			{% endif %}
 			<th>After the rebuild</th>
+			{% if not is_first %}
 			<th>Before the rebuild</th>
+			{% endif %}
 		</tr>
 		<tr>
 			{% if rebuild_log_is_dated.games.0.pk %}
 			<td><div id="latest_game_board_now0"></div></td>
-			{% endif %}
+			{% endif %} {# rebuild_log_is_dated #}
 			<td><div id="after_change_game_board0"></div></td>
+			{% if not is_first %}
 			<td><div id="before_change_game_board0"></div></td>
+			{% endif %} {# not is_first #}
 		</tr>
 	</table>
 
@@ -114,18 +118,45 @@
 			<th>Current leaderboard<br>(for reference)</th>
 			{% endif %}
 			<th>After the rebuild"</th>
+			{% if not is_first %}
 			<th>Before the rebuild</th>
+			{% endif %}
 		</tr>
 		<tr>
 			{% if rebuild_log_is_dated.games.1.pk %}
 			<td><div id="latest_game_board_now1"></div></td>
-			{% endif %}
+			{% endif %} {# rebuild_log_is_dated #}
 			<td><div id="after_change_game_board1"></div></td>
+			{% if not is_first %}
 			<td><div id="before_change_game_board1"></div></td>
+			{% endif %} {# not is_first #}
 		</tr>
 	</table>
-	{% endif %}
-	{% endif %}
+	{% endif %} {# games|length > 1 #}
+
+	<p>These {{ rebuild_log.sessions.all.count }} sessions were rebuilt:</p>
+	<ul>
+	{% for session in rebuild_log.sessions.all %}  
+	 	<li>{{ session }}</li>
+	{% endfor %}
+	</ul>
+
+	<p>These {{ players_with_ratings_affected_by_rebuild|length }} player's ratings were affected:</p>
+	<ul>
+	{% for pk, name in players_with_ratings_affected_by_rebuild.items %}  
+	 	<li>{{ name }}</li>
+	{% endfor %}
+	</ul>
+
+	<p>These {{ players_with_rankings_affected_by_rebuild|length }} player's leaderboard positions were affected:</p>
+	<ul>
+	{% for pk, name in players_with_rankings_affected_by_rebuild.items %}  
+	 	<li>{{ name }}</li>
+	{% endfor %}
+	</ul>
+
+	{% endif %} {# rebuild_log #}
+	
 	
 	{% if players_affected %}
 	<p>These player's ratings were affected by the rebuild:</p>
@@ -195,7 +226,7 @@
 {#		</table>#}
 {#	{% endif %}#}
 
-{% else %}
+{% elif is_first and is_latest %}
 	<p>This is the {% if is_first %} first and {% endif %}latest result for that game and the resulting leaderboard is:</p>   
 
 	{# TODO: test and consider how to do htis. Currently not saving changelog for every newly created session. Why flood the database?#}
@@ -268,8 +299,6 @@
 	const rebuild_date_time = "{{ rebuild_date_time | safe }}";
 	const lb_impact_rebuild = {{ lb_impact_rebuild | json }};
 	
-	const num_players_with_ratings_affected_by_rebuild = {{ num_players_with_ratings_affected_by_rebuild }};
-	const num_players_with_rankings_affected_by_rebuild = {{ num_players_with_rankings_affected_by_rebuild | safe }};
 	const players_with_ratings_affected_by_rebuild = {{ players_with_ratings_affected_by_rebuild | json }};
 	const players_with_rankings_affected_by_rebuild = {{ players_with_rankings_affected_by_rebuild | json }};
 	const player_rating_impacts_of_rebuild = {{ player_rating_impacts_of_rebuild | json }};
@@ -308,12 +337,14 @@
 	let board, HTML;
 	
 	{% if change_log %}
+	{% if lb_impact_before_change %}
 	board = lb_impact_before_change;
 	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
 	$('#before_change_session_board_after').append(HTML)
 
 	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
 	$('#before_change_session_board_before').append(HTML)
+    {% endif %} {# lb_impact_before_change #}
 	
 	board = lb_impact_after_change;
 	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");

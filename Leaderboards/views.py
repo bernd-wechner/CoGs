@@ -376,7 +376,7 @@ def pre_transaction_handler(self):
         return {'change_summary': change_summary, 'rebuild': rebuild, 'reason': reason}
 
 
-def pre_save_handler(self, change_summary, rebuild, reason):
+def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
     '''
     When a model form is POSTed, this function is called
         AFTER a transaction has been opened
@@ -1120,11 +1120,13 @@ def view_Impact(request, model, pk):
             structure = LB_STRUCTURE.game_wrapped_session_wrapped_player_list
             style = LB_PLAYER_LIST_STYLE.rich
             impact_after_change = restyle_leaderboard(impact_after_change, structure=structure, style=style)
-            impact_before_change = restyle_leaderboard(impact_before_change, structure=structure, style=style)
+            if impact_before_change:
+                impact_before_change = restyle_leaderboard(impact_before_change, structure=structure, style=style)
 
             # Augment the impacts after with deltas
             impact_after_change = augment_with_deltas(impact_after_change)
-            impact_before_change = augment_with_deltas(impact_before_change)
+            if impact_before_change:
+                impact_before_change = augment_with_deltas(impact_before_change)
 
             # TODO: Consider a way to use session.player_ranking_impact in the report
             # This is a list of players and how their ratings moved +/-
@@ -1174,9 +1176,6 @@ def view_Impact(request, model, pk):
             for game, players in rlog.player_ranking_impact.items():
                 for player in players:
                     players_with_rankings_affected_by_rebuild[player.pk] = player.full_name
-
-            num_players_with_ratings_affected_by_rebuild = len(players_with_ratings_affected_by_rebuild)
-            num_players_with_rankings_affected_by_rebuild = len(players_with_rankings_affected_by_rebuild)
 
         change_log_is_dated = {}
         rebuild_log_is_dated = {}
@@ -1234,14 +1233,12 @@ def view_Impact(request, model, pk):
             c.update({"rebuild_log": rlog,
                       "rebuild_date_time": time_str(rlog.created_on),
                       "rebuild_log_is_dated": rebuild_log_is_dated,  # The current leaderboard after a rebuild is NOT the current leaderboard (it has changed since)
-                      "trigger": RATING_REBUILD_TRIGGER.labels.value[rlog.trigger],
+                      "rebuild_trigger": RATING_REBUILD_TRIGGER.labels.value[rlog.trigger],
                       "lb_impact_rebuild": impact_rebuild,
                       "player_rating_impacts_of_rebuild": player_rating_impacts_of_rebuild,
                       "player_ranking_impacts_of_rebuild": player_ranking_impacts_of_rebuild,
                       "players_with_ratings_affected_by_rebuild": players_with_ratings_affected_by_rebuild,
                       "players_with_rankings_affected_by_rebuild": players_with_rankings_affected_by_rebuild,
-                      "num_players_with_ratings_affected_by_rebuild": num_players_with_ratings_affected_by_rebuild,
-                      "num_players_with_rankings_affected_by_rebuild": num_players_with_rankings_affected_by_rebuild
                       })
 
         return render(request, 'CoGs/view_session_impact.html', context=c)

@@ -537,8 +537,7 @@ function OnSubmit(event) {
         // On Add operations remove the rid and pid for each player from the submission as a safety.
 		// Django will create ids for us when saving to the database.
 		if (operation === "add") {
-	    	const id_table = 'tblPlayersTable'
-	    	const table = $$(id_table);
+	    	const table = $$(id_tbl_players);
 
 			for (let p = 0; p < num_players; p++) {
 				const rid = getWidget(table, name_rid, p);
@@ -840,10 +839,12 @@ function switchGame(event) {
 // Event handler for new play mode selection (swapping from Individual to Team or vice versa) 
 function switchMode(event) {
 	const team_switch = $$(id_team_switch);
+
+	const table_players = $$(id_tbl_players);
+	const table_teams = $$(id_tbl_teams);	
 	
-    if (team_switch.checked) {
+    if (team_switch.checked && table_players != undefined) {
     	// Switch from individual play to team play
-    	const table_players = $$(id_tbl_players);
 		const num_teams = $$(id_num_teams);	
 
 		const session = convert_session_data_from(table_players);
@@ -867,9 +868,8 @@ function switchMode(event) {
     	
     	enableChildren($$(id_indiv_div), false);
     	enableChildren($$(id_teams_div), true);    	
-    } else {
+    } else if (!team_switch.checked && table_teams != undefined) {
     	// Switch from team play to individual play
-    	const table_teams = $$(id_tbl_teams);	
 		const num_players = $$(id_num_players);
 
 		const session = convert_session_data_from(table_teams);
@@ -887,7 +887,7 @@ function switchMode(event) {
     }    
 }
 
-// table can be one of tblIndividualPlay or tblTeamPlay from the associated template
+// from_table can be one of tblIndividualPlay or tblTeamPlay from the associated template
 // Will extract from the widgets data to fill a session data dictionary
 function convert_session_data_from(from_table) {
 	if (from_table.id == id_tbl_players) {
