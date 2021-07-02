@@ -32,6 +32,10 @@ from django.core.exceptions import ValidationError
 from . import log
 from .model import add_related, Add_Related, can_save_related_formsets
 
+# A local DEBUG flag because the debugging of related form creation is rather verbose
+# and distracting if debugging some other part of the process.
+DEBUG = False
+
 
 class RelatedForms(dict):
     # The basic offering here is build a list of related forms
@@ -166,8 +170,9 @@ class RelatedForms(dict):
 
         self.__model_history.append(model_name)
 
-        log.debug(f"\n{self.dp}=================================================================")
-        log.debug(f"{self.dp}Starting get_related_forms({model_name}, {form_data=}, {db_object=}).")
+        if DEBUG:
+            log.debug(f"\n{self.dp}=================================================================")
+            log.debug(f"{self.dp}Starting get_related_forms({model_name}, {form_data=}, {db_object=}).")
 
         # A db_object if supplied must be an instance of the specified model
         if not db_object is None:
@@ -176,16 +181,17 @@ class RelatedForms(dict):
         # Use either form_data or db_object as a data source to populate for field_data
         # (an attribute of the related_forms we return that contains data for populating
         # empty form with or instance_forms if we have database instances of related objects)
-        if not form_data is None:
-            log.debug(f"{self.dp}Got form_data:")
-            for (key, val) in form_data.items():
-                log.debug(f"{self.dp}\t{key}:{val}")
-            log.debug("\n")
+        if DEBUG:
+            if not form_data is None:
+                log.debug(f"{self.dp}Got form_data:")
+                for (key, val) in form_data.items():
+                    log.debug(f"{self.dp}\t{key}:{val}")
+                log.debug("\n")
 
-        if not db_object is None:
-            log.debug(f"{self.dp}Got db_object: {db_object._meta.object_name} {db_object.pk}")
+            if not db_object is None:
+                log.debug(f"{self.dp}Got db_object: {db_object._meta.object_name} {db_object.pk}")
 
-        log.debug(f"{self.dp}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
+            log.debug(f"{self.dp}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
 
         # Collect a list of the relations this model has (i.e. the candidate related models
         # We wil only add forms for those that the models add_related attribute requests of
@@ -200,7 +206,8 @@ class RelatedForms(dict):
             if Add_Related(model, relation):
                 relations_to_add.append(relation)
 
-        log.debug(f"{self.dp}Found {len(relations_to_add)} relations to add: {relations_to_add}.")
+        if DEBUG:
+            log.debug(f"{self.dp}Found {len(relations_to_add)} relations to add: {relations_to_add}.")
 
         # We have five goals here:
         #
@@ -237,7 +244,7 @@ class RelatedForms(dict):
 
         # ========================================================
         # STEP 1: Generate a generic/empty for for each relation
-        if settings.DEBUG:
+        if DEBUG:
             log.debug(f"\n{self.dp}STEP 1: Generate generic/empty form as a vessel.")
             log.debug(f"{self.dp}\tWill consider these relations:")
             if relations_to_add:
@@ -249,7 +256,8 @@ class RelatedForms(dict):
         for relation in relations_to_add:
             # Get the names of the model and related model
             related_model_name = relation.related_model.__name__
-            log.debug(f"\n{self.dp}\tExamining the {related_model_name} in {model_name}.")
+            if DEBUG:
+                log.debug(f"\n{self.dp}\tExamining the {related_model_name} in {model_name}.")
 
             inline = can_save_related_formsets(model, relation.related_model)
 
@@ -275,14 +283,14 @@ class RelatedForms(dict):
                 else:
                     related_formset = Related_Formset(prefix=related_model_name, data=form_data)
 
-                if settings.DEBUG:
+                if DEBUG:
                     log.debug(f"{self.dp}\t\tUsing form data to populate field_data.")
 
                 related_objects = []
             elif db_object:
                 related_field = getattr(db_object, relation.name)
 
-                if settings.DEBUG:
+                if DEBUG:
                     log.debug(f"{self.dp}\t\tUsing a database object to populate field_data.")
                     log.debug(f"{self.dp}\t\t{relation.name=}")
                     log.debug(f"{self.dp}\t\t{related_field=}")
@@ -306,12 +314,14 @@ class RelatedForms(dict):
                     log.error(f"An unknown relation encountered!")
                     related_objects = relation.related_model.objects.none()
 
-                log.debug(f"{self.dp}\t\tGot these related objects: {related_objects}.")
+                if DEBUG:
+                    log.debug(f"{self.dp}\t\tGot these related objects: {related_objects}.")
                 related_formset = Related_Formset(prefix=related_model_name, queryset=related_objects, data=form_data)
             else:
                 related_objects = relation.related_model.objects.none()
                 related_formset = Related_Formset(prefix=related_model_name, queryset=related_objects)
-                log.debug(f"{self.dp}\tfield_data cannot be populated.")
+                if DEBUG:
+                    log.debug(f"{self.dp}\tfield_data cannot be populated.")
 
             # Build the generic_related_form for this relation and save it
             # This is an empty form (fields unpopulated)
@@ -326,14 +336,17 @@ class RelatedForms(dict):
             # STEP 2: add field_data to the generic_form
             management_form = getattr(related_formset, 'management_form', None)
 
-            log.debug(f"{self.dp}\tSTEP 2: {'' if management_form else 'CANNOT '}Build field_data from management form: {management_form}")
+            if DEBUG:
+                log.debug(f"{self.dp}\tSTEP 2: {'' if management_form else 'CANNOT '}Build field_data from management form: {management_form}")
 
             field_data = {}
             if management_form:
                 # Add the management_form to the basic related form (generic_form)
                 generic_form.management_form = management_form
 
-                log.debug(f"{self.dp}\t{related_formset.forms=}")
+                if DEBUG:
+                    log.debug(f"{self.dp}\t{related_formset.forms=}")
+
                 number_of_forms = len(related_formset.forms)
                 for form in related_formset.forms:
                     # Clean the form
@@ -341,9 +354,11 @@ class RelatedForms(dict):
 
                     d = getattr(form, "data", {})
                     cd = getattr(form, "cleaned_data", {})
-                    log.debug(f"{self.dp}\t\tCleaned form:")
-                    log.debug(f"{self.dp}\t\t\tdata={d}")
-                    log.debug(f"{self.dp}\t\t\tcleaned_data={cd}")
+
+                    if DEBUG:
+                        log.debug(f"{self.dp}\t\tCleaned form:")
+                        log.debug(f"{self.dp}\t\t\tdata={d}")
+                        log.debug(f"{self.dp}\t\t\tcleaned_data={cd}")
 
                     for field_name in self.get_form_fields(relation.related_model):
                         # If data came in through form_data, we should have cleaned data.
@@ -379,12 +394,15 @@ class RelatedForms(dict):
                             assert not field_name in field_data, f"Internal error: Premise of uniqueness broken. {field_name} already in {field_data}."
                             field_data[field_name] = field_value
 
-                        log.debug(f"{self.dp}\t\t\tAdded {field_name} = {field_value} to produce {field_data[field_name]}.")
+                        if DEBUG:
+                            log.debug(f"{self.dp}\t\t\tAdded {field_name} = {field_value} to produce {field_data[field_name]}.")
 
                 # Add the field_data assembled from the forms in the formset
                 generic_form.field_data = field_data
 
-            log.debug(f"{self.dp}\tSTEP 3: Add instance forms for {len(related_objects)} instances.")
+            if DEBUG:
+                log.debug(f"{self.dp}\tSTEP 3: Add instance forms for {len(related_objects)} instances.")
+
             pk_attr = relation.related_model._meta.pk.attname
 
             # An instance form, it's related forms and its field data are all
@@ -392,7 +410,8 @@ class RelatedForms(dict):
             # modelformset_factory ensures that whether we inform it from form_data (a POST) or
             # from a db_object (loaded from the database)
             if related_objects and hasattr(generic_form, "field_data") and pk_attr in generic_form.field_data:
-                log.debug(f"{self.dp}\tAdding instance forms.")
+                if DEBUG:
+                    log.debug(f"{self.dp}\tAdding instance forms.")
 
                 generic_form.instance_forms = {}
 
@@ -407,7 +426,9 @@ class RelatedForms(dict):
                     # STEP 4: Add related_forms to each instance form
                     rfs = self.get(relation.related_model, form_data=form_data, db_object=form.instance)
                     generic_form.instance_forms[form.instance.pk].related_forms = rfs
-                    log.debug(f"{self.dp}\t\tAdded instance for form for {related_model_name} PK={form.instance.pk} with {len(rfs)} related forms: {list(rfs.keys())}")
+
+                    if DEBUG:
+                        log.debug(f"{self.dp}\t\tAdded instance for form for {related_model_name} PK={form.instance.pk} with {len(rfs)} related forms: {list(rfs.keys())}")
 
                     # =====================================================
                     # STEP 5: Copy up related form field data to this level
@@ -422,15 +443,17 @@ class RelatedForms(dict):
                                 assert not name in generic_form.field_data, f"Internal error: Premise of uniqueness broken. {name} already in {generic_form.field_data}."
                                 generic_form.field_data[name] = value
 
-                            log.debug(f"{self.dp}\t\t\tAdded {name} = {value} producing {generic_form.field_data[name]}")
+                            if DEBUG:
+                                log.debug(f"{self.dp}\t\t\tAdded {name} = {value} producing {generic_form.field_data[name]}")
 
             # ====================================================================================
             # STEP 6: Whether there is an instance or not we want a related_forms attribute
             #         with empty forms, just so that we can provide the widgets to a Django context.
             generic_form.related_forms = self.get(relation.related_model)
 
-        log.debug(f"{self.dp}Found {len(related_forms)} related forms: {[f[0] for f in related_forms.items()]}.")
-        log.debug(f"{self.dp}=================================================================\n")
+        if DEBUG:
+            log.debug(f"{self.dp}Found {len(related_forms)} related forms: {[f[0] for f in related_forms.items()]}.")
+            log.debug(f"{self.dp}=================================================================\n")
 
         self.__model_history.pop()
         return related_forms
@@ -443,10 +466,12 @@ class RelatedForms(dict):
         This is only useful (or relevant for that matter) if the RelateForms object was
         instantiated with form_data. No form data and it's not useful.
         '''
-        if self.__form_data:
-            log.debug(f"{self.dp} Form data:")
-            for k, v in self.__form_data.items():
-                log.debug(f"{self.dp}\t{k} = {v}")
+        if DEBUG:
+            if self.__form_data:
+                log.debug(f"{self.dp} Form data:")
+
+                for k, v in self.__form_data.items():
+                    log.debug(f"{self.dp}\t{k} = {v}")
 
         # Before the recrusive walk fo related forms, start with clean
         # history. These are populated duing the walk.
@@ -471,7 +496,8 @@ class RelatedForms(dict):
         if related_forms == None:
             related_forms = self.__related_forms
 
-        log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms")
+        if DEBUG:
+            log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms")
 
         for name, form in related_forms.items():
             related_model = form.model  # The related model
@@ -487,7 +513,9 @@ class RelatedForms(dict):
                 assert not fs_key in self.__form_errors, f"Key generation error. Formset keys must be unique. {fs_key} tried a second time."
 
                 mn_pfx = f"{model_name} has " if model_name else ""
-                log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key is {fs_key}")
+
+                if DEBUG:
+                    log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key is {fs_key}")
 
                 # Django returns a fairly liberal errors list for formsets
                 # Basically formset.errors is a list of dicts one per form in
@@ -500,7 +528,9 @@ class RelatedForms(dict):
                 # that has no freignkiy back to htis one) for the purpose
                 # of making the basic form available to a rich template.
                 if not is_valid:
-                    log.debug(f"Errors are: {form.formset.errors}")
+                    if DEBUG:
+                        log.debug(f"Errors are: {form.formset.errors}")
+
                     self.__are_valid = False
                     self.__form_errors[fs_key] = form.formset.errors
 
@@ -508,7 +538,9 @@ class RelatedForms(dict):
                 self._are_valid(name, form.related_forms)
             else:
                 mn_pfx = f"{model_name} has " if model_name else ""
-                log.debug(f"{self.dp} {mn_pfx} no forms.")
+
+                if DEBUG:
+                    log.debug(f"{self.dp} {mn_pfx} no forms.")
 
         if self.__model_history: self.__model_history.pop()
 
@@ -568,7 +600,8 @@ class RelatedForms(dict):
         if related_forms == None:
             related_forms = self.__related_forms
 
-        log.debug(f"{self.dp} Starting {self.__class__.__name__}.save() with {len(related_forms)} related forms on {model_name} {db_object.pk}: {db_object}")
+        if DEBUG:
+            log.debug(f"{self.dp} Starting {self.__class__.__name__}.save() with {len(related_forms)} related forms on {model_name} {db_object.pk}: {db_object}")
 
         # Now for each related form ...
         for name, form in related_forms.items():
@@ -580,22 +613,25 @@ class RelatedForms(dict):
             rmon = related_model._meta.object_name  # Related Model Object Name
             assert rmon == name, "Programming error: related forms should be filed under their related model's name."
 
-            log.debug(f"{self.dp} {mon} has {len(form.formset.forms)} {rmon}s in the submission.")
+            if DEBUG:
+                log.debug(f"{self.dp} {mon} has {len(form.formset.forms)} {rmon}s in the submission.")
+
             if relation.field.editable and can_save_related_formsets(model, related_model):
                 if form.formset.is_valid():
                     ran = relation.rel.related_name  # Related Attribute Name
                     rfn = relation.field.name  # Related model field name
 
-                    log.debug(f"{self.dp}\tFormset submission is valid. Saving it ...")
+                    if DEBUG:
+                        log.debug(f"{self.dp}\tFormset submission is valid. Saving it ...")
 
-                    if (settings.DEBUG):
+                    if DEBUG:
                         robjs_before = len(getattr(db_object, ran).all())
                         log.debug(f"{self.dp}\t\t{mon} {db_object.pk}: Checking parent before save: {ran}={robjs_before}")
 
                     instances = form.formset.save()
 
                     # Debugging output
-                    if (settings.DEBUG):
+                    if DEBUG:
                         robjs_after = len(getattr(db_object, ran).all())
                         log.debug(f"{self.dp}\t\t{mon} {db_object.pk}: checking parent after save: {ran}={robjs_after}")
 
@@ -623,8 +659,10 @@ class RelatedForms(dict):
 #                     print(traceback.format_exc())
                     fs_key = ".".join(self.__model_history + [rmon])
                     mn_pfx = f"{model_name} has " if model_name else ""
-                    log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that ARE NOT valid. Their key is {fs_key}")
-                    log.debug(f"Errors are: {form.formset.errors}")
+
+                    if DEBUG:
+                        log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that ARE NOT valid. Their key is {fs_key}")
+                        log.debug(f"Errors are: {form.formset.errors}")
 
                     # We raise an exception because we expect the caller to have check
                     # relaetd_froms.are_valid() before calling related_forms.save()

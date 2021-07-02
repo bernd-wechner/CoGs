@@ -72,7 +72,7 @@ local_settings.py
 db.sqlite3
 
 # Ignore the Django static collection produced when publishing
-static/
+/static/
 
 # Flask stuff:
 instance/

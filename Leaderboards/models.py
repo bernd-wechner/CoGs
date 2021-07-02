@@ -3583,6 +3583,15 @@ class Session(TimeZoneMixIn, AdminModel):
     def dict_from_object(self):
         '''
         Returns a dictionary that represents this object (so that it can be serialized).
+
+        Django has an internal function
+            django.forms.models.model_to_dict()
+        that does similar but is far more generic retuning a dict of model fields only,
+        in the case of this model: game, date_time, league, location and team_play.
+
+        In support of rich objects we need to customise this dict really to include
+        related information as we have here. This dict defines a Session instance for
+        example where model_to_dict() fails to.
         '''
         # Convert the session to serializable form (a dict)
         ranks = [r.pk for r in self.ranks.all().order_by("rank")]
