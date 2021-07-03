@@ -592,7 +592,8 @@ def post_generic(self, request, *args, **kwargs):
         #
         # The pre_transaction and pre_save handler now both have accesss to self.object as it was.
         # We will uncloak this just before saving.
-        self.form.instance = self.form._meta.model()
+        if self.object:  # protect it from the full_clean augmentation
+            self.form.instance = self.form._meta.model()
 
         log.debug(f"Is_valid? {self.form.data}")
         if self.form.is_valid():
@@ -619,12 +620,13 @@ def post_generic(self, request, *args, **kwargs):
                             # list items are hard to identify it seems in a generic manner
                             log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
 
-                        # Uncloak self.form.instance. From here on in we can proceed as normal.
-                        self.form.instance = self.object
-                        # Reclean the data which ensures this instance has the form data applied now.
-                        # This raises a ValidationError if it fails to apply form data to the instance
-                        # for any reason.  Which rightly, rolls back our transaction.
-                        self.form.full_clean()
+                        if self.object:  # unprotect it from the full_clean augmentation once more
+                            # Uncloak self.form.instance. From here on in we can proceed as normal.
+                            self.form.instance = self.object
+                            # Reclean the data which ensures this instance has the form data applied now.
+                            # This raises a ValidationError if it fails to apply form data to the instance
+                            # for any reason.  Which rightly, rolls back our transaction.
+                            self.form.full_clean()
 
                         self.object = self.form.save()
                         log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
