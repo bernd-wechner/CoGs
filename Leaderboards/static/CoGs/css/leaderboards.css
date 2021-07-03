@@ -77,7 +77,7 @@ button:hover:disabled { cursor: wait; }
 	grid-template-areas: 
 		"lo_highlight_players  lo_highlight_changes  lo_highlight__selected" 
 		"lo_session_details    lo_pre_predictions    lo_post_predictions"
-		"lo_show_delta         lo_show_baseline      lo_show_baseline";
+		"lo_show_d_rank        lo_show_d_rating      lo_show_baseline";
 }
 
 .lo_highlight_players   { grid-area: lo_highlight_players; }
@@ -86,7 +86,8 @@ button:hover:disabled { cursor: wait; }
 .lo_session_details     { grid-area: lo_session_details; }
 .lo_pre_predictions     { grid-area: lo_pre_predictions; }
 .lo_post_predictions    { grid-area: lo_post_predictions; }
-.lo_show_delta    		{ grid-area: lo_show_delta; }
+.lo_show_d_rank    		{ grid-area: lo_show_d_rank; }
+.lo_show_d_rating 		{ grid-area: lo_show_d_rating; }
 .lo_show_baseline  		{ grid-area: lo_show_baseline; }
 
 .lo_advanced {

@@ -89,7 +89,8 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			details,
 			analysis_pre,
 			analysis_post,
-			show_delta,
+			show_d_rank,
+			show_d_rating,
 			show_baseline ] = opts;
 			
 	// Extract the data we need
@@ -106,12 +107,6 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	// tuple if the game data is a player list. 
 	const test_element  = snaps ? LB[iGameData][0][0] : LB[iGameData][0];
 	const session_wrapper = !Array.isArray(test_element); 
-
-
-	// Get the index of the last snapshot, as that one is special
-	// for now it means at least we can't highlight rank changes on that
-	// snapshot or add deltas.
-	// const last_snapshot = snaps ? LB[iGameData].length - 1 : null;
 
 	let session = session_wrapper ? {} : null;
 	
@@ -176,22 +171,35 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		player_list                = LB[iGameData];
 	
 	// use_baseline is a global config
-    // If we are using a baseline it is the last snapshot. If we are renderig it
+    // If we are using a baseline it is the last snapshot. If we are rendering it
 	// which normally we wouldn't, but can be requested, then showing a delta is 
-	// meaningless. As show_delta is a const above, we use hide_delta to override it. 	
-	let hide_delta = (use_baseline && snapshot == LB[iGameData].length-1) || diagnose;
+	// meaningless. As the show_d settings are consts above, we use hide_d settings 
+	// to override them on this specific player list (snapshot, leaderboard) 	
+	let hide_d_rank = (use_baseline && snapshot == LB[iGameData].length-1) || diagnose;
+	let hide_d_rating = (use_baseline && snapshot == LB[iGameData].length-1) || diagnose;
 	
-	// Check if we have previous ranks provided
-	const iRankPrev = 13;			// index into player_list tuples of the previous rank if it's provided'
+	// Check if we have previous ranks or ratings provided
+	// As these are provided programmatically we'll be conservatine here and if any one rank or rating
+	// happens to missing we'll hide them (to ) preven a JS error trying to access it later). A failsafe.
+	const iRankPrev = 13;			// index into player_list tuples of the previous rank if it's provided
 	let have_previous_ranks = true; // Assume we have them
 	for (let i = 0; i < player_list.length; i++)
 		if (player_list[i].length <= iRankPrev) {
 			have_previous_ranks = false; 
 			break; 
 		}
+
+	const iRatingPrev = 14;			// index into player_list tuples of the previous rating  if it's provided
+	let have_previous_ratings = true; // Assume we have them
+	for (let i = 0; i < player_list.length; i++)
+		if (player_list[i].length <= iRatingPrev) {
+			have_previous_ratings = false; 
+			break; 
+		}
 	
-	// If we have no previous ranks we can't show the delta column!
-	if (!have_previous_ranks) hide_delta = true;
+	// If we have no previous ranks or ratings we can't show the delta column!
+	if (!have_previous_ranks) hide_d_rank = true;
+	if (!have_previous_ratings) hide_d_rating = true;
 		
 	// Create the Game link based on the requested link target
 	const linkGameCoGs = url_view_Game.replace('00',pkg);
@@ -268,7 +276,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	}
 	
 	// Define the number of columns in the board
-	const lb_cols = show_delta && !hide_delta ? 6 : 5;
+	let lb_cols = 5;
+	if (show_d_rank && !hide_d_rank) lb_cols++;
+	if (show_d_rating && !hide_d_rating) lb_cols++;
 	
 	const table = document.createElement('TABLE');
 	table.className = 'leaderboard'
@@ -418,10 +428,10 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	th.className = 'leaderboard normal'
 	tr.appendChild(th);
 
-	if (show_delta && !hide_delta) {
+	if (show_d_rank && !hide_d_rank) {
 		th = document.createElement('TH');
 		th.style.textAlign = 'center';
-		th.appendChild(document.createTextNode("Delta"));
+		th.appendChild(document.createTextNode("Δ"));
 		th.className = 'leaderboard normal'
 		tr.appendChild(th);
 	}
@@ -436,6 +446,14 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	th.appendChild(document.createTextNode("Teeth"));
 	th.className = 'leaderboard normal'
 	tr.appendChild(th);
+
+	if (show_d_rating && !hide_d_rating) {
+		th = document.createElement('TH');
+		th.style.textAlign = 'center';
+		th.appendChild(document.createTextNode("Δ"));
+		th.className = 'leaderboard normal'
+		tr.appendChild(th);
+	}
 
 	th = document.createElement('TH');
 	th.style.textAlign = 'center';
@@ -495,14 +513,16 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		if (selected_players && selected_players.includes(this_player.toString())) 
 			td_class += highlight_selected ? ' highlight_selected_on' : ' highlight_selected_off'; 
 
-		let rank_delta = NaN; // Not a number by default
+		// Not a number by default
+		let rank_delta = NaN; 
+		let rating_delta = NaN; 
 
-		// if a previous rank is available in the leaderboard
+		// if a previous rank is available in the leaderboard 
 		if (have_previous_ranks) {
 			const rank       = player_list[i][iRank];
 			const prev_rank  = player_list[i][iRankPrev];
 			
-			if (typeof prev_rank == 'number')  // Denotes a change in rank
+			if (typeof prev_rank == 'number')  // Denotes a possible change in rank
 				rank_delta = prev_rank - rank;
 			else if (prev_rank == null)        // Denotes a new leaderboard entry
 				rank_delta = null; 
@@ -510,7 +530,23 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 				rank_delta = NaN;
 			
 			if (rank_delta != 0)
-				td_class += (highlight_changes && !hide_delta) ? ' highlight_changes_on' : ' highlight_changes_off';
+				td_class += (highlight_changes && !hide_d_rank) ? ' highlight_changes_on' : ' highlight_changes_off';
+		} 
+
+		// if a previous rating is available in the leaderboard 
+		if (have_previous_ratings) {
+			const rating       = player_list[i][iEta];
+			const prev_rating  = player_list[i][iRatingPrev];
+			
+			if (typeof prev_rating == 'number')  // Denotes a posisble change in rating
+				rating_delta = rating - prev_rating;
+			else if (prev_rating == null)    	 // Denotes a new leaderboard entry
+				rating_delta = null; 
+			else							     // should never happen!
+				rating_delta = NaN;
+			
+			if (rating_delta != 0)
+				td_class += (highlight_changes && !hide_d_rating) ? ' highlight_changes_on' : ' highlight_changes_off';
 		} 
 
 		const pkp = player_list[i][iPK];
@@ -538,8 +574,8 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		tr.appendChild(td_rank);
 
 		// ###########################################################################
-		// The DELTA column
-		if (show_delta && !hide_delta) {
+		// The Rank DELTA column
+		if (show_d_rank && !hide_d_rank) {
 			const td_rank_delta = document.createElement('TD');
 			td_rank_delta.style.textAlign = 'center';
 			td_rank_delta.className = td_class;
@@ -555,12 +591,12 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			const tt_rank_delta = document.createElement('span');
 			
 			const tt_text = rank_delta == 0 ? 'Rank unchanged' 
-				    : rank_delta == null ? 'First entry on this leaderboard'
-					: 'Rank went ' 
-						+ (rank_delta > 0 ? 'up ' : 'down ') 
-						+ Math.abs(rank_delta) 
-						+ (Math.abs(rank_delta) > 1 ? ' places' : ' place')
-						+ ' from rank ' + (rank+rank_delta);
+				    	  : rank_delta == null ? 'First entry on this leaderboard'
+						  : 'Rank went ' 
+							+ (rank_delta > 0 ? 'up ' : 'down ') 
+							+ Math.abs(rank_delta) 
+							+ (Math.abs(rank_delta) > 1 ? ' places' : ' place')
+							+ ' from rank ' + (rank+rank_delta);
 			
 			tt_rank_delta.className = "tooltiptext";
 			tt_rank_delta.style.width='15ch';
@@ -616,6 +652,44 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		div_rating.appendChild(tt_rating);
 		td_rating.appendChild(div_rating);
 		tr.appendChild(td_rating);		
+
+		// ###########################################################################
+		// The Rating  DELTA column
+		if (show_d_rating && !hide_d_rating) {
+			const precision = 2
+			const fixed_delta = typeof rating_delta == 'number' ? rating_delta.toFixed(precision) : rating_delta;
+			
+			const td_rating_delta = document.createElement('TD');
+			td_rating_delta.style.textAlign = 'center';
+			td_rating_delta.className = td_class;
+			
+			content = rating_delta == 0 ? '-' 
+				    : rating_delta == null ? '↥'
+					: (rating_delta > 0 ? '↑' : '↓') + Math.abs(fixed_delta);
+			
+			const div_rating_delta = document.createElement('div');
+			div_rating_delta.setAttribute("class", "tooltip");
+			div_rating_delta.innerHTML = content;
+			
+			const tt_rating_delta = document.createElement('span');
+			
+			const tt_text = rating_delta == 0 ? 'Rating unchanged' 
+				    	  : rating_delta == null ? 'First entry on this leaderboard'
+						  : 'Rating went ' 
+							+ (rating_delta > 0 ? 'up ' : 'down ') 
+							+ Math.abs(fixed_delta) 
+							+ (Math.abs(rating_delta) > 1 ? ' teeth' : ' tooth')
+							+ ' from ' + (rating-rating_delta).toFixed(precision)
+							+ ' to ' + rating.toFixed(precision);
+			
+			tt_rating_delta.className = "tooltiptext";
+			tt_rating_delta.style.width='15ch';
+			tt_rating_delta.innerHTML = tt_text;
+		
+			div_rating_delta.appendChild(tt_rating_delta);
+			td_rating_delta.appendChild(div_rating_delta);
+			tr.appendChild(td_rating_delta);
+		}
 		
 		// ###########################################################################
 		// The PLAY COUNT column

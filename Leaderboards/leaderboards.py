@@ -199,7 +199,7 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
 
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_delta'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_d_rank', 'show_d_rating'}
 
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
@@ -306,7 +306,8 @@ class leaderboard_options:
     details = False  # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False  # Show the TrueSkill Pre-session analysis
     analysis_post = False  # Show the TrueSkill Post-session analysis
-    show_delta = False  # Show the delta (movement) in ranking this session caused
+    show_d_rank = False  # Show the rank delta (movement) this session caused
+    show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
 
     # Options for laying out leaderboards on screen
@@ -764,8 +765,11 @@ class leaderboard_options:
         if 'analysis_post' in urequest:
             self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
 
-        if 'show_delta' in urequest:
-            self.show_delta = json.loads(urequest['show_delta'].lower())  # A boolean value is parsed
+        if 'show_d_rank' in urequest:
+            self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
+
+        if 'show_d_rating' in urequest:
+            self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
 
         # Snapshot selecting options
         if 'show_baseline' in urequest:
@@ -1641,11 +1645,11 @@ class leaderboard_options:
                     self.player_leagues = [str(preferred_league)]
 
 
-def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list):
+def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=None):
     '''
     Given a master leaderboard and a baseline to compare it against, will
-    augment the master with a delta measure (adding a previous rank element
-    to each player tuple.
+    augment the master with delta measures (adding a previous rank
+    and rating elements to each player tuple)
 
     This is very flexible with structures and formats. Accepts JSON and Python and
     each of the leaderboard structures and returns the same. General purpose augmenter
@@ -1654,9 +1658,13 @@ def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapp
     By default, only master is needed. if it is a game_wrapped_session_wrapped_player_list
     with snapshots in it no baseline is needed and all the snapshots will be delta augmented.
 
+    Only two styles are supported, rich and data. They are the only two that currently include
+    a unique player ID which cna be used for tha ugmentation.
+
     :param master:      a leaderboard
     :param baseline:    a leaderboard to compare with. None is valid only for a game_wrapped_session_wrapped_player_list with snaps
-    :param structure:   a LB_STRUCTURE that master and baseline are to interpreted with LB_PLAYER_LIST_STYLE is not needed as we augment just by appending to player tuples)
+    :param structure:   an LB_STRUCTURE that master and baseline are to interpreted with
+    :param style:       an LB_PLAYER_LIST_STYLE, which will be guessed at if need be, so we know where to get the rank and rating from to augment with.
     '''
 
     if isinstance(master, str):
@@ -1718,19 +1726,35 @@ def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapp
         pl_master = lb[0]
         pl_baseline = lb[1]
 
+        style = guess_player_list_style(pl_baseline)
+
         previous_rank = {}
-        for p in pl_baseline:
-            rank = p[0]
-            pk = p[1]
+        previous_rating = {}
+        for r, p in enumerate(pl_baseline):
+            # Most commonly used for rich player lists (i.e for rendering informative player lists (leaderboards), which the rich style targets)
+            if style == LB_PLAYER_LIST_STYLE.rich:
+                rank = p[0]
+                pk = p[1]
+                rating = p[6]
+            elif style == LB_PLAYER_LIST_STYLE.data:
+                rank = r
+                pk = p[0]
+                rating = p[1]
+            else:
+                raise ValueError("Attempt to augment and unsupport Player List style")
+
             previous_rank[pk] = rank
+            previous_rating[pk] = rating
 
         for r, p in enumerate(pl_master):
-            rank = p[0]
-            pk = p[1]
-            if pk in previous_rank:
-                pl_master[r] = tuple(p) + (previous_rank[pk],)
-            else:
-                pl_master[r] = tuple(p) + (None,)
+            if style == LB_PLAYER_LIST_STYLE.rich:
+                pk = p[1]
+            elif style == LB_PLAYER_LIST_STYLE.data:
+                pk = p[0]
+
+            pran = previous_rank.get(pk, None)
+            prat = previous_rating.get(pk, None)
+            pl_master[r] = tuple(p) + (pran, prat)
 
     if isinstance(master, str):
         result = json.dumps(_master, cls=DjangoJSONEncoder)

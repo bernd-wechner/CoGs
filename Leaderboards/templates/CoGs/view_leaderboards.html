@@ -100,9 +100,13 @@
 				<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'> 
 				<label for="chk_analysis_post">Show Post-Session TrueSkill Predictions</label>
 			</div>	
-			<div class="lo_show_delta">
-				<input type="checkbox" id="chk_show_delta" oninput='DrawTables("tblLB");'> 
-				<label for="chk_show_delta">Show Rank Deltas</label>
+			<div class="lo_show_d_rank">
+				<input type="checkbox" id="chk_show_d_rank" oninput='DrawTables("tblLB");'> 
+				<label for="chk_show_d_rank">Show Rank Deltas</label>
+			</div>	
+			<div class="lo_show_d_rating">
+				<input type="checkbox" id="chk_show_d_rating" oninput='DrawTables("tblLB");'> 
+				<label for="chk_show_d_rating">Show Rating Deltas</label>
 			</div>	
 			<div class="lo_show_baseline">
 				<input type="checkbox" id="chk_show_baseline" oninput='get_and_report_metrics(leaderboards, this.checked);DrawTables("tblLB");'> 
