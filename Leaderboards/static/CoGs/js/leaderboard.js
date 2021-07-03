@@ -110,6 +110,8 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 
 	let session = session_wrapper ? {} : null;
 	
+	// Fetch the player list
+	let player_list = null;
 	if (snapshot != null && snaps) {
 		const count_snaps = LB[iGameData].length;
 		
@@ -545,7 +547,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			else							     // should never happen!
 				rating_delta = NaN;
 			
-			if (rating_delta != 0)
+			if (rating_delta !== 0)
 				td_class += (highlight_changes && !hide_d_rating) ? ' highlight_changes_on' : ' highlight_changes_off';
 		} 
 
@@ -591,7 +593,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			const tt_rank_delta = document.createElement('span');
 			
 			const tt_text = rank_delta == 0 ? 'Rank unchanged' 
-				    	  : rank_delta == null ? 'First entry on this leaderboard'
+						  : rank_delta == null ? 'First entry on this leaderboard'
 						  : 'Rank went ' 
 							+ (rank_delta > 0 ? 'up ' : 'down ') 
 							+ Math.abs(rank_delta) 

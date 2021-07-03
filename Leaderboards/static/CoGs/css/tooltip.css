@@ -5,6 +5,7 @@
     display: inline-block;
 }
 
+/* The default ABOVE positioned implementation */
 .tooltip .tooltiptext {
     visibility: hidden;
     background-color: #555;
@@ -36,6 +37,78 @@
 }
 
 .tooltip:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+	transition-delay:1s;
+}
+
+/* A LEFT positioned variant */
+.tooltip .tooltiptext_left {
+    visibility: hidden;
+    background-color: #555;
+    color: #fff;
+  
+    white-space: normal;
+    text-align: center;
+    border-radius: 6px;
+    padding: 10px;
+
+    position: absolute;
+    z-index: 1;
+  
+    top:-60%;
+    right:140%;
+}
+
+/* This draws the little triangle under the tooltip  */
+.tooltip .tooltiptext_left::after {
+    content: "";
+    position: absolute;
+    top: 30%;
+    left: 100%;
+    margin-top: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent transparent transparent #555;
+}
+
+.tooltip:hover .tooltiptext_left {
+    visibility: visible;
+    opacity: 1;
+	transition-delay:1s;
+}
+
+/* A RIGHT positioned variant */
+.tooltip .tooltiptext_right {
+    visibility: hidden;
+    background-color: #555;
+    color: #fff;
+  
+    white-space: normal;
+    text-align: center;
+    border-radius: 6px;
+    padding: 10px;
+
+    position: absolute;
+    z-index: 1;
+  
+    top:-60%;
+    left:140%;
+}
+
+/* This draws the little triangle under the tooltip  */
+.tooltip .tooltiptext_right::after {
+    content: "";
+    position: absolute;
+    top: 30%;
+    right: 100%;
+    margin-top: -5px;
+    border-width: 5px;
+    border-style: solid;
+    border-color: transparent #555 transparent transparent;
+}
+
+.tooltip:hover .tooltiptext_right {
     visibility: visible;
     opacity: 1;
 	transition-delay:1s;
