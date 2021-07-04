@@ -2956,8 +2956,8 @@ class Session(TimeZoneMixIn, AdminModel):
         after = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.data, wrap=False)  # NOT session wrapped
 
         deltas = {}
-        old = player_rankings(before)
-        new = player_rankings(after)
+        old = player_rankings(before, structure=LB_STRUCTURE.player_list)
+        new = player_rankings(after, structure=LB_STRUCTURE.player_list)
 
         for p in old:
             if not new[p] == old[p]:
@@ -4532,7 +4532,7 @@ class ChangeLog(AdminModel):
     '''
 
     # The session that caused the impact (if it still exists) - if it was deleted it won't be around any more.
-    session = models.ForeignKey(Session, verbose_name='Session', related_name='change_impacts', null=True, blank=True, on_delete=models.SET_NULL)  # If the session is deleted we may NEED the impact of that!
+    session = models.ForeignKey(Session, verbose_name='Session', related_name='change_logs', null=True, blank=True, on_delete=models.SET_NULL)  # If the session is deleted we may NEED the impact of that!
 
     # A JSON field that stores a change summary produced by Session.__json__()
     # This shoudl saliently record which fields changed and for those that changed the value before and after the change

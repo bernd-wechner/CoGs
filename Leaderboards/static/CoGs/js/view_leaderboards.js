@@ -98,23 +98,39 @@ function get_and_report_metrics(LB, show_baseline) {
 // An initialiser for Select2 widgets used. Alas not so trivial to set
 // as descrribed here:
 // https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
+//
+// Because we do an ajax call back to get names for PKs and there may be an delay of unknown
+// duration before it returns, we can't compare the request with the selector contents to 
+// determine if a request is needed. So we have to keep track in a global the requests issued
+// to refer to those in deciding if we need to issue a request.
+let requested = {}
 function Select2Init(selector, values) {
-	const selected = selector.val();
-	let changed = false;
+	const id = selector[0].id;
 
-	for (let i = 0; i < values.length; i++)
-		if (selected.indexOf(values[i].toString()) < 0) changed = true;
+	// This is how to get the list of values currently selected in selector
+	// TODO: Might be handy to compare against requested to see if any outstanding requests 
+	// are still expected. As it happens we don't need to know that. 
+	// const selected = selector.val();
 	
-	if (changed) {
+	if (!(id in requested)) requested[id] = new Set();
+
+	let request = new Set();
+	for (let i = 0; i < values.length; i++)
+		if (!requested[id].has(values[i])) request.add(values[i]);
+	
+	if (request.size > 0) {
+		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + Array.from(request).join(",");
 		selector.val(null).trigger('change');
+		
+		// Note locally that we've requested it then issue the request (should really be atomic)		
+		// Bizaare JS syntax for set union using the spread operator (ellipsis)
+		requested[id] = new Set([...requested[id], ...request]);
 		$.ajax({
 		    type: 'GET',
-		    url: url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + values
+		    url: URL
 		}).then(function (data) {
 			// data arrives in JSON like:
-			// {"results": [{"id": "1", "text": "Bernd", "selected_text":
-			// "Bernd"}, {"id": "2", "text": "Blake", "selected_text":
-			// "Blake"}], "pagination": {"more": false}}
+			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
 				
 			for (let i=0; i<data.results.length; i++) {
 			    // create the option and append to Select2
@@ -147,16 +163,21 @@ function InitControls(options, exempt) {
 	
 	// Populate all the multi selectors
 	// footnote: The league selector could be populated from game_leagues or
-	// player_leagues
-	// though they should typically be identical anyhow (albeit not guaranteed
-	// to
-	// be. If roundtripping from this form they will be, but a URL GET request
-	// can
-	// specify separate lists. We'll priritise game_leagues here.
-	const players = _.union(options.game_players, options.players);
-	Select2Init($('#games'), options.games);
-	Select2Init($('#leagues'), options.game_leagues);
-	Select2Init($('#players'), players);
+	// player_leagues though they should typically be identical anyhow (albeit
+	// not guaranteed to be. If roundtripping from this form they will be, but 
+	// a URL GET request can specify separate lists. We'll priritise game_leagues
+	// here.
+	//
+	// We can exempt these if "ajax" is provided in the exempt argument. ANY
+	// call to InitControls that might happen after another call to it which 
+	// may not have got a reply yet to poppulate the control risks, an unnecssary
+	// ajax call and double population of the control
+	if (!ex.includes("ajax")) {
+		const players = _.union(options.game_players, options.players);
+		Select2Init($('#games'), options.games);
+		Select2Init($('#leagues'), options.game_leagues);
+		Select2Init($('#players'), players);
+	}
 
 	// ===================================================================================
 	// Initialise the content options
@@ -257,27 +278,24 @@ function InitControls(options, exempt) {
 		$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
 	
 	// Then set the values in the Evolution selection area. The defaults are
-	// fine
-	// here if the options were deleteted by a shortcut button using
-	// override_content
-	// because it is the radio button that does the selecting anyhow. and the
-	// minimal
-	// content is selected above where we set the radio content.
-	// Note that we are for historic snapshots minimizing the defaults for a a
-	// shortcut
-	// button that uses override_content. For the game and player filters
-	// conversely
-	// we maximized the view (all games and all players and no hostroic
-	// snapshots is
-	// the position we aim for).
+	// fine here if the options were deleteted by a shortcut button using
+	// override_content because it is the radio button that does the selecting 
+	// anyhow. and the minimal content is selected above where we set the radio 
+	// content. Note that we are for historic snapshots minimizing the defaults 
+	// for a shortcut button that uses override_content. For the game and player filters
+	// conversely we maximized the view (all games and all players and no hostroic
+	// snapshots is the position we aim for).
 	if (!ex.includes("compare_with")) $('#compare_with').val(dval(options.compare_with, defaults.compare_with));
 	
 	// compare_back_to is in fact a content option we simply recycle here
 	const cbt = dval(options.compare_back_to, defaults.compare_back_to); 
-	if (Number.isInteger(cbt))
-		if (!ex.includes("num_days_ev")) $('#num_days_ev').val(cbt);
-	else
-		if (!ex.includes("compare_back_to")) $('#compare_back_to').val(cbt);
+	if (Number.isInteger(cbt)) {
+		if (!ex.includes("num_days_ev")) 
+			$('#num_days_ev').val(cbt);
+	}
+	else if (!ex.includes("compare_back_to")) {
+		$('#compare_back_to').val(cbt);
+	}
 	
 	// ===================================================================================
 	// Initialise the presentation options
@@ -306,6 +324,9 @@ function InitControls(options, exempt) {
 	if (!ex.includes("show_d_rank"))   $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
 	if (!ex.includes("show_d_rating")) $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
 	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
+
+	// And the selection options
+	if (!ex.includes("select_players")) $('#chk_select_players').prop('checked', dval(options.select_players, false));
 	
 	// And the admin options
 	if (!ex.includes("ignore_cache")) $('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
@@ -407,6 +428,7 @@ function URLopts(make_static) {
 	const show_d_rank   = $('#chk_show_d_rank').is(":checked");	
 	const show_d_rating = $('#chk_show_d_rating').is(":checked");	
 	const show_baseline = $('#chk_show_baseline').is(":checked");	
+	const select_players = $('#chk_select_players').is(":checked");	
 	
 	const names = $('#names').val();	
 	const links = $('#links').val();
@@ -634,6 +656,7 @@ function URLopts(make_static) {
 	if (show_d_rank   != defaults.show_d_rank)   opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
 	if (show_d_rating != defaults.show_d_rating) opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
 	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
+	if (select_players != defaults.select_players) opts.push("select_players="+encodeURIComponent(select_players));
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from
@@ -689,32 +712,34 @@ function GetShortcutButtons() {
 	// Start afresh
 	shortcut_buttons = [null];
 	
-	shortcut_buttons.push(["All leaderboards", true, false, {"enabled": []}]);
+	shortcut_buttons.push(["All leaderboards", true, false, false, {"enabled": []}]);
 
 	if (pl_id)
-		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, 
+		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, false,
 			{"enabled": ["player_leagues_any", "game_leagues_any"], 
 			 "game_leagues": [pl_id]
 			}]);
 
-	shortcut_buttons.push(["Impact of last games night", true, false, 
+	shortcut_buttons.push(["Impact of last games night", true, false, true,
 		{"enabled": ["num_days", "compare_back_to"], 
 	     "num_days": 1,
 	     "compare_back_to": 1,
 	     "num_players_top": 10,
 		 "details": true,
-		 "links": "BGG"
+		 "links": "BGG",
+		 "select_players": 1
 		}]);
 
 	if (pl_id)
-		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,
+		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false, true,
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
 			 "game_leagues": [pl_id],
 		     "num_days": 1,
 		     "compare_back_to": 1,
 		     "num_players_top": 10,
 			 "details": true,
-			 "links": "BGG"
+			 "links": "BGG",
+			 "select_players": 1
 			}]);
 	
 	return shortcut_buttons;
@@ -752,7 +777,8 @@ function ShortcutButton(button) {
 	
 	const override_content      = def[1];  // If true, override existing content options, else augment them
 	const override_presentation = def[2];  // If true, override existing presentation options, else augment them
-	const opts                  = def[3];  // The options to apply
+	const override_selection    = def[3];  // If true, override existing selection  options, else augment them
+	const opts                  = def[4];  // The options to apply
 	
 	// Respect the two override flags when set, by deleting
 	// any options there may be in the respective category.
@@ -763,12 +789,16 @@ function ShortcutButton(button) {
 	if (override_presentation) 
 		for (let opt of options.presentation_options)
 			delete options[opt]
+
+	if (override_selection) 
+		for (let opt of options.selection_options)
+			delete options[opt]
 	
 	// We replace the options that the shortcut button demands
 	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;
 		if (options.need_enabling.includes(key) && !options.enabled.includes(key)) 
-			options.enabled.push(key) 		
+			options.enabled.push(key)
 	}
 	// Reinitalise all the filter controls
 	InitControls(options, ["ignore_cache", "show_baseline"])
@@ -811,7 +841,7 @@ function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
 	$("#leaderboard_options :input").prop("disabled", !yes_or_no);
-	// When enabling them, reinitialise them (in case any are disabled during initialisation)
+	// When enabling them, reinitialise them (in case any are disabled during initialisation, we will have just enabled them)
 	if (yes_or_no) InitControls(options);
 }
 
@@ -883,7 +913,8 @@ function DrawTables(target, links) {
 		document.getElementById("chk_analysis_post").checked,
 		document.getElementById("chk_show_d_rank").checked,
 		document.getElementById("chk_show_d_rating").checked,
-		document.getElementById("chk_show_baseline").checked
+		document.getElementById("chk_show_baseline").checked,
+		document.getElementById("chk_select_players").checked
 	];
 	
 	// Get the list of players selected in the multi-select box #players

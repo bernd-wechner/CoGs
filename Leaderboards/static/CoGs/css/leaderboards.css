@@ -77,7 +77,8 @@ button:hover:disabled { cursor: wait; }
 	grid-template-areas: 
 		"lo_highlight_players  lo_highlight_changes  lo_highlight__selected" 
 		"lo_session_details    lo_pre_predictions    lo_post_predictions"
-		"lo_show_d_rank        lo_show_d_rating      lo_show_baseline";
+		"lo_show_d_rank        lo_show_d_rating      lo_show_baseline"
+		"lo_select_players     lo_select_players     lo_select_players";
 }
 
 .lo_highlight_players   { grid-area: lo_highlight_players; }
@@ -89,6 +90,7 @@ button:hover:disabled { cursor: wait; }
 .lo_show_d_rank    		{ grid-area: lo_show_d_rank; }
 .lo_show_d_rating 		{ grid-area: lo_show_d_rating; }
 .lo_show_baseline  		{ grid-area: lo_show_baseline; }
+.lo_select_players  	{ grid-area: lo_select_players; }
 
 .lo_advanced {
   	display: none; /* toggled to grid when displayed */
@@ -226,18 +228,21 @@ td.leaderboard
 	white-space: nowrap;
 }
 
-th.leaderboard.normal, 
-td.leaderboard.normal {	background-color: #FFF7F0;	font-weight: normal; }
+/* A great color designer: https://colordesigner.io/color-mixer/?mode=rgb */
 
-td.leaderboard.highlight_changes_off { background-color: #FFF7F0; }
-td.leaderboard.highlight_changes_on { background-color: #FFE0E0 !important; }
+th.leaderboard.normal, 
+td.leaderboard.normal {	background-color: rgb(255, 247, 240);	font-weight: normal; }
 
 td.leaderboard.highlight_players_off {	font-weight: normal; }
 td.leaderboard.highlight_players_on { font-weight: bold !important; }
 
-td.leaderboard.highlight_selected_off { background-color: #FFF7F0; }
-td.leaderboard.highlight_selected_on {background-color: #ffffB0 !important; } 
+td.leaderboard.highlight_changes_off { background-color: rgb(255, 247, 240); }
+td.leaderboard.highlight_changes_on { background-color: rgb(255, 224, 224) !important; }
 
+td.leaderboard.highlight_selected_off { background-color: rgb(255, 247, 240); }
+td.leaderboard.highlight_selected_on {background-color: rgb(255, 249, 186) !important; } 
+
+td.leaderboard.highlight_changes_on.highlight_selected_on { background-color: rgb(255, 255, 176) !important; }
 
 table.leaderboard.wrapper { border-style: none; margin: 10px; }
 

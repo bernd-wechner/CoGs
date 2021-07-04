@@ -185,6 +185,9 @@ class leaderboard_options:
     # list is provided via one of tehse transporters.
     transport_options = {'games', 'players', 'leagues'}
 
+    # Options that affect selections (which other options apply to)
+    selection_options = {'select_players'}
+
     # Options that affect the perspective of a leadeboard view.
     # Really only one, what the effective "now" or "current" view is,
     # that we are looking from.
@@ -219,7 +222,7 @@ class leaderboard_options:
     # ALL the options, a set against which we can filter incoming requests to
     # weed out all the things that don't matter, or to asses if the request is in
     # fact one that includes any leaderboard options or not.
-    all_options = content_options | presentation_options | transport_options | admin_options
+    all_options = content_options | presentation_options | transport_options | selection_options | admin_options
 
     # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.
@@ -266,7 +269,7 @@ class leaderboard_options:
     changed_since = None  # Show only leaderboards that changed since this date
     num_days = 1  # List only games played in the last num_days long event (also used for snapshot definition)
 
-    # Options that determing which players are listed in the leadrboards
+    # Options that determing which players are listed in the leaderboards
     # These options, like the game selectors, above provide defaults with which to
     # populate input elements in a form, but they should be presented with accompanying
     # checkboxes to select them, and if not selected the option should not be subitted.
@@ -277,6 +280,9 @@ class leaderboard_options:
     min_plays = 2  # The minimum number of times a player has to have played this game to be listed
     played_since = None  # The date since which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
+
+    # Options for intelligent selctions
+    select_players = False  # Select the players (that highlight_players acts on) to be all the players in session snapshots displayed
 
     # A perspective option that asks us to think of "current" not as at now, but as at some other time.
     as_at = None  # Do everything as if it were this time now (pretend it is now as_at)
@@ -384,10 +390,10 @@ class leaderboard_options:
         if have_options or "no_defaults" in urequest:
             self.enabled = set()
 
-        # A very special case for the two snapshot options. They are not enabled
+        # A very special case for the two evolution options. They are not enabled
         # like the filters. There are two, compare_with and compare_back_to only
-        # one of which can't should be set. We can only respect one. So if we get
-        # on in the request we should anull the other.
+        # one of which should be set. We can only respect one. So if we get
+        # one in the request we should anull the other.
         #
         # If both are supplied we need of course to ignore one. Matters not which,
         # but only one can be respected
@@ -407,17 +413,17 @@ class leaderboard_options:
         leagues = None
 
         if f'games' in urequest:
-            games = urequest[f'games'].split(",")
+            games = list(map(int, urequest[f'games'].split(",")))
 
         if f'players' in urequest:
-            players = urequest[f'players'].split(",")
+            players = list(map(int, urequest[f'players'].split(",")))
 
         # TODO check if we can spefic NO league filterig. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
         if f'leagues' in urequest:
-            leagues = urequest[f'leagues'].split(",")
+            leagues = list(map(int, urequest[f'leagues'].split(",")))
             if preferred_league and not leagues:
-                leagues = [str(preferred_league)]
+                leagues = [preferred_league]
 
         ##################################################################
         # GAME FILTERS
@@ -437,7 +443,7 @@ class leaderboard_options:
         game_games = games  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'games_{suffix}' in urequest:
-                game_games = urequest[f'games_{suffix}'].split(",")
+                game_games = list(map(int, urequest[f'games_{suffix}'].split(",")))
 
                 # Use the transport option "games" if no list provided for games ex/in
                 # This enables URLs like
@@ -487,7 +493,7 @@ class leaderboard_options:
         game_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_leagues_{suffix}' in urequest:
-                game_leagues = urequest[f'game_leagues_{suffix}'].split(",")
+                game_leagues = list(map(int, urequest[f'game_leagues_{suffix}'].split(",")))
 
                 # Use the transport option "leagues" if no list provided for game_leagues
                 # This enables URLs like
@@ -526,7 +532,7 @@ class leaderboard_options:
         game_players = players  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_players_{suffix}' in urequest:
-                game_players = urequest[f'game_players_{suffix}'].split(",")
+                game_players = list(map(int, urequest[f'game_players_{suffix}'].split(",")))
 
                 # Use the transport option "players" if no list provided for game_players
                 # This enables URLs like
@@ -596,7 +602,7 @@ class leaderboard_options:
         player_players = players  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'players_{suffix}' in urequest:
-                player_players = urequest[f'players_{suffix}'].split(",")
+                player_players = list(map(int, urequest[f'players_{suffix}'].split(",")))
 
                 # Use the transport option "players" if no list provided for players ex/in
                 # This enables URLs like
@@ -674,7 +680,7 @@ class leaderboard_options:
         player_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'player_leagues_{suffix}' in urequest:
-                player_leagues = urequest[f'player_leagues_{suffix}'].split(",")
+                player_leagues = list(map(int, urequest[f'player_leagues_{suffix}'].split(",")))
 
                 # Use the transport option "leagues" if no list provided for player_leagues
                 # This enables URLs like
@@ -711,6 +717,13 @@ class leaderboard_options:
                 self.as_at = None  # Must be a a Falsey value
 
             self.__enable__('as_at', self.as_at)
+
+        ##################################################################
+        # SELECTION OPTIONS
+
+        # Options for things that other options can act on (populating select boxes on the UI)
+        if 'select_players' in urequest:
+            self.select_players = json.loads(urequest['select_players'].lower())  # A boolean value is parsed
 
         ##################################################################
         # EVOLUTION OPTIONS
@@ -801,9 +814,9 @@ class leaderboard_options:
         if 'cols' in urequest:
             self.cols = urequest['cols']
 
-        # YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
+        # TODO: YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
         if 'trace' in urequest:
-            self.trace = urequest['trace'].split(",")
+            self.trace = list(map(int, urequest['trace'].split(",")))
 
         # A special option which isn't an option per se. If passed in we make
         # the provided options as static as we can with self.make_static()
@@ -818,6 +831,50 @@ class leaderboard_options:
 
         if settings.DEBUG:
             log.debug(f"Enabled leaderboard options: {self.enabled}")
+
+    def apply_selection_options(self, leaderboards):
+        '''
+        Given leaderboards ready for sending to the browser, applies selection options to self based on their content.
+
+        :param leaderboards: leaderboards structured with LB_STRUCTURE.game_wrapped_session_wrapped_player_list
+        :param exclude_reference: The last snapshot is sometimes just a reference not of interest to the player selection
+        '''
+        if self.select_players:
+            igd = LB_STRUCTURE.game_data_element.value
+
+            players = set()
+
+            for game_tuple in leaderboards:
+                # if game_tuple[0] == 49: breakpoint()
+                snaps = game_tuple[igd - 2]
+                if snaps:
+                    hide_baseline = game_tuple[igd - 1]  # True if the last snapshot is outside of the Query included only for baseline reference.
+                    hide_reference = not self.compare_back_to is None
+                    ignore = 2 if hide_baseline and hide_reference else 1 if hide_baseline else 0
+
+                    if ignore:
+                        sessions = game_tuple[igd][:-ignore]
+                    else:
+                        sessions = game_tuple[igd]
+                else:
+                    sessions = [game_tuple[igd]]
+
+                for session_tuple in sessions:
+                    # The session wrapper includes the player PKs as its 5th element
+                    session_players = set(session_tuple[4])
+                    players.update(session_players)
+                    if settings.DEBUG:
+                        log.debug(f"Applied players: {session_players}, yielding: {players}")
+
+            # Add the players to the player selector
+            self.players = list(players)
+
+            if settings.DEBUG:
+                log.debug(f"{self.players=}")
+
+            if self.players:
+                self.highlight_selected = True
+                self.__enable__(f'players_in', self.players)
 
     def has_player_filters(self):
         '''
@@ -843,7 +900,6 @@ class leaderboard_options:
         '''
         Returns True if a player meets the league criteria
         '''
-        league_pks = [str(pk) for pk in league_pks]  # We force them to strings as we stored strings in self.player_leagues
         if self.is_enabled('player_leagues_any') and not set(league_pks) & set(self.player_leagues):
             return False
         elif self.is_enabled('player_leagues_all') and not set(league_pks) == set(self.player_leagues):
@@ -893,17 +949,20 @@ class leaderboard_options:
 
     def apply(self, leaderboard_snapshot):
         '''
-        Given a leaderboard snapshot in the format that Session.leaderboard_snapshot()
-        provides, applies these options to it returning a filtered version of the same
-        snapshot as dictated by these options (self).
+        Given a leaderboard snapshot, applies these options to it returning a filtered
+        version of the same snapshot as dictated by these options (self).
+
+        The players lists must be styled with LB_PLAYER_LIST_STYLE.rich.
 
         We only filter players. We don't apply name or link formatting here, the
         snapshot elements contain sufficient information for the view itself to
         implement those rendering options. Our aim here is to send to the view
         a filtered snaphot because global leaderboads for a game can grow very
         large and most views will be concerned with a subset based on leagues.
+
+        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list
         '''
-        leaderboard = leaderboard_snapshot[8]
+        leaderboard = leaderboard_snapshot[LB_STRUCTURE.session_data_element.value]
 
         # leaderboard is a well defined list of tuples that contain player info/metadata
         # The list is ordered by ranking.
@@ -916,7 +975,7 @@ class leaderboard_options:
             lbf = []  # A player-filtered version of leaderboard
 
             for p in leaderboard:
-                # Fetch data from the tuple
+                # Fetch data from the tuple (assumes LB_PLAYER_LIST_STYLE.rich!)
                 rank = p[0]
                 pk = str(p[1])  # Force to string as self.players is a list of string pks
                 plays = p[9]
@@ -1294,10 +1353,11 @@ class leaderboard_options:
         Evolution requests:
            lo.evolution_options documents the possible selections
 
-        We build a QeurySet of the sessions after which we want the leaderboard snapshots.
+        We build a QuerySet of the sessions after which we want the leaderboard snapshots.
 
         :param game:        A Game object for which the leaderboards are requested
-        :param include_baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
+        :param include_baseline: If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be calculated by the caller if desired)
+        :returns: A 2-tuple (QuerySet, extra_baseline_was_added_flag)
         '''
 
         def sessions_plus(sessions):
@@ -1419,10 +1479,10 @@ class leaderboard_options:
                 # self.as_at or the latest session (no explicit end needed).
 
                 # We want a reference time first, being the start of an event or
-                # a time explcitly provided. We'll add the snapshot prior to this time
+                # a time explicitly provided. We'll add the snapshot prior to this time
                 # as a the state of the boartd AT that time, and if a baseline is
                 # requested a second one (not intended for rendering just for rank delta
-                # calculation. Of course if it is after reference_time it shoudl be rendered.
+                # calculation. Of course if it is after reference_time it should be rendered.
                 if isinstance(self.compare_back_to, numbers.Real):
                     earliest_time = self.last_event_start_time(self.compare_back_to)
                 elif isinstance(self.compare_back_to, datetime):
@@ -1611,7 +1671,7 @@ class leaderboard_options:
         if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
             self.compare_back_to = fix_time_zone(self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False), utz)
 
-        # Map self.num_days to self.changed_since
+        # Map self.num_days to self.changed_since and self.compare_back_to
         if self.is_enabled('num_days'):
             # Disable num_days option (which is relative to now and not static.
             self.__enable__('num_days', False)

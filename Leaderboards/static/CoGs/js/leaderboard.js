@@ -22,7 +22,7 @@ function leaderboard_metrics(LB, show_baseline) {
 		if (snapshots > maxshots) maxshots = snapshots;
 		totalshots += snapshots;
 		boardshots[g] = snapshots;
-	}	 
+	}
 	
 	return [boardcount, maxshots, totalshots, boardshots];
 }
@@ -91,7 +91,8 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			analysis_post,
 			show_d_rank,
 			show_d_rating,
-			show_baseline ] = opts;
+			show_baseline,
+			select_players ] = opts;
 			
 	// Extract the data we need
 	const pkg            = LB[iPKgame];

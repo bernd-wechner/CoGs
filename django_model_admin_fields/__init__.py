@@ -79,7 +79,7 @@ class AdminModel(models.Model):
 
     @property
     def last_edited_on_local(self):
-        return self.edited_on.astimezone(safe_tz(self.edited_on_tz))
+        return self.last_edited_on.astimezone(safe_tz(self.last_edited_on_tz))
 
     def save(self, *args, **kwargs):
         if not self.__bypass_admin__:

@@ -75,43 +75,80 @@
 				</select>
 		</div>
 		
+		{#	ToolTips have a cruddy implmentation here. With manually tuned widths to look good one trial. Will not travel well alas. #}		 
 		<div class="lo_visibility">
 			<div class="lo_highlight_players">
 				<input type="checkbox" id="chk_highlight_players" oninput='toggle_highlights("players", this);'> 		
-				<label for="chk_highlight_players">Highlight players</label>
+				<label for="chk_highlight_players" class="tooltip">Highlight players
+				<span class="tooltiptext" style="width: 300%;">Highlight the players who played in the session that produced this leaderboard.</span>
+				</label>
 			</div>
 			<div class="lo_highlight_changes">
 				<input type="checkbox" id="chk_highlight_changes" oninput='toggle_highlights("changes", this);'> 		
-				<label for="chk_highlight_changes">Highlight changes</label>
+				<label for="chk_highlight_changes" class="tooltip">Highlight changes
+				<span class="tooltiptext" style="width: 350%;">Highlight the changes in the leaderboard that were produced by the session that produced the leaderboard.</span>
+				</label>
 			</div>
 			<div class="lo_highlight__selected">
 				<input type="checkbox" id="chk_highlight_selected" oninput='toggle_highlights("selected", this);'> 			
-				<label for="chk_highlight_selected">Highlight selected players</label>
+				<label for="chk_highlight_selected" class="tooltip">Highlight selected players
+				<span class="tooltiptext" style="width: 200%;">Highlight the players selected under Players below.</span>
+				</label>
 			</div>
 			<div class="lo_session_details">
 				<input type="checkbox" id="chk_details" oninput='DrawTables("tblLB");'> 		
-				<label for="chk_details">Show session details</label>
+				<label for="chk_details" class="tooltip">Show session details
+				<span class="tooltiptext" style="width: 300%;">Show a session header that displays the details for the session that produced this leaderboard.</span>
+				</label>
 			</div>
 			<div class="lo_pre_predictions">
 				<input type="checkbox" id="chk_analysis_pre" oninput='DrawTables("tblLB");'> 		
-				<label for="chk_analysis_pre">Show TrueSkill Predictions</label>
+				<label for="chk_analysis_pre" class="tooltip">Show TrueSkill Predictions
+				<span class="tooltiptext" style="width: 300%;">Show a session header that displays the TrueSkill predictions for this session.</span>
+				</label>
 			</div>	
 			<div class="lo_post_predictions">
 				<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'> 
-				<label for="chk_analysis_post">Show Post-Session TrueSkill Predictions</label>
+				<label for="chk_analysis_post" class="tooltip">Show Post-Session TrueSkill Predictions
+				<span class="tooltiptext" style="width: 200%;">Show a session header that displays the TrueSkill predictions after this session was played.</span>
+				</label>
 			</div>	
 			<div class="lo_show_d_rank">
 				<input type="checkbox" id="chk_show_d_rank" oninput='DrawTables("tblLB");'> 
-				<label for="chk_show_d_rank">Show Rank Deltas</label>
+				<label for="chk_show_d_rank" class="tooltip">Show Rank Deltas
+				<span class="tooltiptext" style="width: 300%;">Show a column that displays the change (delta) in player rank (position) on the leaderboard.</span>
+				</label>
 			</div>	
-			<div class="lo_show_d_rating">
-				<input type="checkbox" id="chk_show_d_rating" oninput='DrawTables("tblLB");'> 
-				<label for="chk_show_d_rating">Show Rating Deltas</label>
+			<div class="lo_show_d_rating tooltip">
+				<input type="checkbox" id="chk_show_d_rating" oninput='DrawTables("tblLB");'>
+				<label for="chk_show_d_rating" class="tooltip">Show Rating Deltas
+				<span class="tooltiptext" style="width: 300%;">Show a column that displays the change (delta) in player ratings.</span>
+				</label>
 			</div>	
 			<div class="lo_show_baseline">
 				<input type="checkbox" id="chk_show_baseline" oninput='get_and_report_metrics(leaderboards, this.checked);DrawTables("tblLB");'> 
-				<label for="chk_show_baseline">Show Baseline</label>
+				<label for="chk_show_baseline" class="tooltip">Show Baseline
+				<span class="tooltiptext" style="width: 300%;">Show (the otherwise hidden) baseline leaderboard snapshots that were included only to permit display of the delta columns on earliest snapshot (otherwise) displayed.</span>
+				</label>
 			</div>	
+			<div class="lo_select_players">
+				{% comment %} 
+				TODO: This checkbox requires a server round trip. This is in part because it needs to kow the session player PKs 
+				(available in the leaderboards client side too) and the context of snapshots (manual request or event based) which 
+				is also available client side. Thus could implement this client side. But it's complicated by the nature of what 
+				it does. It populates the Players selector. Could to that wehn checked. But it trvales with the URL opts as does 
+				the player list. And what happens if it is checked then the snap context changed or the Players selctor changed manually. 
+				In the latter case if any of the view players are removed, this should uncheck.If otehrs are added, no impact. If the
+				snap context changes, and this is checked the Players selector needs repopulating. Always with a superset of what was 
+				in there,only adding players technically - so manual adds aren't clobbered. If this is unchecked it should just 
+				leave the Players list untouched. So it becomes a kind of pump. And option that suroves round trip and hence is used in
+				generating the inital view.
+				{% endcomment %} 
+				<input type="checkbox" id="chk_select_players">
+				<label for="chk_select_players" class="tooltip">Select players
+				<span class="tooltiptext" style="width: 300%;">Select all the players relevant to the current view (i.e. populate the Players selector)</span>
+				</label>
+			</div>
 		</div>	
 		
 		<section class="lo_advanced">
