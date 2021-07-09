@@ -103,28 +103,36 @@ function get_and_report_metrics(LB, show_baseline) {
 // duration before it returns, we can't compare the request with the selector contents to 
 // determine if a request is needed. So we have to keep track in a global the requests issued
 // to refer to those in deciding if we need to issue a request.
-let requested = {}
+let waiting_for = {};
+function finished_waiting() {return Object.keys(waiting_for).length === 0};
+
+// Modern JS chicanery ;-)
+// TODO: We could do htis mor cleanly by wrapping the actual ajax request in a promise rather than a timer.
+//       await Promise.all([]promise1, promise2, promise3]) woudl wait for them to finish befoe proceeding.
+//       this method uses a timer based sleep to check the waiting_for logs of the requests to do same but
+//       is a tad klunkier.
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); } 
+async function until(fn) {while (!fn()) {await sleep(10)}}
+
 function Select2Init(selector, values) {
 	const id = selector[0].id;
-
-	// This is how to get the list of values currently selected in selector
-	// TODO: Might be handy to compare against requested to see if any outstanding requests 
-	// are still expected. As it happens we don't need to know that. 
-	// const selected = selector.val();
+	const selected = selector.val().map(Number);
 	
-	if (!(id in requested)) requested[id] = new Set();
-
 	let request = new Set();
 	for (let i = 0; i < values.length; i++)
-		if (!requested[id].has(values[i])) request.add(values[i]);
+		// We want to request a value only if it's not currently selected and we're not waiting for it (already requested it)'
+		if (!selected.includes(values[i]) && (!(id in waiting_for) || !waiting_for[id].has(values[i]))) 
+			request.add(values[i]);
 	
 	if (request.size > 0) {
 		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + Array.from(request).join(",");
 		selector.val(null).trigger('change');
+
+		if (!(id in waiting_for)) waiting_for[id] = new Set();
 		
-		// Note locally that we've requested it then issue the request (should really be atomic)		
-		// Bizaare JS syntax for set union using the spread operator (ellipsis)
-		requested[id] = new Set([...requested[id], ...request]);
+		// Note locally that we've requested it and are waiting for an answer then issue the request 
+		// (should really be atomic). Bizaare JS syntax for set union using the spread operator (ellipsis)
+		waiting_for[id] = new Set([...waiting_for[id], ...request]);
 		$.ajax({
 		    type: 'GET',
 		    url: URL
@@ -133,10 +141,17 @@ function Select2Init(selector, values) {
 			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
 				
 			for (let i=0; i<data.results.length; i++) {
-			    // create the option and append to Select2
-			    var option = new Option(data.results[i].text, data.results[i].id, true, true);
-			    selector.append(option).trigger('change');
+				// create the option and append to Select2
+				var option = new Option(data.results[i].text, data.results[i].id, true, true);
+				selector.append(option).trigger('change');
+				// Take note that we're no longer waiting on it (id arrives as string, was stored as int)
+				// But we clobber both just in case ;-). Returns false if it didn't delete because it wasn't there, tue if it did. 
+				// that is fails silently on the redundant call.
+				waiting_for[id].delete(data.results[i].id); // Value we might have if we got our wires crossed
+				waiting_for[id].delete(parseInt(data.results[i].id)); // Expected value
 			}
+
+			if (waiting_for[id].size === 0) delete waiting_for[id]; // If the set is empty remove the entry in the dict
 	
 		    // manually trigger the `select2:select` event
 		    selector.trigger({
@@ -173,9 +188,17 @@ function InitControls(options, exempt) {
 	// may not have got a reply yet to poppulate the control risks, an unnecssary
 	// ajax call and double population of the control
 	if (!ex.includes("ajax")) {
-		const players = _.union(options.game_players, options.players);
+		// players are special as they may have been autoselected server side, and 
+		// we want to honor that selection and they may have come in on a URL request 
+		// as a game filter (game_players) or a players filer (players) etc. So we want
+		// to populate the selector with union of all those.		
+		const players = _.union( options.players_auto_selected, options.players, options.game_players);
+		
+		// leagues as well can be used to filte rplayers or games and/or justtransported as a selector.
+		const leagues = _.union(options.game_leagues, options.player_leagues, options.leagues);
+		
 		Select2Init($('#games'), options.games);
-		Select2Init($('#leagues'), options.game_leagues);
+		Select2Init($('#leagues'), leagues);
 		Select2Init($('#players'), players);
 	}
 
@@ -376,7 +399,7 @@ function encodeDateTime(datetime) {
 	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
 }
 
-function URLopts(make_static) {
+async function URLopts(make_static) {
 	// The opposite so to speak of InitControls() here we read those same
 	// controls and prepare URL options for self same to submit an AJAX 
 	// request for updates (or simply display on the address bar if desired).
@@ -393,10 +416,16 @@ function URLopts(make_static) {
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
 	
 	// Then get the values of the three multiselect game specifierd
-	const games   = $('#games').val().join(",");
-	const leagues = $('#leagues').val().join(",");
-	const players = $('#players').val().join(",");
+	const games   = $('#games').val();
+	const leagues = $('#leagues').val();
+	const players = $('#players').val();
 	
+	// GOTCHA: If we intend on using any of these selectorss' values we run a real risk of not 
+	// seeing what they should contain because of the ajax call used to populated the. It may 
+	// not have returned yet. To wit, if we are waiting for any data we now have to wait for 
+	// it or we can't build the URL options from the form data.
+	await until(finished_waiting)
+
 	// Then the rest of the game selectors
 	const num_games        = $('#num_games').val();
 	const num_games_latest = $('#num_games_latest').val();
@@ -451,7 +480,7 @@ function URLopts(make_static) {
 	// TODO: Implement Tourneys and a Tourney filter.
 
 	// Handle the Game list based options	
-	const game_list = encodeList(games);
+	const game_list = encodeList(games.join(","));
 
 	if (game_list.length > 0) {
 		let game_options = [];
@@ -467,16 +496,18 @@ function URLopts(make_static) {
 			// for rendering the inital value of the games selector)
 			opts.push("games="+game_list);
 	}
-	
-	// Handle the Player list options
-	const player_list = encodeList(players);
-			
-	// We submit the list of leagues in context if any context demands it
-	// else in a basic form for transport to the server, to provide back in
-	// template context for initialising the leagues selector.
-	if (player_list.length > 0) {
-		let player_options = [];
 
+	// Handle Player list based options
+	
+	// Find the list of players that we should add to the URL
+	// If select_players is enabled we don't wan't to include players that will be auto_selected (why explictly and implciitly select them?)
+	// Small catch is that players is a list of strings and options.players_auto_selected a list of ints.
+	const add_players = select_players ? players.filter(p => !options.players_auto_selected.includes(parseInt(p))) : players;
+	const player_list = encodeList(add_players.join(","));
+
+	// We check for  any contextualising options for the list of players	
+	let player_options = [];
+	if (add_players.length > 0 || select_players) {
 		// The first context to check is on the player filters
 		if      (is_enabled("chk_players_ex")) player_options.push("players_ex");			
 		else if (is_enabled("chk_players_in")) player_options.push("players_in");
@@ -484,18 +515,22 @@ function URLopts(make_static) {
 		// The second context to check is on the game filters
 		if      (is_enabled("chk_game_players_any")) player_options.push("game_players_any");
 		else if (is_enabled("chk_game_players_all")) player_options.push("game_players_all");
-
-		if (player_options.length > 0)
-			for (i=0; i<player_options.length; i++) opts.push(player_options[i]+"="+player_list);
-		else	
-			// If no context supplied for the players, then submit them in the 
-			// transport option (no filter, just transports the list to server 
-			// for rendering the inital value of the players selector)
-			opts.push("players="+player_list);
+	}
+	
+	// If there is one contextualizing option submit the player list in that option
+	if (player_options.length == 1) {
+		const opt = player_options[0];
+		const val = add_players.length > 0 ? "="+player_list : "";
+		opts.push(opt+val);
+	}
+	// else submit the player list generically and any contextualizing otpions
+	else {
+		if (add_players.length > 0) opts.push("players="+player_list);
+		for (i=0; i<player_options.length; i++) opts.push(player_options[i]);
 	}
 	
 	// Handle the League list options
-	const league_list = encodeList(leagues);
+	const league_list = encodeList(leagues.join(","));
 	
 	// We submit the list of leagues in context if any context demands it
 	// else in a basic form for transport to the server, to provide back in
@@ -836,7 +871,7 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
+function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); copyStringToClipboard(window.location); } ) }
 function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
@@ -877,21 +912,23 @@ function got_new_leaderboards() {
 const REQUEST = new XMLHttpRequest();
 REQUEST.onreadystatechange = got_new_leaderboards;
 	
-function refetchLeaderboards(reload_icon, make_static) {
+async function refetchLeaderboards(reload_icon, make_static) {
 	if (typeof reload_icon === "undefined" || reload_icon == null) reload_icon = 'reloading_icon';
 	if (typeof make_static === "undefined") make_static = false;
 	
-	// Build the URL to fetch (AJAX)
-	const url = url_json_leaderboards + URLopts(make_static);
+	URLopts(make_static).then( (urlopts) => {
+		// Build the URL to fetch (AJAX)
+		const url = url_json_leaderboards + urlopts;
+		
+		// Display the reloading icon requeste
+		$("#"+reload_icon).css("visibility", "visible");
+		
+		// Disable all the submission buttons
+		enable_submissions(false);
 	
-	// Display the reloading icon requeste
-	$("#"+reload_icon).css("visibility", "visible");
-	
-	// Disable all the submission buttons
-	enable_submissions(false);
-
-	REQUEST.open("GET", url, true);
-	REQUEST.send(null);
+		REQUEST.open("GET", url, true); 
+		REQUEST.send(null);
+	} ); 
 }
 
 // Draw all leaderboards, sending to target and enabling links or not

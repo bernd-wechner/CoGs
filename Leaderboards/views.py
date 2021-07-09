@@ -1265,6 +1265,9 @@ def view_Leaderboards(request):
     lo = leaderboard_options(request.GET, session_filter, tz)
     default = leaderboard_options(ufilter=session_filter)
 
+    # Apply the selection options (intelligent selectors based on leaderboards content)
+    lo.apply_selection_options(leaderboards)
+
     (title, subtitle) = lo.titles()
 
     # selectthe widget defaults
@@ -1424,6 +1427,7 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
         # even if some people outside of the event are playing it and impacting the board.
         (boards, hide_baseline) = lo.snapshot_queryset(game, include_baseline)
 
+        # boards are Session instances (the board after a session, or alternately the session played to produce this board)
         if boards:
             #######################################################################################################
             # # BUILD EACH SNAPSHOT BOARD - from the sessions we recorded in "boards"
@@ -1474,25 +1478,13 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
                     if full_snapshot:
                         lb_cache[board.pk] = full_snapshot
 
-                # TODO, consider not relying on a firm index here, either providing
-                # indexes as an enumeration or using a dict? snapshot would habe
-                # to be turned into a tuple or list of dict values to be inserted into
-                # a the leaderboards tuple for this game though. Unless the whole
-                # structure moved more toward dicts (and dicts passed well as JSON
-                # to context and AJAX callers?
-                #
-                # Alternately make snapshots a class with attrs? What are the
-                # consequences of that for caching, JSONifying to context and
-                # AJAX callers?
                 if settings.DEBUG:
-                    log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[8])} players on it.")
+                    log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[LB_STRUCTURE.session_data_element.value])} players on it.")
 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
-                    # lb = full_snapshot[8]
-
                     snapshot = lo.apply(full_snapshot)
-                    lbf = snapshot[8]
+                    lbf = snapshot[LB_STRUCTURE.session_data_element.value]  # A player-filtered version of leaderboard
 
                     if settings.DEBUG:
                         log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
@@ -1545,6 +1537,10 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
 
     if settings.DEBUG:
         log.debug(f"Supplying {len(leaderboards)} leaderboards as {'a python object' if raw else 'as a JSON string'}.")
+
+    # If returning a HTML response, apply the selection options first
+    if not raw:
+        lo.apply_selection_options(leaderboards)
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

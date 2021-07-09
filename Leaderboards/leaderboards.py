@@ -182,8 +182,13 @@ class leaderboard_options:
     # are client side implemented (in Javascript). In short we don't want to lose that data in a
     # submission but we retatain it in a neutral (no filtering) fashion.These can aslo provide fallback
     # reference for any of the afforementioend options which can be URL specified without a list, if the
-    # list is provided via one of tehse transporters.
-    transport_options = {'games', 'players', 'leagues'}
+    # list is provided via one of these transporters.
+    #
+    # Only players has an auto_selected transporter to inform the client that tehse were sleected
+    # automatically by select_players. players conversely are user selected. And the client
+    # shoule merge these but will know which ones were manually selected and which auto and which
+    # both.
+    transport_options = {'games', 'players', 'leagues', 'players_auto_selected'}
 
     # Options that affect selections (which other options apply to)
     selection_options = {'select_players'}
@@ -269,11 +274,12 @@ class leaderboard_options:
     changed_since = None  # Show only leaderboards that changed since this date
     num_days = 1  # List only games played in the last num_days long event (also used for snapshot definition)
 
-    # Options that determing which players are listed in the leaderboards
+    # Options that determing which players are listed or selected/highlighted in the leaderboards
     # These options, like the game selectors, above provide defaults with which to
     # populate input elements in a form, but they should be presented with accompanying
     # checkboxes to select them, and if not selected the option should not be subitted.
     players = []  # A list of players to explicitly display (hide all others - except those, that other options request displayed as well)
+    players_auto_selected = []  # A list of players automatically selected by select_players (to augment self.players, specified by the request)
     num_players_top = 10  # The number of players at the top of leaderboard to show
     num_players_above = 2  # The number of players above selected players to show on leaderboards
     num_players_below = 2  # The number of players below selected players to show on leaderboards
@@ -281,7 +287,10 @@ class leaderboard_options:
     played_since = None  # The date since which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
 
-    # Options for intelligent selctions
+    # A generic list of leagues for transport (as a a selector)
+    leagues = []
+
+    # Options for intelligent selections
     select_players = False  # Select the players (that highlight_players acts on) to be all the players in session snapshots displayed
 
     # A perspective option that asks us to think of "current" not as at now, but as at some other time.
@@ -408,20 +417,27 @@ class leaderboard_options:
 
         ##################################################################
         # COLLECT TRANSPORTERS
-        games = None
-        players = None
-        leagues = None
+        games = []
+        players = []
+        leagues = []
 
         if f'games' in urequest:
-            games = list(map(int, urequest[f'games'].split(",")))
+            sgames = urequest[f'games']  # CSV string
+            if sgames:
+                games = list(map(int, sgames.split(",")))  # list of ints
 
         if f'players' in urequest:
-            players = list(map(int, urequest[f'players'].split(",")))
+            splayers = urequest[f'players']  # CSV string
+            if splayers:
+                players = list(map(int, splayers.split(",")))  # list of ints
 
         # TODO check if we can spefic NO league filterig. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
         if f'leagues' in urequest:
-            leagues = list(map(int, urequest[f'leagues'].split(",")))
+            sleagues = urequest[f'leagues']  # CSV string
+            if sleagues:
+                leagues = list(map(int, sleagues.split(",")))  # list of ints
+
             if preferred_league and not leagues:
                 leagues = [preferred_league]
 
@@ -443,7 +459,9 @@ class leaderboard_options:
         game_games = games  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'games_{suffix}' in urequest:
-                game_games = list(map(int, urequest[f'games_{suffix}'].split(",")))
+                sgame_games = urequest[f'games_{suffix}']  # CSV string
+                if sgame_games:
+                    game_games = list(map(int, sgame_games.split(",")))  # list of ints
 
                 # Use the transport option "games" if no list provided for games ex/in
                 # This enables URLs like
@@ -493,7 +511,9 @@ class leaderboard_options:
         game_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_leagues_{suffix}' in urequest:
-                game_leagues = list(map(int, urequest[f'game_leagues_{suffix}'].split(",")))
+                sgame_leagues = urequest[f'game_leagues_{suffix}']  # CSV string
+                if sgame_leagues:
+                    game_leagues = list(map(int, sgame_leagues.split(",")))  # list of ints
 
                 # Use the transport option "leagues" if no list provided for game_leagues
                 # This enables URLs like
@@ -532,7 +552,9 @@ class leaderboard_options:
         game_players = players  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_players_{suffix}' in urequest:
-                game_players = list(map(int, urequest[f'game_players_{suffix}'].split(",")))
+                sgame_players = urequest[f'game_players_{suffix}']  # CSV string
+                if sgame_players:
+                    game_players = list(map(int, sgame_players.split(",")))  # list of ints
 
                 # Use the transport option "players" if no list provided for game_players
                 # This enables URLs like
@@ -602,7 +624,9 @@ class leaderboard_options:
         player_players = players  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'players_{suffix}' in urequest:
-                player_players = list(map(int, urequest[f'players_{suffix}'].split(",")))
+                splayer_players = urequest[f'players_{suffix}']  # CSV string
+                if splayer_players:
+                    player_players = list(map(int, splayer_players.split(",")))  # list of ints
 
                 # Use the transport option "players" if no list provided for players ex/in
                 # This enables URLs like
@@ -680,7 +704,9 @@ class leaderboard_options:
         player_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'player_leagues_{suffix}' in urequest:
-                player_leagues = list(map(int, urequest[f'player_leagues_{suffix}'].split(",")))
+                splayer_leagues = urequest[f'player_leagues_{suffix}']  # CSV string
+                if splayer_leagues:
+                    player_leagues = list(map(int, splayer_leagues.split(",")))  # list of ints
 
                 # Use the transport option "leagues" if no list provided for player_leagues
                 # This enables URLs like
@@ -816,7 +842,9 @@ class leaderboard_options:
 
         # TODO: YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
         if 'trace' in urequest:
-            self.trace = list(map(int, urequest['trace'].split(",")))
+            strace = urequest['trace']  # CSV String
+            if strace:
+                self.trace = list(map(int, strace.split(",")))  # list of ints
 
         # A special option which isn't an option per se. If passed in we make
         # the provided options as static as we can with self.make_static()
@@ -867,7 +895,7 @@ class leaderboard_options:
                         log.debug(f"Applied players: {session_players}, yielding: {players}")
 
             # Add the players to the player selector
-            self.players = list(players)
+            self.players_auto_selected = list(players)
 
             if settings.DEBUG:
                 log.debug(f"{self.players=}")
@@ -1665,6 +1693,11 @@ class leaderboard_options:
         get the impact of the last event (prior to as_at) but produce a link that uses
         fixed reference times rather than the relative so they can be used in comms and
         have lasting relevance.
+
+        :param ufilter: a user filter, i.e request.session.filter dictionary that specifies
+                        the session default. Currently only 'league' is used to populate the
+                        options with a default league filter based on session preferences.
+                        Is extensible.
         '''
 
         # Map self.compare_back_to number to self.compare_back_to datetime
@@ -1686,14 +1719,14 @@ class leaderboard_options:
             self.compare_back_to = self.changed_since
             self.__enable__('compare_back_to', True)
 
-        # If a user session filter is used, convert it toe xplicit static options
-        # Only league supported for now. If not leagues are explicti and preferred
+        # If a user session filter is used, convert it to explicit static options
+        # Only league supported for now. If no leagues are explict and preferred
         # league is in place for the user (in the user session)
         #
         # Note: This is probably not needed. It operates in concert with the client
         # side code that generates a statc URL from the returned options. We return
-        # an options"made_static" to let the client know we've done the server side
-        # bit. The client side bit then build the URL from the leaderboard_options we
+        # an option "made_static" to let the client know we've done the server side
+        # bit. The client side bit then builds the URL from the leaderboard_options we
         # return.
         if ufilter:
             preferred_league = ufilter.get('league', None)
