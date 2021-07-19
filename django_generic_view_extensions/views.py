@@ -594,8 +594,14 @@ def post_generic(self, request, *args, **kwargs):
         # We will uncloak this just before saving.
         if self.object:  # protect it from the full_clean augmentation
             self.form.instance = self.form._meta.model()
+            # Setting the instance to a newly instantiated instance seesm to trigger a form clean which
+            # Can generate errors based on a a the CreateView context (like unique value constarints)
+            # which have no bearing on the UpdateView which has an object attached. As we validate the
+            # form below in the proper context, we clear any form errros that this (dummy) context
+            # may have generated. The joy of trying to trick Django ...
+            self.form.errors.clear()
 
-        log.debug(f"Is_valid? {self.form.data}")
+        log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
         if self.form.is_valid():
             # Hook for pre-processing the form (before a database transaction is opened)
             if callable(getattr(self, 'pre_transaction', None)):

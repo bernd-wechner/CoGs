@@ -518,7 +518,7 @@ async function URLopts(make_static) {
 	}
 	
 	// If there is one contextualizing option submit the player list in that option
-	if (player_options.length == 1) {
+	if (player_options.length === 1) {
 		const opt = player_options[0];
 		const val = add_players.length > 0 ? "="+player_list : "";
 		opts.push(opt+val);

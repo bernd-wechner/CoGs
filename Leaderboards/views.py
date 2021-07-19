@@ -35,8 +35,6 @@ from django.conf import settings
 
 from dal import autocomplete
 
-# from numpy import rank
-
 # TODO: Add account security, and test it
 # TODO: Once account security is in place a player will be in certain leagues,
 #      restrict some views to info related to those leagues.
