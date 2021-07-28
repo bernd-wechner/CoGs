@@ -112,23 +112,30 @@ function finished_waiting() {return Object.keys(waiting_for).length === 0};
 //       this method uses a timer based sleep to check the waiting_for logs of the requests to do same but
 //       is a tad klunkier.
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); } 
-async function until(fn) {while (!fn()) {await sleep(10)}}
+async function until(fn) { while (!fn()) {	await sleep(10); } }
 
 function Select2Init(selector, values) {
 	const id = selector[0].id;
 	const selected = selector.val().map(Number);
+	const ordered_values = values.sort(function(a, b){return a-b});
 	
 	let request = new Set();
-	for (let i = 0; i < values.length; i++)
+	for (const value of ordered_values)
 		// We want to request a value only if it's not currently selected and we're not waiting for it (already requested it)'
-		if (!selected.includes(values[i]) && (!(id in waiting_for) || !waiting_for[id].has(values[i]))) 
-			request.add(values[i]);
+		if (!selected.includes(value) && (!(id in waiting_for) || !waiting_for[id].has(value))) 
+			request.add(value);
 	
 	if (request.size > 0) {
-		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + Array.from(request).join(",");
+		// Be VERY careful here. DAL paginates by default and may not return all of the objects that the q parmater asks for. 
+		// the all parameters disables that pagination. If thes evrer does not return all of the requeste dobjects we wil end
+		// up waiting endlessly on them.
+		// TODO: We can escape this weakness by implementing the promses better so as not to use wating_for
+		//	     The trick is, how?
+		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?all&q=" + Array.from(request).join(",");
+		
 		selector.val(null).trigger('change');
 
-		if (!(id in waiting_for)) waiting_for[id] = new Set();
+		if (!(id in waiting_for)) waiting_for[id] = new Set();	
 		
 		// Note locally that we've requested it and are waiting for an answer then issue the request 
 		// (should really be atomic). Bizaare JS syntax for set union using the spread operator (ellipsis)
@@ -139,19 +146,21 @@ function Select2Init(selector, values) {
 		}).then(function (data) {
 			// data arrives in JSON like:
 			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
-				
-			for (let i=0; i<data.results.length; i++) {
+			
+			for (const result of data.results) {
 				// create the option and append to Select2
-				var option = new Option(data.results[i].text, data.results[i].id, true, true);
+				var option = new Option(result.text, result.id, true, true);
 				selector.append(option).trigger('change');
 				// Take note that we're no longer waiting on it (id arrives as string, was stored as int)
 				// But we clobber both just in case ;-). Returns false if it didn't delete because it wasn't there, tue if it did. 
 				// that is fails silently on the redundant call.
-				waiting_for[id].delete(data.results[i].id); // Value we might have if we got our wires crossed
-				waiting_for[id].delete(parseInt(data.results[i].id)); // Expected value
+				waiting_for[id].delete(result.id); // Value we might have if we got our wires crossed
+				waiting_for[id].delete(parseInt(result.id)); // Expected value
 			}
 
-			if (waiting_for[id].size === 0) delete waiting_for[id]; // If the set is empty remove the entry in the dict
+			if (waiting_for[id].size === 0) {
+				delete waiting_for[id]; // If the set is empty remove the entry in the dict
+			}
 	
 		    // manually trigger the `select2:select` event
 		    selector.trigger({

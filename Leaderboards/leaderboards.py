@@ -749,7 +749,11 @@ class leaderboard_options:
 
         # Options for things that other options can act on (populating select boxes on the UI)
         if 'select_players' in urequest:
-            self.select_players = json.loads(urequest['select_players'].lower())  # A boolean value is parsed
+            if urequest['select_players']:
+                self.select_players = json.loads(urequest['select_players'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.select_players:
+                self.select_players = True
 
         ##################################################################
         # EVOLUTION OPTIONS
@@ -791,41 +795,76 @@ class leaderboard_options:
             self.__enable__('compare_with', False)
 
         ##################################################################
-        # INFO OPTIONS
-
-        # Options to include extra info in a leaderboard header
-        if 'details' in urequest:
-            self.details = json.loads(urequest['details'].lower())  # A boolean value is parsed
-        # else use the default value
-
-        if 'analysis_pre' in urequest:
-            self.analysis_pre = json.loads(urequest['analysis_pre'].lower())  # A boolean value is parsed
-
-        if 'analysis_post' in urequest:
-            self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
-
-        if 'show_d_rank' in urequest:
-            self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
-
-        if 'show_d_rating' in urequest:
-            self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
-
-        # Snapshot selecting options
-        if 'show_baseline' in urequest:
-            self.show_baseline = json.loads(urequest['show_baseline'].lower())  # A boolean value is parsed
-
-        ##################################################################
         # HIGHLIGHT OPTIONS
 
         # Options for formatting the contents of a given leaderbaords
         if 'highlight_players' in urequest:
-            self.highlight_players = json.loads(urequest['highlight_players'].lower())  # A boolean value is parsed
+            if urequest['highlight_players']:
+                self.highlight_players = json.loads(urequest['highlight_players'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_players:
+                self.highlight_players = True
 
         if 'highlight_changes' in urequest:
-            self.highlight_changes = json.loads(urequest['highlight_changes'].lower())  # A boolean value is parsed
+            if urequest['highlight_changes']:
+                self.highlight_changes = json.loads(urequest['highlight_changes'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_changes:
+                self.highlight_changes = True
 
-        if 'highlight_selected_players' in urequest:
-            self.highlight_selected_players = json.loads(urequest['highlight_selected_players'].lower())  # A boolean value is parsed
+        if 'highlight_selected' in urequest:
+            if urequest['highlight_selected']:
+                self.highlight_selected = json.loads(urequest['highlight_selected'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_selected:
+                self.highlight_selected = True
+
+        ##################################################################
+        # INFO OPTIONS
+
+        # Options to include extra info in a leaderboard header
+        if 'details' in urequest:
+            if urequest['details']:
+                self.details = json.loads(urequest['details'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.details:
+                self.details = True
+
+        if 'analysis_pre' in urequest:
+            if urequest['analysis_pre']:
+                self.analysis_pre = json.loads(urequest['analysis_pre'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.analysis_pre:
+                self.analysis_pre = True
+
+        if 'analysis_post' in urequest:
+            if urequest['analysis_post']:
+                self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.analysis_post:
+                self.analysis_post = True
+
+        # Coilumn selecting options
+        if 'show_d_rank' in urequest:
+            if urequest['show_d_rank']:
+                self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_d_rank:
+                self.show_d_rank = True
+
+        if 'show_d_rating' in urequest:
+            if urequest['show_d_rating']:
+                self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
+            elif not self.show_d_rating:
+                self.show_d_rating = True
+
+        # Snapshot selecting options
+        if 'show_baseline' in urequest:
+            if urequest['show_baseline']:
+                self.show_baseline = json.loads(urequest['show_baseline'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_baseline:
+                self.show_baseline = True
 
         ##################################################################
         # FORMATTING OPTIONS
@@ -855,7 +894,11 @@ class leaderboard_options:
         ##################################################################
         # ADMIN OPTIONS
         if 'ignore_cache' in urequest:
-            self.ignore_cache = True
+            if urequest['ignore_cache']:
+                self.show_baseline = json.loads(urequest['ignore_cache'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.ignore_cache:
+                self.ignore_cache = True
 
         if settings.DEBUG:
             log.debug(f"Enabled leaderboard options: {self.enabled}")

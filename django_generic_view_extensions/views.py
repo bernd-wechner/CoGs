@@ -936,9 +936,10 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
         else:
             self.field_value = self.q
 
-        # If this is false then self.selector_queryset is permitted to do pre-filtering
-        # (which could be based on any othe rcriteria, like session stored filters for example)
-        # If it is true it is denied this permission.
+        # If this is false then self.selector_queryset is permitted to do default pre-filtering
+        # (which could be based on any other criteria, like session stored filters for example)
+        # If it is true it is denied this permission. It is up to the model's selector_queryset
+        # method to honor this request, and how it is honored.
         self.select_from_all = self.kwargs.get('all', False)
 
         # use the model's selectoprovided selector_queryset if available
@@ -949,6 +950,14 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
 
             if self.q:
                 qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
+
+        # DAL applies pagination by default. When prepopulating controls we don't want that, we want
+        # all the results, not one page in a paginated result set. We offer this with an optional
+        # GET parameter "all" This is very different to the kwark "all" above which request a select
+        # from all objects. This one requests all the requested objects to be returned, not a page of
+        # them.
+        if 'all' in self.request.GET:
+            self.paginate_by = 0  # Disables pagination
 
         return qs
 

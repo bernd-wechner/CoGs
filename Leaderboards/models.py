@@ -849,8 +849,9 @@ class League(AdminModel):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
         :param cls: Our class (so we can build a queryset on it to return)
-        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
-        :param s: The request session (if there's a filter recorded there we honor it)
+        :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param session: The request session (if there's a filter recorded there we honor it)
+        :param all: Requests to ignore any default league filtering
         '''
         qs = cls.objects.all()
 
@@ -1204,8 +1205,9 @@ class Player(PrivacyMixIn, AdminModel):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
         :param cls: Our class (so we can build a queryset on it to return)
-        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
-        :param s: The request session (if there's a filter recorded there we honor it)
+        :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param session: The request session (if there's a filter recorded there we honor it)
+        :param all: Requests to ignore any default league filtering
         '''
         qs = cls.objects.all()
 
@@ -1954,8 +1956,9 @@ class Game(AdminModel):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
         :param cls: Our class (so we can build a queryset on it to return)
-        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
-        :param s: The request session (if there's a filter recorded there we honor it)
+        :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param session: The request session (if there's a filter recorded there we honor it)
+        :param all: Requests to ignore any default league filtering
         '''
         qs = cls.objects.all()
 
@@ -2096,8 +2099,9 @@ class Location(AdminModel):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
         :param cls: Our class (so we can build a queryset on it to return)
-        :param q: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
-        :param s: The request session (if there's a filter recorded there we honor it)
+        :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
+        :param session: The request session (if there's a filter recorded there we honor it)
+        :param all: Requests to ignore any default league filtering
         '''
         qs = cls.objects.all()
 

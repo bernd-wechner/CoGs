@@ -953,7 +953,6 @@ class view_Login(LoginViewExtended):
 
 
 class view_Add(LoginRequiredMixin, CreateViewExtended):
-    # TODO: Should be atomic with an integrity check on all session, rank, performance, team, player relations.
     template_name = 'CoGs/form_data.html'
     operation = 'add'
     # fields = '__all__'
@@ -961,29 +960,9 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     pre_transaction = pre_transaction_handler
     pre_save = pre_save_handler
     pre_commit = pre_commit_handler
-    #
-    # TODO The success URL should go a new page, an impact view which
-    # shows the impact of the added board. Here's a JSON URL that gets it:
-    # http://127.0.0.1:8000/json/leaderboards/?no_defaults&games_ex=29&player_leagues_any=1&as_at=2021-01-16+13-30-00+0000&links=BGG&details=true&analysis_pre=true&analysis_post=true&show_delta=true&ignore_cache
-    # Do this in Add and Edit.
-    #
-    # TODO: Once that's done a second board which shows the impact on the latest leaderboards (if this
-    # add or edit was not latest) Appropriate headers and all, the latest board impact would be not
-    # compared to the previous session temporally but to the ratings backup taken before a rebuild
-    # was tricggered. To wit the BackupRating has a diff method but Game.leaderboard I think
-    # needs to be able to build one from Rating or BackupRating and the ajax view be able to make
-    # a request for a games leaderboard lastest from Rating or BackupRating from whcih it can build a
-    # Leaderboard with Rank Deltas.
 
 
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
-    # TODO: Must be atomic and in such a way that it tests if changes have integrity.
-    #       notably if a session changes from indiv to team mode say or vice versa,
-    #       there is a notable impact on rank objects that could go wrong and we should
-    #       check integrity.
-    #       Throw:
-    #        https://docs.djangoproject.com/en/1.10/ref/exceptions/#django.db.IntegrityError
-    #       if an integrity error is found in such a transaction (or any transaction).
     template_name = 'CoGs/form_data.html'
     operation = 'edit'
     extra_context_provider = extra_context_provider
