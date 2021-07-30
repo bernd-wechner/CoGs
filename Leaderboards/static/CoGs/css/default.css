@@ -210,12 +210,12 @@ a.field_link:visited {
 }
 
 a:hover {
-    text-decoration: underline;
+    font-size: 110%;
     color: blue;
 }
 
 a:active {
-    text-decoration: underline;
+    font-size: 110%;
     color: blue;
 }
 

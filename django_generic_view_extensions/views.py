@@ -942,7 +942,7 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
         # method to honor this request, and how it is honored.
         self.select_from_all = self.kwargs.get('all', False)
 
-        # use the model's selectoprovided selector_queryset if available
+        # use the model's provided selector_queryset if available
         if self.field_name and self.field_name == self.selector_field and callable(self.selector_queryset):
             qs = self.selector_queryset(self.field_value, self.request.session, self.select_from_all)
         else:

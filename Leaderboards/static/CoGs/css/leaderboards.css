@@ -16,6 +16,21 @@
 	of the grid.  
 */ 
 
+/* Example of use color variables
+:root {
+  --background-color: AliceBlue;
+}
+background-color: var(--background-color);
+*/
+
+:root {
+	--leaderboard_normal: rgb(255, 247, 240);
+	--leaderboard_change: rgb(255, 224, 224);
+	--leaderboard_select: rgb(255, 249, 186);
+	--leaderboard_select_change: rgb(255, 255, 176);
+}
+
+
 .leaderboard_options {
 	display: grid;
 	grid-template-columns: min-content min-content 1fr;
@@ -207,12 +222,21 @@ button:hover:disabled { cursor: wait; }
 
 /* LEADERBOARD TABLES */
 
+table.legend 
+{
+	font-size: 80%;
+}
+
+tr.legend {
+  	display: none; /* toggled to when displayed */
+}
+
 table.leaderboard
 {
 	margin-right: 10px;
 	border-color: #600;
 	border-style: solid;
-	border-width: 0 0 1px 1px;
+	border-width: 0 0 1px 1px;  /* top, right, bottom, left */ 
 	border-collapse: collapse;
 	border-spacing: 10px;
 }
@@ -230,19 +254,21 @@ td.leaderboard
 
 /* A great color designer: https://colordesigner.io/color-mixer/?mode=rgb */
 
+th.leaderboard.header { background-color: var(--leaderboard_normal); font-weight: bold; font-size: 120%; }
+
 th.leaderboard.normal, 
-td.leaderboard.normal {	background-color: rgb(255, 247, 240);	font-weight: normal; }
+td.leaderboard.normal {	background-color: var(--leaderboard_normal);	font-weight: normal; }
 
 td.leaderboard.highlight_players_off {	font-weight: normal; }
 td.leaderboard.highlight_players_on { font-weight: bold !important; }
 
-td.leaderboard.highlight_changes_off { background-color: rgb(255, 247, 240); }
-td.leaderboard.highlight_changes_on { background-color: rgb(255, 224, 224) !important; }
+td.leaderboard.highlight_changes_off { background-color: var(--leaderboard_normal); }
+td.leaderboard.highlight_changes_on { background-color: var(--leaderboard_change) !important; }
 
-td.leaderboard.highlight_selected_off { background-color: rgb(255, 247, 240); }
-td.leaderboard.highlight_selected_on {background-color: rgb(255, 249, 186) !important; } 
+td.leaderboard.highlight_selected_off { background-color: var(--leaderboard_normal); }
+td.leaderboard.highlight_selected_on {background-color: var(--leaderboard_select) !important; } 
 
-td.leaderboard.highlight_changes_on.highlight_selected_on { background-color: rgb(255, 255, 176) !important; }
+td.leaderboard.highlight_changes_on.highlight_selected_on { background-color: var(--leaderboard_select_change) !important; }
 
 table.leaderboard.wrapper { border-style: none; margin: 10px; }
 

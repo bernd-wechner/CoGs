@@ -319,10 +319,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	} else {
 		content = document.createTextNode(game);		
 	}
-	th.setAttribute("style", "font-weight: bold; font-size: 120%;");	
 	th.appendChild(content);
 	th.colSpan = name_cols;
-	th.className = 'leaderboard normal'
+	th.className = 'leaderboard header'
 	tr.appendChild(th);
 
 	// ****** The Game Play Count
@@ -344,7 +343,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 
 	th.colSpan = lb_cols - name_cols;
 	th.className = 'leaderboard normal'
-		th.style.textAlign = 'center';
+	th.style.textAlign = 'center';
 	tr.appendChild(th);
 
 	// Three optional rows only relevant for sessions

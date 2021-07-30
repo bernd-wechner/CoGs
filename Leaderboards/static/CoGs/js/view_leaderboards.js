@@ -10,6 +10,15 @@
 //    or evolutions and so want one game per row, and one column per snapshot, so we
 //    can safely ignore cols, and use a table as wide as maxshots.   
 
+// Note we have to initialise these by calling select2() if we want to call select2('data') 
+// at any point. This is explained here:
+// https://github.com/select2/select2/issues/3582
+// I would have thought the DAL widget has this already handed. But apprently not.
+// If we do this in the   template (that includes this script) rather than here, for 
+// some reason it doesn't work right. Initilaising them here seems to work fine.
+$('#games').select2();
+$('#players').select2();
+$('#leagues').select2();
 
 // Configurable, should agree with what the view is configured to deliver.
 // if the view is delivering baseline boards this should be true and we will
@@ -34,27 +43,42 @@ String.prototype.boolean = function() {
         throw new Error ("string.boolean(): Cannot convert string to boolean.");
     }
   };
-  
-function selectElementContents(el) {
-      let body = document.body, range, sel;
-      if (document.createRange && window.getSelection) {
-          range = document.createRange();
-          sel = window.getSelection();
-          sel.removeAllRanges();
-          try {
-              range.selectNodeContents(el);
-              sel.addRange(range);
-          } catch (e) {
-              range.selectNode(el);
-              sel.addRange(range);
-          }
-      } else if (body.createTextRange) {
-          range = body.createTextRange();
-          range.moveToElementText(el);
-          range.select();
-      }
+
+// JQuery extension to provide outerHTML
+jQuery.fn.html_outer = function(s) {
+    return s
+        ? this.before(s).remove()
+        : jQuery("<p>").append(this.eq(0).clone()).html();
+};
+
+// clipboard.js experiment.s Deprecated. The method of Žoček rules them all.
+//const clipboard = new ClipboardJS('#btnCopy');
+//clipboard.on('success', function(e) { console.log(e);});
+//clipboard.on('error', function(e) { console.log(e);});
+
+// Deprecated as the method of Žoček is now in use
+function selectElementContents(JQelement) {
+      const el = JQelement[0]
+	  let body = document.body, range, sel;
+	  if (document.createRange && window.getSelection) {
+	      range = document.createRange();
+	      sel = window.getSelection();
+	      sel.removeAllRanges();
+	      try {
+	          range.selectNodeContents(el);
+	          sel.addRange(range);
+	      } catch (e) {
+	          range.selectNode(el);
+	          sel.addRange(range);
+	      }
+	  } else if (body.createTextRange) {
+	      range = body.createTextRange();
+	      range.moveToElementText(el);
+	      range.select();
+	  }
 }
 
+// Used to copy URLs to the clipboard (can probably move to the method of Žoček as well)
 function copyStringToClipboard(str) {
    let el = document.createElement('textarea');
    el.value = str;
@@ -64,16 +88,96 @@ function copyStringToClipboard(str) {
    el.select();
    document.execCommand('copy');
    document.body.removeChild(el);
-}  
+}
 
+// Moving colors to CSS vars broke the colors inthe copy.
+// Several new methods are partially or completely available now.
+// After a LOT of reading, testing, experimenting one method finally works in Firefox and Chromium 
 function copyElementToClipboard(JQelement) {
-	   let el = JQelement.clone().get(0);
-	   el.setAttribute('readonly', '');
-	   el.style = {position: 'absolute', left: '-9999px'};
-	   document.body.appendChild(el);
-	   selectElementContents(el);
-	   document.execCommand('copy');
-       document.body.removeChild(el);
+	const clone = JQelement.clone().get(0);  // Clone the element we want to copy to the clipboard
+	
+	const include_styles = true;
+	const copy_wrapper = false;
+	
+	const methods = ['legacy', 'Text API', 'Generic API', 'HTML5', 'Žoček'];
+	const method = methods[4];  // Only the 'Žoček' works! The rest is now legacy garbage!
+	
+	// create a wrapper (that we will try to copy)
+    const wrapper = $('<div>');
+	wrapper.attr('id', 'copyme');
+	wrapper.attr('readonly', '');
+	
+	// This was necessary in past as we had to add the cclone tot he DOM to select it and copy it
+	// This appears no longer to be the case.
+	//wrapper.attr('style', "{position: 'absolute', left: '-9999px'}");
+
+	if (include_styles) {
+	    const style = $('<style>');
+		for (sheet of document.styleSheets) {
+			if (sheet.href && (sheet.href.endsWith("leaderboards.css") || sheet.href.endsWith("tooltip.css") || sheet.href.endsWith("default.css"))) {
+				let rules = [];
+				for (rule of sheet.cssRules) rules.push(rule.cssText)
+				
+				style.append(rules.join('\n'));
+			}
+		}
+
+		wrapper.append(style);
+	}
+
+	// Add the cloned element to the wrapper 	
+	wrapper.append(clone);
+	
+	// Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
+	const HTML = copy_wrapper ? wrapper.html_outer() : wrapper.html();
+	//console.log(HTML);	
+	
+	// This puts the wrapped cloned element into the DOM. May or may not be necessary depending on clipboard methods 
+	$('body').append(wrapper);
+
+	switch (method) {
+		case 'legacy':
+			// Firefox loses all styles
+			// Chromium keeps colors if they are in the sttyle, and loses them if they are CSS vars
+			selectElementContents(wrapper);  // $('#copyme') works too, but this works even when not int he DOM
+			document.execCommand('copy');
+			break;
+		case 'Text API':
+			// Works in  Firefox and Chromiusm, but only copies text. In this example we copy the the HTML of the wrapper
+			// If the HTML is pasted into a Thunderbird HTML tab it actually renders perfectly well!
+			navigator.clipboard.writeText(HTML).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
+			break;
+		case 'Generic API':
+			// In Firefox this works the same as the 'legacy' method. It removes the <style> element alas
+			// In Chromium it also removes the style element and hence the whole thing is cruddy unstyled, worse than Firefoxes.
+			// data is an Array, but only one element is supported at present in either browser. 
+			const data = [new ClipboardItem({ "text/html": new Blob([HTML], { type: "text/html" }) })];
+			navigator.clipboard.write(data).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
+			//navigator.clipboard.write(data).then(() => {console.log("Copied!");}, err => {console.error("Something went wrong", err);});			
+			break;
+		case 'HTML5':
+			// Poorly supported
+			// https://www.htmlgoodies.com/html5/working-with-clipboard-apis-in-html5-web-apps
+			let copyEvent = new ClipboardEvent('copy', { dataType: 'text/html', data: HTML } );
+			document.dispatchEvent(copyEvent);			
+			break;
+		case 'Žoček':
+			// A tweak posted here:
+			// https://stackoverflow.com/a/45352464/4002633
+			// And this works perfectly in Firefox and Chromium! Preservice CSS var colours! A stroke fo genius!
+		    function handler(event) {
+		        event.clipboardData.setData('text/html', HTML);
+		        event.preventDefault();
+		        document.removeEventListener('copy', handler, true);
+		    }
+		
+		    document.addEventListener('copy', handler, true);
+		    document.execCommand('copy');			
+			break;
+	}
+	
+	// If it was added tot he DOM, remove it. If it wasn't this passes thru silently.'
+	wrapper.remove();
 }  
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
@@ -150,25 +254,26 @@ function Select2Init(selector, values) {
 			for (const result of data.results) {
 				// create the option and append to Select2
 				var option = new Option(result.text, result.id, true, true);
-				selector.append(option).trigger('change');
+				selector.append(option);
 				// Take note that we're no longer waiting on it (id arrives as string, was stored as int)
 				// But we clobber both just in case ;-). Returns false if it didn't delete because it wasn't there, tue if it did. 
 				// that is fails silently on the redundant call.
 				waiting_for[id].delete(result.id); // Value we might have if we got our wires crossed
 				waiting_for[id].delete(parseInt(result.id)); // Expected value
 			}
+			selector.trigger('change');
 
 			if (waiting_for[id].size === 0) {
 				delete waiting_for[id]; // If the set is empty remove the entry in the dict
 			}
 	
 		    // manually trigger the `select2:select` event
-		    selector.trigger({
-		        type: 'select2:select',
-		        params: {
-		            data: data
-		        }
-		    });
+		    //selector.trigger({
+		    //    type: 'select2:select',
+		    //    params: {
+		    //        data: data
+		    //    }
+		    //});
 		});
 	}
 }
@@ -851,13 +956,36 @@ function ShortcutButton(button) {
 	refetchLeaderboards();
 }
 
-function toggle_visibility(class_name, visible_style) {
+const button_show = "&#9660;"  // ▼ - drop down
+const button_hide = "&#9650;"  // ▲ - pull up
+
+// These are hidden by default
+$('#options_display_button').html(button_show);
+$('#legend_display_button').html(button_show);
+
+function set_visibility(class_name, visible_style, button_id) {
+	// Yes the only way to convert a HTML entity to the decoded value that .html() returns is to create a dummy element.
+	current = $('#'+button_id).html() === $('<div/>').html(button_show).text() ? 'none' : visible_style;
+	
+	if (current == visible_style) {
+		$('.'+class_name).css('display', visible_style);
+	} else {
+		$('.'+class_name).css('display', 'none');
+	}
+} 
+
+function toggle_visibility(class_name, visible_style, button_id) {
 	current = $("."+class_name)[0].style.display;
-	if (current == visible_style) 
-		$("."+class_name).css('display', 'none');		
-	else
-		$("."+class_name).css('display', visible_style);
-	$('.multi_selector').trigger('change');
+	// If we can see it now, we want to hide it, and presnet the show button.
+	// We present the show button, and then calls et_visibility, which infers therefrom
+	// that the element shoudl be hidden.
+	if (current === visible_style) {
+		$('#'+button_id).html(button_show);
+	} else {
+		$('#'+button_id).html(button_hide);
+	}
+	set_visibility(class_name, visible_style, button_id);
+	//$('.multi_selector').trigger('change');
 }
 
 function toggle_highlights(highlight_type, checkbox) {
@@ -870,6 +998,8 @@ function toggle_highlights(highlight_type, checkbox) {
 		$(".leaderboard."+tag_off).removeClass(tag_off).addClass(tag_on);
 	else
 		$(".leaderboard."+tag_on).removeClass(tag_on).addClass(tag_off);
+		
+	update_legend();
 }
 
 // Some simple one-liner functions to handle input events
@@ -940,6 +1070,26 @@ async function refetchLeaderboards(reload_icon, make_static) {
 	} ); 
 }
 
+const legend_entries = ["chk_highlight_players", "chk_highlight_selected", "chk_highlight_changes", "chk_highlight_selected_AND_chk_highlight_changes"];
+
+// Selectively hides legend rows that aren't needed
+function update_legend() {
+	for (entry of legend_entries) {
+		const checkbox_ids = entry.split('_AND_');
+		
+		let all_checked = true;
+		for (checkbox_id of checkbox_ids) {
+			const checked = document.getElementById(checkbox_id).checked;
+			if (! checked) all_checked = false;
+		}
+		
+		if (all_checked)
+			$("#legend_"+entry).css("display","table-row");
+		else
+			$("#legend_"+entry).css("display","none");
+	}
+}
+
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
 	// Oddly the jQuery forms $('#links') and $('#cols') fails here. 
@@ -949,6 +1099,11 @@ function DrawTables(target, links) {
 	let cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
+
+	// A wrapper table for the leaderboards
+	const table = document.getElementById(target); 
+	table.innerHTML = "";
+	table.className = 'leaderboard wrapper'
 
 	const LB_options = [
 		document.getElementById("chk_highlight_players").checked,
@@ -964,10 +1119,59 @@ function DrawTables(target, links) {
 	];
 	
 	// Get the list of players selected in the multi-select box #players
-	const selected_players = $('#players').val();
+	const selected_player_ids = $('#players').val();
+	const selected_player_names = _.shuffle($('#players').select2('data').map(o => o.text));
+	const selected_player_list = selected_player_names.join(', ').replace(/,(?!.*,)/gmi, ' and')
+	const isare = selected_player_ids.length < 2 ? 'is' : 'are';
+	const selected_players = selected_player_ids.length == 0 ? '' : `(${selected_player_list} ${isare} currently selected)` ;
 
 	// The name format to use is selected in a #names selector
 	const name_format  = $("#names").val();
+	
+	// First row is the legend
+	const header_rows = 1; // Number of header rows. Just the legend row
+	const header_cols = maxshots == 1 ? cols : maxshots;
+	const rowLegend = table.insertRow(0);
+	const cellLegend = rowLegend.insertCell(0);
+	cellLegend.colSpan = header_cols;
+	rowLegend.className = 'legend';	
+	set_visibility('legend', 'table-row', 'legend_display_button');
+	
+	const tableLegend = document.createElement('table');
+	tableLegend.className = 'leaderboard legend';
+	cellLegend.appendChild(tableLegend)
+	
+	const rowHeader = tableLegend.insertRow(0);
+	const cellHeader = document.createElement("th");
+	cellHeader.className = 'leaderboard header';
+	cellHeader.innerHTML = 'Legend';
+	rowHeader.appendChild(cellHeader)
+	
+	for (const entry of legend_entries) {
+		const rowEntry = tableLegend.insertRow(-1);
+		const cellEntry = rowEntry.insertCell(0);
+		rowEntry.id = "legend_" + entry; 
+		
+		switch (entry) {
+			case "chk_highlight_players":
+				cellEntry.className = 'leaderboard normal highlight_players_on';
+				cellEntry.innerHTML = 'Players in the game that produced the displayed leaderboard';
+				break;
+			case "chk_highlight_selected":
+				cellEntry.className = 'leaderboard highlight_selected_on';
+				cellEntry.innerHTML = `Selected players ${selected_players}`;
+				break;
+			case "chk_highlight_changes":
+				cellEntry.className = 'leaderboard highlight_changes_on';
+				cellEntry.innerHTML = 'Players whose TrueSkill rating changed as a consequence of the session that produced the displayed leaderboard';
+				break;
+			case "chk_highlight_selected_AND_chk_highlight_changes":
+				cellEntry.className = 'leaderboard highlight_changes_on highlight_selected_on';
+				cellEntry.innerHTML = 'Selected players whose TrueSkill rating changed as a consequence of the session that produced the displayed leaderboard';
+				break;
+		}
+	}
+	update_legend();
 	
 	// maxshots is the maximum number of snapshots of any games's boards in the
 	// database we're about to render. If it's 1 that implies no evolution is 
@@ -978,19 +1182,14 @@ function DrawTables(target, links) {
 		const remainder = totalboards - rows*cols;
 		if (remainder > 0) { rows++; }
 
-		// A wrapper table for the leaderboards
-		const table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
-
 		for (let i = 0; i < rows; i++) {
-			const row = table.insertRow(i);
+			const row = table.insertRow(header_rows+i);
 			for (let j = 0; j < cols; j++) {
 				k = i*cols+j 
 				if (k < totalboards) {
 					const cell = row.insertCell(j);
 					//cell.className = 'leaderboard wrapper'
-					const board = LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_players, name_format)
+					const board = LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_player_ids, name_format)
 					if (board) cell.appendChild(board);
 				}
 			}
@@ -1002,23 +1201,18 @@ function DrawTables(target, links) {
 		cols = maxshots;
 		rows = leaderboards.length;
 
-		// A wrapper table for the leaderboards
-		var table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
-
 		var lb = 0; 
 		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
+			var row = table.insertRow(header_rows+i);
 			for (var j = 0; j < boardshots[lb]; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
-				const board = LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format)
+				const board = LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_player_ids, name_format)
 				if (board) cell.appendChild(board);
 			}
 			lb++; 
-		}			
-	}			 
+		}
+	}
 }
 
 // ===================================================================================

@@ -13,7 +13,8 @@
 	<section id="leaderboard_options" class="leaderboard_options">
 		<div class="lbl_view">View:</div>
 		<div class="lbl_basic">using:</div>
-		<div class="lbl_advanced"><a onclick="toggle_visibility('lo_advanced', 'grid');">Advanced options&#9660;</a></div>
+		<div class="lbl_advanced tooltip"><a onclick="toggle_visibility('lo_advanced', 'grid', 'options_display_button');">Advanced options <span id="options_display_button"></span></a>
+			<span class="tooltiptext_right">Display or hide the advanced options</span></div>
 		
 		<div class="lo_buttons">
 			<div class="lo_reload_icon">
@@ -32,6 +33,7 @@
 				
 			<div class="lo_utils">
 				<button type="button" class="button_right tooltip" id='btnCopy' onclick="copyElementToClipboard($('#tblLB'));">
+{#				  data-clipboard-target="#copyme" onclick="copyElementToClipboard($('#tblLB'))#}
 					<img src="{% static 'copy.png' %}"  class='img_button'>
 					<span class="tooltiptext_left">Copy Leaderboards (for pasting elsewhere)</span>
 				</button>
@@ -334,7 +336,13 @@
 
 {% block content %}
 	{#	PAGE HEADER #}
-	<h3><span id='lblTotalCount'></span> <span id='lblSnapCount'></span></h3>
+	<h3><span id='lblTotalCount'></span> <span id='lblSnapCount'></span>
+		<div id="legend_display_button_tooltip_wrapper" class="tooltip" style="display: inline;">
+			<a onclick="toggle_visibility('legend', 'table-row', 'legend_display_button');">
+			<span id="legend_display_button" class="tooltip" style="display: inline;"></span>
+			<span class="tooltiptext_right" style="font-size: 80%; white-space: nowrap;">Display/hide the legend.</span>			
+		</div>
+	</a></h3>
 	
 	{# THE LEADERBOARDS! - Placeholder filled by Javascript rendered of the template or ajax provided data #}
 		
@@ -342,7 +350,9 @@
 {% endblock %}
 
 {% block startscript %}
+{#<script src="{% static 'CoGs/js/clipboard.min.js' %}"></script>#}
 <script>
+
 	let preferred_league = {{ preferred_league|safe }};
 
 	// Nab the options and their defaults from context

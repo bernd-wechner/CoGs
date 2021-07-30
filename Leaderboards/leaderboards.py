@@ -1392,6 +1392,9 @@ class leaderboard_options:
             for game in filtered_games:
                 log.debug(f"\t{game.name}")
 
+            log.debug(f"Using this query:")
+            log.debug(f"\t{get_SQL(filtered_games, explain=True)}")  # Without explain the SQL is wrong here on an ArrayAgg query
+
         return filtered_games
 
     def snapshot_queryset(self, game, include_baseline=False):
@@ -1643,6 +1646,14 @@ class leaderboard_options:
 
         LA = f"{La} of the leagues" if len(L) > 1 else "the league"
 
+        # Build the list of leagues capping at two items with elipsis if more.
+        if len(L) == 1:
+            l = L[0].name
+        elif len(L) == 2:
+            l = f"{L[0].name} and {L[1].name}"
+        elif len(L) > 2:
+            l = f"{L[0].name}, {L[1].name} ..."
+
         # Build A Players intro string
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
             P = models.Player.objects.filter(pk__in=self.game_players)
@@ -1652,14 +1663,6 @@ class leaderboard_options:
 
         PA = f"{Pa} of the players" if len(P) > 1 else "the player"
 
-        # Build the list of leagues capping at two items with elipsis if more.
-        if len(L) == 1:
-            l = L[0].name
-        elif len(L) == 2:
-            l = f"{L[0].name} and {L[1].name}"
-        elif len(L) > 2:
-            l = f"{L[0].name}, {L[1].name} ..."
-
         # Build the list of players capping at two items with elipsis if more.
         if len(P) == 1:
             p = P[0].name_nickname
@@ -1668,7 +1671,7 @@ class leaderboard_options:
         elif len(P) > 2:
             p = f"{P[0].name_nickname}, {P[1].name_nickname} ..."
 
-        # Start the TITLE off with Top or Latest
+        # Start the TITLE off with Top (most popular) or Latest (most recently played)
         if self.is_enabled('top_games'):
             title = f"Top {self.num_games} "
         elif self.is_enabled('latest_games'):
@@ -1693,7 +1696,7 @@ class leaderboard_options:
         if self.is_enabled("as_at"):
             subtitle.append(f"as at {localize(localtime(self.as_at))}")
 
-        if self.is_enabled("played_since"):
+        if self.is_enabled("changed_since"):
             subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
 
         if self.is_enabled("compare_back_to"):

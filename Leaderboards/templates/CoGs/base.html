@@ -281,7 +281,7 @@
 		});
 	});
 	
-	// Monitor the headers div for size changes and responid by moving the content div
+	// Monitor the headers div for size changes and respond by moving the content div
 	(new ResizeObserver(() => { 
 		const height = getComputedStyle(document.getElementById("headers")).height;
 		document.getElementById("body").style.marginTop = height;
