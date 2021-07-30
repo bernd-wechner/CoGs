@@ -5,6 +5,10 @@
 # For use on the development machine to faciltate rapid 
 # import of a live databse for use in development.
 
+# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
+# without it prompting for one mid stream on some command.
+sudo echo "Copying Live database to Dev machine"
+
 # Find the source dir (we assume this script is living in a directory
 # just below the source directory for now like $source_dir/Scripts.
 source_dir=$(cd `dirname $0`/.. && pwd)
@@ -31,11 +35,11 @@ suffix=$(date +%s)
 
 # Rename CoGs to CoGs_timestamp
 echo "Renaming local database CoGs to CoGs_$suffix..."
-sudo -u postgres psql -c "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
+sudo -u postgres psql -qc "ALTER DATABASE \"CoGs\" RENAME TO \"CoGs_$suffix\";"
 
 # Recreate CoGs Database 
 echo "Recreating (empty) CoGs database..."
-sudo -u postgres psql -c "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
+sudo -u postgres psql -qc "CREATE DATABASE \"CoGs\" OWNER 'CoGs';"
 
 # Now restore the latest backup
 echo "Restoring local CoGs database from $backup_file..."

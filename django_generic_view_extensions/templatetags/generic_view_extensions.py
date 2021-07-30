@@ -46,7 +46,7 @@ class IncludeVariant(template.Node):
         except template.TemplateDoesNotExist:
             return ''
         except Exception as e:  # @UnusedVariable
-            return "!!!INCLUDE ERROR!!!"
+            return f"INCLUDE ERROR: {e}"
 
 
 @register.tag('include_variant')

@@ -11,11 +11,11 @@
 	
 	{% block styles %}{% endblock %}
 
-{#  VERY SENSITIVE - If we load jquery, and dal_media, alas dal_media reloads jquery #}
-{#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
-{#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
-{#  DAL should not reload either of these two libraries if we have loaded them already!#}
-{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
+	{#  VERY SENSITIVE - If we load jquery, and dal_media, alas dal_media reloads jquery #}
+	{#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
+	{#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
+	{#  DAL should not reload either of these two libraries if we have loaded them already!#}
+	{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
@@ -116,138 +116,157 @@
 <body class="body"  onload="check_for_leagues()">
 	<!-- Container -->
 	<div id="container">
+	    <!-- HEADERS: header and subheader -->
+	    <div id="headers">
+		    <!-- HEADER -->
+		    <div id="header">
+		        {% block branding %}
+		        <div id="branding">
+		        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
+					{# SITE_TITLE is set int he Django Settings file based on hte host name #}
+					<h1 id="site-name"><a href="/">{{SITE_TITLE}}</a></h1>
+		        </div>
+		        {% endblock %}
 	
-	    <!-- Header -->
-	    <div id="header">	    	
-	        {% block branding %}
-	        <div id="branding">
-	        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
-				{# SITE_TITLE is set int he Django Settings file based on hte host name #}
-				<h1 id="site-name"><a href="/">{{SITE_TITLE}}</a></h1>
-	        </div>
-	        {% endblock %}
+		        {% block menu %}
+			        <div id="menu-line" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+				        <div id="menu">
+							{% if user.is_authenticated %}	        
+				        		[ <a href="/admin">Admin</a> ]
+							{% endif %}
+								        	
+				        	[ <a href="{% url 'leaderboards' %}">Leaderboards</a> ]
+				        	
+				        	[ <a href="{% url 'list' 'League' %}">Leagues</a> |
+				        	<a href="{% url 'list' 'Game' %}">Games</a> |
+				        	<a href="{% url 'list' 'Player' %}">Players</a> |
+				        	<a href="{% url 'list' 'Location' %}">Locations</a> |
+				        	<a href="{% url 'list' 'Session' %}">Sessions</a>]
+			
+							{% if user.is_authenticated %}
+					        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
+					        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
+					        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
+					        	 <a href="{% url 'list' 'Rating' %}">Ratings</a> ] |
+					        	 <input type="checkbox" name="debug_mode" id="id_debug_mode" onchange="setting_changed(event)" {% if debug_mode %}checked{% endif %}> Debug
+							{% endif %}
+				        </div>
+		{#		        TODO: This league selecter needs to be set:#}
+		{#		          1) When logging in, set it to the default league of the logged in user.#}
+		{#						- for this we need to give each logged in user a default league.#}
+		{#		          2) When viewing a session, set it to the league of the session that was loaded.#}
+				        <div id="league_selector">League:
+							<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
+								{{league_options|safe}}
+							</select>
+		{#					{{league_widget|safe}}#}
+				        </div>
+				        <div id="login"">
+							{% if user.is_authenticated %}
+					        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> | 
+							{% else %}
+					        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a> |
+							{% endif %}
+								        
+							<a href="{% url 'about' %}">About</a> ]
+				        </div>
+			        </div>
+		        {% endblock %}
+		
+		        {% block usertools %}
+			        {% if has_permission %}
+				        <div id="user-tools">
+				            {% block welcome-msg %}
+				                Welcome,
+				                <strong>{% firstof user.get_short_name user.get_username %}</strong>.
+				            {% endblock %}
+				            {% block userlinks %}
+				                {% if site_url %}
+				                    <a href="{{ site_url }}">View site</a> /
+				                {% endif %}
+				                {% if user.is_active and user.is_staff %}
+				                    {% url 'django-admindocs-docroot' as docsroot %}
+				                    {% if docsroot %}
+				                        <a href="{{ docsroot }}">Documentation</a> /
+				                    {% endif %}
+				                {% endif %}
+				                {% if user.has_usable_password %}
+				                	<a href="{% url 'admin:password_change' %}">Change password</a> /
+				                {% endif %}
+				                <a href="{% url 'admin:logout' %}">Log out</a>
+				            {% endblock %}
+				        </div>
+			        {% endif %}
+		        {% endblock %}
+		    </div>
+		    <!-- END Header -->
 
-	        {% block menu %}
-	        <div id="menu-line" style="display: flex;">
-		        <div id="menu" style="float: left;">
-					{% if user.is_authenticated %}	        
-		        		[ <a href="/admin">Admin</a> ]
-					{% endif %}
-						        	
-		        	[ <a href="{% url 'leaderboards' %}">Leaderboards</a> ]
-		        	
-		        	[ <a href="{% url 'list' 'League' %}">Leagues</a> |
-		        	<a href="{% url 'list' 'Game' %}">Games</a> |
-		        	<a href="{% url 'list' 'Player' %}">Players</a> |
-		        	<a href="{% url 'list' 'Location' %}">Locations</a> |
-		        	<a href="{% url 'list' 'Session' %}">Sessions</a>]
+		    <div id="heading">
+		        {% block heading %}
+			        {% block content_title %}<h1><div id='title'>{% autoescape off %}{{ title }}{% endautoescape %}</div></h1>{% endblock %}
+			        {% block content_subtitle %}{% if subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endif %}{% endblock %}
+		        {% endblock %}
+		    </div>
 	
-					{% if user.is_authenticated %}
-			        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
-			        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
-			        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
-			        	 <a href="{% url 'list' 'Rating' %}">Ratings</a> ] |
-			        	 <input type="checkbox" name="debug_mode" id="id_debug_mode" onchange="setting_changed(event)" {% if debug_mode %}checked{% endif %}> Debug
-					{% endif %}
-		        </div>
-{#		        TODO: This league selecter needs to be set:#}
-{#		          1) When logging in, set it to the default league of the logged in user.#}
-{#						- for this we need to give each logged in user a default league.#}
-{#		          2) When viewing a session, set it to the league of the session that was loaded.#}
-		        <div id="league_selector" style="margin: 0 auto;">League:
-					<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
-						{{league_options|safe}}
-					</select>
-{#					{{league_widget|safe}}#}
-		        </div>
-		        <div id="login" style="float: right; margin-right:50px;">
-					{% if user.is_authenticated %}
-			        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> | 
-					{% else %}
-			        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a> |
-					{% endif %}
-						        
-					<a href="{% url 'about' %}">About</a> ]
-		        </div>
-	        </div>
-	        {% endblock %}
-	
-	        {% block usertools %}
-		        {% if has_permission %}
-		        <div id="user-tools">
-		            {% block welcome-msg %}
-		                Welcome,
-		                <strong>{% firstof user.get_short_name user.get_username %}</strong>.
-		            {% endblock %}
-		            {% block userlinks %}
-		                {% if site_url %}
-		                    <a href="{{ site_url }}">View site</a> /
-		                {% endif %}
-		                {% if user.is_active and user.is_staff %}
-		                    {% url 'django-admindocs-docroot' as docsroot %}
-		                    {% if docsroot %}
-		                        <a href="{{ docsroot }}">Documentation</a> /
-		                    {% endif %}
-		                {% endif %}
-		                {% if user.has_usable_password %}
-		                	<a href="{% url 'admin:password_change' %}">Change password</a> /
-		                {% endif %}
-		                <a href="{% url 'admin:logout' %}">Log out</a>
-		            {% endblock %}
+		    <div id="subheader">
+		        {% block submenu %}
+		        {% endblock %}
+		    </div>
+	    </div>
+        
+		<div id="body">
+		    <!-- MESSAGES -->
+		    {% block messages %}
+		        {% if messages %}
+			    <div id="messages" class="messages">
+			        <ul class="messagelist">
+			        	{% for message in messages %}
+			          		<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
+			        	{% endfor %}
+			        </ul>
 		        </div>
 		        {% endif %}
-	        {% endblock %}
-	    </div>
-	    <!-- END Header -->
+		    {% endblock messages %}
 	
-	    {% block messages %}
-	        {% if messages %}
-	        <ul class="messagelist">
-	        	{% for message in messages %}
-	          		<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
-	        	{% endfor %}
-	        </ul>
-	        {% endif %}
-	    {% endblock messages %}
-
-{#			DEBUGGING OUTPUT	#}
-{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
-{#			<pre> {{ request.META }}  </pre>#}
-{#	<pre id="version_debug_info">#}
-{#	Django source: {{ Django_source }}#}
-{#	Django version: {{ Django_version }}#}
-{#	DAL source: {{ DAL_source }}#}
-{#	DAL version: {{ DAL_version }}#}
-{#	</pre> #}
-{#	<script>#}
-{#		const v1 = jQuery.fn.jquery;#}
-{#		const v2 = $().jquery;#}
-{#		const e = document.getElementById("version_debug_info");#}
-{#		e.innerText = e.innerText + "JQuery fn version: " + v1 + "\n\tJQuery $ version: " + v2;#}
-{#	</script>#}
-	
-	    <!-- Content -->
-	    <div id="content" class="content">
-	        {% block content_title %}<h1><div id='title'>{% autoescape off %}{{ title }}{% endautoescape %}</div></h1>{% endblock %}
-	        {% block content_subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endblock %}
-	        {% block content %}{% endblock %}
-	        {% block sidebar %}{% endblock %}
-	        <br class="clear" />
-	    </div>
-	    <!-- END Content -->
-	
-	    {% block footer %}
-			{#	DEBUG is the settings.DEBUG flag and session["debug_mode"] flag#}
-		    {% if DEBUG or debug_mode %}
-				{% include "CoGs/include/timezone_diag.html" %}
-				{% include "CoGs/include/session_spy.html" %}
-			    {% if filters %}
-					{% include "CoGs/include/filter_spy.html" %}
+			{#			DEBUGGING OUTPUT	#}
+			{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
+			{#			<pre> {{ request.META }}  </pre>#}
+			{#	<pre id="version_debug_info">#}
+			{#	Django source: {{ Django_source }}#}
+			{#	Django version: {{ Django_version }}#}
+			{#	DAL source: {{ DAL_source }}#}
+			{#	DAL version: {{ DAL_version }}#}
+			{#	</pre> #}
+			{#	<script>#}
+			{#		const v1 = jQuery.fn.jquery;#}
+			{#		const v2 = $().jquery;#}
+			{#		const e = document.getElementById("version_debug_info");#}
+			{#		e.innerText = e.innerText + "JQuery fn version: " + v1 + "\n\tJQuery $ version: " + v2;#}
+			{#	</script>#}
+		
+		    <!-- CONTENT -->
+		    <div id="content" class="content">
+		        {% block content %}{% endblock %}
+		        {% block sidebar %}{% endblock %}
+		        <br class="clear" />
+		    </div>
+		    <!-- END Content -->
+		
+		    <!-- FOOTER -->
+		    {% block footer %}
+				{#	DEBUG is the settings.DEBUG flag and session["debug_mode"] flag#}
+			    {% if DEBUG or debug_mode %}
+					{% include "CoGs/include/timezone_diag.html" %}
+					{% include "CoGs/include/session_spy.html" %}
+				    {% if filters %}
+						{% include "CoGs/include/filter_spy.html" %}
+			        {% endif %}
 		        {% endif %}
-	        {% endif %}
-	        
-		    <div id="footer">{{footer}}</div>
-	    {% endblock %}
+		        
+			    <div id="footer">{{footer}}</div>
+		    {% endblock %}
+		</div>
+		<!-- END Body -->		    
 	</div>
 	<!-- END Container -->
 </body>
@@ -261,6 +280,12 @@
 			"step" : 15
 		});
 	});
+	
+	// Monitor the headers div for size changes and respond by moving the content div
+	(new ResizeObserver(() => { 
+		const height = getComputedStyle(document.getElementById("headers")).height;
+		document.getElementById("body").style.marginTop = height;
+	})).observe(document.getElementById("headers"));
 </script>
 
 {% block endscript %}{% endblock %}

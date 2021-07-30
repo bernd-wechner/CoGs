@@ -125,7 +125,7 @@
 		}		
 		
 		function show_url() {
-			var url = "{% url 'get_detail_html' model=model_name pk=pk %}" + URLopts();
+			var url = "{% url 'view' model=model_name pk=pk %}" + URLopts();
 			window.history.pushState("","", url);
 		}
 				

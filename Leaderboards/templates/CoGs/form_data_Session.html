@@ -21,8 +21,6 @@
 
 <script>
 	"use strict";
-	// TODO: Move all this to a subtemplate that is included here if it exists. So as to keep generic
-	//       templates separate from model specific ones. Could name the include file after the model.
 	{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
 	const operation		= "{{operation}}";
 	
@@ -34,13 +32,13 @@
 			// We don't use standard Django formsets here (we build the formset in Javascript dynamically)
 			// And this is the source data for the Rank and performance Javascript formset generator. 
 			// So we need to populate it from the form.data.
-			const rIDs          = {% get_list form.data "Rank" "id" %};     {# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+			let rIDs          = {% get_list form.data "Rank" "id" %};     {# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
 			const rRanks 		= {% get_list form.data "Rank" "rank" %};   {# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
 			const rPlayers 		= {% get_list form.data "Rank" "player" %}; {# Primary Keys of the players corresponding to the ranks in Ranking. #}
-			const tIDs  		= {% get_list form.data "Team" "id" %}; 	{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+			let tIDs  		= {% get_list form.data "Team" "id" %}; 	{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
 	
 			{# Performance Related Data - lists with one entry per performance #}
-			const pIDs          = {% get_list form.data "Performance" "id" %}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+			let pIDs          = {% get_list form.data "Performance" "id" %}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
 			const pPlayers 		= {% get_list form.data "Performance" "player" %};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
 			const pWeights 		= {% get_list form.data "Performance" "partial_play_weighting" %};	{# Partial play weighting factors corresponding to the players in Players #}
 
@@ -50,19 +48,24 @@
 
 			// Build rTeamPlayers from the submitted team_nums and pPlayers
 			let rTeamPlayers 	= [];													{# List of Lists of Team Players. #}
-			// push an empty list of players for each team 
-			for (let i=0; i<Number({{form.data.num_teams}}); i++) rTeamPlayers.push([]);
-			// push the team players onto the right list
-			for (let i=0; i<pPlayers.length; i++) rTeamPlayers[pPlayerTeams[i]].push(pPlayers[i]);
+			
+			const num_teams = Number({{form.data.num_teams}});
+			
+			if (num_teams) {
+				// push an empty list of players for each team 
+				for (let i=0; i<Number({{form.data.num_teams}}); i++) rTeamPlayers.push([]);
+				// push the team players onto the right list
+				for (let i=0; i<pPlayers.length; i++) rTeamPlayers[pPlayerTeams[i]].push(pPlayers[i]);
+			}
 			
 		{# 	Otherwise it is a basic Create or Update form. Either way form.related_forms is where #}
 		{#	we look for Rank and Performance initialisation data #}
 		{% else %}
 			{# Rank Related Data - lists with on entry per rank #}
-			const rIDs          = {{ form.related_forms.Rank.field_data.id|NoneToNull }};         		{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+			let rIDs          = {{ form.related_forms.Rank.field_data.id|NoneToNull }};         		{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
 			const rRanks 		= {{ form.related_forms.Rank.field_data.rank|NoneToNull }};       		{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
 			const rPlayers 		= {{ form.related_forms.Rank.field_data.player|NoneToNull }};       	{# Primary Keys of the players corresponding to the ranks in Ranking. #}
-			const tIDs  		= {{ form.related_forms.Rank.field_data.team|NoneToNull }}; 			{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+			let tIDs  		= {{ form.related_forms.Rank.field_data.team|NoneToNull }}; 			{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
 	
 			{# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
 			const rTeamNames 	= {{ form.related_forms.Rank.field_data.Team__name|QuoteValues|safe }};  {# List of Team names #}
@@ -72,11 +75,11 @@
 			// Something is broken. Diagnose. Javascript bug in table creation methinks.
 	
 			{# Performance Related Data - lists with one entry per performance #}
-			const pIDs          = {{ form.related_forms.Performance.field_data.id|NoneToNull }}; 					{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+			let pIDs          = {{ form.related_forms.Performance.field_data.id|NoneToNull }}; 					{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
 			const pPlayers 		= {{ form.related_forms.Performance.field_data.player|NoneToNull }};				{# Primary Keys of the players corresponding to the ranks in Performance. #}
 			const pWeights 		= {{ form.related_forms.Performance.field_data.partial_play_weighting|NoneToNull }};{# Partial play weighting factors corresponding to the players in Players #}
 		{% endif %}
-
+		
 		{# Teams have optional names. Replace None with the default name of 'Team n' #}
 		for (let i = 0; i < rTeamNames.length; i++) {
 			if (rTeamNames[i] == null || rTeamNames[i] == 'undefined') rTeamNames[i] = 'Team ' + (i + 1);
@@ -87,30 +90,37 @@
 		const ridPlayers 	= {};
 		const ridTeams 	 	= {};
 		for (let i = 0; i < rIDs.length; i++) {
-			ridTeams[rIDs[i]] 		= tIDs[i];
-			ridRanks[rIDs[i]] 		= rRanks[i];
-			ridPlayers[rIDs[i]] 	= rPlayers[i];
+			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+			const rid = rIDs[i] || "id_" + i;		rIDs[i] = rid;
+			ridTeams[rid] 		= tIDs[i];
+			ridRanks[rid] 		= rRanks[i];
+			ridPlayers[rid] 	= rPlayers[i];
 		}
 		
 		{# Store the Team Data keyed on team ID #}
 		const tidTeamNames   = {};
 		const tidTeamPlayers = {};
 		for (let i = 0; i < rIDs.length; i++) {
-			tidTeamNames[tIDs[i]]	= rTeamNames[i];
-			tidTeamPlayers[tIDs[i]] = rTeamPlayers[i];
+			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+			const tid = tIDs[i] || "id_" + i;	tIDs[i] = tid;
+			tidTeamNames[tid]	= rTeamNames[i];
+			tidTeamPlayers[tid] = rTeamPlayers[i];
 		}				
 		
 		{# Store the Performance Data keyed on performance ID #}
 		const pidPlayers = {};
 		const pidWeights = {};
 		for (let i = 0; i < pIDs.length; i++) {
-			pidPlayers[pIDs[i]]		= pPlayers[i];
-			pidWeights[pIDs[i]]		= pWeights[i];
+			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+			const pid = pIDs[i] || "id_" + i;	pIDs[i] = pid;
+			pidPlayers[pid]		= pPlayers[i];
+			pidWeights[pid]		= pWeights[i];
 		}
 		
 		{# Store all the incoming session properties in a single safe spot #}
 		{# The key is r, p or t for rank ID, performance ID or team ID #}
-		const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
+		const Session = {'provided'		: rIDs.length > 0,	// A flag to tell of Session Data was provided  TODO: get a more explicit indicator. This works for now.
+						 'rIDs'			: rIDs, 			// Array of rank IDs
 						 'rRanks'		: ridRanks,			// dict of ranks keyed on rID 
 						 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID 
 						 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID

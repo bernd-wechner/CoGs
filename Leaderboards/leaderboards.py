@@ -1,11 +1,19 @@
+# Python imports
+import enum, json, numbers
+
+from collections import OrderedDict
+from datetime import datetime, timedelta
+
 # Django imports
 from django.conf import settings
 from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F  # , Window
-from django.db.models.expressions import Func
 from django.contrib.postgres.aggregates import ArrayAgg
+from django.core.serializers.json import DjangoJSONEncoder
 # from django.db.models.functions import Lag
 from django.utils.formats import localize
 from django.utils.timezone import localtime
+# from django.db.models.base import ModelBase
+from django.db.models import Model
 
 if settings.DEBUG:
     from django.db import connection
@@ -15,15 +23,11 @@ from django_generic_view_extensions.datetime import fix_time_zone, UTC
 from django_generic_view_extensions.queryset import top, get_SQL
 from django_generic_view_extensions.datetime import decodeDateTime
 
-# Python imports
-import enum, json, numbers
-
-from collections import OrderedDict
-from datetime import datetime, timedelta
-
 # Local imports
+# models imports from this module. To avoid a circular import error we need to import models into its own namespace.
+# which means accessing a model is then models.Model
 from CoGs.logging import log
-from .models import Game, League, Player, Session, Performance
+from . import models
 
 # Some useful enums to use in the options. Really just a way of encapsulating related
 # types so we can use them in templates to pupulate selectors and receive them from
@@ -44,6 +48,56 @@ LinkSelections = OrderedDict((("none", "nowhere"),
 # We make enums out of the lists of the lists of 2-tuples above for use in code.
 NameSelection = enum.Enum("NameSelection", NameSelections)
 LinkSelection = enum.Enum("LinkSelection", LinkSelections)
+
+
+#===============================================================================
+# A structured approach to presenting leaderboards
+#
+# The central purpose of all these models is the storing of data for and
+# presentation of leaderboards.
+#===============================================================================
+class LB_PLAYER_LIST_STYLE(enum.Enum):
+    none = 0  # An ordered list of names
+    data = 1  # An ordered list of tuples (playerid, rating, mu, sigma, plays, wins) - For a data store (can recreate any other style from this)
+    rating = 2  # An ordered list of tuples (name, rating)
+    ratings = 3  # An ordered list of tuples (name, rating, mu, sigma)
+    simple = 4  # An ordered list of tuples (name, rating, mu, sigma, plays, wins)
+    rich = 5  # simple plus lots more player info for rendering rich leaderboards (name in all formats, league ids for the player)
+
+
+class LB_STRUCTURE(enum.Enum):
+    '''
+    Leaderboards are passed around in a few different structures. We can use this enum to describe a given
+    structure to inform a function (that supports it) where to find the juice, the player list.
+    '''
+    player_list = 0  # A simple list of player tuples
+    session_wrapped_player_list = 1  # A session tuple containing an player_list as an element
+    game_wrapped_player_list = 2  # A game tuple containing an player_list as an element
+    game_wrapped_session_wrapped_player_list = 3  # A session tuple containing an session_wrapped_player_list as an element
+
+    # This is defined by what Game.wrapped_leaderboard() produces
+    game_data_element = 7  # In a game wrapper, which element caries the data (either session wrapper, or player_list)
+
+    # This is defined by what Session.leaderboard_snapshot() produces
+    session_data_element = 8  # In a session wrapper, which element contains the player_list
+
+
+# As leaderboards are lists of players, possibly in a session wrapper (list) in a game wrapper (list)
+# A couple fo one liners that makes a nested tree of tuples mutable (converts them all to lists)
+# and vice versa, so we can lock leadeboards and unlock them explicitly if an edit is targetted.
+def mutable(e):
+    return list(map(mutable, e)) if isinstance(e, (list, tuple)) else e
+
+
+def immutable(e):
+    return tuple(map(immutable, e)) if isinstance(e, (list, tuple)) else e
+
+
+def pk_keys(o):
+
+    def pk(x): return x.pk if isinstance(x, Model) else x
+
+    return {pk(k): pk_keys(v) for k, v in o.items()} if isinstance(o, dict) else o
 
 
 def is_number(s):
@@ -128,8 +182,16 @@ class leaderboard_options:
     # are client side implemented (in Javascript). In short we don't want to lose that data in a
     # submission but we retatain it in a neutral (no filtering) fashion.These can aslo provide fallback
     # reference for any of the afforementioend options which can be URL specified without a list, if the
-    # list is provided via one of tehse transporters.
-    transport_options = {'games', 'players', 'leagues'}
+    # list is provided via one of these transporters.
+    #
+    # Only players has an auto_selected transporter to inform the client that tehse were sleected
+    # automatically by select_players. players conversely are user selected. And the client
+    # shoule merge these but will know which ones were manually selected and which auto and which
+    # both.
+    transport_options = {'games', 'players', 'leagues', 'players_auto_selected'}
+
+    # Options that affect selections (which other options apply to)
+    selection_options = {'select_players'}
 
     # Options that affect the perspective of a leadeboard view.
     # Really only one, what the effective "now" or "current" view is,
@@ -145,7 +207,7 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
 
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_delta'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_d_rank', 'show_d_rating'}
 
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
@@ -165,7 +227,7 @@ class leaderboard_options:
     # ALL the options, a set against which we can filter incoming requests to
     # weed out all the things that don't matter, or to asses if the request is in
     # fact one that includes any leaderboard options or not.
-    all_options = content_options | presentation_options | transport_options | admin_options
+    all_options = content_options | presentation_options | transport_options | selection_options | admin_options
 
     # TODO: consider adding Tourney's now and a search for
     #       games by tourney, so players, leagues and games, tourneys.
@@ -212,17 +274,24 @@ class leaderboard_options:
     changed_since = None  # Show only leaderboards that changed since this date
     num_days = 1  # List only games played in the last num_days long event (also used for snapshot definition)
 
-    # Options that determing which players are listed in the leadrboards
+    # Options that determing which players are listed or selected/highlighted in the leaderboards
     # These options, like the game selectors, above provide defaults with which to
     # populate input elements in a form, but they should be presented with accompanying
     # checkboxes to select them, and if not selected the option should not be subitted.
     players = []  # A list of players to explicitly display (hide all others - except those, that other options request displayed as well)
+    players_auto_selected = []  # A list of players automatically selected by select_players (to augment self.players, specified by the request)
     num_players_top = 10  # The number of players at the top of leaderboard to show
     num_players_above = 2  # The number of players above selected players to show on leaderboards
     num_players_below = 2  # The number of players below selected players to show on leaderboards
     min_plays = 2  # The minimum number of times a player has to have played this game to be listed
     played_since = None  # The date since which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
+
+    # A generic list of leagues for transport (as a a selector)
+    leagues = []
+
+    # Options for intelligent selections
+    select_players = False  # Select the players (that highlight_players acts on) to be all the players in session snapshots displayed
 
     # A perspective option that asks us to think of "current" not as at now, but as at some other time.
     as_at = None  # Do everything as if it were this time now (pretend it is now as_at)
@@ -252,7 +321,8 @@ class leaderboard_options:
     details = False  # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False  # Show the TrueSkill Pre-session analysis
     analysis_post = False  # Show the TrueSkill Post-session analysis
-    show_delta = False  # Show the delta (movement) in ranking this session caused
+    show_d_rank = False  # Show the rank delta (movement) this session caused
+    show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
 
     # Options for laying out leaderboards on screen
@@ -329,10 +399,10 @@ class leaderboard_options:
         if have_options or "no_defaults" in urequest:
             self.enabled = set()
 
-        # A very special case for the two snapshot options. They are not enabled
+        # A very special case for the two evolution options. They are not enabled
         # like the filters. There are two, compare_with and compare_back_to only
-        # one of which can't should be set. We can only respect one. So if we get
-        # on in the request we should anull the other.
+        # one of which should be set. We can only respect one. So if we get
+        # one in the request we should anull the other.
         #
         # If both are supplied we need of course to ignore one. Matters not which,
         # but only one can be respected
@@ -347,22 +417,29 @@ class leaderboard_options:
 
         ##################################################################
         # COLLECT TRANSPORTERS
-        games = None
-        players = None
-        leagues = None
+        games = []
+        players = []
+        leagues = []
 
         if f'games' in urequest:
-            games = urequest[f'games'].split(",")
+            sgames = urequest[f'games']  # CSV string
+            if sgames:
+                games = list(map(int, sgames.split(",")))  # list of ints
 
         if f'players' in urequest:
-            players = urequest[f'players'].split(",")
+            splayers = urequest[f'players']  # CSV string
+            if splayers:
+                players = list(map(int, splayers.split(",")))  # list of ints
 
         # TODO check if we can spefic NO league filterig. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
         if f'leagues' in urequest:
-            leagues = urequest[f'leagues'].split(",")
+            sleagues = urequest[f'leagues']  # CSV string
+            if sleagues:
+                leagues = list(map(int, sleagues.split(",")))  # list of ints
+
             if preferred_league and not leagues:
-                leagues = [str(preferred_league)]
+                leagues = [preferred_league]
 
         ##################################################################
         # GAME FILTERS
@@ -382,7 +459,9 @@ class leaderboard_options:
         game_games = games  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'games_{suffix}' in urequest:
-                game_games = urequest[f'games_{suffix}'].split(",")
+                sgame_games = urequest[f'games_{suffix}']  # CSV string
+                if sgame_games:
+                    game_games = list(map(int, sgame_games.split(",")))  # list of ints
 
                 # Use the transport option "games" if no list provided for games ex/in
                 # This enables URLs like
@@ -399,7 +478,7 @@ class leaderboard_options:
             # Validate the games discarding any invalid ones
             self.games = []
             for game in game_games:
-                if Game.objects.all().filter(pk=game).exists():
+                if models.Game.objects.all().filter(pk=game).exists():
                     self.games.append(game)
 
         # If we found an ex or in option
@@ -432,7 +511,9 @@ class leaderboard_options:
         game_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_leagues_{suffix}' in urequest:
-                game_leagues = urequest[f'game_leagues_{suffix}'].split(",")
+                sgame_leagues = urequest[f'game_leagues_{suffix}']  # CSV string
+                if sgame_leagues:
+                    game_leagues = list(map(int, sgame_leagues.split(",")))  # list of ints
 
                 # Use the transport option "leagues" if no list provided for game_leagues
                 # This enables URLs like
@@ -448,7 +529,7 @@ class leaderboard_options:
             # Validate the leagues  discarding any invalid ones
             self.game_leagues = []
             for league in game_leagues:
-                if League.objects.all().filter(pk=league).exists():
+                if models.League.objects.all().filter(pk=league).exists():
                     self.game_leagues.append(league)
 
         # If we found an any or all option
@@ -471,7 +552,9 @@ class leaderboard_options:
         game_players = players  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_players_{suffix}' in urequest:
-                game_players = urequest[f'game_players_{suffix}'].split(",")
+                sgame_players = urequest[f'game_players_{suffix}']  # CSV string
+                if sgame_players:
+                    game_players = list(map(int, sgame_players.split(",")))  # list of ints
 
                 # Use the transport option "players" if no list provided for game_players
                 # This enables URLs like
@@ -487,7 +570,7 @@ class leaderboard_options:
             # Validate the players discarding any invalid ones
             self.game_players = []
             for player in game_players:
-                if Player.objects.all().filter(pk=player).exists():
+                if models.Player.objects.all().filter(pk=player).exists():
                     self.game_players.append(player)
 
         # If we found an any or all option
@@ -541,7 +624,9 @@ class leaderboard_options:
         player_players = players  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
             if f'players_{suffix}' in urequest:
-                player_players = urequest[f'players_{suffix}'].split(",")
+                splayer_players = urequest[f'players_{suffix}']  # CSV string
+                if splayer_players:
+                    player_players = list(map(int, splayer_players.split(",")))  # list of ints
 
                 # Use the transport option "players" if no list provided for players ex/in
                 # This enables URLs like
@@ -557,7 +642,7 @@ class leaderboard_options:
             # Validate the players discarding any invalid ones
             self.players = []
             for player in player_players:
-                if Player.objects.all().filter(pk=player).exists():
+                if models.Player.objects.all().filter(pk=player).exists():
                     self.players.append(player)
 
             if ex_in:
@@ -619,7 +704,9 @@ class leaderboard_options:
         player_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'player_leagues_{suffix}' in urequest:
-                player_leagues = urequest[f'player_leagues_{suffix}'].split(",")
+                splayer_leagues = urequest[f'player_leagues_{suffix}']  # CSV string
+                if splayer_leagues:
+                    player_leagues = list(map(int, splayer_leagues.split(",")))  # list of ints
 
                 # Use the transport option "leagues" if no list provided for player_leagues
                 # This enables URLs like
@@ -635,7 +722,7 @@ class leaderboard_options:
             # Validate the leagues  discarding any invalid ones
             self.player_leagues = []
             for league in player_leagues:
-                if League.objects.all().filter(pk=league).exists():
+                if models.League.objects.all().filter(pk=league).exists():
                     self.player_leagues.append(league)
 
         # If we found an any or all option
@@ -656,6 +743,17 @@ class leaderboard_options:
                 self.as_at = None  # Must be a a Falsey value
 
             self.__enable__('as_at', self.as_at)
+
+        ##################################################################
+        # SELECTION OPTIONS
+
+        # Options for things that other options can act on (populating select boxes on the UI)
+        if 'select_players' in urequest:
+            if urequest['select_players']:
+                self.select_players = json.loads(urequest['select_players'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.select_players:
+                self.select_players = True
 
         ##################################################################
         # EVOLUTION OPTIONS
@@ -697,34 +795,76 @@ class leaderboard_options:
             self.__enable__('compare_with', False)
 
         ##################################################################
-        # INFO OPTIONS
-
-        # Options to include extra info in a leaderboard header
-        if 'details' in urequest:
-            self.details = json.loads(urequest['details'].lower())  # A boolean value is parsed
-        # else use the default value
-
-        if 'analysis_pre' in urequest:
-            self.analysis_pre = json.loads(urequest['analysis_pre'].lower())  # A boolean value is parsed
-
-        if 'analysis_post' in urequest:
-            self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
-
-        if 'show_delta' in urequest:
-            self.show_delta = json.loads(urequest['show_delta'].lower())  # A boolean value is parsed
-
-        ##################################################################
         # HIGHLIGHT OPTIONS
 
         # Options for formatting the contents of a given leaderbaords
         if 'highlight_players' in urequest:
-            self.highlight_players = json.loads(urequest['highlight_players'].lower())  # A boolean value is parsed
+            if urequest['highlight_players']:
+                self.highlight_players = json.loads(urequest['highlight_players'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_players:
+                self.highlight_players = True
 
         if 'highlight_changes' in urequest:
-            self.highlight_changes = json.loads(urequest['highlight_changes'].lower())  # A boolean value is parsed
+            if urequest['highlight_changes']:
+                self.highlight_changes = json.loads(urequest['highlight_changes'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_changes:
+                self.highlight_changes = True
 
-        if 'highlight_selected_players' in urequest:
-            self.highlight_selected_players = json.loads(urequest['highlight_selected_players'].lower())  # A boolean value is parsed
+        if 'highlight_selected' in urequest:
+            if urequest['highlight_selected']:
+                self.highlight_selected = json.loads(urequest['highlight_selected'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.highlight_selected:
+                self.highlight_selected = True
+
+        ##################################################################
+        # INFO OPTIONS
+
+        # Options to include extra info in a leaderboard header
+        if 'details' in urequest:
+            if urequest['details']:
+                self.details = json.loads(urequest['details'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.details:
+                self.details = True
+
+        if 'analysis_pre' in urequest:
+            if urequest['analysis_pre']:
+                self.analysis_pre = json.loads(urequest['analysis_pre'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.analysis_pre:
+                self.analysis_pre = True
+
+        if 'analysis_post' in urequest:
+            if urequest['analysis_post']:
+                self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.analysis_post:
+                self.analysis_post = True
+
+        # Coilumn selecting options
+        if 'show_d_rank' in urequest:
+            if urequest['show_d_rank']:
+                self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_d_rank:
+                self.show_d_rank = True
+
+        if 'show_d_rating' in urequest:
+            if urequest['show_d_rating']:
+                self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
+            elif not self.show_d_rating:
+                self.show_d_rating = True
+
+        # Snapshot selecting options
+        if 'show_baseline' in urequest:
+            if urequest['show_baseline']:
+                self.show_baseline = json.loads(urequest['show_baseline'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_baseline:
+                self.show_baseline = True
 
         ##################################################################
         # FORMATTING OPTIONS
@@ -739,9 +879,11 @@ class leaderboard_options:
         if 'cols' in urequest:
             self.cols = urequest['cols']
 
-        # YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
+        # TODO: YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
         if 'trace' in urequest:
-            self.trace = urequest['trace'].split(",")
+            strace = urequest['trace']  # CSV String
+            if strace:
+                self.trace = list(map(int, strace.split(",")))  # list of ints
 
         # A special option which isn't an option per se. If passed in we make
         # the provided options as static as we can with self.make_static()
@@ -752,10 +894,58 @@ class leaderboard_options:
         ##################################################################
         # ADMIN OPTIONS
         if 'ignore_cache' in urequest:
-            self.ignore_cache = True
+            if urequest['ignore_cache']:
+                self.show_baseline = json.loads(urequest['ignore_cache'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.ignore_cache:
+                self.ignore_cache = True
 
         if settings.DEBUG:
             log.debug(f"Enabled leaderboard options: {self.enabled}")
+
+    def apply_selection_options(self, leaderboards):
+        '''
+        Given leaderboards ready for sending to the browser, applies selection options to self based on their content.
+
+        :param leaderboards: leaderboards structured with LB_STRUCTURE.game_wrapped_session_wrapped_player_list
+        :param exclude_reference: The last snapshot is sometimes just a reference not of interest to the player selection
+        '''
+        if self.select_players:
+            igd = LB_STRUCTURE.game_data_element.value
+
+            players = set()
+
+            for game_tuple in leaderboards:
+                # if game_tuple[0] == 49: breakpoint()
+                snaps = game_tuple[igd - 2]
+                if snaps:
+                    hide_baseline = game_tuple[igd - 1]  # True if the last snapshot is outside of the Query included only for baseline reference.
+                    hide_reference = not self.compare_back_to is None
+                    ignore = 2 if hide_baseline and hide_reference else 1 if hide_baseline else 0
+
+                    if ignore:
+                        sessions = game_tuple[igd][:-ignore]
+                    else:
+                        sessions = game_tuple[igd]
+                else:
+                    sessions = [game_tuple[igd]]
+
+                for session_tuple in sessions:
+                    # The session wrapper includes the player PKs as its 5th element
+                    session_players = set(session_tuple[4])
+                    players.update(session_players)
+                    if settings.DEBUG:
+                        log.debug(f"Applied players: {session_players}, yielding: {players}")
+
+            # Add the players to the player selector
+            self.players_auto_selected = list(players)
+
+            if settings.DEBUG:
+                log.debug(f"{self.players=}")
+
+            if self.players:
+                self.highlight_selected = True
+                self.__enable__(f'players_in', self.players)
 
     def has_player_filters(self):
         '''
@@ -781,7 +971,6 @@ class leaderboard_options:
         '''
         Returns True if a player meets the league criteria
         '''
-        league_pks = [str(pk) for pk in league_pks]  # We force them to strings as we stored strings in self.player_leagues
         if self.is_enabled('player_leagues_any') and not set(league_pks) & set(self.player_leagues):
             return False
         elif self.is_enabled('player_leagues_all') and not set(league_pks) == set(self.player_leagues):
@@ -831,17 +1020,20 @@ class leaderboard_options:
 
     def apply(self, leaderboard_snapshot):
         '''
-        Given a leaderboard snapshot in the format that Session.leaderboard_snapshot()
-        provides, applies these options to it returning a filtered version of the same
-        snapshot as dictated by these options (self).
+        Given a leaderboard snapshot, applies these options to it returning a filtered
+        version of the same snapshot as dictated by these options (self).
+
+        The players lists must be styled with LB_PLAYER_LIST_STYLE.rich.
 
         We only filter players. We don't apply name or link formatting here, the
         snapshot elements contain sufficient information for the view itself to
         implement those rendering options. Our aim here is to send to the view
         a filtered snaphot because global leaderboads for a game can grow very
         large and most views will be concerned with a subset based on leagues.
+
+        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list
         '''
-        leaderboard = leaderboard_snapshot[8]
+        leaderboard = leaderboard_snapshot[LB_STRUCTURE.session_data_element.value]
 
         # leaderboard is a well defined list of tuples that contain player info/metadata
         # The list is ordered by ranking.
@@ -854,7 +1046,7 @@ class leaderboard_options:
             lbf = []  # A player-filtered version of leaderboard
 
             for p in leaderboard:
-                # Fetch data from the tuple
+                # Fetch data from the tuple (assumes LB_PLAYER_LIST_STYLE.rich!)
                 rank = p[0]
                 pk = str(p[1])  # Force to string as self.players is a list of string pks
                 plays = p[9]
@@ -973,7 +1165,7 @@ class leaderboard_options:
         if self.is_enabled('as_at'):
             s_filter &= Q(date_time__lte=self.as_at)
 
-        properties = Session.objects.filter(s_filter).values(field).order_by("-date_time")
+        properties = models.Session.objects.filter(s_filter).values(field).order_by("-date_time")
         latest_property = top(properties, 1)
 
         if settings.DEBUG:
@@ -1083,14 +1275,14 @@ class leaderboard_options:
             s_filter &= Q(date_time__lte=self.as_at)
 
         # We sort them by a measure of popularity (within the selected leagues)
-        latest_session_source = Session.objects.filter(s_filter)
+        latest_session_source = models.Session.objects.filter(s_filter)
         latest_session = top(latest_session_source.filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
         session_count = Count('sessions', filter=g_filter, distinct=True)
         play_count = Count('sessions__performances', filter=g_filter, distinct=True)
 
         USE_ARRAY_AGG = True
-        game_source = Game.objects.filter(g_filter)
+        game_source = models.Game.objects.filter(g_filter)
         if g_post_filters:
             # See https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
             # For a discussion of methods here. ArrayAgg is the cleanest most efficient but is Postgresql specific.
@@ -1128,7 +1320,7 @@ class leaderboard_options:
         # Filter the games on player participation ...
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
             if self.is_enabled('game_players_any'):
-                sessions = Session.objects.filter(performances__player__pk__in=self.game_players)
+                sessions = models.Session.objects.filter(performances__player__pk__in=self.game_players)
             elif self.is_enabled('game_players_all'):
                 # Only method I've found is with an intersection. Problem presented here:
                 # https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
@@ -1137,7 +1329,7 @@ class leaderboard_options:
                     # sessions = sessions.intersection(Session.objects.filter(performances__player=pk))
 
                 # Another mothod using joins
-                sessions = Session.objects.filter(performances__player=self.game_players[0])
+                sessions = models.Session.objects.filter(performances__player=self.game_players[0])
                 for pk in self.game_players[1:]:
                     sessions = sessions.filter(performances__player=pk)
 
@@ -1178,7 +1370,7 @@ class leaderboard_options:
         # Now if we have a games_in rquest we want to include those games explicilty
         if self.is_enabled('games_in'):
             filtered_games = filtered_games.union(
-                                Game.objects.filter(pk__in=self.games)
+                                models.Game.objects.filter(pk__in=self.games)
                                             .annotate(last_play=last_play)
                                             .annotate(session_count=session_count)
                                             .annotate(play_count=play_count)
@@ -1200,15 +1392,28 @@ class leaderboard_options:
             for game in filtered_games:
                 log.debug(f"\t{game.name}")
 
+            log.debug(f"Using this query:")
+            log.debug(f"\t{get_SQL(filtered_games, explain=True)}")  # Without explain the SQL is wrong here on an ArrayAgg query
+
         return filtered_games
 
-    def snapshot_queryset(self, game, baseline=False):
+    def snapshot_queryset(self, game, include_baseline=False):
         '''
-        Returns a QuerySet of the Session objects which which provide the foundation
+        Returns a tuple containing:
+
+        A QuerySet of the Session objects which which provide the foundation
         for historic snapshots selected by these options (self.evolution_options drive
         this).
 
         As a QuerySet this should ideally remain unevaluated on return (remain lazy).
+            In practice if include_baseline is True, it may need evaluation.
+
+        A flag that is set to true if we've been asked to include a baseline and a
+        baseline outside of the requested window of snapshots was found and added.
+        if this is true the client is effictively asked to hide that baseline (the
+        last/earliest) session in the returned QuerySet. if false either no baseline
+        is included or it is but it falls withing the winodow of snapshots requested.
+
 
         A snapshot is the leaderboard as it appears after a given game session
         The default and only standard snapshot is the current leaderboard after the
@@ -1222,10 +1427,11 @@ class leaderboard_options:
         Evolution requests:
            lo.evolution_options documents the possible selections
 
-        We build a QeurySet of the sessions after which we want the leaderboard snapshots.
+        We build a QuerySet of the sessions after which we want the leaderboard snapshots.
 
         :param game:        A Game object for which the leaderboards are requested
-        :param baseline:    If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be caluclated by the caller if desired)
+        :param include_baseline: If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be calculated by the caller if desired)
+        :returns: A 2-tuple (QuerySet, extra_baseline_was_added_flag)
         '''
 
         def sessions_plus(sessions):
@@ -1279,7 +1485,7 @@ class leaderboard_options:
         # provided in self.game_leagues.
         if self.is_enabled('game_leagues_any'):
             sfilter &= Q(league__pk__in=self.game_leagues)
-            session_source = Session.objects.filter(sfilter)
+            session_source = models.Session.objects.filter(sfilter)
 
         # ALL can be just as easy. If we are showing the leaderboards for games b=layed by ALL
         # of a list of leagues, we probbaly want actually to see snapshots, in particular the latetst
@@ -1287,7 +1493,7 @@ class leaderboard_options:
         # do that here
         elif self.is_enabled('game_leagues_all') and BROAD_ALL_VIEW:
             sfilter &= Q(league__pk__in=self.game_leagues)
-            session_source = Session.objects.filter(sfilter)
+            session_source = models.Session.objects.filter(sfilter)
 
         # If however for ALL we want a more restruictview fetching snapshots only after sessions that contained
         # players from ALL the leagues, then this is much trickier to write as a query and needs us to drill down
@@ -1315,11 +1521,11 @@ class leaderboard_options:
                 lfilter |= Q(performances__player__leagues__pk__in=pk)
             sfilter &= lfilter & Q(league_count=len(self.game_leagues))
 
-            session_source = Session.objects.annotate(league_count=Count('performances__player__leagues__pk', distinct=True)).filter(sfilter)
+            session_source = models.Session.objects.annotate(league_count=Count('performances__player__leagues__pk', distinct=True)).filter(sfilter)
 
         # With no league filtering, build the session source from the extant sfilter only
         else:
-            session_source = Session.objects.filter(sfilter)
+            session_source = models.Session.objects.filter(sfilter)
 
         # At this stage we have session_source that
         #   Specifies a game
@@ -1329,7 +1535,8 @@ class leaderboard_options:
         if self.no_evolution():
             # Just get the latest session, one snapshot only
             # And extra one if a baseline is requested.
-            sessions = top(session_source.order_by("-date_time"), 2 if baseline else 1)
+            sessions = top(session_source.order_by("-date_time"), 2 if include_baseline else 1)
+            hide_baseline = include_baseline  # No evolution window, for the baseline to fall within, so if we include one, we should hide it.
         else:
             # compare_with or compare_back_to is enabled
             extra_session = None
@@ -1345,11 +1552,11 @@ class leaderboard_options:
                 # that window (done here)  and the end of the window ifs defined by
                 # self.as_at or the latest session (no explicit end needed).
 
-                # We want a reference time first being the start of an event or
-                # a time explciitly provided. Well add the snapshot prior to this time
+                # We want a reference time first, being the start of an event or
+                # a time explicitly provided. We'll add the snapshot prior to this time
                 # as a the state of the boartd AT that time, and if a baseline is
-                # requested a second one (not intended for renderig just for rank delta
-                # calculatiuon.
+                # requested a second one (not intended for rendering just for rank delta
+                # calculation. Of course if it is after reference_time it should be rendered.
                 if isinstance(self.compare_back_to, numbers.Real):
                     earliest_time = self.last_event_start_time(self.compare_back_to)
                 elif isinstance(self.compare_back_to, datetime):
@@ -1359,11 +1566,15 @@ class leaderboard_options:
 
                 if earliest_time:
                     efilter = sfilter & Q(date_time__lt=earliest_time)
-                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if baseline else 1)
+                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if include_baseline else 1)
 
-                    # The referecce time is of course, also the time that we want all boards from.
-                    # We update sfilter AFTER building the extra_session query because sfltter prior
-                    # to his constrain is used in defining it.
+                    # If we get only one extra session, or none then we have no distinct
+                    # baseline beyond the evolution window and so we should not hide it.
+                    hide_baseline = include_baseline and extra_session.count() == 2
+
+                    # The reference time is of course, also the time that we want all boards from.
+                    # We update sfilter AFTER building the extra_session query because sfilter prior
+                    # to his constraint is used in defining it.
                     sfilter &= Q(date_time__gte=earliest_time)
 
             # Then order the sessions in reverse date_time order
@@ -1380,7 +1591,11 @@ class leaderboard_options:
                 # least n+1 boards total. But if we've been asked to provide a baselined
                 # we return one more which the caller presumeably doesn't render just used
                 # for delta calculation (it's the hidden baselined for deltas)
-                sessions = top(sessions, self.compare_with + (2 if baseline else 1))
+                sessions = top(sessions, self.compare_with + (2 if include_baseline else 1))
+
+                # If we get only one extra session, or none then we have no distinct
+                # baseline beyond the evolution window and so we should not hide it.
+                hide_baseline = include_baseline and sessions.count() == self.compare_with + 2
 
         if settings.DEBUG:
             queries_after = len(connection.queries)
@@ -1399,7 +1614,7 @@ class leaderboard_options:
             for session in sessions:
                 log.debug(f"\t{session.id}: {session.date_time}")
 
-        return sessions
+        return (sessions, hide_baseline)
 
     def titles(self):
         '''
@@ -1424,21 +1639,12 @@ class leaderboard_options:
 
         # Build A Leagues intro string
         if self.is_enabled('game_leagues_any') or self.is_enabled('game_leagues_all'):
-            L = League.objects.filter(pk__in=self.game_leagues)
+            L = models.League.objects.filter(pk__in=self.game_leagues)
             La = "any" if self.is_enabled('game_leagues_any') else "all"
         else:
             L = []
 
         LA = f"{La} of the leagues" if len(L) > 1 else "the league"
-
-        # Build A Players intro string
-        if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
-            P = Player.objects.filter(pk__in=self.game_players)
-            Pa = "any" if self.is_enabled('game_players_any') else "all"
-        else:
-            P = []
-
-        PA = f"{Pa} of the players" if len(P) > 1 else "the player"
 
         # Build the list of leagues capping at two items with elipsis if more.
         if len(L) == 1:
@@ -1448,6 +1654,15 @@ class leaderboard_options:
         elif len(L) > 2:
             l = f"{L[0].name}, {L[1].name} ..."
 
+        # Build A Players intro string
+        if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
+            P = models.Player.objects.filter(pk__in=self.game_players)
+            Pa = "any" if self.is_enabled('game_players_any') else "all"
+        else:
+            P = []
+
+        PA = f"{Pa} of the players" if len(P) > 1 else "the player"
+
         # Build the list of players capping at two items with elipsis if more.
         if len(P) == 1:
             p = P[0].name_nickname
@@ -1456,7 +1671,7 @@ class leaderboard_options:
         elif len(P) > 2:
             p = f"{P[0].name_nickname}, {P[1].name_nickname} ..."
 
-        # Start the TITLE off with Top or Latest
+        # Start the TITLE off with Top (most popular) or Latest (most recently played)
         if self.is_enabled('top_games'):
             title = f"Top {self.num_games} "
         elif self.is_enabled('latest_games'):
@@ -1481,7 +1696,7 @@ class leaderboard_options:
         if self.is_enabled("as_at"):
             subtitle.append(f"as at {localize(localtime(self.as_at))}")
 
-        if self.is_enabled("played_since"):
+        if self.is_enabled("changed_since"):
             subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
 
         if self.is_enabled("compare_back_to"):
@@ -1504,10 +1719,10 @@ class leaderboard_options:
             subtitle.append(f"compared with {self.compare_with} prior leaderboards")
 
         if self.is_enabled("games_ex"):
-            subtitle.append(f"for the games: {', '.join([Game.objects.get(pk=g).name for g in self.games])}")
+            subtitle.append(f"for the games: {', '.join([models.Game.objects.get(pk=g).name for g in self.games])}")
 
         if self.is_enabled("players_ex"):
-            subtitle.append(f"for the players: {', '.join([Player.objects.get(pk=p).name_nickname for p in self.players])}")
+            subtitle.append(f"for the players: {', '.join([models.Player.objects.get(pk=p).name_nickname for p in self.players])}")
 
         return (title, "<BR>".join(subtitle))
 
@@ -1524,13 +1739,18 @@ class leaderboard_options:
         get the impact of the last event (prior to as_at) but produce a link that uses
         fixed reference times rather than the relative so they can be used in comms and
         have lasting relevance.
+
+        :param ufilter: a user filter, i.e request.session.filter dictionary that specifies
+                        the session default. Currently only 'league' is used to populate the
+                        options with a default league filter based on session preferences.
+                        Is extensible.
         '''
 
         # Map self.compare_back_to number to self.compare_back_to datetime
         if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
             self.compare_back_to = fix_time_zone(self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False), utz)
 
-        # Map self.num_days to self.changed_since
+        # Map self.num_days to self.changed_since and self.compare_back_to
         if self.is_enabled('num_days'):
             # Disable num_days option (which is relative to now and not static.
             self.__enable__('num_days', False)
@@ -1545,14 +1765,14 @@ class leaderboard_options:
             self.compare_back_to = self.changed_since
             self.__enable__('compare_back_to', True)
 
-        # If a user session filter is used, convert it toe xplicit static options
-        # Only league supported for now. If not leagues are explicti and preferred
+        # If a user session filter is used, convert it to explicit static options
+        # Only league supported for now. If no leagues are explict and preferred
         # league is in place for the user (in the user session)
         #
         # Note: This is probably not needed. It operates in concert with the client
         # side code that generates a statc URL from the returned options. We return
-        # an options"made_static" to let the client know we've done the server side
-        # bit. The client side bit then build the URL from the leaderboard_options we
+        # an option "made_static" to let the client know we've done the server side
+        # bit. The client side bit then builds the URL from the leaderboard_options we
         # return.
         if ufilter:
             preferred_league = ufilter.get('league', None)
@@ -1562,3 +1782,401 @@ class leaderboard_options:
                     self.game_leagues = [str(preferred_league)]
                 if not self.player_leagues:
                     self.player_leagues = [str(preferred_league)]
+
+
+def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=None):
+    '''
+    Given a master leaderboard and a baseline to compare it against, will
+    augment the master with delta measures (adding a previous rank
+    and rating elements to each player tuple)
+
+    This is very flexible with structures and formats. Accepts JSON and Python and
+    each of the leaderboard structures and returns the same. General purpose augmenter
+    of playlists with a previous rank item based on the baseline.
+
+    By default, only master is needed. if it is a game_wrapped_session_wrapped_player_list
+    with snapshots in it no baseline is needed and all the snapshots will be delta augmented.
+
+    Only two styles are supported, rich and data. They are the only two that currently include
+    a unique player ID which cna be used for tha ugmentation.
+
+    :param master:      a leaderboard
+    :param baseline:    a leaderboard to compare with. None is valid only for a game_wrapped_session_wrapped_player_list with snaps
+    :param structure:   an LB_STRUCTURE that master and baseline are to interpreted with
+    :param style:       an LB_PLAYER_LIST_STYLE, which will be guessed at if need be, so we know where to get the rank and rating from to augment with.
+    '''
+
+    if isinstance(master, str):
+        _master = json.loads(master)
+    else:
+        _master = mutable(master)
+
+    if isinstance(baseline, str):
+        _baseline = json.loads(baseline)
+    else:
+        _baseline = baseline
+
+    igd = LB_STRUCTURE.game_data_element.value
+    isd = LB_STRUCTURE.session_data_element.value
+    snaps = False  # by default (only true on game_wrapped leaderboards that say so
+
+    if structure == LB_STRUCTURE.session_wrapped_player_list:
+        lb_master = _master[isd]
+        lb_baseline = _baseline[isd]
+    elif structure == LB_STRUCTURE.game_wrapped_player_list:
+        snaps = _master[igd - 2]
+        lb_master = _master[igd]
+
+        if not snaps and _baseline:
+            lb_baseline = _baseline[igd]
+        else:
+            lb_baseline = None
+    elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        snaps = _master[igd - 2]
+
+        if snaps:
+            # A list of session_wrapped leaderboards.
+            # We remove the session wrappers to create a list of player lists
+            # for uniform handling below.
+            lb_master = [session_wrapper[isd] for session_wrapper in _master[igd]]
+        else:
+            # A single session wrapped leaderboard (extract the player list, remove the sessino wrapper)
+            lb_master = _master[igd][isd]
+
+            if _baseline:
+                lb_baseline = _baseline[igd][isd]
+            else:
+                lb_baseline = None
+    elif structure == LB_STRUCTURE.player_list:
+        lb_master = _master
+        lb_baseline = _baseline
+
+    # Build a list of (master, baseline) tuples to process
+    if snaps:
+        pairs = [(lb_master[i], lb_master[i + 1]) for i in range(len(lb_master) - 1)]
+    elif lb_baseline:
+        pairs = [(lb_master, lb_baseline)]
+    else:
+        pairs = []
+
+    # We now augment _master in situ
+    for lb in pairs:
+        # Grab the two player lists
+        pl_master = lb[0]
+        pl_baseline = lb[1]
+
+        style = guess_player_list_style(pl_baseline)
+
+        previous_rank = {}
+        previous_rating = {}
+        for r, p in enumerate(pl_baseline):
+            # Most commonly used for rich player lists (i.e for rendering informative player lists (leaderboards), which the rich style targets)
+            if style == LB_PLAYER_LIST_STYLE.rich:
+                rank = p[0]
+                pk = p[1]
+                rating = p[6]
+            elif style == LB_PLAYER_LIST_STYLE.data:
+                rank = r
+                pk = p[0]
+                rating = p[1]
+            else:
+                raise ValueError("Attempt to augment and unsupport Player List style")
+
+            previous_rank[pk] = rank
+            previous_rating[pk] = rating
+
+        for r, p in enumerate(pl_master):
+            if style == LB_PLAYER_LIST_STYLE.rich:
+                pk = p[1]
+            elif style == LB_PLAYER_LIST_STYLE.data:
+                pk = p[0]
+
+            pran = previous_rank.get(pk, None)
+            prat = previous_rating.get(pk, None)
+            pl_master[r] = tuple(p) + (pran, prat)
+
+    if isinstance(master, str):
+        result = json.dumps(_master, cls=DjangoJSONEncoder)
+        return result
+    else:
+        # Back to tuple with frozen result
+        return immutable(_master)
+
+
+def styled_player_tuple(player_list_tuple, rank=None, style=LB_PLAYER_LIST_STYLE.rich, names="nick"):
+    '''
+    Takes a tuple styled after LB_PLAYER_LIST_STYLE.data and returns a styled tupled as requested.
+
+    styled_player_tuple() below is more convenient as it takes an ordered player list from
+    which rank is derived. Only the rich style includes the rank.
+
+    :param player_list_tuple: A tuple in LB_PLAYER_LIST_STYLE.data
+    :param rank:  Rank on the leaderboard 1, 2, 3, 4 etc
+    :param style: A LB_PLAYER_LIST_STYLE to return
+    :param names: A style for rendering names
+    '''
+    (player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories, last_play) = player_list_tuple
+
+    player = models.Player.objects.get(pk=player_pk)
+
+    try:
+        player = models.Player.objects.get(pk=player_pk)
+        player_name = player.name(names)
+        player_leagues = player.leagues.all()
+    except models.Player.DoesNotExist:
+        player = None  # TODO: what to do?
+        player_name = "<unknown>"
+        player_leagues = []
+
+    if style == LB_PLAYER_LIST_STYLE.none:
+        lb_entry = player_name
+    elif style == LB_PLAYER_LIST_STYLE.data:
+        lb_entry = player_list_tuple
+    elif style == LB_PLAYER_LIST_STYLE.rating:
+        lb_entry = (player_name, trueskill_eta)
+    elif style == LB_PLAYER_LIST_STYLE.ratings:
+        lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma)
+    elif style == LB_PLAYER_LIST_STYLE.simple:
+        lb_entry = (player_name, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories)
+    elif style == LB_PLAYER_LIST_STYLE.rich:
+        # There's a slim chance that "player" does not exist (notably when 'data' is provided
+        # So access player properties cautiously with fallback.
+        lb_entry = (rank,
+                    player_pk,
+                    player.BGGname if player else '',
+                    player.name('nick') if player else '',
+                    player.name('full') if player else '',
+                    player.name('complete') if player else '',
+                    trueskill_eta,
+                    trueskill_mu,
+                    trueskill_sigma,
+                    plays,
+                    victories,
+                    last_play,
+                    [l.pk for l in player_leagues])
+    else:
+        raise ValueError(f"Programming error in Game.leaderboard(): Illegal style submitted: {style}")
+
+    return immutable(lb_entry)
+
+
+def styled_player_list(player_list, style=LB_PLAYER_LIST_STYLE.rich, names="nick"):
+    '''
+    Takes a list of tuples styled after LB_PLAYER_LIST_STYLE.data and returns a list of styled tupled as requested.
+
+    :param player_list_tuple: A tuple in LB_PLAYER_LIST_STYLE.data
+    :param rank:  Rank on the leaderboard 1, 2, 3, 4 etc
+    :param style: A LB_PLAYER_LIST_STYLE to return
+    :param names: A style for rendering names
+    '''
+    styled_list = []
+    for i, player_tuple in enumerate(player_list):
+        styled_list.append(styled_player_tuple(player_tuple, rank=i + 1, style=style, names=names))
+
+    return immutable(styled_list)
+
+
+def leaderboard_changed(player_list1, player_list2):
+    '''
+    Return True if two player lists in style LB_PLAYER_LIST_STYLE.data are not functionly the same.
+
+    :param player_list1:
+    :param player_list2:
+    '''
+    if len(player_list1) == len(player_list2):
+        for player_tuple1, player_tuple2 in zip(player_list1, player_list2):
+            # We compare only the first 4 elements which define the player and rating at this position
+            # If they are the same the leaderboard is functionall unchanged (the remaining items are
+            # useful metadata but not relevant to ratings or ranking)
+            for element1, element2 in zip(player_tuple1[0:4], player_tuple2[0:4]):
+                if element1 != element2:
+                    return True
+        return False
+    else:
+        return True
+
+
+def restyle_leaderboard(leaderboards, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=LB_PLAYER_LIST_STYLE.rich, names="nick"):
+    '''
+    Restyles a leaderboard of a given structure, assuming the player_lists are in LB_PLAYER_LIST_STYLE.data
+
+    :param leaderboards: A game_wrapped leaderboard in LB_PLAYER_LIST_STYLE.data
+    :param structure: A LB_STRUCTURE, that specifies the structure of leaderboards provided (and returned)
+    :param style: A LB_PLAYER_LIST_STYLE to retyle to
+    '''
+    igd = LB_STRUCTURE.game_data_element.value
+    isd = LB_STRUCTURE.session_data_element.value
+
+    _leaderboards = mutable(leaderboards)
+
+    snaps = False  # by default (only true on game_wrapped leaderboards that say so
+
+    # Build a list of player_lists (if only of one item) and
+    # note whether its a list (snaps is declared)
+    if structure == LB_STRUCTURE.session_wrapped_player_list:
+        player_lists = [_leaderboards[isd]]
+    elif structure == LB_STRUCTURE.game_wrapped_player_list:
+        snaps = _leaderboards[igd - 2]
+        if snaps:
+            player_lists = _leaderboards[igd]
+        else:
+            player_lists = [_leaderboards[igd]]
+    elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        snaps = _leaderboards[igd - 2]
+
+        if snaps:
+            player_lists = [session_wrapper[isd] for session_wrapper in _leaderboards[igd]]
+        else:
+            player_lists = _[leaderboards[igd][isd]]
+    elif structure == LB_STRUCTURE.player_list:
+        player_lists = [_leaderboards]
+
+    for i, pl in enumerate(player_lists):
+        player_lists[i] = styled_player_list(pl, style=style, names=names)
+
+    if structure == LB_STRUCTURE.session_wrapped_player_list:
+        _leaderboards[isd] = player_lists[0]
+    elif structure == LB_STRUCTURE.game_wrapped_player_list:
+        if snaps:
+            _leaderboards[igd] = player_lists
+        else:
+            _leaderboards[igd] = player_lists[0]
+    elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        if snaps:
+            for i, pl in enumerate(player_lists):
+                _leaderboards[igd][i][isd] = pl
+        else:
+            _leaderboards[igd][isd] = player_lists[0]
+    elif structure == LB_STRUCTURE.player_list:
+        _leaderboards = player_lists[0]
+
+    return immutable(_leaderboards)
+
+
+def guess_player_list_style(player_list):
+    '''
+    Based on how Game.leaderboard implements the LB_PLAYER_LIST_STYLEs.
+
+    TODO: This should really be more robust, as in not based on what is implemented in Games.leaderboard.
+    Perhaps the leaderboard structure can contain information about its style.l
+    Perhaps one day the whole Leaderboard creation, structuring and presenting is a class of its own.
+
+    :param player_list:
+    '''
+    # Just take the first entry in the player list as a sample
+    sample = player_list[0]
+    if not isinstance(sample, (list, tuple)):
+        return  LB_PLAYER_LIST_STYLE.none
+    elif len(sample) == 7:
+        return  LB_PLAYER_LIST_STYLE.data
+    elif len(sample) == 6:
+        return  LB_PLAYER_LIST_STYLE.simple
+    elif len(sample) == 2:
+        return  LB_PLAYER_LIST_STYLE.rating
+    elif len(sample) == 4:
+        return  LB_PLAYER_LIST_STYLE.ratings
+    else:
+        return  LB_PLAYER_LIST_STYLE.rich
+
+
+def extract_player_list(leaderboard, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=None, snap=0):
+    '''
+    Extracts the player list from a structured leaderboard. The player list being a list of ordered tuples that describe
+    a player on a leaderboard.
+
+    If there are many leaderboards in the structure the first one is used or the on that is identfied by the snap argument
+    This is the case with game wrapped leaderboards where the data element is a list of player lists rather than a single
+    player list.
+
+    :param leaderboard: A leaderboard with the confessed structure with style LB_PLAYER_LIST_STYLE.data
+    :param structure: An LB_STRUCTURE that describes the structure of leaderboard
+    :param style: An LB_PLAYER_LIST_STYLE that describes the player style (is guessed form tuple if not confessed)
+    :param snap: A snapshot number if it's a game wrapped board with snapshots (snaps)
+    '''
+    igd = LB_STRUCTURE.game_data_element.value
+    isd = LB_STRUCTURE.session_data_element.value
+
+    if structure == LB_STRUCTURE.session_wrapped_player_list:
+        player_list = leaderboard[isd]
+    elif structure == LB_STRUCTURE.game_wrapped_player_list:
+        snaps = leaderboard[igd - 2]
+        player_lists = leaderboard[igd]
+
+        if snaps:
+            player_list = player_lists[igd]
+        else:
+            player_list = player_lists
+    elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
+        snaps = leaderboard[igd - 2]
+        sessions = leaderboard[igd]
+
+        if snaps:
+            # A list of session_wrapped leaderboards
+            player_list = sessions[snap][isd]
+        else:
+            # A single session wrapped leaderboard (extract the player list)
+            player_list = sessions[isd]
+    elif structure == LB_STRUCTURE.player_list:
+        player_list = leaderboard
+    else:
+        raise ValueError(f"Unsupport leaderboard structure: {structure}")
+
+    return player_list
+
+
+def player_ratings(leaderboard, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=None, snap=0):
+    '''
+    Returns a dict keyed on player pk, with TrueSkill rating as the value, extracted from the provided leaderboards.
+
+    If there are many leaderboards in the structure the first one is used. This is the case with
+    game wrapped leaderboards where the data element is a list of player lists rather than a single
+    player list.
+
+    :param leaderboard: A leaderboard with the confessed structure with style LB_PLAYER_LIST_STYLE.data
+    :param structure: An LB_STRUCTURE that describes the structure of leaderboard
+    :param style: An LB_PLAYER_LIST_STYLE that describes the player style (is guessed form tuple if not confessed)
+    :param snap: A snapshot number if it's a game wrapped board with snapshots (snaps)
+    '''
+
+    player_list = extract_player_list(leaderboard, structure, style, snap)
+
+    if style is None:
+        style = guess_player_list_style(player_list)
+
+    ratings = {}
+    for tup in player_list:
+        # The player PK is the first element in the tuple except for rich boards, where it's the second
+        key = tup[1] if style == LB_PLAYER_LIST_STYLE.rich else tup[0]
+
+        # The player rating is the second element in the tuple except for rich boards, where it's the sixth
+        rating = tup[6] if style == LB_PLAYER_LIST_STYLE.rich else tup[1]
+        ratings[key] = rating
+
+    return ratings
+
+
+def player_rankings(leaderboard, structure=LB_STRUCTURE.game_wrapped_session_wrapped_player_list, style=None, snap=0):
+    '''
+    Returns a dict keyed on player pk, with leaderboard position as the value
+
+    If there are many leaderboards in the structure the first one is used. This is the case with
+    game wrapped leaderboards where the data element is a list of player lists rather than a single
+    player list.
+
+    :param leaderboard: A leaderboard with the confessed structure with style LB_PLAYER_LIST_STYLE.data
+    :param structure: An LB_STRUCTURE that describes the structure of leaderboard
+    :param style: An LB_PLAYER_LIST_STYLE that describes the player style (is guessed form tuple if not confessed)
+    :param snap: A snapshot number if it's a game wrapped board with snapshots (snaps)
+    '''
+    player_list = extract_player_list(leaderboard, structure, style, snap)
+
+    if style is None:
+        style = guess_player_list_style(player_list)
+
+    positions = {}
+    for pos, tup in enumerate(player_list):
+        # Always use the first entry in the player tuple as the key except in the rich style (which has it as second spot)
+        key = tup[1] if style == LB_PLAYER_LIST_STYLE.rich else tup[0]
+        positions[key] = pos
+
+    return positions

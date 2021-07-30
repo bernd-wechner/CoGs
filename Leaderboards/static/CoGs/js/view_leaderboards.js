@@ -10,17 +10,27 @@
 //    or evolutions and so want one game per row, and one column per snapshot, so we
 //    can safely ignore cols, and use a table as wide as maxshots.   
 
+// Note we have to initialise these by calling select2() if we want to call select2('data') 
+// at any point. This is explained here:
+// https://github.com/select2/select2/issues/3582
+// I would have thought the DAL widget has this already handed. But apprently not.
+// If we do this in the   template (that includes this script) rather than here, for 
+// some reason it doesn't work right. Initilaising them here seems to work fine.
+$('#games').select2();
+$('#players').select2();
+$('#leagues').select2();
 
 // Configurable, should agree with what the view is configured to deliver.
 // if the view is delivering baseline boards this should be true and we will
-// not render them and use them only for calculating rank deltas. If it is false
-// the view should idelaly not deliver baslines (or they'll render and not honor
-// the leaderboard options accurately).
+// not render them and use them only for calculating rank and rating deltas. 
+// If it is false the view should idelaly not deliver baslines (or they'll 
+// render and not honor the leaderboard options accurately).
 const use_baseline = true;
 	
 let boardcount = 0;
 let maxshots = 0;
 let totalshots = 0;
+let boardshots = [];
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
@@ -33,27 +43,42 @@ String.prototype.boolean = function() {
         throw new Error ("string.boolean(): Cannot convert string to boolean.");
     }
   };
-  
-function selectElementContents(el) {
-      let body = document.body, range, sel;
-      if (document.createRange && window.getSelection) {
-          range = document.createRange();
-          sel = window.getSelection();
-          sel.removeAllRanges();
-          try {
-              range.selectNodeContents(el);
-              sel.addRange(range);
-          } catch (e) {
-              range.selectNode(el);
-              sel.addRange(range);
-          }
-      } else if (body.createTextRange) {
-          range = body.createTextRange();
-          range.moveToElementText(el);
-          range.select();
-      }
+
+// JQuery extension to provide outerHTML
+jQuery.fn.html_outer = function(s) {
+    return s
+        ? this.before(s).remove()
+        : jQuery("<p>").append(this.eq(0).clone()).html();
+};
+
+// clipboard.js experiment.s Deprecated. The method of Žoček rules them all.
+//const clipboard = new ClipboardJS('#btnCopy');
+//clipboard.on('success', function(e) { console.log(e);});
+//clipboard.on('error', function(e) { console.log(e);});
+
+// Deprecated as the method of Žoček is now in use
+function selectElementContents(JQelement) {
+      const el = JQelement[0]
+	  let body = document.body, range, sel;
+	  if (document.createRange && window.getSelection) {
+	      range = document.createRange();
+	      sel = window.getSelection();
+	      sel.removeAllRanges();
+	      try {
+	          range.selectNodeContents(el);
+	          sel.addRange(range);
+	      } catch (e) {
+	          range.selectNode(el);
+	          sel.addRange(range);
+	      }
+	  } else if (body.createTextRange) {
+	      range = body.createTextRange();
+	      range.moveToElementText(el);
+	      range.select();
+	  }
 }
 
+// Used to copy URLs to the clipboard (can probably move to the method of Žoček as well)
 function copyStringToClipboard(str) {
    let el = document.createElement('textarea');
    el.value = str;
@@ -63,42 +88,109 @@ function copyStringToClipboard(str) {
    el.select();
    document.execCommand('copy');
    document.body.removeChild(el);
-}  
+}
 
+// Moving colors to CSS vars broke the colors inthe copy.
+// Several new methods are partially or completely available now.
+// After a LOT of reading, testing, experimenting one method finally works in Firefox and Chromium 
 function copyElementToClipboard(JQelement) {
-	   let el = JQelement.clone().get(0);
-	   el.setAttribute('readonly', '');
-	   el.style = {position: 'absolute', left: '-9999px'};
-	   document.body.appendChild(el);
-	   selectElementContents(el);
-	   document.execCommand('copy');
-       document.body.removeChild(el);
+	const clone = JQelement.clone().get(0);  // Clone the element we want to copy to the clipboard
+	
+	const include_styles = true;
+	const copy_wrapper = false;
+	
+	const methods = ['legacy', 'Text API', 'Generic API', 'HTML5', 'Žoček'];
+	const method = methods[4];  // Only the 'Žoček' works! The rest is now legacy garbage!
+	
+	// create a wrapper (that we will try to copy)
+    const wrapper = $('<div>');
+	wrapper.attr('id', 'copyme');
+	wrapper.attr('readonly', '');
+	
+	// This was necessary in past as we had to add the cclone tot he DOM to select it and copy it
+	// This appears no longer to be the case.
+	//wrapper.attr('style', "{position: 'absolute', left: '-9999px'}");
+
+	if (include_styles) {
+	    const style = $('<style>');
+		for (sheet of document.styleSheets) {
+			if (sheet.href && (sheet.href.endsWith("leaderboards.css") || sheet.href.endsWith("tooltip.css") || sheet.href.endsWith("default.css"))) {
+				let rules = [];
+				for (rule of sheet.cssRules) rules.push(rule.cssText)
+				
+				style.append(rules.join('\n'));
+			}
+		}
+
+		wrapper.append(style);
+	}
+
+	// Add the cloned element to the wrapper 	
+	wrapper.append(clone);
+	
+	// Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
+	const HTML = copy_wrapper ? wrapper.html_outer() : wrapper.html();
+	//console.log(HTML);	
+	
+	// This puts the wrapped cloned element into the DOM. May or may not be necessary depending on clipboard methods 
+	$('body').append(wrapper);
+
+	switch (method) {
+		case 'legacy':
+			// Firefox loses all styles
+			// Chromium keeps colors if they are in the sttyle, and loses them if they are CSS vars
+			selectElementContents(wrapper);  // $('#copyme') works too, but this works even when not int he DOM
+			document.execCommand('copy');
+			break;
+		case 'Text API':
+			// Works in  Firefox and Chromiusm, but only copies text. In this example we copy the the HTML of the wrapper
+			// If the HTML is pasted into a Thunderbird HTML tab it actually renders perfectly well!
+			navigator.clipboard.writeText(HTML).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
+			break;
+		case 'Generic API':
+			// In Firefox this works the same as the 'legacy' method. It removes the <style> element alas
+			// In Chromium it also removes the style element and hence the whole thing is cruddy unstyled, worse than Firefoxes.
+			// data is an Array, but only one element is supported at present in either browser. 
+			const data = [new ClipboardItem({ "text/html": new Blob([HTML], { type: "text/html" }) })];
+			navigator.clipboard.write(data).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
+			//navigator.clipboard.write(data).then(() => {console.log("Copied!");}, err => {console.error("Something went wrong", err);});			
+			break;
+		case 'HTML5':
+			// Poorly supported
+			// https://www.htmlgoodies.com/html5/working-with-clipboard-apis-in-html5-web-apps
+			let copyEvent = new ClipboardEvent('copy', { dataType: 'text/html', data: HTML } );
+			document.dispatchEvent(copyEvent);			
+			break;
+		case 'Žoček':
+			// A tweak posted here:
+			// https://stackoverflow.com/a/45352464/4002633
+			// And this works perfectly in Firefox and Chromium! Preservice CSS var colours! A stroke fo genius!
+		    function handler(event) {
+		        event.clipboardData.setData('text/html', HTML);
+		        event.preventDefault();
+		        document.removeEventListener('copy', handler, true);
+		    }
+		
+		    document.addEventListener('copy', handler, true);
+		    document.execCommand('copy');			
+			break;
+	}
+	
+	// If it was added tot he DOM, remove it. If it wasn't this passes thru silently.'
+	wrapper.remove();
 }  
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
-function get_and_report_metrics(LB) {
-	let snapshots = 0; 
+function get_and_report_metrics(LB, show_baseline) {
+	const metrics = leaderboard_metrics(LB, show_baseline); 
 
 	// Globals that we'll set here
-	boardcount = LB.length; // The number of games we are displaying
-	maxshots = 0;			// We want to discover the widest game (maxium number of snapshots)
-	totalshots = 0;			// The total nbumber of snapshots we'll be displaying
+	boardcount = metrics[0]; // The number of games we are displaying
+	maxshots   = metrics[1]; // We want to discover the widest game (maxium number of snapshots)
+	totalshots = metrics[2]; // The total number of snapshots we'll be displaying
+	boardshots = metrics[3]; // The number of snapshots on each leaderboard
 	
-	for (let g=0; g<boardcount; g++) {
-		// deduct 1 for the baseline board we always request
-		// we request it simply so we can render Rank deltas 
-		// in ALL our boards (otherwise not possible for the 
-		// last one snapshot in a game's evolution or at all 
-		// if no evolution options are on.
-		const delivered = LB[g][3].length;
-		const show_baseline = $('#chk_show_baseline').is(":checked");
-		const hide = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
-		const snapshots = delivered - hide; 
-		totalshots += snapshots;
-		if (snapshots > maxshots) maxshots = snapshots;
-	}	 
-
 	lblTotalCount = document.getElementById("lblTotalCount");
 	lblTotalCount.innerHTML = "<b>" +  boardcount + "</b> leaderboards"; 
 	
@@ -107,67 +199,122 @@ function get_and_report_metrics(LB) {
 	lblSnapCount.style.display = (totalshots > boardcount) ? "inline" : "none";
 }
 
-// But on first load we have leaderboards that were provided through context, so
-// process those now
-get_and_report_metrics(leaderboards);
-
 // An initialiser for Select2 widgets used. Alas not so trivial to set
 // as descrribed here:
 // https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
-function Select2Init(selector, values) {
-	const selected = selector.val();
-	let changed = false;
+//
+// Because we do an ajax call back to get names for PKs and there may be an delay of unknown
+// duration before it returns, we can't compare the request with the selector contents to 
+// determine if a request is needed. So we have to keep track in a global the requests issued
+// to refer to those in deciding if we need to issue a request.
+let waiting_for = {};
+function finished_waiting() {return Object.keys(waiting_for).length === 0};
 
-	for (let i = 0; i < values.length; i++)
-		if (selected.indexOf(values[i].toString()) < 0) changed = true;
+// Modern JS chicanery ;-)
+// TODO: We could do htis mor cleanly by wrapping the actual ajax request in a promise rather than a timer.
+//       await Promise.all([]promise1, promise2, promise3]) woudl wait for them to finish befoe proceeding.
+//       this method uses a timer based sleep to check the waiting_for logs of the requests to do same but
+//       is a tad klunkier.
+function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); } 
+async function until(fn) { while (!fn()) {	await sleep(10); } }
+
+function Select2Init(selector, values) {
+	const id = selector[0].id;
+	const selected = selector.val().map(Number);
+	const ordered_values = values.sort(function(a, b){return a-b});
 	
-	if (changed) {
+	let request = new Set();
+	for (const value of ordered_values)
+		// We want to request a value only if it's not currently selected and we're not waiting for it (already requested it)'
+		if (!selected.includes(value) && (!(id in waiting_for) || !waiting_for[id].has(value))) 
+			request.add(value);
+	
+	if (request.size > 0) {
+		// Be VERY careful here. DAL paginates by default and may not return all of the objects that the q parmater asks for. 
+		// the all parameters disables that pagination. If thes evrer does not return all of the requeste dobjects we wil end
+		// up waiting endlessly on them.
+		// TODO: We can escape this weakness by implementing the promses better so as not to use wating_for
+		//	     The trick is, how?
+		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?all&q=" + Array.from(request).join(",");
+		
 		selector.val(null).trigger('change');
+
+		if (!(id in waiting_for)) waiting_for[id] = new Set();	
+		
+		// Note locally that we've requested it and are waiting for an answer then issue the request 
+		// (should really be atomic). Bizaare JS syntax for set union using the spread operator (ellipsis)
+		waiting_for[id] = new Set([...waiting_for[id], ...request]);
 		$.ajax({
 		    type: 'GET',
-		    url: url_selector.replace("__MODEL__", selector.prop('name')) + "?q=" + values
+		    url: URL
 		}).then(function (data) {
 			// data arrives in JSON like:
-			// {"results": [{"id": "1", "text": "Bernd", "selected_text":
-			// "Bernd"}, {"id": "2", "text": "Blake", "selected_text":
-			// "Blake"}], "pagination": {"more": false}}
-				
-			for (let i=0; i<data.results.length; i++) {
-			    // create the option and append to Select2
-			    var option = new Option(data.results[i].text, data.results[i].id, true, true);
-			    selector.append(option).trigger('change');
+			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
+			
+			for (const result of data.results) {
+				// create the option and append to Select2
+				var option = new Option(result.text, result.id, true, true);
+				selector.append(option);
+				// Take note that we're no longer waiting on it (id arrives as string, was stored as int)
+				// But we clobber both just in case ;-). Returns false if it didn't delete because it wasn't there, tue if it did. 
+				// that is fails silently on the redundant call.
+				waiting_for[id].delete(result.id); // Value we might have if we got our wires crossed
+				waiting_for[id].delete(parseInt(result.id)); // Expected value
+			}
+			selector.trigger('change');
+
+			if (waiting_for[id].size === 0) {
+				delete waiting_for[id]; // If the set is empty remove the entry in the dict
 			}
 	
 		    // manually trigger the `select2:select` event
-		    selector.trigger({
-		        type: 'select2:select',
-		        params: {
-		            data: data
-		        }
-		    });
+		    //selector.trigger({
+		    //    type: 'select2:select',
+		    //    params: {
+		    //        data: data
+		    //    }
+		    //});
 		});
 	}
 }
 
 function dval(value, def) { return value !== undefined ? value : def; }
 
-function InitControls(options) {	
+function InitControls(options, exempt) {
+	// options: a dictionary of leaerboard options to set the Controls to
+	// exempt: an optional list of options to leave as is (not set to the value of options)
+	
+	const ex = exempt === undefined ? [] : exempt; 
+	
 	// We'll follow the same order as Leaderboards.views.leaderboard_options
 	// This takes those same options provided in context (or from an ajx call)
 	// as "options" and initialises the controls on the page.
 	
 	// Populate all the multi selectors
 	// footnote: The league selector could be populated from game_leagues or
-	// player_leagues
-	// though they should typically be identical anyhow (albeit not guaranteed
-	// to
-	// be. If roundtripping from this form they will be, but a URL GET request
-	// can
-	// specify separate lists. We'll priritise game_leagues here.
-	const players = _.union(options.game_players, options.players);
-	Select2Init($('#games'), options.games);
-	Select2Init($('#leagues'), options.game_leagues);
-	Select2Init($('#players'), players);
+	// player_leagues though they should typically be identical anyhow (albeit
+	// not guaranteed to be. If roundtripping from this form they will be, but 
+	// a URL GET request can specify separate lists. We'll priritise game_leagues
+	// here.
+	//
+	// We can exempt these if "ajax" is provided in the exempt argument. ANY
+	// call to InitControls that might happen after another call to it which 
+	// may not have got a reply yet to poppulate the control risks, an unnecssary
+	// ajax call and double population of the control
+	if (!ex.includes("ajax")) {
+		// players are special as they may have been autoselected server side, and 
+		// we want to honor that selection and they may have come in on a URL request 
+		// as a game filter (game_players) or a players filer (players) etc. So we want
+		// to populate the selector with union of all those.		
+		const players = _.union( options.players_auto_selected, options.players, options.game_players);
+		
+		// leagues as well can be used to filte rplayers or games and/or justtransported as a selector.
+		const leagues = _.union(options.game_leagues, options.player_leagues, options.leagues);
+		
+		Select2Init($('#games'), options.games);
+		Select2Init($('#leagues'), leagues);
+		Select2Init($('#players'), players);
+	}
 
 	// ===================================================================================
 	// Initialise the content options
@@ -181,6 +328,7 @@ function InitControls(options) {
 	// and set all the checkboxes they map to:
 	for (i = 0; i < check_box_filters.length; i++) {
 		const opt = check_box_filters[i];
+		if (ex.includes(opt)) continue;
 
 		// compare_back_to is a special option because we share it
 		// between two radio buttons base on its value (int or date)
@@ -225,25 +373,31 @@ function InitControls(options) {
 			$('#chk_players_in').attr('disabled', true);
 		}
 	}
+
+	// cols is special. It is on only respected when maxshots is 1. 
+	// On any view with evolution it's not used disable it if it's 
+	// not used.
+	if (!ex.includes("cols")) $('#cols').val(dval(options.cols, 1));
+	$('#cols').attr('disabled', maxshots > 1);
 	
 	// Then the rest of the game selectors
-	$('#num_games').val(options.num_games);         // Mirror of
-													// #num_games_latest
-	$('#num_games_latest').val(options.num_games);  // Mirror of #num_games
-	$('#changed_since').val(options.changed_since);
-	$('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
-	$('#num_days_ev').val(options.num_days);  		// Mirror of num_days
+	if (!ex.includes("num_games")) 		  $('#num_games').val(options.num_games);         // Mirror of #num_games_latest
+	if (!ex.includes("num_games_latest")) $('#num_games_latest').val(options.num_games);  // Mirror of #num_games
+	
+	if (!ex.includes("changed_since"))	$('#changed_since').val(options.changed_since);
+	if (!ex.includes("num_days"))	    $('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
+	if (!ex.includes("num_days"))	    $('#num_days_ev').val(options.num_days);  		// Mirror of num_days
 
 	// Then the player selectors
-	$('#num_players_top').val(options.num_players_top);
-	$('#num_players_above').val(options.num_players_above);
-	$('#num_players_below').val(options.num_players_below);
-	$('#min_plays').val(options.min_plays);
-	$('#played_since').val(options.played_since);
+	if (!ex.includes("num_players_top"))	$('#num_players_top').val(options.num_players_top);
+	if (!ex.includes("num_players_above"))	$('#num_players_above').val(options.num_players_above);
+	if (!ex.includes("num_players_below"))	$('#num_players_below').val(options.num_players_below);
+	if (!ex.includes("min_plays"))	   		$('#min_plays').val(options.min_plays);
+	if (!ex.includes("played_since"))	    $('#played_since').val(options.played_since);
 	
 	// ========================================================================
 	// The perspective option
-	$('#as_at').val(options.as_at);  	// undefined is fine here.
+	if (!ex.includes("as_at")) $('#as_at').val(options.as_at);  	// undefined is fine here.
 
 	// ========================================================================
 	// Evolution options are driven by radio buttons (one only). And so we want
@@ -257,30 +411,28 @@ function InitControls(options) {
 	else if (options.compare_back_to)
 		evolution_selection = "compare_back_to";
 	
-	$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
+	if (!ex.includes("compare_with") && !ex.includes("num_days_ev") && !ex.includes("compare_back_to")) 
+		$("input[name=evolution_selection][value="+evolution_selection+"]").prop('checked', true);
 	
 	// Then set the values in the Evolution selection area. The defaults are
-	// fine
-	// here if the options were deleteted by a shortcut button using
-	// override_content
-	// because it is the radio button that does the selecting anyhow. and the
-	// minimal
-	// content is selected above where we set the radio content.
-	// Note that we are for historic snapshots minimizing the defaults for a a
-	// shortcut
-	// button that uses override_content. For the game and player filters
-	// conversely
-	// we maximized the view (all games and all players and no hostroic
-	// snapshots is
-	// the position we aim for).
-	$('#compare_with').val(dval(options.compare_with, defaults.compare_with));
+	// fine here if the options were deleteted by a shortcut button using
+	// override_content because it is the radio button that does the selecting 
+	// anyhow. and the minimal content is selected above where we set the radio 
+	// content. Note that we are for historic snapshots minimizing the defaults 
+	// for a shortcut button that uses override_content. For the game and player filters
+	// conversely we maximized the view (all games and all players and no hostroic
+	// snapshots is the position we aim for).
+	if (!ex.includes("compare_with")) $('#compare_with').val(dval(options.compare_with, defaults.compare_with));
 	
 	// compare_back_to is in fact a content option we simply recycle here
 	const cbt = dval(options.compare_back_to, defaults.compare_back_to); 
-	if (Number.isInteger(cbt))
-		$('#num_days_ev').val(cbt);
-	else
+	if (Number.isInteger(cbt)) {
+		if (!ex.includes("num_days_ev")) 
+			$('#num_days_ev').val(cbt);
+	}
+	else if (!ex.includes("compare_back_to")) {
 		$('#compare_back_to').val(cbt);
+	}
 	
 	// ===================================================================================
 	// Initialise the presentation options
@@ -295,29 +447,31 @@ function InitControls(options) {
 	// provides in this case.
 	
 	// The the content formatting options
-	$('#chk_highlight_players').prop('checked', dval(options.highlight_players, false))
-	$('#chk_highlight_changes').prop('checked', dval(options.highlight_changes, false))
-	$('#chk_highlight_selected').prop('checked', dval(options.highlight_selected, false))
+	if (!ex.includes("highlight_players"))  $('#chk_highlight_players').prop('checked', dval(options.highlight_players, false))
+	if (!ex.includes("highlight_changes"))  $('#chk_highlight_changes').prop('checked', dval(options.highlight_changes, false))
+	if (!ex.includes("highlight_selected")) $('#chk_highlight_selected').prop('checked', dval(options.highlight_selected, false))
 	
-	$('#names').val(dval(options.names, "nick"));	
-	$('#links').val(dval(options.links, "none"));
+	if (!ex.includes("names")) $('#names').val(dval(options.names, "nick"));	
+	if (!ex.includes("links")) $('#links').val(dval(options.links, "none"));
 
 	// Then the extra info options for leaderboard headers
-	$('#chk_details').prop('checked', dval(options.details, false));
-	$('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
-	$('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
-	$('#chk_show_delta').prop('checked', dval(options.show_delta, false));
+	if (!ex.includes("details"))       $('#chk_details').prop('checked', dval(options.details, false));
+	if (!ex.includes("analysis_pre"))  $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
+	if (!ex.includes("analysis_post")) $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
+	if (!ex.includes("show_d_rank"))   $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
+	if (!ex.includes("show_d_rating")) $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
+	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
 
-	// Then the leaderboard screen layout options
-	$('#cols').val(dval(options.cols, 1));
+	// And the selection options
+	if (!ex.includes("select_players")) $('#chk_select_players').prop('checked', dval(options.select_players, false));
 	
 	// And the admin options
-	$('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
+	if (!ex.includes("ignore_cache")) $('#chk_ignore_cache').prop('checked', dval(options.ignore_cache, false));
 
 	// Add the shortcut buttons
-	AddShortcutButtons()	
+	AddShortcutButtons()
 	
-	// If we made the options static we want to copy them to address bare and
+	// If we made the options static we want to copy them to address bar and
 	// copy.paste buffer
 	if (options.made_static) { show_url();}
 }
@@ -359,7 +513,7 @@ function encodeDateTime(datetime) {
 	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
 }
 
-function URLopts(make_static) {
+async function URLopts(make_static) {
 	// The opposite so to speak of InitControls() here we read those same
 	// controls and prepare URL options for self same to submit an AJAX 
 	// request for updates (or simply display on the address bar if desired).
@@ -376,10 +530,16 @@ function URLopts(make_static) {
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
 	
 	// Then get the values of the three multiselect game specifierd
-	const games   = $('#games').val().join(",");
-	const leagues = $('#leagues').val().join(",");
-	const players = $('#players').val().join(",");
+	const games   = $('#games').val();
+	const leagues = $('#leagues').val();
+	const players = $('#players').val();
 	
+	// GOTCHA: If we intend on using any of these selectorss' values we run a real risk of not 
+	// seeing what they should contain because of the ajax call used to populated the. It may 
+	// not have returned yet. To wit, if we are waiting for any data we now have to wait for 
+	// it or we can't build the URL options from the form data.
+	await until(finished_waiting)
+
 	// Then the rest of the game selectors
 	const num_games        = $('#num_games').val();
 	const num_games_latest = $('#num_games_latest').val();
@@ -408,8 +568,10 @@ function URLopts(make_static) {
 	const details       = $('#chk_details').is(":checked");
 	const analysis_pre  = $('#chk_analysis_pre').is(":checked");
 	const analysis_post = $('#chk_analysis_post').is(":checked");	
-	const show_delta    = $('#chk_show_delta').is(":checked");	
+	const show_d_rank   = $('#chk_show_d_rank').is(":checked");	
+	const show_d_rating = $('#chk_show_d_rating').is(":checked");	
 	const show_baseline = $('#chk_show_baseline').is(":checked");	
+	const select_players = $('#chk_select_players').is(":checked");	
 	
 	const names = $('#names').val();	
 	const links = $('#links').val();
@@ -432,7 +594,7 @@ function URLopts(make_static) {
 	// TODO: Implement Tourneys and a Tourney filter.
 
 	// Handle the Game list based options	
-	const game_list = encodeList(games);
+	const game_list = encodeList(games.join(","));
 
 	if (game_list.length > 0) {
 		let game_options = [];
@@ -448,16 +610,18 @@ function URLopts(make_static) {
 			// for rendering the inital value of the games selector)
 			opts.push("games="+game_list);
 	}
-	
-	// Handle the Player list options
-	const player_list = encodeList(players);
-			
-	// We submit the list of leagues in context if any context demands it
-	// else in a basic form for transport to the server, to provide back in
-	// template context for initialising the leagues selector.
-	if (player_list.length > 0) {
-		let player_options = [];
 
+	// Handle Player list based options
+	
+	// Find the list of players that we should add to the URL
+	// If select_players is enabled we don't wan't to include players that will be auto_selected (why explictly and implciitly select them?)
+	// Small catch is that players is a list of strings and options.players_auto_selected a list of ints.
+	const add_players = select_players ? players.filter(p => !options.players_auto_selected.includes(parseInt(p))) : players;
+	const player_list = encodeList(add_players.join(","));
+
+	// We check for  any contextualising options for the list of players	
+	let player_options = [];
+	if (add_players.length > 0 || select_players) {
 		// The first context to check is on the player filters
 		if      (is_enabled("chk_players_ex")) player_options.push("players_ex");			
 		else if (is_enabled("chk_players_in")) player_options.push("players_in");
@@ -465,18 +629,22 @@ function URLopts(make_static) {
 		// The second context to check is on the game filters
 		if      (is_enabled("chk_game_players_any")) player_options.push("game_players_any");
 		else if (is_enabled("chk_game_players_all")) player_options.push("game_players_all");
-
-		if (player_options.length > 0)
-			for (i=0; i<player_options.length; i++) opts.push(player_options[i]+"="+player_list);
-		else	
-			// If no context supplied for the players, then submit them in the 
-			// transport option (no filter, just transports the list to server 
-			// for rendering the inital value of the players selector)
-			opts.push("players="+player_list);
+	}
+	
+	// If there is one contextualizing option submit the player list in that option
+	if (player_options.length === 1) {
+		const opt = player_options[0];
+		const val = add_players.length > 0 ? "="+player_list : "";
+		opts.push(opt+val);
+	}
+	// else submit the player list generically and any contextualizing otpions
+	else {
+		if (add_players.length > 0) opts.push("players="+player_list);
+		for (i=0; i<player_options.length; i++) opts.push(player_options[i]);
 	}
 	
 	// Handle the League list options
-	const league_list = encodeList(leagues);
+	const league_list = encodeList(leagues.join(","));
 	
 	// We submit the list of leagues in context if any context demands it
 	// else in a basic form for transport to the server, to provide back in
@@ -634,8 +802,10 @@ function URLopts(make_static) {
 	if (details       != defaults.details)       opts.push("details="+encodeURIComponent(details));
 	if (analysis_pre  != defaults.analysis_pre)  opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
 	if (analysis_post != defaults.analysis_post) opts.push("analysis_post="+encodeURIComponent(analysis_post));
-	if (show_delta    != defaults.show_delta)    opts.push("show_delta="+encodeURIComponent(show_delta));
+	if (show_d_rank   != defaults.show_d_rank)   opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
+	if (show_d_rating != defaults.show_d_rating) opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
 	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
+	if (select_players != defaults.select_players) opts.push("select_players="+encodeURIComponent(select_players));
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from
@@ -691,32 +861,34 @@ function GetShortcutButtons() {
 	// Start afresh
 	shortcut_buttons = [null];
 	
-	shortcut_buttons.push(["All leaderboards", true, false, {"enabled": []}]);
+	shortcut_buttons.push(["All leaderboards", true, false, false, {"enabled": []}]);
 
 	if (pl_id)
-		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, 
+		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, false,
 			{"enabled": ["player_leagues_any", "game_leagues_any"], 
 			 "game_leagues": [pl_id]
 			}]);
 
-	shortcut_buttons.push(["Impact of last games night", true, false, 
+	shortcut_buttons.push(["Impact of last games night", true, false, true,
 		{"enabled": ["num_days", "compare_back_to"], 
 	     "num_days": 1,
 	     "compare_back_to": 1,
 	     "num_players_top": 10,
 		 "details": true,
-		 "links": "BGG"
+		 "links": "BGG",
+		 "select_players": 1
 		}]);
 
 	if (pl_id)
-		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false,  
+		shortcut_buttons.push([`Impact of last ${pl_name} games night`, true, false, true,
 			{"enabled": ["player_leagues_any", "game_leagues_any", "num_days", "compare_back_to"], 
 			 "game_leagues": [pl_id],
 		     "num_days": 1,
 		     "compare_back_to": 1,
 		     "num_players_top": 10,
 			 "details": true,
-			 "links": "BGG"
+			 "links": "BGG",
+			 "select_players": 1
 			}]);
 	
 	return shortcut_buttons;
@@ -754,8 +926,9 @@ function ShortcutButton(button) {
 	
 	const override_content      = def[1];  // If true, override existing content options, else augment them
 	const override_presentation = def[2];  // If true, override existing presentation options, else augment them
-	const opts                  = def[3];  // The options to apply
-
+	const override_selection    = def[3];  // If true, override existing selection  options, else augment them
+	const opts                  = def[4];  // The options to apply
+	
 	// Respect the two override flags when set, by deleting
 	// any options there may be in the respective category.
 	if (override_content) 
@@ -765,27 +938,54 @@ function ShortcutButton(button) {
 	if (override_presentation) 
 		for (let opt of options.presentation_options)
 			delete options[opt]
+
+	if (override_selection) 
+		for (let opt of options.selection_options)
+			delete options[opt]
 	
 	// We replace the options that the shortcut button demands
 	for (let [ key, value ] of Object.entries(opts)) {
 		options[key] = value;
 		if (options.need_enabling.includes(key) && !options.enabled.includes(key)) 
-			options.enabled.push(key) 		
+			options.enabled.push(key)
 	}
 	// Reinitalise all the filter controls
-	InitControls(options)
+	InitControls(options, ["ignore_cache", "show_baseline"])
 
 	// Reload the leaderboards
 	refetchLeaderboards();
 }
 
-function toggle_visibility(class_name, visible_style) {
+const button_show = "&#9660;"  // ▼ - drop down
+const button_hide = "&#9650;"  // ▲ - pull up
+
+// These are hidden by default
+$('#options_display_button').html(button_show);
+$('#legend_display_button').html(button_show);
+
+function set_visibility(class_name, visible_style, button_id) {
+	// Yes the only way to convert a HTML entity to the decoded value that .html() returns is to create a dummy element.
+	current = $('#'+button_id).html() === $('<div/>').html(button_show).text() ? 'none' : visible_style;
+	
+	if (current == visible_style) {
+		$('.'+class_name).css('display', visible_style);
+	} else {
+		$('.'+class_name).css('display', 'none');
+	}
+} 
+
+function toggle_visibility(class_name, visible_style, button_id) {
 	current = $("."+class_name)[0].style.display;
-	if (current == visible_style) 
-		$("."+class_name).css('display', 'none');		
-	else
-		$("."+class_name).css('display', visible_style);
-	$('.multi_selector').trigger('change');
+	// If we can see it now, we want to hide it, and presnet the show button.
+	// We present the show button, and then calls et_visibility, which infers therefrom
+	// that the element shoudl be hidden.
+	if (current === visible_style) {
+		$('#'+button_id).html(button_show);
+	} else {
+		$('#'+button_id).html(button_hide);
+	}
+	set_visibility(class_name, visible_style, button_id);
+	//$('.multi_selector').trigger('change');
 }
 
 function toggle_highlights(highlight_type, checkbox) {
@@ -798,6 +998,8 @@ function toggle_highlights(highlight_type, checkbox) {
 		$(".leaderboard."+tag_off).removeClass(tag_off).addClass(tag_on);
 	else
 		$(".leaderboard."+tag_on).removeClass(tag_on).addClass(tag_off);
+		
+	update_legend();
 }
 
 // Some simple one-liner functions to handle input events
@@ -808,11 +1010,13 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { const url = url_leaderboards.replace(/\/$/, "") + URLopts(); window.history.pushState("","", url); copyStringToClipboard(window.location); }
+function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); copyStringToClipboard(window.location); } ) }
 function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
-	$("#leaderboard_options :input").prop("disabled", !yes_or_no);	
+	$("#leaderboard_options :input").prop("disabled", !yes_or_no);
+	// When enabling them, reinitialise them (in case any are disabled during initialisation, we will have just enabled them)
+	if (yes_or_no) InitControls(options);
 }
 
 function got_new_leaderboards() {
@@ -826,10 +1030,10 @@ function got_new_leaderboards() {
 		options =  response[2]
 		leaderboards = response[3];
 		
-		// Get the max and total for rendering
-		get_and_report_metrics(leaderboards);
+		// Set some globals to support senible layout and renderig
+		get_and_report_metrics(leaderboards, options.show_baseline);
 
-		// Update options
+		// Update the controls from options
 		InitControls(options);
 		
 		// redraw the leaderboards
@@ -847,32 +1051,59 @@ function got_new_leaderboards() {
 const REQUEST = new XMLHttpRequest();
 REQUEST.onreadystatechange = got_new_leaderboards;
 	
-function refetchLeaderboards(reload_icon, make_static) {
+async function refetchLeaderboards(reload_icon, make_static) {
 	if (typeof reload_icon === "undefined" || reload_icon == null) reload_icon = 'reloading_icon';
 	if (typeof make_static === "undefined") make_static = false;
 	
-	// Build the URL to fetch (AJAX)
-	const url = url_json_leaderboards + URLopts(make_static);
+	URLopts(make_static).then( (urlopts) => {
+		// Build the URL to fetch (AJAX)
+		const url = url_json_leaderboards + urlopts;
+		
+		// Display the reloading icon requeste
+		$("#"+reload_icon).css("visibility", "visible");
+		
+		// Disable all the submission buttons
+		enable_submissions(false);
 	
-	// Display the reloading icon requeste
-	$("#"+reload_icon).css("visibility", "visible");
-	
-	// Disable all the submission buttons
-	enable_submissions(false);
+		REQUEST.open("GET", url, true); 
+		REQUEST.send(null);
+	} ); 
+}
 
-	REQUEST.open("GET", url, true);
-	REQUEST.send(null);
+const legend_entries = ["chk_highlight_players", "chk_highlight_selected", "chk_highlight_changes", "chk_highlight_selected_AND_chk_highlight_changes"];
+
+// Selectively hides legend rows that aren't needed
+function update_legend() {
+	for (entry of legend_entries) {
+		const checkbox_ids = entry.split('_AND_');
+		
+		let all_checked = true;
+		for (checkbox_id of checkbox_ids) {
+			const checked = document.getElementById(checkbox_id).checked;
+			if (! checked) all_checked = false;
+		}
+		
+		if (all_checked)
+			$("#legend_"+entry).css("display","table-row");
+		else
+			$("#legend_"+entry).css("display","none");
+	}
 }
 
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	// Oddly the jQuery forms $('#links') and $('#cols') fails here. Not sure
-	// why.
+	// Oddly the jQuery forms $('#links') and $('#cols') fails here. 
+	// Not sure why.
 	const selLinks = document.getElementById("links");	
 	const selCols = document.getElementById("cols");
-	let cols = parseInt(selCols.options[selCols.selectedIndex].text);	
+	let cols = parseInt(selCols.options[selCols.selectedIndex].text);
 
 	if (links == undefined) links = selLinks.value == "none" ? null : selLinks.value;
+
+	// A wrapper table for the leaderboards
+	const table = document.getElementById(target); 
+	table.innerHTML = "";
+	table.className = 'leaderboard wrapper'
 
 	const LB_options = [
 		document.getElementById("chk_highlight_players").checked,
@@ -881,37 +1112,85 @@ function DrawTables(target, links) {
 		document.getElementById("chk_details").checked,
 		document.getElementById("chk_analysis_pre").checked,
 		document.getElementById("chk_analysis_post").checked,
-		document.getElementById("chk_show_delta").checked
+		document.getElementById("chk_show_d_rank").checked,
+		document.getElementById("chk_show_d_rating").checked,
+		document.getElementById("chk_show_baseline").checked,
+		document.getElementById("chk_select_players").checked
 	];
 	
 	// Get the list of players selected in the multi-select box #players
-	const selected_players = $('#players').val().join(",");
+	const selected_player_ids = $('#players').val();
+	const selected_player_names = _.shuffle($('#players').select2('data').map(o => o.text));
+	const selected_player_list = selected_player_names.join(', ').replace(/,(?!.*,)/gmi, ' and')
+	const isare = selected_player_ids.length < 2 ? 'is' : 'are';
+	const selected_players = selected_player_ids.length == 0 ? '' : `(${selected_player_list} ${isare} currently selected)` ;
 
 	// The name format to use is selected in a #names selector
 	const name_format  = $("#names").val();
-
+	
+	// First row is the legend
+	const header_rows = 1; // Number of header rows. Just the legend row
+	const header_cols = maxshots == 1 ? cols : maxshots;
+	const rowLegend = table.insertRow(0);
+	const cellLegend = rowLegend.insertCell(0);
+	cellLegend.colSpan = header_cols;
+	rowLegend.className = 'legend';	
+	set_visibility('legend', 'table-row', 'legend_display_button');
+	
+	const tableLegend = document.createElement('table');
+	tableLegend.className = 'leaderboard legend';
+	cellLegend.appendChild(tableLegend)
+	
+	const rowHeader = tableLegend.insertRow(0);
+	const cellHeader = document.createElement("th");
+	cellHeader.className = 'leaderboard header';
+	cellHeader.innerHTML = 'Legend';
+	rowHeader.appendChild(cellHeader)
+	
+	for (const entry of legend_entries) {
+		const rowEntry = tableLegend.insertRow(-1);
+		const cellEntry = rowEntry.insertCell(0);
+		rowEntry.id = "legend_" + entry; 
+		
+		switch (entry) {
+			case "chk_highlight_players":
+				cellEntry.className = 'leaderboard normal highlight_players_on';
+				cellEntry.innerHTML = 'Players in the game that produced the displayed leaderboard';
+				break;
+			case "chk_highlight_selected":
+				cellEntry.className = 'leaderboard highlight_selected_on';
+				cellEntry.innerHTML = `Selected players ${selected_players}`;
+				break;
+			case "chk_highlight_changes":
+				cellEntry.className = 'leaderboard highlight_changes_on';
+				cellEntry.innerHTML = 'Players whose TrueSkill rating changed as a consequence of the session that produced the displayed leaderboard';
+				break;
+			case "chk_highlight_selected_AND_chk_highlight_changes":
+				cellEntry.className = 'leaderboard highlight_changes_on highlight_selected_on';
+				cellEntry.innerHTML = 'Selected players whose TrueSkill rating changed as a consequence of the session that produced the displayed leaderboard';
+				break;
+		}
+	}
+	update_legend();
+	
 	// maxshots is the maximum number of snapshots of any games's boards in the
-	// database we're about to render. If it's 1 that implies no evolution is being 
-	// displayed just a single snapshot per game.
+	// database we're about to render. If it's 1 that implies no evolution is 
+	// being displayed just a single snapshot per game. 	
 	if (maxshots == 1) {
-		var totalboards = leaderboards.length;		
-		var rows = totalboards / cols;
-		var remainder = totalboards - rows*cols;
+		const totalboards = leaderboards.length;		
+		const rows = totalboards / cols;
+		const remainder = totalboards - rows*cols;
 		if (remainder > 0) { rows++; }
 
-		// A wrapper table for the leaderboards
-		var table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
-
-		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
-			for (var j = 0; j < cols; j++) {
+		for (let i = 0; i < rows; i++) {
+			const row = table.insertRow(header_rows+i);
+			for (let j = 0; j < cols; j++) {
 				k = i*cols+j 
 				if (k < totalboards) {
-					var cell = row.insertCell(j);
+					const cell = row.insertCell(j);
 					//cell.className = 'leaderboard wrapper'
-					cell.appendChild(LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_players, name_format));
+					const board = LeaderboardTable(leaderboards[k], 0, links, LB_options, selected_player_ids, name_format)
+					if (board) cell.appendChild(board);
 				}
 			}
 		}
@@ -922,29 +1201,18 @@ function DrawTables(target, links) {
 		cols = maxshots;
 		rows = leaderboards.length;
 
-		// A wrapper table for the leaderboards
-		var table = document.getElementById(target); 
-		table.innerHTML = "";
-		table.className = 'leaderboard wrapper'
-
 		var lb = 0; 
 		for (var i = 0; i < rows; i++) {
-			var row = table.insertRow(i);
-			// We deduct 1 from the snapshot count which is the baseline board we always request
-			// So that we can display rank deltas for ALL boards not just those with an earlier 
-			// one. Always a minimum of 1 snap for a game though is displayed.
-			const delivered     = leaderboards[lb][3].length;
-			const show_baseline = $('#chk_show_baseline').is(":checked");
-			const hide 	        = (use_baseline && delivered > 1 && !show_baseline ? 1 : 0);
-			const snaps         = delivered - hide; 
-			for (var j = 0; j < snaps; j++) {
+			var row = table.insertRow(header_rows+i);
+			for (var j = 0; j < boardshots[lb]; j++) {
 				var cell = row.insertCell(j);
 				//cell.className = 'leaderboard wrapper'
-				cell.appendChild(LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_players, name_format));
+				const board = LeaderboardTable(leaderboards[lb], j, links, LB_options, selected_player_ids, name_format)
+				if (board) cell.appendChild(board);
 			}
 			lb++; 
-		}			
-	}			 
+		}
+	}
 }
 
 // ===================================================================================
@@ -997,6 +1265,13 @@ $('#players').on("change", function(e) {
 	const highlight_selected = $('#chk_highlight_selected').is(":checked");
 	if (highlight_selected) DrawTables("tblLB");
 });
+
+// ===================================================================================
+// Set some globals describing the leaderboards 
+// (boardcount, maxshots, totalshots, boardshots, lblTotalCount, lblSnapCount)  
+// ===================================================================================
+
+get_and_report_metrics(leaderboards, options.show_baseline);
 
 // ===================================================================================
 // Populate all the controls  

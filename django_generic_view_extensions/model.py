@@ -63,6 +63,7 @@ from django.db import models
 from django.utils.safestring import mark_safe
 from django.utils.timezone import get_current_timezone
 from django.forms.models import inlineformset_factory
+from django.core.exceptions import ObjectDoesNotExist
 from django.conf import settings
 
 # Package imports
@@ -74,6 +75,13 @@ from .decorators import is_property_method
 from .html import odm_str
 
 summary_methods = ["__str__", "__verbose_str__", "__rich_str__", "__detail_str__"]
+
+
+def safe_get(model, pk):
+    try:
+        return model.objects.get(pk=pk)
+    except ObjectDoesNotExist:
+        return None
 
 
 def add_related(model):
@@ -156,7 +164,7 @@ def Add_Related(model, field):
                 rm = field.remote_field.model._meta.object_name
                 log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
             return True
-        # ASAP: double check this and what it's about
+        # FIXME (ASAP): double check this and what it's about
         # Check my models for . syntax add related and try the form
         elif hasattr(field, "field"):
             field_name = field.field.model.__name__ + "." + field.field.name

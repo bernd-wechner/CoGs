@@ -30,9 +30,10 @@ from django.contrib.auth.views import LoginView
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.db import connection, transaction
-from django.db.models.query import QuerySet
+# from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
-from django.http.response import JsonResponse, HttpResponse, HttpResponseRedirect
+from django.http.response import HttpResponse, HttpResponseRedirect  # , JsonResponse
+from django.template.response import TemplateResponse
 from django.http.request import QueryDict
 from django.forms.models import fields_for_model, ModelChoiceField, ModelMultipleChoiceField
 from django.conf import settings
@@ -394,14 +395,16 @@ def get_context_data_generic(self, *args, **kwargs):
     if isinstance(self, CreateView):
         # Note that the super.get_context_data initialises the form with get_initial
         context = super(CreateView, self).get_context_data(*args, **kwargs)
+        title = 'New'
     elif isinstance(self, UpdateView):
         # Note that the super.get_context_data initialises the form with get_object
         context = super(UpdateView, self).get_context_data(*args, **kwargs)
+        title = 'Edit'
     else:
         raise NotImplementedError("Generic get_context_data only for use by CreateView or UpdateView derivatives.")
 
     # Now add some context extensions ....
-    add_model_context(self, context, plural=False, title='New')
+    add_model_context(self, context, plural=False, title=title)
     add_timezone_context(self, context)
     add_debug_context(self, context)
     if callable(getattr(self, 'extra_context_provider', None)):
@@ -486,6 +489,12 @@ def post_generic(self, request, *args, **kwargs):
     '''
     Processes a form submission.
 
+    Provides three hooks:
+
+        pre_transaction    called before a transaction starts, returns a dir that is unpacked as kwargs for pre_save
+        pre_save           called after form validation and cleaning, a transaction has been opened but before saving, returns a dir that is unpacked as kwargs for pre_commit
+        pre_commit         called just before committing the transaction.
+
     :param self: and instance of CreateView or UpdateView
 
     This is code shared by the two views so peeled out into a generic.
@@ -557,25 +566,73 @@ def post_generic(self, request, *args, **kwargs):
             html += "</table>"
             return HttpResponse(html)
 
-        # Hook for pre-processing the form (before the data is saved)
-        if callable(getattr(self, 'pre_save', None)):
-            next_kwargs = self.pre_save()
-            if not next_kwargs: next_kwargs = {}
-            if "debug_only" in next_kwargs:
-                return HttpResponse(next_kwargs["debug_only"])
+        # Perform an inital validity check before proceeding. There isa deep GOTCHA in this though
+        # that we have to avoid. self.get_form() sets self.form.instance from self.object
+        # (in django.forms.models.BaseModelForm.__init__) then during a full_clean() that is_valid()
+        # performs one fo the final steps to apply the form data to self.insance
+        # (in django.forms.models.BaseModelForm._post_clean). This is all fairly intrinsic to what
+        # Django methods do, leaving an instance which is self.object with the form data applied.
+        #
+        # Note: The assigment self.form.instance = self.object is by reference and the two refer to
+        # the same object which is why when self.form.instance is updated in the full_clean to conatin
+        # form data, it also updates self.object (the same object)
+        #
+        # The problem for us, is we want to offer the pre_transaction handler the form.data and
+        # ideally form.cleaned_data so it does not have to replciate any of Django's already
+        # implemented form parsing and interpretation.
+        #
+        # The way to do that is in this first pass to feign a Creation form, by removing self.form.instance.
+        # Calling is_valid() and then replacing self.form.instance  again so that the pre_transaction handler
+        # can see it and compare form.cleaned_data with the object to make change based decisions and
+        # pass them back as arguments into pre_save and indirectly the pre_commit handler.
 
-        log.debug(f"Connection vendor: {connection.vendor}")
-        if connection.vendor == 'postgresql':
-            log.debug(f"Is_valid? {self.form.data}")
+        # Cloak self.form.instance.
+        # Django wants to see an new instance of the model though.
+        # This simply mimics what django.forms.models.BaseModelForm.__init__ does when no object is porvided.
+        #
+        # The pre_transaction and pre_save handler now both have accesss to self.object as it was.
+        # We will uncloak this just before saving.
+        if self.object:  # protect it from the full_clean augmentation
+            self.form.instance = self.form._meta.model()
+            # Setting the instance to a newly instantiated instance seesm to trigger a form clean which
+            # Can generate errors based on a a the CreateView context (like unique value constarints)
+            # which have no bearing on the UpdateView which has an object attached. As we validate the
+            # form below in the proper context, we clear any form errros that this (dummy) context
+            # may have generated. The joy of trying to trick Django ...
+            self.form.errors.clear()
+
+        log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
+        if self.form.is_valid():
+            # Hook for pre-processing the form (before a database transaction is opened)
+            if callable(getattr(self, 'pre_transaction', None)):
+                next_kwargs = self.pre_transaction()
+                if not next_kwargs: next_kwargs = {}
+                if "debug_only" in next_kwargs:
+                    return HttpResponse(next_kwargs["debug_only"])
+
+            # The pre-transaction handler can add form errors
             if self.form.is_valid():
                 try:
                     log.debug(f"Open a transaction")
                     with transaction.atomic():
+                        # Hook for pre-processing the form (before the data is saved)
+                        if callable(getattr(self, 'pre_save', None)):
+                            next_kwargs = self.pre_save(**next_kwargs)
+                            if not next_kwargs: next_kwargs = {}
+
                         log.debug("Saving form from POST request containing:")
                         for (key, val) in sorted(self.request.POST.items()):
                             # See: https://code.djangoproject.com/ticket/1130
                             # list items are hard to identify it seems in a generic manner
                             log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
+
+                        if self.object:  # unprotect it from the full_clean augmentation once more
+                            # Uncloak self.form.instance. From here on in we can proceed as normal.
+                            self.form.instance = self.object
+                            # Reclean the data which ensures this instance has the form data applied now.
+                            # This raises a ValidationError if it fails to apply form data to the instance
+                            # for any reason.  Which rightly, rolls back our transaction.
+                            self.form.full_clean()
 
                         self.object = self.form.save()
                         log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
@@ -619,7 +676,7 @@ def post_generic(self, request, *args, **kwargs):
                         # Finally before committing give the view defintion a chance to so something
                         # prior to committing the update.
                         if callable(getattr(self, 'pre_commit', None)):
-                            next_kwargs = self.pre_commit(**next_kwargs)
+                            self.pre_commit(**next_kwargs)
 
                         log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
@@ -643,24 +700,12 @@ def post_generic(self, request, *args, **kwargs):
 
                 return self.form_valid(self.form)
             else:
+                # Bounced by the pre transaction handler
                 return self.form_invalid(self.form)
-
         else:
-            if self.form.is_valid():
-                self.object = self.form.save()
-                related_forms = RelatedForms(self.model, self.form.data, self.object)
-                related_forms.save()
-
-                # Hook for post-processing data (after it's all saved)
-                if callable(getattr(self, 'post_save', None)):
-                    self.post_save(**next_kwargs)
-
-                if not self.success_url:
-                    self.success_url = reverse_lazy('view', kwargs=kwargs)
-
-                return self.form_valid(self.form)
-            else:
-                return self.form_invalid(self.form)
+            # Bounced by the first pass of per handled form data
+            self.form.instance = self.object  # Uncloak self.form.instance. From here on in we can proceed as normal.
+            return self.form_invalid(self.form)
 
 
 def form_valid_generic(self, form):
@@ -671,11 +716,27 @@ def form_valid_generic(self, form):
 
     This is code shared by the two views so peeled out into a generic.
 
-    This is specifically intended NOT to call Djangos form_valid()
+    This is specifically intended NOT to call Django's form_valid()
     implementation which saves the object. In these Extensions we
     perform the save in the post not the form_valid method.
     '''
     return HttpResponseRedirect(self.get_success_url())
+
+
+def form_invalid_generic(self, form):
+    '''
+    If the form is invalid, reload the form with the rich context
+
+    :param self: and instance of CreateView or UpdateView
+
+    This is code shared by the two views so peeled out into a generic.
+
+    This is specifically intended NOT to call Django's form_invalid()
+    implementation which renders the simple form directly to response
+    without aboy related form data.
+    '''
+    # return self.render_to_response(self.get_context_data(form=form))
+    return TemplateResponse(self.request, self.template_name, self.get_context_data(form=form))
 
 
 class CreateViewExtended(CreateView):
@@ -711,6 +772,7 @@ class CreateViewExtended(CreateView):
     get_form = get_form_generic
     post = post_generic
     form_valid = form_valid_generic
+    form_invalid = form_invalid_generic
 
     def get_initial(self):
         '''
@@ -766,6 +828,7 @@ class UpdateViewExtended(UpdateView):
     get_form = get_form_generic
     post = post_generic
     form_valid = form_valid_generic
+    form_invalid = form_invalid_generic
 
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
@@ -873,12 +936,13 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
         else:
             self.field_value = self.q
 
-        # If this is false then self.selector_queryset is permitted to do pre-filtering
-        # (which could be based on any othe rcriteria, like session stored filters for example)
-        # If it is true it is denied this permission.
+        # If this is false then self.selector_queryset is permitted to do default pre-filtering
+        # (which could be based on any other criteria, like session stored filters for example)
+        # If it is true it is denied this permission. It is up to the model's selector_queryset
+        # method to honor this request, and how it is honored.
         self.select_from_all = self.kwargs.get('all', False)
 
-        # use the model's selectoprovided selector_queryset if available
+        # use the model's provided selector_queryset if available
         if self.field_name and self.field_name == self.selector_field and callable(self.selector_queryset):
             qs = self.selector_queryset(self.field_value, self.request.session, self.select_from_all)
         else:
@@ -886,6 +950,14 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
 
             if self.q:
                 qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
+
+        # DAL applies pagination by default. When prepopulating controls we don't want that, we want
+        # all the results, not one page in a paginated result set. We offer this with an optional
+        # GET parameter "all" This is very different to the kwark "all" above which request a select
+        # from all objects. This one requests all the requested objects to be returned, not a page of
+        # them.
+        if 'all' in self.request.GET:
+            self.paginate_by = 0  # Disables pagination
 
         return qs
 
