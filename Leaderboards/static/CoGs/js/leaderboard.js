@@ -76,7 +76,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	const iTotalPlays = 3;
 	const iTotalSessions = 4;
 	const iSnaps = 5;
-	const iHide = 6;
+	const iHide = 6;      // True if the last snapshot is outside of the Query but included only for baseline reference. 
 	const iGameData = 7;
 	
 	// Column Indices in session wrapper
@@ -117,7 +117,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		const count_snaps = LB[iGameData].length;
 		
 		// Return nothing if:
-		// 	snapshot is too high (beyond the last snapshot, >= count_nsaps)  
+		// 	snapshot is too high (beyond the last snapshot, >= count_snaps)  
 		// 	snapshot is too low (before the first snapshot, < 0)
 		//	the snapshot is a baseline that we should hide (snapshot >= count_snaps-1 && hide)
 		if (snapshot >= count_snaps || snapshot < 0 || (hide && snapshot >= count_snaps-1)) return null;
