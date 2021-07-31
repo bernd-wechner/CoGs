@@ -919,7 +919,7 @@ class leaderboard_options:
                 # if game_tuple[0] == 49: breakpoint()
                 snaps = game_tuple[igd - 2]
                 if snaps:
-                    hide_baseline = game_tuple[igd - 1]  # True if the last snapshot is outside of the Query included only for baseline reference.
+                    hide_baseline = game_tuple[igd - 1]  # True if the last snapshot is outside of the Query but included only for baseline reference.
                     hide_reference = not self.compare_back_to is None
                     ignore = 2 if hide_baseline and hide_reference else 1 if hide_baseline else 0
 
@@ -1568,9 +1568,24 @@ class leaderboard_options:
                     efilter = sfilter & Q(date_time__lt=earliest_time)
                     extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if include_baseline else 1)
 
-                    # If we get only one extra session, or none then we have no distinct
-                    # baseline beyond the evolution window and so we should not hide it.
-                    hide_baseline = include_baseline and extra_session.count() == 2
+                    # We might get 2, or 1, or 0 sessions back.
+                    # Depends on their availability.
+                    # 2 means we have a reference and a baseline
+                    # 1 means we have only a reference and no baseline
+                    # 0 means we have no reference or baseline
+                    #
+                    # either way we'll chekc if the last one (if any) is earlier than earliest_timme, if
+                    # it's baseline we shoudl hide by default (is not in the query)
+                    extra = extra_session.count()
+                    if extra > 0:
+                        if extra == 2:
+                            earliest_session = extra_session[1]
+                        elif extra == 1:
+                            earliest_session = extra_session[0]
+
+                        hide_baseline = include_baseline and earliest_session.date_time < earliest_time
+                    else:
+                        hide_baseline = False
 
                     # The reference time is of course, also the time that we want all boards from.
                     # We update sfilter AFTER building the extra_session query because sfilter prior

@@ -1123,7 +1123,7 @@ function DrawTables(target, links) {
 	const selected_player_names = _.shuffle($('#players').select2('data').map(o => o.text));
 	const selected_player_list = selected_player_names.join(', ').replace(/,(?!.*,)/gmi, ' and')
 	const isare = selected_player_ids.length < 2 ? 'is' : 'are';
-	const selected_players = selected_player_ids.length == 0 ? '' : `(${selected_player_list} ${isare} currently selected)` ;
+	const selected_players = selected_player_ids.length == 0 ? '' : `(${selected_player_ids.length} players: ${selected_player_list} ${isare} currently selected)` ;
 
 	// The name format to use is selected in a #names selector
 	const name_format  = $("#names").val();
