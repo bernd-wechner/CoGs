@@ -548,7 +548,7 @@ def object_as_html(self):
 
         Essentially selecting one of as_table, as_ul, as_p or as_brbased on the request.
 
-        The other as_ methods provide compatibility with Djangos generic forms more
+        The other as_ methods provide compatibility with Django's generic forms more
         or less and they don't provide the HTML wrappers, this method, our AJAX entry
         point, does so that a template can just spew out the HTML without having to
         worry about such a wrapper. That is, a template would normally contain:

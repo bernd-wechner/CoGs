@@ -3,8 +3,9 @@
 // Function to return useful metrics on the leaderboards (for layout of multiple boards) 
 function leaderboard_metrics(LB, show_baseline) {
 	const iSnaps = 5; // The index in the game tuple that tells us if the data is a leaderboard or list of snapshots
-	const iHide  = 6; // The index in the game tuple that tells us if the last snapshot shoudl be hidden (is just a baseline)
-	const iGameData =  7; // The index in the game tuple that holds data (snapshots (r a leaderboard)
+	const iReference  = 6; // The index in the game tuple that tells us if a reference snapshot is included - outside of the compare_back_to window
+	const iBaseline  = 7; // The index in the game tuple that tells us if a baseline snapshot is icluded - outside of any query, provided only for delt calculation
+	const iGameData =  8; // The index in the game tuple that holds data (snapshots (r a leaderboard)
 
 	// The metrics we want to return
 	let boardcount = LB.length; // The number of games we are displaying
@@ -15,9 +16,9 @@ function leaderboard_metrics(LB, show_baseline) {
 	
 	for (let g=0; g<boardcount; g++) {
 		const has_snaps = LB[g][iSnaps];
-		const has_hidden_baseline = LB[g][iHide];
+		const has_baseline = LB[g][iBaseline];
 		const delivered = has_snaps ? LB[g][iGameData].length : 1; // A leaderboard represents a single snapshot
-		const hide = (use_baseline && has_hidden_baseline && !show_baseline ? 1 : 0);
+		const hide = (use_baseline && has_baseline && !show_baseline ? 1 : 0);
 		const snapshots = delivered - hide;
 		if (snapshots > maxshots) maxshots = snapshots;
 		totalshots += snapshots;
@@ -41,8 +42,14 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			Game play count,
 			Game session count,
 			Snap (true if next entry is snapshots, false if next entry is leaderboard)
-			Hide (true if the last snapshot shoudl be hidden, is just a baseline) 
+			Has_Reference (true if a reference snapshot is included - outside of the compare_back_to window)
+			Has_Baseline (true if a baseline snapshot is included - outside of any query, provided only for delt calculation)
 			Leaderboard (being a ranked list of players + data) or Snapshots (being a list of snapshots)
+			
+		Note: 	Reference snapshots are outside of the query and provided if possible for display as the leaderboard 
+				before the first in-query snapshot. That is, the rankings beforfe the first game session in the query 
+				was played. Baseline snapshots are provided so that reference snapshots can show their delta columns.
+				A set of snaps can have none, one or both.  It cannot have a baseline without a refernece. 
 	
 		Optional Second tier (session wrapper) contains the snapshots which is a list of five-value tuples containing: 
 			Session PK
@@ -76,8 +83,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	const iTotalPlays = 3;
 	const iTotalSessions = 4;
 	const iSnaps = 5;
-	const iHide = 6;      // True if the last snapshot is outside of the Query but included only for baseline reference. 
-	const iGameData = 7;
+	const iReference  = 6; // a reference snapshot is included - outside of the compare_back_to window
+	const iBaseline  = 7; // a baseline snapshot is icluded - outside of any query, provided only for delt calculation
+	const iGameData = 8;
 	
 	// Column Indices in session wrapper
 	const iSessionData = 8;
@@ -101,7 +109,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	const game_plays     = LB[iTotalPlays];
 	const game_sessions  = LB[iTotalSessions];
 	const snaps          = LB[iSnaps];
-	const hide           = LB[iHide] && !show_baseline;
+	const hide           = LB[iBaseline] && !show_baseline;
 
 	// A horendous hack but for now we determine if there's a session wrapper by checking the first element of the 
 	// Game data (or the firts snap in the game data). This will be a PK if it's  session wrapper, but will be a 
@@ -120,7 +128,8 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		// 	snapshot is too high (beyond the last snapshot, >= count_snaps)  
 		// 	snapshot is too low (before the first snapshot, < 0)
 		//	the snapshot is a baseline that we should hide (snapshot >= count_snaps-1 && hide)
-		if (snapshot >= count_snaps || snapshot < 0 || (hide && snapshot >= count_snaps-1)) return null;
+		if (snapshot >= count_snaps || snapshot < 0 || (hide && snapshot >= count_snaps-1)) 
+			return null;
 
 		if (session) {		 
 			// This MUST align with the way ajax_Leaderboards() bundles up leaderboards
@@ -173,13 +182,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	} else
 		player_list                = LB[iGameData];
 	
-	// use_baseline is a global config
-    // If we are using a baseline it is the last snapshot. If we are rendering it
-	// which normally we wouldn't, but can be requested, then showing a delta is 
-	// meaningless. As the show_d settings are consts above, we use hide_d settings 
-	// to override them on this specific player list (snapshot, leaderboard) 	
-	let hide_d_rank = (use_baseline && snapshot == LB[iGameData].length-1) || diagnose;
-	let hide_d_rating = (use_baseline && snapshot == LB[iGameData].length-1) || diagnose;
+	// It's meaningless to show deltas on the last (earliest) snapshot, nothing to compare against.
+	let hide_d_rank = (snapshot == LB[iGameData].length-1) || diagnose;
+	let hide_d_rating = (snapshot == LB[iGameData].length-1) || diagnose;
 	
 	// Check if we have previous ranks or ratings provided
 	// As these are provided programmatically we'll be conservatine here and if any one rank or rating

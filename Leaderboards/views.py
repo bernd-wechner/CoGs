@@ -1402,7 +1402,7 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
         # we're happy to include all sessions during the event regardless of where. The
         # reason being that we want to see evolution of the leaderboards during the event
         # even if some people outside of the event are playing it and impacting the board.
-        (boards, hide_baseline) = lo.snapshot_queryset(game, include_baseline)
+        (boards, has_reference, has_baseline) = lo.snapshot_queryset(game, include_baseline=include_baseline)
 
         # boards are Session instances (the board after a session, or alternately the session played to produce this board)
         if boards:
@@ -1507,7 +1507,7 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
             snapshots.reverse()
 
             # Then build the game tuple with all its snapshots
-            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, hide_baseline=hide_baseline))
+            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline))
 
     if settings.USE_LEADERBOARD_CACHE:
         request.session["leaderboard_cache"] = lb_cache

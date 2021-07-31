@@ -9,6 +9,7 @@ from statistics import mean, stdev
 from datetime import datetime, timedelta
 from dateutil import parser
 from builtins import str
+from typing import Union
 from enum import Enum
 
 # Local packages
@@ -1816,7 +1817,7 @@ class Game(AdminModel):
         return None if len(lb) == 0 else styled_player_list(lb, style=style, names=names)
 
     @property_method
-    def wrapped_leaderboard(self, leaderboard=None, snap=False, hide_baseline=False, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
+    def wrapped_leaderboard(self, leaderboard=None, snap=False, has_reference=False, has_baseline=False, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
         '''
         Returns a leaderboard (either a single board or a list of session snapshots) wrapped
         in a game propery header.
@@ -1846,8 +1847,9 @@ class Game(AdminModel):
             game.name
             total number of plays
             total number sessions played
-            A flag True if data is a list, false if it is only a single value. The value is either a player_list or session_wrapped_player_list.
-            A flag True to hide display of a baseline snapshot
+            A flag, True if data is a list, false if it is only a single value. The value is either a player_list or session_wrapped_player_list.
+            A flag, True if a reference snapshot is included
+            A flag, True if a baseline snapshot is included
             data (a playerlist or a session snapshot - session wrapped player list)
 
         :param leaderboard:  a leaderboard or a list of session wrapped leaderboard (snaphots) for this game
@@ -1872,7 +1874,7 @@ class Game(AdminModel):
             # data drops the BGGid and name
             # rating and ratings map to simple
             # simple and rich are as currently implemented.
-            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, hide_baseline, leaderboard)
+            return (self.pk, self.BGGid, self.name, counts['total'], counts['sessions'], snap, has_reference, has_baseline, leaderboard)
         else:
             return ()
 
@@ -2234,59 +2236,122 @@ class Session(TimeZoneMixIn, AdminModel):
             else:
                 return "players"
 
-    @property
-    def ranked_players(self) -> dict:
+    def _ranked_players(self, as_string, link=None) -> Union[dict, str]:
         '''
-        Returns an OrderedDict (keyed on rank) of the players in the session.
-        The value is either a player (for individual play sessions) or
-            a list of players (in team play sessions)
+        Internal factory for ranked_players and str_ranked_players.
 
-        Note ties have the same rank, so the key has a .index appended,
-        to form a unique key. Only the key digits up to the . represent
-        the true rank, the full key permits sorting and unique storage
-        in a dictionary.
+        Returns an OrderedDict (keyed on rank) of the players in the session.
+        or a CSV string summaring same.
+
+        The value of the dict is a player. The key is "rank.tie_index.team_index"
+
+        :param as_string:  Return a CSV string, else a dict with a compound key
+        :param link:    Wrap player names in links according to the provided style.
         '''
-        players = OrderedDict()
+        if as_string:
+            players = []  # Build list to join later
+        else:
+            players = OrderedDict()
+
         ranks = Rank.objects.filter(session=self.id)
 
-        # a quick loop through to check for ties as they will demand some
+        # A quick loop through to check for ties as they will demand some
         # special handling when we collect the list of players into the
         # keyed (by rank) dictionary.
-        rank_counts = OrderedDict()
-        rank_id = OrderedDict()
+        tie_counts = OrderedDict()
+        in_rank_id = OrderedDict()
         for rank in ranks:
             # rank is the rank object, rank.rank is the integer rank (1, 2, 3).
-            if rank.rank in rank_counts:
-                rank_counts[rank.rank] += 1
-                rank_id[rank.rank] = 1
+            if rank.rank in tie_counts:
+                tie_counts[rank.rank] += 1
+                in_rank_id[rank.rank] = 1
             else:
-                rank_counts[rank.rank] = 1
+                tie_counts[rank.rank] = 1
+
+        if as_string:
+            at_rank = None  # For keeping track of a rank during tie (which see multple rank objects at the same ranking)
+            team_separator = "+"
+            tie_separator = "/"
 
         for rank in ranks:
             # rank is the rank object, rank.rank is the integer rank (1, 2, 3).
             if self.team_play:
-                if rank_counts[rank.rank] > 1:
-                    pid = 1
-                    for player in rank.players:
-                        players["{}.{}.{}".format(rank.rank, rank_id[rank.rank], pid)] = player
-                        pid += 1
-                    rank_id[rank.rank] += 1
+                if as_string and rank.rank != at_rank and len(players) > 0 and isinstance(players[-1], list):  # The tie-list is complete so we can stringify it
+                    tie_members = players.pop()
+                    players.append(tie_separator.join(tie_members))
+                    at_rank = None
+
+                if tie_counts[rank.rank] > 1:
+                    if as_string:
+                        team_members = team_separator.join([field_render(player.name_nickname, link_target_url(player, link)) for player in rank.players])
+
+                        if rank.rank == at_rank:
+                            players[-1].append(team_members)
+                        else:
+                            players.append([team_members])
+                            at_rank = rank.rank
+                    else:
+                        for pid, player in enumerate(rank.players):
+                            players[f"{rank.rank}.{in_rank_id[rank.rank]}.{pid}"] = player
+                        in_rank_id[rank.rank] += 1
                 else:
-                    pid = 1
-                    for player in rank.players:
-                        players["{}.{}".format(rank.rank, pid)] = player
-                        pid += 1
+                    if as_string:
+                        team_members = team_separator.join([field_render(player.name_nickname, link_target_url(player, link)) for player in rank.players])
+                        players.append(team_members)
+                    else:
+                        pid = 1
+                        for player in rank.players:
+                            players["{}.{}".format(rank.rank, pid)] = player
+                            pid += 1
             else:
                 # The players can be listed (indexed) in rank order.
                 # When there are multiple players at the same rank (ties)
                 # We use a decimal format of rank.person to ensure that
                 # the sorting remains more or less sensible.
-                if rank_counts[rank.rank] > 1:
-                    players["{}.{}".format(rank.rank, rank_id[rank.rank])] = rank.player
-                    rank_id[rank.rank] += 1
-                else:
-                    players["{}".format(rank.rank)] = rank.player
-        return players
+                if as_string and rank.rank != at_rank and len(players) > 0 and isinstance(players[-1], list):  # The tie-list is complete so we can stringify it
+                    tie_members = players.pop()
+                    players.append(tie_separator.join(tie_members))
+                    at_rank = None
+
+                if tie_counts[rank.rank] > 1:  # There is a tie!
+                    if as_string:
+                        name = field_render(rank.player.name_nickname, link_target_url(rank.player, link))
+                        if rank.rank == at_rank:
+                            players[-1].append(name)
+                        else:
+                            players.append([name])
+                            at_rank = rank.rank
+                    else:
+                        players[f"{rank.rank}.{in_rank_id[rank.rank]}"] = rank.player
+                        in_rank_id[rank.rank] += 1
+                else:  # There is no tie
+                    if as_string:
+                        name = field_render(rank.player.name_nickname, link_target_url(rank.player, link))
+                        players.append(name)
+                    else:
+                        players[f"{rank.rank}"] = rank.player
+
+        if as_string and isinstance(players[-1], list):  # The tie-list is complete so we can stringify it
+            tie_members = players.pop()
+            players.append(tie_separator.join(tie_members))
+
+        return ", ".join(players) if as_string else players
+
+    @property
+    def ranked_players(self) -> dict:
+        '''
+        Returns a dict of players with the key storing rank information in form:
+
+        rank.tie_index.team_index
+        '''
+        return self._ranked_players(False)
+
+    @property_method
+    def str_ranked_players(self, link=flt.internal) -> str:
+        '''
+        Returns a list of players 9as a CSV string) in rank order (with team members and tied annotated)
+        '''
+        return self._ranked_players(True, link)
 
     @property
     def players(self) -> set:
@@ -2948,7 +3013,7 @@ class Session(TimeZoneMixIn, AdminModel):
         if before: sw_boards.append(before)
         if include_latest: sw_boards.append(latest)
 
-        return self.game.wrapped_leaderboard(sw_boards, snap=True, hide_baseline=include_latest)
+        return self.game.wrapped_leaderboard(sw_boards, snap=True, has_baseline=include_latest)
 
     @property
     def player_ranking_impact(self) -> dict:
@@ -2960,12 +3025,13 @@ class Session(TimeZoneMixIn, AdminModel):
         after = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.data, wrap=False)  # NOT session wrapped
 
         deltas = {}
-        old = player_rankings(before, structure=LB_STRUCTURE.player_list)
+        old = player_rankings(before, structure=LB_STRUCTURE.player_list) if before else None
         new = player_rankings(after, structure=LB_STRUCTURE.player_list)
 
-        for p in old:
-            if not new[p] == old[p]:
-                delta = new[p] - old[p]
+        for p in new:
+            _old = old.get(p, len(new)) if old else len(new)
+            if not new[p] == _old:
+                delta = new[p] - _old
                 P = safe_get(Player, p)
                 deltas[P] = delta
 
@@ -3541,6 +3607,8 @@ class Session(TimeZoneMixIn, AdminModel):
             self.game)
 
     def __rich_str__(self, link=None):
+        url_view_self = reverse('view', kwargs={'model': self._meta.model_name, 'pk': self.pk}) if link == flt.internal else None
+
         if self.team_play:
             victors = []
             for t in self.victors:
@@ -3553,15 +3621,23 @@ class Session(TimeZoneMixIn, AdminModel):
 
         try:
             V = ", ".join(victors)
-            P = ", ".join([p.name_nickname for p in self.players])
             # venue = f"- {field_render(self.location, link)}"
-            return (f'{time_str(self.date_time)} - {field_render(self.league, link)} - '
-                   +f'{field_render(self.game, link)} - {self.num_competitors} {self.str_competitors} ({P}) - {V} won')
+            T = time_str(self.date_time)
+            if url_view_self:
+                T = f"<a href='{url_view_self}' class='field_link'>{T}</a>"
+
+            return (f'{T} - {field_render(self.game, link)} - {self.num_competitors} {self.str_competitors} ({self.str_ranked_players()}) - {V} won')
         except:
             pass
 
     def __detail_str__(self, link=None):
-        detail = time_str(self.date_time) + "<br>"
+        url_view_self = reverse('view', kwargs={'model': self._meta.model_name, 'pk': self.pk}) if link == flt.internal else None
+
+        T = time_str(self.date_time)
+        if url_view_self:
+            T = f"<a href='{url_view_self}' class='field_link'>{T}</a>"
+
+        detail = T + "<br>"
         detail += field_render(self.game, link) + "<br>"
         detail += u'<OL>'
 

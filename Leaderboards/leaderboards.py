@@ -76,7 +76,7 @@ class LB_STRUCTURE(enum.Enum):
     game_wrapped_session_wrapped_player_list = 3  # A session tuple containing an session_wrapped_player_list as an element
 
     # This is defined by what Game.wrapped_leaderboard() produces
-    game_data_element = 7  # In a game wrapper, which element caries the data (either session wrapper, or player_list)
+    game_data_element = 8  # In a game wrapper, which element caries the data (either session wrapper, or player_list)
 
     # This is defined by what Session.leaderboard_snapshot() produces
     session_data_element = 8  # In a session wrapper, which element contains the player_list
@@ -324,6 +324,9 @@ class leaderboard_options:
     show_d_rank = False  # Show the rank delta (movement) this session caused
     show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
+
+    # An option to display the legend
+    show_legend = False
 
     # Options for laying out leaderboards on screen
     cols = 3  # Display boards in this many columns (ignored when comparing with historic boards)
@@ -844,7 +847,7 @@ class leaderboard_options:
             elif not self.analysis_post:
                 self.analysis_post = True
 
-        # Coilumn selecting options
+        # Column selecting options
         if 'show_d_rank' in urequest:
             if urequest['show_d_rank']:
                 self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
@@ -865,6 +868,14 @@ class leaderboard_options:
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_baseline:
                 self.show_baseline = True
+
+        # Legend option
+        if 'show_legend' in urequest:
+            if urequest['show_legend']:
+                self.show_legend = json.loads(urequest['show_legend'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_legend:
+                self.show_legend = True
 
         ##################################################################
         # FORMATTING OPTIONS
@@ -895,7 +906,7 @@ class leaderboard_options:
         # ADMIN OPTIONS
         if 'ignore_cache' in urequest:
             if urequest['ignore_cache']:
-                self.show_baseline = json.loads(urequest['ignore_cache'].lower())  # A boolean value is parsed
+                self.ignore_cache = json.loads(urequest['ignore_cache'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.ignore_cache:
                 self.ignore_cache = True
@@ -908,7 +919,6 @@ class leaderboard_options:
         Given leaderboards ready for sending to the browser, applies selection options to self based on their content.
 
         :param leaderboards: leaderboards structured with LB_STRUCTURE.game_wrapped_session_wrapped_player_list
-        :param exclude_reference: The last snapshot is sometimes just a reference not of interest to the player selection
         '''
         if self.select_players:
             igd = LB_STRUCTURE.game_data_element.value
@@ -917,11 +927,13 @@ class leaderboard_options:
 
             for game_tuple in leaderboards:
                 # if game_tuple[0] == 49: breakpoint()
-                snaps = game_tuple[igd - 2]
+                snaps = game_tuple[igd - 3]
                 if snaps:
-                    hide_baseline = game_tuple[igd - 1]  # True if the last snapshot is outside of the Query but included only for baseline reference.
-                    hide_reference = not self.compare_back_to is None
-                    ignore = 2 if hide_baseline and hide_reference else 1 if hide_baseline else 0
+                    # Ignore reference and baseline snapshots when selecting players in the query.
+                    # Both are snapshots outside of the query provided for support.
+                    has_reference = game_tuple[igd - 2]
+                    has_baseline = game_tuple[igd - 1]
+                    ignore = sum([has_reference, has_baseline])
 
                     if ignore:
                         sessions = game_tuple[igd][:-ignore]
@@ -1397,7 +1409,7 @@ class leaderboard_options:
 
         return filtered_games
 
-    def snapshot_queryset(self, game, include_baseline=False):
+    def snapshot_queryset(self, game, include_reference=True, include_baseline=False):
         '''
         Returns a tuple containing:
 
@@ -1430,6 +1442,7 @@ class leaderboard_options:
         We build a QuerySet of the sessions after which we want the leaderboard snapshots.
 
         :param game:        A Game object for which the leaderboards are requested
+        :param include_reference: If True, will include a reference snapshot (that defines the leaderboard before the first snapshot in the queryset)
         :param include_baseline: If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be calculated by the caller if desired)
         :returns: A 2-tuple (QuerySet, extra_baseline_was_added_flag)
         '''
@@ -1535,11 +1548,13 @@ class leaderboard_options:
         if self.no_evolution():
             # Just get the latest session, one snapshot only
             # And extra one if a baseline is requested.
+            # We don't provide referene snapshots in this case.
             sessions = top(session_source.order_by("-date_time"), 2 if include_baseline else 1)
-            hide_baseline = include_baseline  # No evolution window, for the baseline to fall within, so if we include one, we should hide it.
+            has_reference = False
+            has_baseline = sessions.count() > 1
         else:
             # compare_with or compare_back_to is enabled
-            extra_session = None
+            extra_sessions = None
             earliest_time = None
 
             # We want one extra session, the one just before the reference time.
@@ -1566,51 +1581,47 @@ class leaderboard_options:
 
                 if earliest_time:
                     efilter = sfilter & Q(date_time__lt=earliest_time)
-                    extra_session = top(sessions_plus(session_source.filter(efilter)), 2 if include_baseline else 1)
+                    extra = sum([include_reference, include_baseline])
+                    extra_sessions = top(sessions_plus(session_source.filter(efilter)), extra)
 
                     # We might get 2, or 1, or 0 sessions back.
                     # Depends on their availability.
                     # 2 means we have a reference and a baseline
-                    # 1 means we have only a reference and no baseline
+                    # 1 means we have only a reference/baseline (the reference has not baseline)
                     # 0 means we have no reference or baseline
                     #
                     # either way we'll chekc if the last one (if any) is earlier than earliest_timme, if
-                    # it's baseline we shoudl hide by default (is not in the query)
-                    extra = extra_session.count()
-                    if extra > 0:
-                        if extra == 2:
-                            earliest_session = extra_session[1]
-                        elif extra == 1:
-                            earliest_session = extra_session[0]
+                    # it's baseline we should hide by default (is not in the query)
+                    extra = extra_sessions.count()
 
-                        hide_baseline = include_baseline and earliest_session.date_time < earliest_time
+                    # If only one session exists prior to the evolution window we use it as a reference
+                    if include_reference:
+                        has_reference = extra > 0
+                        has_baseline = extra > 1
                     else:
-                        hide_baseline = False
+                        has_reference = False
+                        has_baseline = extra > 0
 
-                    # The reference time is of course, also the time that we want all boards from.
-                    # We update sfilter AFTER building the extra_session query because sfilter prior
-                    # to his constraint is used in defining it.
                     sfilter &= Q(date_time__gte=earliest_time)
 
-            # Then order the sessions in reverse date_time order
-            sessions = sessions_plus(session_source.filter(sfilter).order_by("-date_time"))
+                # Then order the sessions in reverse date_time order
+                sessions = sessions_plus(session_source.filter(sfilter).order_by("-date_time"))
 
-            if extra_session:
-                sessions = sessions.union(extra_session).order_by("-date_time")
+                # And add any extra sessions (reference and/or baseline)
+                if extra_sessions:
+                    sessions = sessions.union(extra_sessions).order_by("-date_time")
 
-            # Keep on respecting the evolution options where enabled
-            if self.is_enabled('compare_with'):
-                # This encodes a number of sessions so the top n on the temporally ordered
-                # sessions. we want at least one more because that one more (because it's
-                # compare the latested - or as_at - with n prioer boards, so we want at
-                # least n+1 boards total. But if we've been asked to provide a baselined
-                # we return one more which the caller presumeably doesn't render just used
-                # for delta calculation (it's the hidden baselined for deltas)
-                sessions = top(sessions, self.compare_with + (2 if include_baseline else 1))
+            elif self.is_enabled('compare_with'):
+                # Order the sessions in reverse date_time order
+                sessions = sessions_plus(session_source.filter(sfilter).order_by("-date_time"))
 
-                # If we get only one extra session, or none then we have no distinct
-                # baseline beyond the evolution window and so we should not hide it.
-                hide_baseline = include_baseline and sessions.count() == self.compare_with + 2
+                # Compare_with encodes a number of snapshots to compare the at_at board with.
+                # So we want compare_with+1 snapshots, plus 1 extra if we're asked to inclde a
+                # baseline. We include no referenece board as it has no meaning in this context.
+                sessions = top(sessions, self.compare_with + 1 + (1 if include_baseline else 0))
+
+                has_reference = False
+                has_baseline = include_baseline and sessions.count() > self.compare_with + 1
 
         if settings.DEBUG:
             queries_after = len(connection.queries)
@@ -1629,7 +1640,7 @@ class leaderboard_options:
             for session in sessions:
                 log.debug(f"\t{session.id}: {session.date_time}")
 
-        return (sessions, hide_baseline)
+        return (sessions, has_reference, has_baseline)
 
     def titles(self):
         '''
@@ -1839,7 +1850,7 @@ def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapp
         lb_master = _master[isd]
         lb_baseline = _baseline[isd]
     elif structure == LB_STRUCTURE.game_wrapped_player_list:
-        snaps = _master[igd - 2]
+        snaps = _master[igd - 3]
         lb_master = _master[igd]
 
         if not snaps and _baseline:
@@ -1847,7 +1858,7 @@ def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapp
         else:
             lb_baseline = None
     elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
-        snaps = _master[igd - 2]
+        snaps = _master[igd - 3]
 
         if snaps:
             # A list of session_wrapped leaderboards.
@@ -2031,13 +2042,13 @@ def restyle_leaderboard(leaderboards, structure=LB_STRUCTURE.game_wrapped_sessio
     if structure == LB_STRUCTURE.session_wrapped_player_list:
         player_lists = [_leaderboards[isd]]
     elif structure == LB_STRUCTURE.game_wrapped_player_list:
-        snaps = _leaderboards[igd - 2]
+        snaps = _leaderboards[igd - 3]
         if snaps:
             player_lists = _leaderboards[igd]
         else:
             player_lists = [_leaderboards[igd]]
     elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
-        snaps = _leaderboards[igd - 2]
+        snaps = _leaderboards[igd - 3]
 
         if snaps:
             player_lists = [session_wrapper[isd] for session_wrapper in _leaderboards[igd]]
@@ -2114,7 +2125,7 @@ def extract_player_list(leaderboard, structure=LB_STRUCTURE.game_wrapped_session
     if structure == LB_STRUCTURE.session_wrapped_player_list:
         player_list = leaderboard[isd]
     elif structure == LB_STRUCTURE.game_wrapped_player_list:
-        snaps = leaderboard[igd - 2]
+        snaps = leaderboard[igd - 3]
         player_lists = leaderboard[igd]
 
         if snaps:
@@ -2122,7 +2133,7 @@ def extract_player_list(leaderboard, structure=LB_STRUCTURE.game_wrapped_session
         else:
             player_list = player_lists
     elif structure == LB_STRUCTURE.game_wrapped_session_wrapped_player_list:
-        snaps = leaderboard[igd - 2]
+        snaps = leaderboard[igd - 3]
         sessions = leaderboard[igd]
 
         if snaps:
