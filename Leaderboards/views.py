@@ -1515,9 +1515,8 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
     if settings.DEBUG:
         log.debug(f"Supplying {len(leaderboards)} leaderboards as {'a python object' if raw else 'as a JSON string'}.")
 
-    # If returning a HTML response, apply the selection options first
-    if not raw:
-        lo.apply_selection_options(leaderboards)
+    # Last, but not least, Apply the selection options
+    lo.apply_selection_options(leaderboards)
 
     # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
     return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

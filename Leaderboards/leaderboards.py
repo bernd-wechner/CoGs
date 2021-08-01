@@ -947,7 +947,7 @@ class leaderboard_options:
                     session_players = set(session_tuple[4])
                     players.update(session_players)
                     if settings.DEBUG:
-                        log.debug(f"Applied players: {session_players}, yielding: {players}")
+                        log.debug(f"Applied players: {session_players}, yielding {len(players)} players: {players}")
 
             # Add the players to the player selector
             self.players_auto_selected = list(players)
@@ -1608,7 +1608,12 @@ class leaderboard_options:
                 sessions = sessions_plus(session_source.filter(sfilter).order_by("-date_time"))
 
                 # And add any extra sessions (reference and/or baseline)
-                if extra_sessions:
+                # We only add extra sessions if there are sessions. It can be that a game was
+                # played prior to the window defined by as_at and compare_back_to, not not in
+                # the window thus defined. This we have extras but not actually sessions.
+                # In that case we don't want the extras (as they are only there to contextualise
+                # the sessions
+                if extra_sessions and sessions:
                     sessions = sessions.union(extra_sessions).order_by("-date_time")
 
             elif self.is_enabled('compare_with'):
