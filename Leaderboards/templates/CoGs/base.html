@@ -17,8 +17,8 @@
 	{#  DAL should not reload either of these two libraries if we have loaded them already!#}
 	{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js" crossorigin="anonymous"></script>
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
@@ -26,17 +26,17 @@
 	{% endif %}
 
 	{# Bootstrap theme for select2 widget #}
-	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css">
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
 
 	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}	
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js"></script>
-	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css"/ >
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js"></script> 	{# Useful functions #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
 	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-	<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css"/ >
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css" integrity="sha512-bYPO5jmStZ9WI2602V2zaivdAnbAhtfzmxnEGh9RwtlI00I9s8ulGe4oBa5XxiC6tCITJH/QG70jswBhbLkxPw==" crossorigin="anonymous" referrerpolicy="no-referrer" />	
 	
 	<script>
 		//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"

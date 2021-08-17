@@ -94,13 +94,14 @@ function copyStringToClipboard(str) {
 // Several new methods are partially or completely available now.
 // After a LOT of reading, testing, experimenting one method finally works in Firefox and Chromium 
 function copyElementToClipboard(JQelement) {
+	const orig = JQelement.get(0);
 	const clone = JQelement.clone().get(0);  // Clone the element we want to copy to the clipboard
 	
 	const include_styles = true;
 	const copy_wrapper = false;
 	
-	const methods = ['legacy', 'Text API', 'Generic API', 'HTML5', 'Žoček'];
-	const method = methods[4];  // Only the 'Žoček' works! The rest is now legacy garbage!
+	const methods = ['legacy', 'Text API', 'Generic API', 'HTML5', 'Žoček', 'copy_with_style'];
+	const method = methods[5];  // Only the 'Žoček' works! Generalising it in copy_with_style
 	
 	// create a wrapper (that we will try to copy)
     const wrapper = $('<div>');
@@ -173,6 +174,10 @@ function copyElementToClipboard(JQelement) {
 		
 		    document.addEventListener('copy', handler, true);
 		    document.execCommand('copy');			
+			break;
+		case 'copy_with_style':
+			const styles = "inline"; // ["leaderboards.css", "tooltip.css", "default.css"];
+			copy_with_style(orig, styles);
 			break;
 	}
 	
