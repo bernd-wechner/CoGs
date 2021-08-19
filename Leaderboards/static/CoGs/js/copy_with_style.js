@@ -1,11 +1,3 @@
-// When inlining styles we make a clone of the element to be copied, so we can inline them off DOM.
-// We walk over all the children of the element to be copied using .querySelectorAll('*') and rely
-// on that returning the same elements in the same order for both the original and clone. Empirically
-// this seems reliably to be the case, but I haven't found it documented anywhere that the oder of 
-// elements returned by querySelectorAll is deterministic and consistent. So a check is implemented.
-// Never having seen it fail, we disable it by default. Enabling it adds a little overhead to the copy.   
-const Check_Clone_Integrity = false;
-
 // Optionally log the HTML that we will put on the clipboard, to the console.
 const Log_HTML_To_Console = true;
 
@@ -13,10 +5,15 @@ const Log_HTML_To_Console = true;
 // trigger a debugger break (so you can examine the internals in the browsers debugger)
 const Classes_To_Debug = []; // "highlight_changes_on"];
 
+function defer_to_UI() { return new Promise(resolve => setTimeout(resolve, 0)); }
+
 // S.B.'s solution for finding CSS rules that match a given element.
 //		See: https://stackoverflow.com/a/22638396/4002633
 // Made more specific to finding the styles that these CSS rules impact. 
-function CSS_Styles(el) {
+async function CSS_Styles(el, sheets, defer) {
+	if (sheets == undefined) sheets = "all";
+	if (defer == undefined) defer = true;
+	
     let styles = [];
     for (let sheet of document.styleSheets) {
     	try {
@@ -31,12 +28,12 @@ function CSS_Styles(el) {
     	} 
     	catch(err) {
 			// CORS errors land here
-			// T o avoid them, make sure on cross origin (CDN) style sheet links to include 
+			// To avoid them, make sure on cross origin (CDN) style sheet links to include 
 			// 		crossorigin="anonymous" referrerpolicy="no-referrer" 
 			console.log(`Failed to get rules from: ${sheet.href}\n${err}`)
     	}
-
     }
+	if (defer) await defer_to_UI();
     return styles;
 }
 
@@ -64,11 +61,11 @@ function add_style(element, rule, explicit_styles) {
         element.style[N] = V;
 }
 
-function inline_style(source_element, target_element) {
+async function inline_style(source_element, target_element) {
 	// This gets ALL styles, and generates  HUGE results as there are MANY
     const css = window.getComputedStyle(source_element).cssText;
     const rules = css.split(';');
-	const css_matches = CSS_Styles(source_element);
+	const css_matches = await CSS_Styles(source_element);
 
 	if (Classes_To_Debug.length>0)
 		for (let Class of Classes_To_Debug)
@@ -82,13 +79,8 @@ function inline_style(source_element, target_element) {
 
 const zip = rows => rows[0].map((_, c) => rows.map(row => row[c]));
 
-// Stright from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
+// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
 function copyStringToClipboard(string) {
-	if (Log_HTML_To_Console) {
-		console.log("copyStringToClipboard:")
-		console.log(string)
-	}
-	
     function handler (event){
         event.clipboardData.setData('text/html', string);
         event.preventDefault();
@@ -103,7 +95,21 @@ class Copy_With_Style {
 	button = null;
 	element = null;
 	stylesheets = "inline";
+	
+	// We wrap the nominated element in a div that is not in the DOM. We can copy the wrapper
+	// with the element or not. Matters little it's a simple div.'
 	copy_wrapper = true;
+	
+	// If true log the HTML prepared, and the HTML put onto the clpboard to the console, for diagnostic purposes.
+	log_HTML_to_console = true;
+
+	// When inlining styles we make a clone of the element to be copied, so we can inline them off DOM.
+	// We walk over all the children of the element to be copied using .querySelectorAll('*') and rely
+	// on that returning the same elements in the same order for both the original and clone. Empirically
+	// this seems reliably to be the case, but I haven't found it documented anywhere that the oder of 
+	// elements returned by querySelectorAll is deterministic and consistent. So a check is implemented.
+	// Never having seen it fail, we disable it by default. Enabling it adds a little overhead to the copy.   
+	check_clone_integrity = false;
 	
 	constructor(button, element, stylesheets, copy_wrapper) {
 		this.button = button;
@@ -125,7 +131,12 @@ class Copy_With_Style {
 		this.button.disabled = true;
 	}
 	
-	prepare_copy(element) {
+	
+	// This is very slow. 20 seconds for a large leaderboard view. Wow. So currently supports scheduling. But also wants
+	// to support letting UI interactions continue. Here is how:
+	// https://stackoverflow.com/a/21592778/4002633
+	async prepare_copy(element) {
+		this.is_being_prepared = true;
 		this.element = element == undefined ? this.element : element;
 
 		console.log('copy_with_style.prepare_copy(): Started')
@@ -143,7 +154,7 @@ class Copy_With_Style {
 	
 	        // Perform an integrity check on the two element lists
 	        let cloned_well = true;
-			if (Check_Clone_Integrity) {
+			if (this.check_clone_integrity) {
 		        for (pair of pairs)
 		            if (pair[0].outerHTML !== pair[1].outerHTML)
 		                cloned_well = false;
@@ -153,7 +164,7 @@ class Copy_With_Style {
 				// The inline the styles on those that remain
 				for (let pair of pairs)
 					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
-	                	inline_style(pair[0], pair[1]);
+	                	await inline_style(pair[0], pair[1]);
 	
 				// Remove hidden elements, not needed when styles are inlined
 				// When including a <style> element (below) these are still useful
@@ -182,13 +193,14 @@ class Copy_With_Style {
 	    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
 	    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
 	
-		if (Log_HTML_To_Console) {
+		if (this.log_HTML_to_console) {
 	    	console.log("prepare_copy:");
 	    	console.log(this.HTML);
 		}
 
-		this.is_prepared = true;
 		this.button.disabled = false;
+		this.is_prepared = true;
+		this.is_being_prepared = false;
 	}
 	
 	to_clipboard(event) {
@@ -197,7 +209,7 @@ class Copy_With_Style {
 		if (!this.is_prepared) this.prepare_copy(this.element);
 		
 		const html = this.HTML;
-		if (Log_HTML_To_Console) {
+		if (this.log_HTML_to_console) {
 	    	console.log("to_clipboard:");
 			console.log(html);
 		}
@@ -205,11 +217,11 @@ class Copy_With_Style {
 		copyStringToClipboard(html);
 	}
 	
-	schedule_handler() {
-		if (!this.is_prepared && document.readyState === 'complete') {
+	async schedule_handler() {
+		if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
 			// Prepare for a clipboard copy (this is a little slow so we do it only after the tables are fully rednered) 
 			console.log('copy_with_style.prepare_copy(): Calling');
-			this.prepare_copy(this.element);
+			await this.prepare_copy(this.element);
 			console.log('copy_with_style.prepare_copy(): Done');
 		}
 	}
