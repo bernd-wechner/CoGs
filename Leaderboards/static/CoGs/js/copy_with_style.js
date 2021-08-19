@@ -1,15 +1,173 @@
-// Optionally log the HTML that we will put on the clipboard, to the console.
-const Log_HTML_To_Console = true;
+class Copy_With_Style {
+	button = null;
+	element = null;
+	stylesheets = "inline";
+	
+	// We wrap the nominated element in a div that is not in the DOM. We can copy the wrapper
+	// with the element or not. Matters little it's a simple div.'
+	copy_wrapper = true;
+	
+	// If true log the HTML prepared, and the HTML put onto the clpboard to the console, for diagnostic purposes.
+	log_HTML_to_console = true;
 
-// Optionally a list of classes that, when having styles inlined will when encountered 
-// trigger a debugger break (so you can examine the internals in the browsers debugger)
-const Classes_To_Debug = []; // "highlight_changes_on"];
+	// When inlining styles we make a clone of the element to be copied, so we can inline them off DOM.
+	// We walk over all the children of the element to be copied using .querySelectorAll('*') and rely
+	// on that returning the same elements in the same order for both the original and clone. Empirically
+	// this seems reliably to be the case, but I haven't found it documented anywhere that the oder of 
+	// elements returned by querySelectorAll is deterministic and consistent. So a check is implemented.
+	// Never having seen it fail, we disable it by default. Enabling it adds a little overhead to the copy.   
+	check_clone_integrity = false;
+	
+	// Optionally a list of CSS classes that, when having styles inlined will when encountered 
+	// trigger a debugger break (so you can examine the internals in the browser''s debugger)
+	// Will only trigger if a debugger is active of course. Pressing F12 in yoru browser will
+	// probably bring one up. 
+	classes_to_debug = []; // "highlight_changes_on"];	
+	
+	constructor(button, element, stylesheets, copy_wrapper) {
+		this.button = button;
+		this.element = element == undefined ? null : element;
+		this.stylesheets = stylesheets == undefined ? "inline" : stylesheets;
+		this.copy_wrapper = copy_wrapper == undefined ? true : copy_wrapper;
+		this.progress = button.parentElement.querySelector("progress"); // is null if no progressbar TODO: make this s sibling of button not a child.
 
+		this.HTML = null;
+		
+		this.is_prepared = false;
+		this.button.disabled = true; 
+
+		// attach an onclick event to the provided button.
+		button.addEventListener("click", this.to_clipboard.bind(this));
+	} 
+	
+	lock() {
+		this.is_prepared = false;
+		this.button.disabled = true;
+	}
+	
+	
+	// This is very slow. 20 seconds for a large leaderboard view. Wow. So currently supports scheduling. But also wants
+	// to support letting UI interactions continue. Here is how:
+	// https://stackoverflow.com/a/21592778/4002633
+	async prepare_copy(element) {
+		this.is_being_prepared = true;
+		this.element = element == undefined ? this.element : element;
+		if (this.progress) this.progress.style.display = "inline";
+
+		console.log('copy_with_style.prepare_copy(): Started')
+	
+	    const clone = this.element.cloneNode(true); // Clone the element we want to copy to the clipboard
+	
+	    // create a wrapper (that we will try to copy)
+	    const wrapper = document.createElement("div");
+	    wrapper.id = 'copy_me_with_style';
+	
+	    if (this.stylesheets == "inline") {
+	        const source = this.element.querySelectorAll('*');
+	        const target = clone.querySelectorAll('*');
+	        const pairs = zip([Array.from(source), Array.from(target)]);
+	
+	        // Perform an integrity check on the two element lists
+	        let cloned_well = true;
+			if (this.check_clone_integrity) {
+		        for (pair of pairs)
+		            if (pair[0].outerHTML !== pair[1].outerHTML)
+		                cloned_well = false;
+			}
+	
+	        if (cloned_well) {
+				// The inline the styles on those that remain
+				if (this.progress) this.progress.max = pairs.length;
+				for (let pair of pairs) {
+					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
+	                	await inline_style(pair[0], pair[1]);
+					if (this.progress) this.progress.value++;
+				}
+	
+				// Remove hidden elements, not needed when styles are inlined
+				// When including a <style> element (below) these are still useful
+				// as the CSS styles support transitions - like :hover.
+				for (let e of target)
+					if (hidden(e))
+						e.remove();
+			}
+	    } else if (this.stylesheets instanceof Array) {
+	        const style = document.createElement("style");
+	        for (let sheet of document.styleSheets) {
+	            if (sheet.href && this.stylesheets.includes(basename(sheet.href))) {
+	                let rules = [];
+	                for (rule of sheet.cssRules) rules.push(rule.cssText)
+	
+	                style.append(rules.join('\n'));
+	            }
+	        }
+	
+	        wrapper.append(style);
+	    }
+	
+	    // Add the cloned element to the wrapper 	
+	    wrapper.append(clone);
+	
+	    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
+	    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
+	
+		if (this.log_HTML_to_console) {
+	    	console.log("prepare_copy:");
+	    	console.log(this.HTML);
+		}
+
+		this.button.disabled = false;
+		this.is_prepared = true;
+		this.is_being_prepared = false;
+		if (this.progress) this.progress.style.display = "none";
+	}
+	
+	to_clipboard() {
+		if (!this.is_prepared) this.prepare_copy(this.element);
+
+		this.button.disabled = true;
+		
+		const html = this.HTML;
+		if (this.log_HTML_to_console) {
+	    	console.log("to_clipboard:");
+			console.log(html);
+		}
+		
+		copyStringToClipboard(html);
+
+		this.button.disabled = false;
+	}
+	
+	async schedule_handler() {
+		if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
+			// Prepare for a clipboard copy (this is a little slow so we do it only after the tables are fully rednered) 
+			console.log('copy_with_style.prepare_copy(): Calling');
+			await this.prepare_copy(this.element);
+			console.log('copy_with_style.prepare_copy(): Done');
+		}
+	}
+
+	schedule(element_to_copy) {	
+		this.element = element_to_copy;
+		document.addEventListener('readystatechange', this.schedule_handler.bind(this));
+	} 	
+}
+
+// This is a Javascript oddity.
+// See: https://stackoverflow.com/a/60149544/4002633
+// setTimeout runs a function after a given time (specified in ms).
+// In a promise with not resolve callback (.then()) defined it can be called
+// with effectively a null function. With a 0 time into the future, it returns
+// more or less immediately BUT, the key thing to not is the Javascript single
+// threaded idiosyncracy .. and that setTimeout() is the one known method of 
+// yielfing control for a moment to the event loop so that UI events can continue
+// to be handled. To wit, this mysterious little line of code, permits means the 
+// UI remains responsive if it is called from time to time.
 function defer_to_UI() { return new Promise(resolve => setTimeout(resolve, 0)); }
 
 // S.B.'s solution for finding CSS rules that match a given element.
 //		See: https://stackoverflow.com/a/22638396/4002633
-// Made more specific to finding the styles that these CSS rules impact. 
+// Made more specific to finding the styles that these CSS rules impact.  
 async function CSS_Styles(el, sheets, defer) {
 	if (sheets == undefined) sheets = "all";
 	if (defer == undefined) defer = true;
@@ -66,8 +224,9 @@ async function inline_style(source_element, target_element) {
     const css = window.getComputedStyle(source_element).cssText;
     const rules = css.split(';');
 	const css_matches = await CSS_Styles(source_element);
+	const classes_to_debug = [];
 
-	if (Classes_To_Debug.length>0)
+	if (classes_to_debug.length>0)
 		for (let Class of Classes_To_Debug)
 			if (source_element.classList.contains(Class))
 				debugger;
@@ -89,145 +248,4 @@ function copyStringToClipboard(string) {
 
     document.addEventListener('copy', handler, true);
     document.execCommand('copy');
-}
-
-class Copy_With_Style {
-	button = null;
-	element = null;
-	stylesheets = "inline";
-	
-	// We wrap the nominated element in a div that is not in the DOM. We can copy the wrapper
-	// with the element or not. Matters little it's a simple div.'
-	copy_wrapper = true;
-	
-	// If true log the HTML prepared, and the HTML put onto the clpboard to the console, for diagnostic purposes.
-	log_HTML_to_console = true;
-
-	// When inlining styles we make a clone of the element to be copied, so we can inline them off DOM.
-	// We walk over all the children of the element to be copied using .querySelectorAll('*') and rely
-	// on that returning the same elements in the same order for both the original and clone. Empirically
-	// this seems reliably to be the case, but I haven't found it documented anywhere that the oder of 
-	// elements returned by querySelectorAll is deterministic and consistent. So a check is implemented.
-	// Never having seen it fail, we disable it by default. Enabling it adds a little overhead to the copy.   
-	check_clone_integrity = false;
-	
-	constructor(button, element, stylesheets, copy_wrapper) {
-		this.button = button;
-		this.element = element == undefined ? null : element;
-		this.stylesheets = stylesheets == undefined ? "inline" : stylesheets;
-		this.copy_wrapper = copy_wrapper == undefined ? true : copy_wrapper;
-
-		this.HTML = null;
-		
-		this.is_prepared = false;
-		this.button.disabled = true; 
-
-		// attach an onclick event to the provided button.
-		button.addEventListener("click", this.to_clipboard.bind(this));
-	} 
-	
-	lock() {
-		this.is_prepared = false;
-		this.button.disabled = true;
-	}
-	
-	
-	// This is very slow. 20 seconds for a large leaderboard view. Wow. So currently supports scheduling. But also wants
-	// to support letting UI interactions continue. Here is how:
-	// https://stackoverflow.com/a/21592778/4002633
-	async prepare_copy(element) {
-		this.is_being_prepared = true;
-		this.element = element == undefined ? this.element : element;
-
-		console.log('copy_with_style.prepare_copy(): Started')
-	
-	    const clone = this.element.cloneNode(true); // Clone the element we want to copy to the clipboard
-	
-	    // create a wrapper (that we will try to copy)
-	    const wrapper = document.createElement("div");
-	    wrapper.id = 'copy_me_with_style';
-	
-	    if (this.stylesheets == "inline") {
-	        const source = this.element.querySelectorAll('*');
-	        const target = clone.querySelectorAll('*');
-	        const pairs = zip([Array.from(source), Array.from(target)]);
-	
-	        // Perform an integrity check on the two element lists
-	        let cloned_well = true;
-			if (this.check_clone_integrity) {
-		        for (pair of pairs)
-		            if (pair[0].outerHTML !== pair[1].outerHTML)
-		                cloned_well = false;
-			}
-	
-	        if (cloned_well) {
-				// The inline the styles on those that remain
-				for (let pair of pairs)
-					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
-	                	await inline_style(pair[0], pair[1]);
-	
-				// Remove hidden elements, not needed when styles are inlined
-				// When including a <style> element (below) these are still useful
-				// as the CSS styles support transitions - like :hover.
-				for (let e of target)
-					if (hidden(e))
-						e.remove();
-			}
-	    } else if (this.stylesheets instanceof Array) {
-	        const style = document.createElement("style");
-	        for (let sheet of document.styleSheets) {
-	            if (sheet.href && this.stylesheets.includes(basename(sheet.href))) {
-	                let rules = [];
-	                for (rule of sheet.cssRules) rules.push(rule.cssText)
-	
-	                style.append(rules.join('\n'));
-	            }
-	        }
-	
-	        wrapper.append(style);
-	    }
-	
-	    // Add the cloned element to the wrapper 	
-	    wrapper.append(clone);
-	
-	    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
-	    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
-	
-		if (this.log_HTML_to_console) {
-	    	console.log("prepare_copy:");
-	    	console.log(this.HTML);
-		}
-
-		this.button.disabled = false;
-		this.is_prepared = true;
-		this.is_being_prepared = false;
-	}
-	
-	to_clipboard(event) {
-		this.button.disabled = true;
-
-		if (!this.is_prepared) this.prepare_copy(this.element);
-		
-		const html = this.HTML;
-		if (this.log_HTML_to_console) {
-	    	console.log("to_clipboard:");
-			console.log(html);
-		}
-		
-		copyStringToClipboard(html);
-	}
-	
-	async schedule_handler() {
-		if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
-			// Prepare for a clipboard copy (this is a little slow so we do it only after the tables are fully rednered) 
-			console.log('copy_with_style.prepare_copy(): Calling');
-			await this.prepare_copy(this.element);
-			console.log('copy_with_style.prepare_copy(): Done');
-		}
-	}
-
-	schedule(element_to_copy) {	
-		this.element = element_to_copy;
-		document.addEventListener('readystatechange', this.schedule_handler.bind(this));
-	} 	
 }
