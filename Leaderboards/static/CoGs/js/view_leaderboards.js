@@ -30,7 +30,10 @@ const use_baseline = true;
 let boardcount = 0;
 let maxshots = 0;
 let totalshots = 0;
-let boardshots = [];
+let boardshots = [ ];
+
+// A place to store our copy clipboard
+let clipboard = new Copy_With_Style(document.getElementById("btnCopy")); 
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
@@ -50,140 +53,6 @@ jQuery.fn.html_outer = function(s) {
         ? this.before(s).remove()
         : jQuery("<p>").append(this.eq(0).clone()).html();
 };
-
-// clipboard.js experiment.s Deprecated. The method of Žoček rules them all.
-//const clipboard = new ClipboardJS('#btnCopy');
-//clipboard.on('success', function(e) { console.log(e);});
-//clipboard.on('error', function(e) { console.log(e);});
-
-// Deprecated as the method of Žoček is now in use
-function selectElementContents(JQelement) {
-      const el = JQelement[0]
-	  let body = document.body, range, sel;
-	  if (document.createRange && window.getSelection) {
-	      range = document.createRange();
-	      sel = window.getSelection();
-	      sel.removeAllRanges();
-	      try {
-	          range.selectNodeContents(el);
-	          sel.addRange(range);
-	      } catch (e) {
-	          range.selectNode(el);
-	          sel.addRange(range);
-	      }
-	  } else if (body.createTextRange) {
-	      range = body.createTextRange();
-	      range.moveToElementText(el);
-	      range.select();
-	  }
-}
-
-// Used to copy URLs to the clipboard (can probably move to the method of Žoček as well)
-function copyStringToClipboard(str) {
-   let el = document.createElement('textarea');
-   el.value = str;
-   el.setAttribute('readonly', '');
-   el.style = {position: 'absolute', left: '-9999px'};
-   document.body.appendChild(el);
-   el.select();
-   document.execCommand('copy');
-   document.body.removeChild(el);
-}
-
-// Moving colors to CSS vars broke the colors inthe copy.
-// Several new methods are partially or completely available now.
-// After a LOT of reading, testing, experimenting one method finally works in Firefox and Chromium 
-function copyElementToClipboard(JQelement) {
-	const orig = JQelement.get(0);
-	const clone = JQelement.clone().get(0);  // Clone the element we want to copy to the clipboard
-	
-	const include_styles = true;
-	const copy_wrapper = false;
-	
-	const methods = ['legacy', 'Text API', 'Generic API', 'HTML5', 'Žoček', 'copy_with_style'];
-	const method = methods[5];  // Only the 'Žoček' works! Generalising it in copy_with_style
-	
-	// create a wrapper (that we will try to copy)
-    const wrapper = $('<div>');
-	wrapper.attr('id', 'copyme');
-	wrapper.attr('readonly', '');
-	
-	// This was necessary in past as we had to add the cclone tot he DOM to select it and copy it
-	// This appears no longer to be the case.
-	//wrapper.attr('style', "{position: 'absolute', left: '-9999px'}");
-
-	if (include_styles) {
-	    const style = $('<style>');
-		for (sheet of document.styleSheets) {
-			if (sheet.href && (sheet.href.endsWith("leaderboards.css") || sheet.href.endsWith("tooltip.css") || sheet.href.endsWith("default.css"))) {
-				let rules = [];
-				for (rule of sheet.cssRules) rules.push(rule.cssText)
-				
-				style.append(rules.join('\n'));
-			}
-		}
-
-		wrapper.append(style);
-	}
-
-	// Add the cloned element to the wrapper 	
-	wrapper.append(clone);
-	
-	// Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
-	const HTML = copy_wrapper ? wrapper.html_outer() : wrapper.html();
-	//console.log(HTML);	
-	
-	// This puts the wrapped cloned element into the DOM. May or may not be necessary depending on clipboard methods 
-	$('body').append(wrapper);
-
-	switch (method) {
-		case 'legacy':
-			// Firefox loses all styles
-			// Chromium keeps colors if they are in the sttyle, and loses them if they are CSS vars
-			selectElementContents(wrapper);  // $('#copyme') works too, but this works even when not int he DOM
-			document.execCommand('copy');
-			break;
-		case 'Text API':
-			// Works in  Firefox and Chromiusm, but only copies text. In this example we copy the the HTML of the wrapper
-			// If the HTML is pasted into a Thunderbird HTML tab it actually renders perfectly well!
-			navigator.clipboard.writeText(HTML).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
-			break;
-		case 'Generic API':
-			// In Firefox this works the same as the 'legacy' method. It removes the <style> element alas
-			// In Chromium it also removes the style element and hence the whole thing is cruddy unstyled, worse than Firefoxes.
-			// data is an Array, but only one element is supported at present in either browser. 
-			const data = [new ClipboardItem({ "text/html": new Blob([HTML], { type: "text/html" }) })];
-			navigator.clipboard.write(data).then(() => {console.log('Copied!');}).catch(err => {console.log('Something went wrong', err);})
-			//navigator.clipboard.write(data).then(() => {console.log("Copied!");}, err => {console.error("Something went wrong", err);});			
-			break;
-		case 'HTML5':
-			// Poorly supported
-			// https://www.htmlgoodies.com/html5/working-with-clipboard-apis-in-html5-web-apps
-			let copyEvent = new ClipboardEvent('copy', { dataType: 'text/html', data: HTML } );
-			document.dispatchEvent(copyEvent);			
-			break;
-		case 'Žoček':
-			// A tweak posted here:
-			// https://stackoverflow.com/a/45352464/4002633
-			// And this works perfectly in Firefox and Chromium! Preservice CSS var colours! A stroke fo genius!
-		    function handler(event) {
-		        event.clipboardData.setData('text/html', HTML);
-		        event.preventDefault();
-		        document.removeEventListener('copy', handler, true);
-		    }
-		
-		    document.addEventListener('copy', handler, true);
-		    document.execCommand('copy');			
-			break;
-		case 'copy_with_style':
-			const styles = "inline"; // ["leaderboards.css", "tooltip.css", "default.css"];
-			copy_with_style(orig, styles);
-			break;
-	}
-	
-	// If it was added tot he DOM, remove it. If it wasn't this passes thru silently.'
-	wrapper.remove();
-}  
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
@@ -1097,6 +966,8 @@ function update_legend() {
 
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
+	clipboard.lock();	
+	
 	// Oddly the jQuery forms $('#links') and $('#cols') fails here. 
 	// Not sure why.
 	const selLinks = document.getElementById("links");	
@@ -1218,6 +1089,8 @@ function DrawTables(target, links) {
 			lb++; 
 		}
 	}
+
+	clipboard.schedule(table);
 }
 
 // ===================================================================================
