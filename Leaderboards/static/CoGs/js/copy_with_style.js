@@ -1,6 +1,7 @@
 class Copy_With_Style {
-	button = null;
-	element = null;
+	element = null;   	// The element to copy to the clipboard (with style!)	
+	button = null;    	// The button that, we attach a click even handler to to copy the the element to the clipboard
+	progress = null;  	// A progres element that is a sibling or child of the button by default but can be specified explicitly.
 	stylesheets = "inline";
 	
 	// We wrap the nominated element in a div that is not in the DOM. We can copy the wrapper
@@ -22,14 +23,29 @@ class Copy_With_Style {
 	// trigger a debugger break (so you can examine the internals in the browser''s debugger)
 	// Will only trigger if a debugger is active of course. Pressing F12 in yoru browser will
 	// probably bring one up. 
-	classes_to_debug = []; // "highlight_changes_on"];	
+	classes_to_debug = []; // "highlight_changes_on"];
+	
+	// The HTML string (rendition) of element
+	HTML = "";
+
+	// An internal bail request. Because prepare_copy() defers to UI maintaining an interactive UI a user
+	// can mageke changes to element meaning we have to start the perparation again, i.e. bail the one
+	// that's running and start again. These flags effect that interation.
+	bail = false;   // Set to request a bail
+	bailed = false; // Set when the request is honoured
+	
+    // Write useful tracing info out to console
+	debug = true;
+
+    // Write a performance summary to console 
+	log_performance = true;
 	
 	constructor(button, element, stylesheets, copy_wrapper) {
 		this.button = button;
 		this.element = element == undefined ? null : element;
 		this.stylesheets = stylesheets == undefined ? "inline" : stylesheets;
 		this.copy_wrapper = copy_wrapper == undefined ? true : copy_wrapper;
-		this.progress = button.parentElement.querySelector("progress"); // is null if no progressbar TODO: make this s sibling of button not a child.
+		this.progress = button.parentElement.querySelector("progress"); 
 
 		this.HTML = null;
 		
@@ -38,7 +54,7 @@ class Copy_With_Style {
 
 		// attach an onclick event to the provided button.
 		button.addEventListener("click", this.to_clipboard.bind(this));
-	} 
+	}
 	
 	lock() {
 		this.is_prepared = false;
@@ -50,10 +66,14 @@ class Copy_With_Style {
 	// to support letting UI interactions continue. Here is how:
 	// https://stackoverflow.com/a/21592778/4002633
 	async prepare_copy(element) {
-		const start = performance.now();
+		if (this.debug) console.log(`prepare_copy started: ${element}`);
+		let start = performance.now();
 		this.is_being_prepared = true;
 		this.element = element == undefined ? this.element : element;
-		if (this.progress) this.progress.style.display = "inline";
+		if (this.progress) {
+			this.progress.value = 0;
+			this.progress.style.display = "inline";
+		}
 
 	    const clone = this.element.cloneNode(true); // Clone the element we want to copy to the clipboard
 	
@@ -77,6 +97,15 @@ class Copy_With_Style {
 		            if (pair[0].outerHTML !== pair[1].outerHTML)
 		                cloned_well = false;
 			}
+
+			if (this.log_performance) {
+				const done = performance.now();
+				const runtime  = done - start;
+				const rate1 = runtime/nelements;
+				const rate2 = nelements/runtime*1000;
+				console.log(`Cloned and prepared ${nelements.toLocaleString()} elements in ${runtime.toLocaleString()} ms, for ${rate1.toLocaleString()} ms/element or ${rate2.toLocaleString()} elements/s`)
+				start = performance.now()
+			}
 	
 	        if (cloned_well) {
 				// The inline the styles on those that remain
@@ -85,15 +114,38 @@ class Copy_With_Style {
 					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
 	                	await this.inline_style(pair[0], pair[1]);
 					if (this.progress) this.progress.value++;
+					if (this.bail) {
+					 	if (this.debug) console.log("Bailing ...");
+						break;
+					}
 					await this.defer_to_UI();
 				}
+				
+				if (this.log_performance) {
+					const done = performance.now();
+					const runtime  = done - start;
+					const rate1 = runtime/nelements;
+					const rate2 = nelements/runtime*1000;
+					console.log(`Inlined styles on ${nelements.toLocaleString()} elements in ${runtime.toLocaleString()} ms, for ${rate1.toLocaleString()} ms/element or ${rate2.toLocaleString()} elements/s`)
+					start = performance.now()
+				}
 	
-				// Remove hidden elements, not needed when styles are inlined
-				// When including a <style> element (below) these are still useful
-				// as the CSS styles support transitions - like :hover.
-				for (let e of target)
-					if (hidden(e))
-						e.remove();
+				if (!this.bail)
+					// Remove hidden elements, not needed when styles are inlined
+					// When including a <style> element (below) these are still useful
+					// as the CSS styles support transitions - like :hover.
+					for (let e of target)
+						if (hidden(e))
+							e.remove();
+
+				if (this.log_performance) {
+					const done = performance.now();
+					const runtime  = done - start;
+					const rate1 = runtime/nelements;
+					const rate2 = nelements/runtime*1000;
+					console.log(`Removed hidden elements from ${nelements.toLocaleString()} elements in ${runtime.toLocaleString()} ms, for ${rate1.toLocaleString()} ms/element or ${rate2.toLocaleString()} elements/s`)
+					start = performance.now()
+				}
 			}
 	    } else if (this.stylesheets instanceof Array) {
 	        const style = document.createElement("style");
@@ -108,27 +160,29 @@ class Copy_With_Style {
 	
 	        wrapper.append(style);
 	    }
-	
-	    // Add the cloned element to the wrapper 	
-	    wrapper.append(clone);
-	
-	    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
-	    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
-	
-		if (this.log_HTML_to_console) {
-	    	console.log("prepare_copy:");
-	    	console.log(this.HTML);
+
+		if (!this.bail) {	
+		    // Add the cloned element to the wrapper 	
+		    wrapper.append(clone);
+		
+		    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
+		    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
+		
+			if (this.log_HTML_to_console) {
+		    	console.log("prepare_copy:");
+		    	console.log(this.HTML);
+			}
 		}
 
 		this.button.disabled = false;
 		this.is_prepared = true;
 		this.is_being_prepared = false;
 		if (this.progress) this.progress.style.display = "none";
-		const done = performance.now();
-		const runtime  = done - start;
-		const rate1 = runtime/nelements;
-		const rate2 = nelements/runtime*1000;
-		console.log(`Processed ${nelements} elements in ${runtime.toFixed()} ms, for ${rate1.toFixed()} ms/element or ${rate2.toFixed()} elements/s`)
+		if (this.bail) {
+			this.bail = false;
+			this.bailed = true;
+		 	if (this.debug) console.log("Bailed ...");
+		};
 	}
 	
 	to_clipboard() {
@@ -146,18 +200,6 @@ class Copy_With_Style {
 		this.button.disabled = false;
 	}
 	
-	async schedule_handler() {
-		if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
-			// Prepare for a clipboard copy (this is a little slow so we do it only after the tables are fully rednered) 
-			await this.prepare_copy(this.element);
-		}
-	}
-
-	schedule(element_to_copy) {	
-		this.element = element_to_copy;
-		document.addEventListener('readystatechange', this.schedule_handler.bind(this));
-	}
-
 	// Adds the styles from a CSS rule to the style tag of an element.
 	// if a list of explicit styles is provided only styles from that 
 	// list are added. This is essentially to avoid adding all the styles
@@ -184,7 +226,10 @@ class Copy_With_Style {
 	// yielfing control for a moment to the event loop so that UI events can continue
 	// to be handled. To wit, this mysterious little line of code, permits means the 
 	// UI remains responsive if it is called from time to time.
-	defer_to_UI() { return new Promise(resolve => setTimeout(resolve, 0)); }
+	defer_to_UI(how_long) {
+		if (how_long == undefined) how_long = 0; 
+		return new Promise(resolve => setTimeout(resolve, how_long));
+	}
 	
 	// S.B.'s solution for finding CSS rules that match a given element.
 	//		See: https://stackoverflow.com/a/22638396/4002633
@@ -232,15 +277,80 @@ class Copy_With_Style {
 	}
 	
 	// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
-	copy_html_to_clipboard(string) {
-	    function handler (event){
-	        event.clipboardData.setData('text/html', string);
+	copy_html_to_clipboard() {
+	    function handler(event){
+	        event.clipboardData.setData('text/html', this.HTML);
 	        event.preventDefault();
 	        document.removeEventListener('copy', handler, true);
 	    }
 	
-	    document.addEventListener('copy', handler, true);
+	    document.addEventListener('copy', handler.bind(this), true);
 	    document.execCommand('copy');
+	}
+	
+	schedule(element_to_copy) {
+		if (element_to_copy != undefined) this.element = element_to_copy;
+		
+		async function handler() {
+			if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
+				// watch element for changes (as we need to prepare_copy() again)
+				this.observe_element()
+				await this.prepare_copy(this.element);
+			}
+		}
+		
+		if (this.element)
+			document.addEventListener('readystatechange', handler.bind(this));
+	}
+
+	observer = new MutationObserver(this.mutation_handler.bind(this));
+		
+	// Enable or disable observations on the element to trigger new clipbpboard preparations.
+	observe_element(yesno) {
+		if (yesno == undefined) yesno = true;
+		if (this.debug) console.log(`observe_element: ${yesno}`);
+		
+		if (yesno)
+			this.observer.observe(this.element, {subtree:true, childList: true, attributes: true, attributeOldValue: true, characterData: true,characterDataOldValue: true});
+		else if (this.observer)
+			this.observer.disconnect();
+	} 
+	
+	// A handler attached to this.element. When this.element changes, we can bail on any 
+	// existing preparations and restarte.
+	async mutation_handler(mutations) {
+		const fingerprint = performance.now(); 
+		if (this.debug) console.log(`${fingerprint} mutation: readystate is ${document.readyState}`);
+
+		// If prepare_copy() is running and is not complete  		
+		if (this.is_being_prepared) {
+			// if it's already been asked to bail, kick back and let it
+			if (this.bail) {
+				if (this.debug) console.log(`${fingerprint} Already bailing ... let it be.`);
+				// Let it act on the signal and bail request
+				await this.defer_to_UI(); 
+			// if it's not already been asked to bail, then ask it to bail
+			} else {
+				if (this.debug) console.log(`${fingerprint} Requesting bail...`);
+				this.bail = true;
+
+				// Let it act on the signal and bail request
+				await this.defer_to_UI(); 
+
+				// Check if it did bail!
+				if (this.bailed) {
+					if (this.debug) console.log(`${fingerprint} Observed bail... `);
+					this.bailed = false;					
+				} else {
+					if (this.debug) console.log(`${fingerprint} REQUESTED BAIL NOT HONORED!`);
+				}
+			}			
+		}
+
+		if (!this.is_being_prepared) {
+			if (this.debug) console.log(`${fingerprint} Requesting prepare_copy() ... (this.bail: ${this.bail}, this.bailed: ${this.bailed})`);
+			await this.prepare_copy(this.element);
+		}
 	}
 }
 

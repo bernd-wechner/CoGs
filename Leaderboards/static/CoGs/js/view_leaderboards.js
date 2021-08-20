@@ -1089,8 +1089,6 @@ function DrawTables(target, links) {
 			lb++; 
 		}
 	}
-
-	clipboard.schedule(table);
 }
 
 // ===================================================================================
@@ -1162,3 +1160,5 @@ InitControls(options);
 // ===================================================================================
 
 DrawTables("tblLB");
+clipboard.schedule(document.getElementById("tblLB"));
+
