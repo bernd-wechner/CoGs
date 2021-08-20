@@ -50,22 +50,25 @@ class Copy_With_Style {
 	// to support letting UI interactions continue. Here is how:
 	// https://stackoverflow.com/a/21592778/4002633
 	async prepare_copy(element) {
+		const start = performance.now();
 		this.is_being_prepared = true;
 		this.element = element == undefined ? this.element : element;
 		if (this.progress) this.progress.style.display = "inline";
 
-		console.log('copy_with_style.prepare_copy(): Started')
-	
 	    const clone = this.element.cloneNode(true); // Clone the element we want to copy to the clipboard
 	
 	    // create a wrapper (that we will try to copy)
 	    const wrapper = document.createElement("div");
 	    wrapper.id = 'copy_me_with_style';
+
+		let nelements = null;
 	
 	    if (this.stylesheets == "inline") {
 	        const source = this.element.querySelectorAll('*');
 	        const target = clone.querySelectorAll('*');
 	        const pairs = zip([Array.from(source), Array.from(target)]);
+
+			nelements = pairs.length;
 	
 	        // Perform an integrity check on the two element lists
 	        let cloned_well = true;
@@ -77,11 +80,12 @@ class Copy_With_Style {
 	
 	        if (cloned_well) {
 				// The inline the styles on those that remain
-				if (this.progress) this.progress.max = pairs.length;
+				if (this.progress) this.progress.max = nelements;
 				for (let pair of pairs) {
 					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
-	                	await inline_style(pair[0], pair[1]);
+	                	await this.inline_style(pair[0], pair[1]);
 					if (this.progress) this.progress.value++;
+					await this.defer_to_UI();
 				}
 	
 				// Remove hidden elements, not needed when styles are inlined
@@ -120,6 +124,11 @@ class Copy_With_Style {
 		this.is_prepared = true;
 		this.is_being_prepared = false;
 		if (this.progress) this.progress.style.display = "none";
+		const done = performance.now();
+		const runtime  = done - start;
+		const rate1 = runtime/nelements;
+		const rate2 = nelements/runtime*1000;
+		console.log(`Processed ${nelements} elements in ${runtime.toFixed()} ms, for ${rate1.toFixed()} ms/element or ${rate2.toFixed()} elements/s`)
 	}
 	
 	to_clipboard() {
@@ -133,66 +142,106 @@ class Copy_With_Style {
 			console.log(html);
 		}
 		
-		copyStringToClipboard(html);
-
+		this.copy_html_to_clipboard(html);
 		this.button.disabled = false;
 	}
 	
 	async schedule_handler() {
 		if (!this.is_prepared && !this.is_being_prepared && document.readyState === 'complete') {
 			// Prepare for a clipboard copy (this is a little slow so we do it only after the tables are fully rednered) 
-			console.log('copy_with_style.prepare_copy(): Calling');
 			await this.prepare_copy(this.element);
-			console.log('copy_with_style.prepare_copy(): Done');
 		}
 	}
 
 	schedule(element_to_copy) {	
 		this.element = element_to_copy;
 		document.addEventListener('readystatechange', this.schedule_handler.bind(this));
-	} 	
-}
+	}
 
-// This is a Javascript oddity.
-// See: https://stackoverflow.com/a/60149544/4002633
-// setTimeout runs a function after a given time (specified in ms).
-// In a promise with not resolve callback (.then()) defined it can be called
-// with effectively a null function. With a 0 time into the future, it returns
-// more or less immediately BUT, the key thing to not is the Javascript single
-// threaded idiosyncracy .. and that setTimeout() is the one known method of 
-// yielfing control for a moment to the event loop so that UI events can continue
-// to be handled. To wit, this mysterious little line of code, permits means the 
-// UI remains responsive if it is called from time to time.
-function defer_to_UI() { return new Promise(resolve => setTimeout(resolve, 0)); }
-
-// S.B.'s solution for finding CSS rules that match a given element.
-//		See: https://stackoverflow.com/a/22638396/4002633
-// Made more specific to finding the styles that these CSS rules impact.  
-async function CSS_Styles(el, sheets, defer) {
-	if (sheets == undefined) sheets = "all";
-	if (defer == undefined) defer = true;
+	// Adds the styles from a CSS rule to the style tag of an element.
+	// if a list of explicit styles is provided only styles from that 
+	// list are added. This is essentially to avoid adding all the styles
+	// that the CSS rule defines, to the style attribute. If no list is 
+	// provided they will all be added.  
+	add_style(element, rule, explicit_styles) {
+		if (explicit_styles == undefined) explicit_styles = null;
 	
-    let styles = [];
-    for (let sheet of document.styleSheets) {
-    	try {
-	        for (let rule of sheet.cssRules) {
-	            if (el.matches(rule.selectorText)) {
-					const rule_styles = Array.from(rule.styleMap.keys());
-					for (let s of rule_styles)
-						if (!styles.includes(s))
-							styles.push(s); 
-	            }
-	        }
-    	} 
-    	catch(err) {
-			// CORS errors land here
-			// To avoid them, make sure on cross origin (CDN) style sheet links to include 
-			// 		crossorigin="anonymous" referrerpolicy="no-referrer" 
-			console.log(`Failed to get rules from: ${sheet.href}\n${err}`)
-    	}
-    }
-	if (defer) await defer_to_UI();
-    return styles;
+	    let [n, v] = rule.split(':');
+	    const N = n == undefined ? '' : n.trim()
+	    const V = v == undefined ? '' : v.trim()
+	
+		if (!explicit_styles || explicit_styles.includes(N))
+	        element.style[N] = V;
+	}
+	
+	// This is a Javascript oddity.
+	// See: https://stackoverflow.com/a/60149544/4002633
+	// setTimeout runs a function after a given time (specified in ms).
+	// In a promise with not resolve callback (.then()) defined it can be called
+	// with effectively a null function. With a 0 time into the future, it returns
+	// more or less immediately BUT, the key thing to not is the Javascript single
+	// threaded idiosyncracy .. and that setTimeout() is the one known method of 
+	// yielfing control for a moment to the event loop so that UI events can continue
+	// to be handled. To wit, this mysterious little line of code, permits means the 
+	// UI remains responsive if it is called from time to time.
+	defer_to_UI() { return new Promise(resolve => setTimeout(resolve, 0)); }
+	
+	// S.B.'s solution for finding CSS rules that match a given element.
+	//		See: https://stackoverflow.com/a/22638396/4002633
+	// Made more specific to finding the styles that these CSS rules impact.  
+	async CSS_Styles(el, sheets) {
+		if (sheets == undefined) sheets = "all";
+		
+	    let styles = [];
+	    for (let sheet of document.styleSheets) {
+	    	try {
+		        for (let rule of sheet.cssRules) {
+		            if (el.matches(rule.selectorText)) {
+						const rule_styles = Array.from(rule.styleMap.keys());
+						for (let s of rule_styles)
+							if (!styles.includes(s))
+								styles.push(s); 
+		            }
+		        }
+	    	} 
+	    	catch(err) {
+				// CORS errors land here
+				// To avoid them, make sure on cross origin (CDN) style sheet links to include 
+				// 		crossorigin="anonymous" referrerpolicy="no-referrer" 
+				console.log(`Failed to get rules from: ${sheet.href}\n${err}`)
+	    	}
+	    }
+	    return styles;
+	}
+	
+	async inline_style(source_element, target_element) {
+		// This gets ALL styles, and generates  HUGE results as there are MANY
+	    const css = window.getComputedStyle(source_element).cssText;
+	    const rules = css.split(';');
+		const css_matches = await this.CSS_Styles(source_element);
+		const classes_to_debug = [];
+	
+		if (classes_to_debug.length>0)
+			for (let Class of Classes_To_Debug)
+				if (source_element.classList.contains(Class))
+					debugger;
+	
+	    // Add the user styles we found
+	    for (let rule of rules)
+	        this.add_style(target_element, rule, css_matches);
+	}
+	
+	// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
+	copy_html_to_clipboard(string) {
+	    function handler (event){
+	        event.clipboardData.setData('text/html', string);
+	        event.preventDefault();
+	        document.removeEventListener('copy', handler, true);
+	    }
+	
+	    document.addEventListener('copy', handler, true);
+	    document.execCommand('copy');
+	}
 }
 
 // A simple basename for matching stylesheets
@@ -204,48 +253,12 @@ function basename(str, sep1, sep2) {
     return parts2[0];
 }
 
+// Determine if a given elemnt is hidden. When inlining styles, hidden elements are dropped.
 function hidden(element) {
 	return element.style.visibility === "hidden" || element.style.display === "none";
 }
 
-function add_style(element, rule, explicit_styles) {
-	if (explicit_styles == undefined) explicit_styles = [];
-
-    let [n, v] = rule.split(':');
-    const N = n == undefined ? '' : n.trim()
-    const V = v == undefined ? '' : v.trim()
-
-	if (explicit_styles.includes(N))
-        element.style[N] = V;
-}
-
-async function inline_style(source_element, target_element) {
-	// This gets ALL styles, and generates  HUGE results as there are MANY
-    const css = window.getComputedStyle(source_element).cssText;
-    const rules = css.split(';');
-	const css_matches = await CSS_Styles(source_element);
-	const classes_to_debug = [];
-
-	if (classes_to_debug.length>0)
-		for (let Class of Classes_To_Debug)
-			if (source_element.classList.contains(Class))
-				debugger;
-
-    // Add the user styles we found
-    for (let rule of rules)
-        add_style(target_element, rule, css_matches);
-}
-
+// A teeny function that zips two Arrays together (like Python's zip)
+// See: https://stackoverflow.com/a/10284006/4002633
 const zip = rows => rows[0].map((_, c) => rows.map(row => row[c]));
 
-// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
-function copyStringToClipboard(string) {
-    function handler (event){
-        event.clipboardData.setData('text/html', string);
-        event.preventDefault();
-        document.removeEventListener('copy', handler, true);
-    }
-
-    document.addEventListener('copy', handler, true);
-    document.execCommand('copy');
-}
