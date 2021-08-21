@@ -1,6 +1,7 @@
 class Copy_With_Style {
 	element = null;   	// The element to copy to the clipboard (with style!)	
 	button = null;    	// The button that, we attach a click even handler to to copy the the element to the clipboard
+	mode = null;		// "attribute" (to inline all styles with a "style" attribute on each element) or "tag" (to include a "style" tag)
 	progress = null;  	// A progres element that is a sibling or child of the button by default but can be specified explicitly.
 	stylesheets = "inline";
 	
@@ -40,10 +41,11 @@ class Copy_With_Style {
     // Write a performance summary to console 
 	log_performance = true;
 	
-	constructor(button, element, stylesheets, copy_wrapper) {
+	constructor(button, stylesheets, element, mode, copy_wrapper) {
 		this.button = button;
+		this.stylesheets = stylesheets == undefined ? [] : stylesheets;
 		this.element = element == undefined ? null : element;
-		this.stylesheets = stylesheets == undefined ? "inline" : stylesheets;
+		this.mode = mode == undefined ? "attribute" : mode;
 		this.copy_wrapper = copy_wrapper == undefined ? true : copy_wrapper;
 		this.progress = button.parentElement.querySelector("progress"); 
 
@@ -83,7 +85,7 @@ class Copy_With_Style {
 
 		let nelements = null;
 	
-	    if (this.stylesheets == "inline") {
+	    if (this.mode == "attribute") {
 	        const source = this.element.querySelectorAll('*');
 	        const target = clone.querySelectorAll('*');
 	        const pairs = zip([Array.from(source), Array.from(target)]);
@@ -147,10 +149,10 @@ class Copy_With_Style {
 					start = performance.now()
 				}
 			}
-	    } else if (this.stylesheets instanceof Array) {
+	    } else if (this.mode == "tag") {
 	        const style = document.createElement("style");
 	        for (let sheet of document.styleSheets) {
-	            if (sheet.href && this.stylesheets.includes(basename(sheet.href))) {
+	            if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(basename(sheet.href)))) {
 	                let rules = [];
 	                for (rule of sheet.cssRules) rules.push(rule.cssText)
 	
@@ -208,7 +210,7 @@ class Copy_With_Style {
 	add_style(element, rule, explicit_styles) {
 		if (explicit_styles == undefined) explicit_styles = null;
 	
-	    let [n, v] = rule.split(':');
+	    const [n, v] = rule.split(':');
 	    const N = n == undefined ? '' : n.trim()
 	    const V = v == undefined ? '' : v.trim()
 	
@@ -238,23 +240,39 @@ class Copy_With_Style {
 		if (sheets == undefined) sheets = "all";
 		
 	    let styles = [];
+		
+		// First get the style attribute
+		const style_attr = el.getAttribute("style");
+		if (style_attr) {
+			const attr_styles = style_attr.split(';');
+			for (let rule of attr_styles) 
+				if (rule) {
+				    const [n, v] = rule.split(':');
+				    const N = n == undefined ? '' : n.trim()
+				    const V = v == undefined ? '' : v.trim()
+					styles.push(N);
+				}
+		}
+		
+		// Then match the class attribute defined styles
 	    for (let sheet of document.styleSheets) {
-	    	try {
-		        for (let rule of sheet.cssRules) {
-		            if (el.matches(rule.selectorText)) {
-						const rule_styles = Array.from(rule.styleMap.keys());
-						for (let s of rule_styles)
-							if (!styles.includes(s))
-								styles.push(s); 
-		            }
-		        }
-	    	} 
-	    	catch(err) {
-				// CORS errors land here
-				// To avoid them, make sure on cross origin (CDN) style sheet links to include 
-				// 		crossorigin="anonymous" referrerpolicy="no-referrer" 
-				console.log(`Failed to get rules from: ${sheet.href}\n${err}`)
-	    	}
+			if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(basename(sheet.href))))
+		    	try {
+			        for (let rule of sheet.cssRules) {
+			            if (el.matches(rule.selectorText)) {
+							const rule_styles = Array.from(rule.styleMap.keys());
+							for (let s of rule_styles)
+								if (!styles.includes(s))
+									styles.push(s); 
+			            }
+			        }
+		    	} 
+		    	catch(err) {
+					// CORS errors land here
+					// To avoid them, make sure on cross origin (CDN) style sheet links to include 
+					// 		crossorigin="anonymous" referrerpolicy="no-referrer" 
+					console.log(`Failed to get rules from: ${sheet.href}\n${err}`)
+		    	}
 	    }
 	    return styles;
 	}

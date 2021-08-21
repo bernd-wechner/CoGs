@@ -33,7 +33,7 @@ let totalshots = 0;
 let boardshots = [ ];
 
 // A place to store our copy clipboard
-let clipboard = new Copy_With_Style(document.getElementById("btnCopy")); 
+let clipboard = new Copy_With_Style(document.getElementById("btnCopy"), ["leaderboards.css", "tooltip.css", "default.css"]); 
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
