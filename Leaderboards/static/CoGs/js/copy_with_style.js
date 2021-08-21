@@ -1,3 +1,23 @@
+/**
+ * Copy With Style. 
+ *
+ * Provides support of a copy button on a web page that copies a nominated elements true to its rendered style,
+ * to the clipboard. Offers th option to include all styles with a <style> tag prefixing the elements outerHTML, 
+ * or alternately with a "style" attributes added to each element (the nominate element and all its children),
+ * called ""inlining" styles.
+ * 
+ * Inlining styles (applying them as a "style" attribute one each element) is expensive (slow) and produces more
+ * data, conceivably much more data than not inlining them (providing them via a <style> tag), but produuces a copy 
+ * that can reliably be emailed. Most email clients today (2021) have patchy or no support for the style tag. 
+ * Conversely most email clients respect and render inline style attribvutes faithfully.
+ *
+ * @link   URL
+ * @file   This files defines the Copy_With_Style class.
+ * @author Bernd Wechner.
+ * @copyright 2001
+ * @license Hippocratic License Version Number: 2.1.
+ */
+
 class Copy_With_Style {
 	element = null;   	// The element to copy to the clipboard (with style!)	
 	button = null;    	// The button that, we attach a click even handler to to copy the the element to the clipboard
@@ -88,7 +108,7 @@ class Copy_With_Style {
 	    if (this.mode == "attribute") {
 	        const source = this.element.querySelectorAll('*');
 	        const target = clone.querySelectorAll('*');
-	        const pairs = zip([Array.from(source), Array.from(target)]);
+	        const pairs = this.#zip([Array.from(source), Array.from(target)]);
 
 			nelements = pairs.length;
 	
@@ -113,7 +133,7 @@ class Copy_With_Style {
 				// The inline the styles on those that remain
 				if (this.progress) this.progress.max = nelements;
 				for (let pair of pairs) {
-					if (!hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
+					if (!this.#hidden(pair[0])) // Don't inline styles on hidden elements, we'll remove them from the clone next
 	                	await this.inline_style(pair[0], pair[1]);
 					if (this.progress) this.progress.value++;
 					if (this.bail) {
@@ -137,7 +157,7 @@ class Copy_With_Style {
 					// When including a <style> element (below) these are still useful
 					// as the CSS styles support transitions - like :hover.
 					for (let e of target)
-						if (hidden(e))
+						if (this.#hidden(e))
 							e.remove();
 
 				if (this.log_performance) {
@@ -152,7 +172,7 @@ class Copy_With_Style {
 	    } else if (this.mode == "tag") {
 	        const style = document.createElement("style");
 	        for (let sheet of document.styleSheets) {
-	            if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(basename(sheet.href)))) {
+	            if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(this.#basename(sheet.href)))) {
 	                let rules = [];
 	                for (rule of sheet.cssRules) rules.push(rule.cssText)
 	
@@ -256,7 +276,7 @@ class Copy_With_Style {
 		
 		// Then match the class attribute defined styles
 	    for (let sheet of document.styleSheets) {
-			if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(basename(sheet.href))))
+			if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(this.#basename(sheet.href))))
 		    	try {
 			        for (let rule of sheet.cssRules) {
 			            if (el.matches(rule.selectorText)) {
@@ -370,23 +390,23 @@ class Copy_With_Style {
 			await this.prepare_copy(this.element);
 		}
 	}
+	
+	// A simple basename for matching stylesheets
+	#basename(str, sep1, sep2) {
+	    if (sep1 == undefined) sep1 = '/';
+	    if (sep2 == undefined) sep2 = '?';
+	    const parts1 = str.split(sep1);
+	    const parts2 = parts1[parts1.length - 1].split(sep2);
+	    return parts2[0];
+	}
+	
+	// Determine if a given elemnt is hidden. When inlining styles, hidden elements are dropped.
+	#hidden(element) {
+		return element.style.visibility === "hidden" || element.style.display === "none";
+	}
+	
+	// A teeny function that zips two Arrays together (like Python's zip)
+	// See: https://stackoverflow.com/a/10284006/4002633
+	#zip = rows => rows[0].map((_, c) => rows.map(row => row[c]));	
 }
-
-// A simple basename for matching stylesheets
-function basename(str, sep1, sep2) {
-    if (sep1 == undefined) sep1 = '/';
-    if (sep2 == undefined) sep2 = '?';
-    const parts1 = str.split(sep1);
-    const parts2 = parts1[parts1.length - 1].split(sep2);
-    return parts2[0];
-}
-
-// Determine if a given elemnt is hidden. When inlining styles, hidden elements are dropped.
-function hidden(element) {
-	return element.style.visibility === "hidden" || element.style.display === "none";
-}
-
-// A teeny function that zips two Arrays together (like Python's zip)
-// See: https://stackoverflow.com/a/10284006/4002633
-const zip = rows => rows[0].map((_, c) => rows.map(row => row[c]));
 
