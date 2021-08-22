@@ -40,11 +40,17 @@ class Copy_With_Style {
 	// Never having seen it fail, we disable it by default. Enabling it adds a little overhead to the copy.   
 	check_clone_integrity = false;
 	
-	// Optionally a list of CSS classes that, when having styles inlined will when encountered 
+	// Optionally a list of CSS classes that, when having styles inlined will, when encountered 
 	// trigger a debugger break (so you can examine the internals in the browser''s debugger)
 	// Will only trigger if a debugger is active of course. Pressing F12 in yoru browser will
 	// probably bring one up. 
-	classes_to_debug = []; // "highlight_changes_on"];
+	classes_to_debug = []; // "highlight_changes_on"
+
+	// Optionally a list of styles that, when having styles inlined will, when encountered 
+	// trigger a debugger break (so you can examine the internals in the browser''s debugger)
+	// Will only trigger if a debugger is active of course. Pressing F12 in yoru browser will
+	// probably bring one up. 
+	styles_to_debug = []; // "background-color";
 	
 	// The HTML string (rendition) of element
 	HTML = "";
@@ -193,11 +199,9 @@ class Copy_With_Style {
 		    // Grab the HTML
 		    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
 
-		    // Grab the Text
-			// Wrapper is not useful here as both inner and outerText are not laid out 
-			// probably because it's not in the DOM. But we can still use this.copy_wrapper
-			// to choose between the outer and inner Text. 
-			this.text = this.copy_wrapper ? element.outerText : element.innerText;
+		    // Grab the Text. Chrome provides innerText and outertext. Firefox only innerText. Both look the
+			// same on chrome to me. 
+			this.text = element.innerText;
 		
 			if (this.log_HTML_to_console) {
 		    	console.log("prepare_copy HTML:");
@@ -232,22 +236,6 @@ class Copy_With_Style {
 		
 		this.#copy_to_clipboard();
 		this.button.disabled = false;
-	}
-	
-	// Adds the styles from a CSS rule to the style tag of an element.
-	// if a list of explicit styles is provided only styles from that 
-	// list are added. This is essentially to avoid adding all the styles
-	// that the CSS rule defines, to the style attribute. If no list is 
-	// provided they will all be added.  
-	add_style(element, rule, explicit_styles) {
-		if (explicit_styles == undefined) explicit_styles = null;
-	
-	    const [n, v] = rule.split(':');
-	    const N = n == undefined ? '' : n.trim()
-	    const V = v == undefined ? '' : v.trim()
-	
-		if (!explicit_styles || explicit_styles.includes(N))
-	        element.style[N] = V;
 	}
 	
 	// This is a Javascript oddity.
@@ -292,10 +280,8 @@ class Copy_With_Style {
 		    	try {
 			        for (let rule of sheet.cssRules) {
 			            if (el.matches(rule.selectorText)) {
-							const rule_styles = Array.from(rule.styleMap.keys());
-							for (let s of rule_styles)
-								if (!styles.includes(s))
-									styles.push(s); 
+							const new_styles = Array.from(rule.style).filter(s => !styles.includes(s));
+							styles.push(...new_styles);
 			            }
 			        }
 		    	} 
@@ -311,19 +297,23 @@ class Copy_With_Style {
 	
 	async inline_style(source_element, target_element) {
 		// This gets ALL styles, and generates  HUGE results as there are MANY
-	    const css = window.getComputedStyle(source_element).cssText;
-	    const rules = css.split(';');
+		const cs = window.getComputedStyle(source_element);
 		const css_matches = await this.CSS_Styles(source_element);
-		const classes_to_debug = [];
-	
-		if (classes_to_debug.length>0)
-			for (let Class of Classes_To_Debug)
+
+		let debug_class = false;
+		if (this.classes_to_debug.length>0) {
+			for (let Class of this.classes_to_debug)
 				if (source_element.classList.contains(Class))
-					debugger;
-	
+					debug_class = true;
+		}
+
+		if (debug_class) 
+			debugger;
+
 	    // Add the user styles we found
-	    for (let rule of rules)
-	        this.add_style(target_element, rule, css_matches);
+		for (let r=0; r<cs.length; r++) 
+			if (css_matches.includes(cs.item(r)))
+				target_element.style[cs.item(r)] = cs.getPropertyValue(cs.item(r));
 	}
 	
 	// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
