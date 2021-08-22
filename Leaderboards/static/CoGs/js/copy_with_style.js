@@ -48,6 +48,8 @@ class Copy_With_Style {
 	
 	// The HTML string (rendition) of element
 	HTML = "";
+	// The Text string (rendition) of element
+	text = "";
 
 	// An internal bail request. Because prepare_copy() defers to UI maintaining an interactive UI a user
 	// can mageke changes to element meaning we have to start the perparation again, i.e. bail the one
@@ -70,6 +72,7 @@ class Copy_With_Style {
 		this.progress = button.parentElement.querySelector("progress"); 
 
 		this.HTML = null;
+		this.text = null;
 		
 		this.is_prepared = false;
 		this.button.disabled = true; 
@@ -187,12 +190,20 @@ class Copy_With_Style {
 		    // Add the cloned element to the wrapper 	
 		    wrapper.append(clone);
 		
-		    // Grab the HTML of the whole wrapper (for diagnostics, and posisbly for some clipboard write method/s)
+		    // Grab the HTML
 		    this.HTML = this.copy_wrapper ? wrapper.outerHTML : wrapper.innerHTML;
+
+		    // Grab the Text
+			// Wrapper is not useful here as both inner and outerText are not laid out 
+			// probably because it's not in the DOM. But we can still use this.copy_wrapper
+			// to choose between the outer and inner Text. 
+			this.text = this.copy_wrapper ? element.outerText : element.innerText;
 		
 			if (this.log_HTML_to_console) {
-		    	console.log("prepare_copy:");
+		    	console.log("prepare_copy HTML:");
 		    	console.log(this.HTML);
+		    	console.log("prepare_copy text:");
+		    	console.log(this.text);
 			}
 		}
 
@@ -212,13 +223,14 @@ class Copy_With_Style {
 
 		this.button.disabled = true;
 		
-		const html = this.HTML;
 		if (this.log_HTML_to_console) {
-	    	console.log("to_clipboard:");
-			console.log(html);
+	    	console.log("to_clipboard HTML:");
+			console.log(this.HTML);
+	    	console.log("to_clipboard text:");
+	    	console.log(this.text);
 		}
 		
-		this.copy_html_to_clipboard(html);
+		this.#copy_to_clipboard();
 		this.button.disabled = false;
 	}
 	
@@ -315,9 +327,10 @@ class Copy_With_Style {
 	}
 	
 	// Straight from: https://stackoverflow.com/questions/26336138/how-can-i-copy-to-clipboard-in-html5-without-using-flash/45352464#45352464
-	copy_html_to_clipboard() {
+	#copy_to_clipboard() {
 	    function handler(event){
 	        event.clipboardData.setData('text/html', this.HTML);
+	        event.clipboardData.setData('text/plain', this.text);
 	        event.preventDefault();
 	        document.removeEventListener('copy', handler, true);
 	    }
