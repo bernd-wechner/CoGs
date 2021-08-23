@@ -9,7 +9,7 @@
  * Inlining styles (applying them as a "style" attribute one each element) is expensive (slow) and produces more
  * data, conceivably much more data than not inlining them (providing them via a <style> tag), but produuces a copy 
  * that can reliably be emailed. Most email clients today (2021) have patchy or no support for the style tag. 
- * Conversely most email clients respect and render inline style attribvutes faithfully.
+ * Conversely most email clients respect and render inline style attributes faithfully.
  *
  * @link   URL
  * @file   This files defines the Copy_With_Style class.
@@ -69,12 +69,12 @@ class Copy_With_Style {
     // Write a performance summary to console 
 	log_performance = true;
 	
-	constructor(button, stylesheets, element, mode, copy_wrapper) {
+	constructor(button, stylesheets=[], element=null, mode="attribute", copy_wrapper=true) {
 		this.button = button;
-		this.stylesheets = stylesheets == undefined ? [] : stylesheets;
-		this.element = element == undefined ? null : element;
-		this.mode = mode == undefined ? "attribute" : mode;
-		this.copy_wrapper = copy_wrapper == undefined ? true : copy_wrapper;
+		this.stylesheets = stylesheets;
+		this.element = element;
+		this.mode = mode;
+		this.copy_wrapper = copy_wrapper;
 		this.progress = button.parentElement.querySelector("progress"); 
 
 		this.HTML = null;
@@ -248,17 +248,14 @@ class Copy_With_Style {
 	// yielfing control for a moment to the event loop so that UI events can continue
 	// to be handled. To wit, this mysterious little line of code, permits means the 
 	// UI remains responsive if it is called from time to time.
-	defer_to_UI(how_long) {
-		if (how_long == undefined) how_long = 0; 
+	defer_to_UI(how_long=0) {
 		return new Promise(resolve => setTimeout(resolve, how_long));
 	}
 	
 	// S.B.'s solution for finding CSS rules that match a given element.
 	//		See: https://stackoverflow.com/a/22638396/4002633
 	// Made more specific to finding the styles that these CSS rules impact.  
-	async CSS_Styles(el, sheets) {
-		if (sheets == undefined) sheets = "all";
-		
+	async CSS_Styles(el, sheets=this.stylesheets) {
 	    let styles = [];
 		
 		// First get the style attribute
@@ -276,7 +273,7 @@ class Copy_With_Style {
 		
 		// Then match the class attribute defined styles
 	    for (let sheet of document.styleSheets) {
-			if (sheet.href && (this.stylesheets.length==0 || this.stylesheets.includes(this.#basename(sheet.href))))
+			if (sheet.href && (sheets.length==0 || sheets.includes(this.#basename(sheet.href))))
 		    	try {
 			        for (let rule of sheet.cssRules) {
 			            if (el.matches(rule.selectorText)) {
