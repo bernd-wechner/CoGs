@@ -67,7 +67,6 @@ body {
     background-color: var(--background-color);
 }
 
-
 .img_button {
     height: 14px;  /* Should match default button height - TODO: is there a better way? */
     padding: 0;

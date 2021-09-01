@@ -33,7 +33,19 @@ let totalshots = 0;
 let boardshots = [ ];
 
 // A place to store our copy clipboard
-let clipboard = new Copy_With_Style(document.getElementById("btnCopy"), ["leaderboards.css", "tooltip.css", "default.css"]); 
+//clipboard.schedule(document.getElementById("tblLB"));
+let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy"),
+ 									  stylesheets: ["leaderboards.css", "tooltip.css", "default.css"],
+									  element: document.getElementById("tblLB"),
+									  mode: "attribute",	
+									  //defer: false,
+									  progress: true,
+									  //triggers: [], // "schedule", "observe"], //"button"],
+									  //log_HTML_to_console: true,
+									  log_performance: true,
+									  debug: true,
+									  //classes_to_debug: ["tooltiptext"]
+									}); 
 
 // A converter of strings to booleans
 String.prototype.boolean = function() {
@@ -966,7 +978,7 @@ function update_legend() {
 
 // Draw all leaderboards, sending to target and enabling links or not
 function DrawTables(target, links) {
-	clipboard.lock();	
+	clipboard.lock();
 	
 	// Oddly the jQuery forms $('#links') and $('#cols') fails here. 
 	// Not sure why.
@@ -1089,6 +1101,8 @@ function DrawTables(target, links) {
 			lb++; 
 		}
 	}
+	
+	clipboard.prepare_copy_when_ready_unless_button_bound("DrawTable");
 }
 
 // ===================================================================================
@@ -1160,5 +1174,5 @@ InitControls(options);
 // ===================================================================================
 
 DrawTables("tblLB");
-clipboard.schedule(document.getElementById("tblLB"));
+
 

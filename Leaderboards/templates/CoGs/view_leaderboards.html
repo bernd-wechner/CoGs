@@ -5,6 +5,7 @@
 {% block styles %}
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/leaderboards.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/copy_with_style.css' %}" />
 {% endblock %}
 
 {% block submenu %}
@@ -33,7 +34,7 @@
 				
 			<div class="lo_utils">
 				<button type="button" class="button_right tooltip" id='btnCopy'>
-					<img src="{% static 'copy.png' %}"  class='img_button'><progress id='pgsCopy' value="0" max="100" style="height:10; margin-left: 1ch;"/>
+					<img src="{% static 'copy.png' %}"  class='img_button'><progress id='pgsCopy' value="0" max="100" style="height:10; margin-left: 1ch; display: none;"/>
 					<span class="tooltiptext_left">Copy Leaderboards (for pasting elsewhere)</span>
 				</button>
 
