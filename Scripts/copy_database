@@ -1,0 +1,147 @@
+#!/bin/bash
+##############################################################################################################################
+# Back a database up on one server, then restore it 
+# on another server.
+#
+# This is VERY dangerous. And will rename the target databse 
+# not ovewriting it.
+#
+# The intent here is to fluidly move a live database to a dev, 
+# test or sandbox server and maybe back again.  
+##############################################################################################################################
+
+##############################################################################################################################
+# CAPTURE ARGS
+
+# Basic names of source and target host (for naming files and reporting etc)
+source_hostname="$1"
+target_hostname="$2"
+
+# permit an alias of "local" for "localhost"
+if [ $source_hostname == "local" ];then
+	source_hostname="localhost"
+fi
+
+if [ $target_hostname == "local" ];then
+	target_hostname="localhost"
+fi
+
+##############################################################################################################################
+# CONFIGS
+
+# The name of the database to copy (should be same on source and target systems)
+database=CoGs
+
+# The database username to use when backing up and restoring (should be same on source and target systems) 
+username=CoGs
+
+localdomain="lan"
+
+# resolveable domain names for the source and target host (we append the local domain if it's not localhost)
+if [ "$source_hostname" == "localhost" ];then
+	source_host="$source_hostname"
+else
+	source_host="$source_hostname.$localdomain"
+fi
+
+if [ "$target_hostname" == "localhost" ];then
+	target_host="$target_hostname"
+else
+	target_host="$target_hostname.$localdomain"
+fi
+
+# The port that Postgresql is configured to use (default 5432, should be same on source and target systems)
+port=5432
+
+##############################################################################################################################
+# INTERNAL CONFIGS
+
+# Find the source dir (we assume this script is living in a directory
+# just below the source directory for now like $source_dir/Scripts.
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+# A couple of basic warnings strings
+# Note: The passwords for source and target databases must be stored in ~/.pgpass 
+# 	see: https://www.postgresql.org/docs/current/libpq-pgpass.html
+# or this will prompt for one on each access command
+source_pass_warn="(if this prompts for a password it is for $username on $source_host database and should be stored in ~/.pgpass under '$source_host')"
+target_pass_warn="(if this prompts for a password it is for $username on $target_host database and should be stored in ~/.pgpass under '$target_host')"
+
+# Define the backup filenames we will use
+# Follow this naming convention: 2019-07-05 CoGs Database.backup
+today=$(date +%Y-%m-%d)
+backup_file_source="$source_dir/Backups/$today CoGs Database - $source_hostname.backup"
+backup_file_target="$source_dir/Backups/$today CoGs Database - $target_hostname.backup"
+
+# The suffix for old Database (it has this appended to name before it's restored to the old name, thus keeping a backup)
+suffix=$(date +%s)
+
+# psql arguments for the source database (use the postgres user for this)
+target_db="--host=$target_host --port=$port --username=postgres"
+
+#echo source_hostname: $source_hostname 
+#echo target_hostname: $target_hostname 
+#echo source_host: $source_host 
+#echo target_host: $target_host 
+#echo source_dir: $source_dir 
+#echo source_pass_warn: $source_pass_warn 
+#echo target_pass_warn: $target_pass_warn 
+#echo today: $today 
+#echo backup_file_source: $backup_file_source 
+#echo backup_file_target: $backup_file_target 
+#echo suffix: $suffix 
+#echo target_db: $target_db 
+#echo "\"${database}_$suffix\""
+#exit
+
+##############################################################################################################################
+# DO THE WORK
+
+# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
+# without it prompting for one mid stream on some command.
+sudo echo "Copying $source_hostname database to $target_hostname machine"
+
+# Back up the source database (custom format is designed for use with pg_restore)
+echo "Saving the $source_hostname $database database to $backup_file_source... $source_pass_warn"
+pg_dump --host=$source_host --port=$port --username=$username --dbname="$database" --format=custom > "$backup_file_source"
+echo "Saved the $source_hostname $database database to $backup_file_source."
+
+# Back up the target database
+echo "Saving the $target_hostname $database database to $backup_file_target... $target_pass_warn"
+pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom > "$backup_file_target"
+echo "Saved the $database database to $backup_file_target."
+
+# Assume we're running on a development machine and all other targets are  
+# ssh reachable and webservers where UWSGI has database connections open 
+if [ "$target_hostname" != "localhost" ];then
+	# Stop UWSGI on the target site (so as to unlock the target database)
+	# Need password-free root ssh access to the server setup for this
+	echo "Stopping the UWSGI service on $target_hostname"
+	ssh root@$target_host "service uwsgi stop"
+fi
+
+# Disconnect the processes using the database
+echo "Disconnecting users... $target_pass_warn"
+psql $target_db -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" > /dev/null 
+
+# Rename database to database_timestamp on the target server
+echo "Renaming database $database to ${database}_$suffix..."
+psql $target_db -c "ALTER DATABASE \"$database\" RENAME TO \"${database}_$suffix\";" >&/dev/null
+
+# Recreate the database in the target database 
+echo "Recreating (empty) $database database..."
+psql $target_db -c "CREATE DATABASE \"$database\" OWNER '$username';" >&/dev/null
+
+# Now restore the source system backup to the target system
+echo "Loading the $source_hostname $database database on the $target_hostname server..." 
+pg_restore $target_db --dbname=$database "$backup_file_source" >&/dev/null
+
+# Assume we're running on a development machine and all other targets are  
+# ssh reachable and webservers where UWSGI has database connections open 
+if [ "$target_hostname" != "localhost" ];then
+	# Restart UWSGI on the target site
+	echo "Restarting the UWSGI service on $target_hostname"
+	ssh root@$target_host "service uwsgi start"
+fi
+
+echo "Done."

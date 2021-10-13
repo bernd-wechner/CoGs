@@ -1,5 +1,5 @@
 #!/bin/bash
-# Publish the CoGs Site SSL certifcates to the router 
+# Publish the CoGs Site SSL certificates to the router 
 # (as I can't find a way for SSL certicate queries to pass through the router to the web server)
 #
 # Development Box Script: This is designed to run on the dev box with webserver and router remote.
