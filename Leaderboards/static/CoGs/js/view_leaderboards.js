@@ -13,7 +13,7 @@
 // Note we have to initialise these by calling select2() if we want to call select2('data') 
 // at any point. This is explained here:
 // https://github.com/select2/select2/issues/3582
-// I would have thought the DAL widget has this already handed. But apprently not.
+// I would have thought the DAL widget has this already handled. But apprently not.
 // If we do this in the   template (that includes this script) rather than here, for 
 // some reason it doesn't work right. Initilaising them here seems to work fine.
 $('#games').select2();
@@ -39,11 +39,11 @@ let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy")
 									  element: document.getElementById("tblLB"),
 									  mode: "attribute",	
 									  //defer: false,
-									  progress: true,
-									  //triggers: [], // "schedule", "observe"], //"button"],
+									  //progress: true,
+									  //triggers: ["button"], // "schedule", "observe"],
 									  //log_HTML_to_console: true,
-									  log_performance: true,
-									  debug: true,
+									  //log_performance: true,
+									  //debug: true,
 									  //classes_to_debug: ["tooltiptext"]
 									}); 
 

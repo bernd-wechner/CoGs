@@ -158,7 +158,7 @@ class Copy_With_Style {
         this.mode = mode;
         this.defer_to_UI = defer;
         this.triggers = triggers;
-		this.observe = true;
+		this.observe = observe;
         this.show_progress = progress ? true : false;
         this.copy_wrapper = copy_wrapper;
 		this.class_button = class_button,
@@ -208,7 +208,10 @@ class Copy_With_Style {
     }
 
     async copy() {
-		if (!this.#is_prepared) await this.prepare_copy();
+		if (!this.#is_prepared) {
+			await this.#ready_to_prepare("copy");
+			await this.prepare_copy();
+		}
         this.to_clipboard();
     }
 
@@ -296,7 +299,7 @@ class Copy_With_Style {
         if (this.debug) console.log(`prepare_copy started: ${element.id}`);
         let start = performance.now();
         this.#is_being_prepared = true;
-        this.button.disabled = true;
+        this.button.disabled = this.observe; // disable it if we are observince element for changes, else leave it enabled to restart a preparation.
 		this.button.classList.add(this.class_preparing);
 		await this.#defer_to_UI(); // Allow the button to render disabled
 
@@ -487,8 +490,8 @@ class Copy_With_Style {
             for (let rule of attr_styles)
                 if (rule) {
                     const [n, v] = rule.split(':');
-                    const N = n == undefined ? '' : n.trim()
-                    const V = v == undefined ? '' : v.trim()
+                    const N = n == undefined ? '' : n.trim();
+                    const V = v == undefined ? '' : v.trim();
                     styles.push(N);
                 }
         }
@@ -618,7 +621,7 @@ class Copy_With_Style {
         });
     }
 
-	// Check if we're ready to prepare for a copy
+	// Check (or await) if we're ready to prepare for a copy
 	async #ready_to_prepare(fingerprint="no fingerprint") {
 		if (this.debug) console.log(`${fingerprint} Document Ready State: ${document.readyState}`);
         // If prepare_copy() is running and is not complete

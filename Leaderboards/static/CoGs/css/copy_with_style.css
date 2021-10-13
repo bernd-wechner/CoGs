@@ -15,7 +15,8 @@ button.copy_with_style { }
 	removed when the prepartion is complete.   
 */
 button.preparing_for_copy {
-	background-color: #ffc7c7;
+    transform: scale(0.9, 0.9);
+	/* background-color: #ffc7c7; */
 }
 
 /*  A style to use when a copy is ready 
@@ -27,5 +28,5 @@ button.preparing_for_copy {
 */
 button.ready_to_copy {
     transform: scale(1.3, 1.3);
-    background-color: #8ae234;
+    /* background-color: #8ae234; */
 }
