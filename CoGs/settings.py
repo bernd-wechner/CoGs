@@ -74,7 +74,6 @@ else:
 INSTALLED_APPS = (
     'dal',
     'dal_select2',
-    'cuser',
     'timezone_field',
     'mapbox_location_field',
     'django.contrib.admin',
@@ -101,8 +100,8 @@ MIDDLEWARE = (
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django_generic_view_extensions.middleware.TimezoneMiddleware',
-    'cuser.middleware.CuserMiddleware',
-    'CoGs.logging.LoggingMiddleware'
+    'django_currentuser.middleware.ThreadLocalUserMiddleware',
+    'CoGs.logging.LoggingMiddleware' # Just sets the reference time for logging to be at start of the request 
 )
 
 if SITE_IS_LIVE:

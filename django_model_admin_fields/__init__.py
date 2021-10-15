@@ -10,7 +10,7 @@ info against every record saved.
 '''
 import pytz
 
-from cuser.middleware import CuserMiddleware
+from django_currentuser.middleware import get_current_user
 from timezone_field import TimeZoneField
 
 from django.db import models
@@ -51,7 +51,7 @@ class AdminModel(models.Model):
         Update the CoGs admin fields on an object (whenever it is saved).
         '''
         now = timezone.now()
-        usr = CuserMiddleware.get_user()
+        usr = get_current_user()
 
         if hasattr(self, "last_edited_by"):
             self.last_edited_by = usr
