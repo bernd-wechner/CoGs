@@ -11,8 +11,6 @@ from django_generic_view_extensions.datetime import datetime_format_python_to_PH
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
-from cuser.middleware import CuserMiddleware
-
 from CoGs.logging import log
 from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, RATING_REBUILD_TRIGGER  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections, restyle_leaderboard, augment_with_deltas, mutable, immutable, leaderboard_changed, pk_keys, LB_PLAYER_LIST_STYLE, LB_STRUCTURE
@@ -1022,8 +1020,6 @@ def view_Impact(request, model, pk):
     :param model:      The name of a model (only 'session' supported at present)
     :param pk:         The Primary key of the object of model (i.e of the session)
     '''
-    CuserMiddleware.set_user(request.user)
-
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
 
@@ -1721,8 +1717,6 @@ def view_Inspect(request, model, pk):
     object if it's implemented. Intended as a hook into quick inspection of rich objects
     that implement a neat HTML inspector property.
     '''
-    CuserMiddleware.set_user(request.user)
-
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
 
@@ -1749,8 +1743,6 @@ def view_CheckIntegrity(request):
 
     def rich(obj):
         return obj.__rich_str__(link=False)
-
-    CuserMiddleware.set_user(request.user)
 
     title = "Database Integrity Check"
 
@@ -1846,8 +1838,6 @@ def view_CheckIntegrity(request):
 
 
 def view_RebuildRatings(request):
-    CuserMiddleware.set_user(request.user)
-
     reason = "Explicitly requested rebuild"
 
     if 'game' in request.GET and request.GET['game'].isdigit():
@@ -1883,8 +1873,6 @@ def view_UnwindToday(request):
     A simple view that deletes all sessions (and associated ranks and performances) created today. Used when testing.
     Dangerous if run on a live database on same day as data was entered clearly. Testing view only.
     '''
-    CuserMiddleware.set_user(request.user)
-
     unwind_to = date.today()  # - timedelta(days=1)
 
     performances = Performance.objects.filter(created_on__gte=unwind_to)
@@ -2037,8 +2025,6 @@ def view_Fix(request):
 
 
 def view_Kill(request, model, pk):
-    CuserMiddleware.set_user(request.user)
-
     m = class_from_string('Leaderboards', model)
     o = m.objects.get(pk=pk)
     o.delete()
