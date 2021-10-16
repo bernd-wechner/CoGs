@@ -43,7 +43,6 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from url_filter.filtersets import ModelFilterSet
 from url_filter.constants import StrictMode
 from dal import autocomplete
-from cuser.middleware import CuserMiddleware
 
 # Package imports
 from . import log
@@ -227,9 +226,6 @@ class ListViewExtended(ListView):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
 
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-
         self.format = get_list_display_format(self.request.GET)
 
         self.ordering = get_ordering(self)
@@ -303,9 +299,6 @@ class DetailViewExtended(DetailView):
     def get_object(self, *args, **kwargs):
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
 
         # Get the ordering
         self.ordering = get_ordering(self)
@@ -388,9 +381,6 @@ def get_context_data_generic(self, *args, **kwargs):
     self.model = class_from_string(self, self.kwargs['model'])
     if not hasattr(self, 'fields') or self.fields == None:
         self.fields = '__all__'
-
-    # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-    CuserMiddleware.set_user(self.request.user)
 
     if isinstance(self, CreateView):
         # Note that the super.get_context_data initialises the form with get_initial
@@ -846,9 +836,6 @@ class UpdateViewExtended(UpdateView):
         else:
             self.fields = fields_for_model(self.model)
 
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-
         return self.obj
 
 
@@ -873,9 +860,6 @@ class DeleteViewExtended(DeleteView):
     def get_object(self, *args, **kwargs):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
 
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])
