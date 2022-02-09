@@ -241,6 +241,16 @@ table.leaderboard
 	border-spacing: 10px;
 }
 
+table.reference
+{
+	filter: opacity(55%);  
+}
+
+table.baseline
+{
+	filter: opacity(40%);	
+}
+
 th.leaderboard, 
 td.leaderboard 
 {

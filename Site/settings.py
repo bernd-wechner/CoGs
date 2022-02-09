@@ -52,7 +52,7 @@ def site_context(request):  # @UnusedVariable
 
 ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", "sandbox.leaderboard.space"]
 
-# The Site ID for the django.contrib.sites app,
+# The CoGs ID for the django.contrib.sites app,
 # which just a prerequisite for the django.contrib.flatpages app
 # which is used for serving the about page (and any other flat pages).
 SITE_ID = 1
@@ -68,7 +68,7 @@ if SITE_IS_LIVE:
     DEBUG = False
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
-    from CoGs.settings_development import *
+    from Site.settings_development import *
 
 # Application definition
 INSTALLED_APPS = (
@@ -101,11 +101,11 @@ MIDDLEWARE = (
     'django.middleware.security.SecurityMiddleware',
     'django_generic_view_extensions.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
-    'CoGs.logging.LoggingMiddleware' # Just sets the reference time for logging to be at start of the request 
+    'Site.logging.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
 
 if SITE_IS_LIVE:
-    WSGI_APPLICATION = 'CoGs.wsgi.application'
+    WSGI_APPLICATION = 'Site.wsgi.application'
     from django_lighttpd_middleware import METHOD
     if METHOD == "middleware":
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
@@ -114,7 +114,7 @@ if SITE_IS_LIVE:
 #     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', )
 #     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)
 
-ROOT_URLCONF = 'CoGs.urls'
+ROOT_URLCONF = 'Site.urls'
 
 TEMPLATES = [
     {
@@ -127,7 +127,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
-                'CoGs.settings.site_context'
+                'Site.settings.site_context'
             ],
         },
     },
@@ -241,7 +241,7 @@ else:
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
 # Pass our logger to Django Generic View Extensions
-from .logging import log
+from Site.logging import log
 from logging import DEBUG as loglevel_DEBUG
 import logging.config
 

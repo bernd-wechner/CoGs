@@ -11,7 +11,7 @@ from django_generic_view_extensions.datetime import datetime_format_python_to_PH
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 from django_generic_view_extensions.context import add_timezone_context, add_debug_context
 
-from CoGs.logging import log
+from Site.logging import log
 from .models import Team, Player, Game, League, Session, Rank, Performance, Rating, ChangeLog, RebuildLog, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES, RATING_REBUILD_TRIGGER  # , Location
 from .leaderboards import leaderboard_options, NameSelections, LinkSelections, restyle_leaderboard, augment_with_deltas, mutable, immutable, leaderboard_changed, pk_keys, LB_PLAYER_LIST_STYLE, LB_STRUCTURE
 from .BGG import BGG
@@ -1456,6 +1456,10 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
 
                 # Then filter and annotate it in context of lo
                 if full_snapshot:
+                    # Augmment the snapshot with the delta from baseline if we have one
+                    if baseline:
+                        full_snapshot = augment_with_deltas(full_snapshot, baseline, LB_STRUCTURE.session_wrapped_player_list)
+
                     snapshot = lo.apply(full_snapshot)
                     lbf = snapshot[LB_STRUCTURE.session_data_element.value]  # A player-filtered version of leaderboard
 
@@ -1484,12 +1488,8 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
                              +snapshot[4:8]
                              +(lbf,))
 
-                    # Augmment the snapshot with the delta from baseline if we have one
-                    if baseline:
-                        snapshot = augment_with_deltas(snapshot, baseline, LB_STRUCTURE.session_wrapped_player_list)
-
-                    # Store the baseline for next iteration
-                    baseline = snapshot
+                    # Store the baseline for next iteration (for delta augmentation)
+                    baseline = full_snapshot
 
                     snapshots.append(snapshot)
 

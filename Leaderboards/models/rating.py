@@ -1,7 +1,7 @@
 from . import APP, FLOAT_TOLERANCE, RATING_REBUILD_TRIGGER, TrueskillSettings
 
 from ..leaderboards import LB_PLAYER_LIST_STYLE
- 
+
 import trueskill
 
 from django.db import models, IntegrityError, DataError
@@ -26,7 +26,8 @@ from collections import OrderedDict
 
 from timezone_field import TimeZoneField
 
-from CoGs.logging import log
+from Site.logging import log
+
 
 class RatingModel(TimeZoneMixIn, AdminModel):
     '''
@@ -157,7 +158,7 @@ class Rating(RatingModel):
         :param session: A Session object (optional)
         '''
         Session = apps.get_model(APP, "Session")
-        
+
         if not isinstance(session, Session):
             session = self.player.last_play(self.game)
 
@@ -499,7 +500,7 @@ class Rating(RatingModel):
         :param n: the number of sessions we'll rebuild ratings for.
         '''
         RebuildLog = apps.get_model(APP, "RebuildLog")
-        
+
         Cost = ExpressionWrapper(F('duration') / F('ratings'), output_field=models.DurationField())
         Costs = RebuildLog.objects.all().annotate(cost=Cost).values_list('cost', flat=True)
 

@@ -26,7 +26,7 @@ from django_generic_view_extensions.datetime import decodeDateTime
 # Local imports
 # models imports from this module. To avoid a circular import error we need to import models into its own namespace.
 # which means accessing a model is then models.Model
-from CoGs.logging import log
+from Site.logging import log
 from . import models
 
 # Some useful enums to use in the options. Really just a way of encapsulating related
@@ -79,7 +79,10 @@ class LB_STRUCTURE(enum.Enum):
     game_data_element = 8  # In a game wrapper, which element caries the data (either session wrapper, or player_list)
 
     # This is defined by what Session.leaderboard_snapshot() produces
-    session_data_element = 8  # In a session wrapper, which element contains the player_list
+    session_data_element = 8  # In a session wrapper, which element contains the player_list (i.e. the leaderboard)
+
+    # This is defined by what Session.leaderboard_snapshot() produces
+    session_players_element = 4  # # In a session wrapper, which element contains the list of session players
 
 
 # As leaderboards are lists of players, possibly in a session wrapper (list) in a game wrapper (list)
@@ -184,9 +187,9 @@ class leaderboard_options:
     # reference for any of the afforementioend options which can be URL specified without a list, if the
     # list is provided via one of these transporters.
     #
-    # Only players has an auto_selected transporter to inform the client that tehse were sleected
+    # Only players has an auto_selected transporter to inform the client that these were selected
     # automatically by select_players. players conversely are user selected. And the client
-    # shoule merge these but will know which ones were manually selected and which auto and which
+    # should merge these but will know which ones were manually selected and which auto and which
     # both.
     transport_options = {'games', 'players', 'leagues', 'players_auto_selected'}
 
@@ -646,10 +649,14 @@ class leaderboard_options:
             self.players = []
             for player in player_players:
                 if models.Player.objects.all().filter(pk=player).exists():
-                    self.players.append(player)
+                    self.players.append(str(player))
 
             if ex_in:
                 self.__enable__(f'players_{ex_in}', self.players)
+
+            if settings.DEBUG:
+                log.debug(f"{self.players=}; {self.enabled=}")
+                assert all([isinstance(p, str) for p in self.players]), "self.players is expected to be list of string PKs"
 
         # If "players" is an empty list fall back on the game_players if they
         # were submitted. This enables a URL like:
@@ -658,6 +665,8 @@ class leaderboard_options:
         elif self.game_players:
             # Already validated list of players
             self.players = self.game_players  # game_players_any or _all was already enabled if land here.
+            if settings.DEBUG:
+                assert all([isinstance(p, str) for p in self.players]), "self.players is expected to be list of string PKs"
 
         # Then an option to discard all but the top num_players of each board
         # As the starting point. Other options can add players of course, this
@@ -918,6 +927,8 @@ class leaderboard_options:
         '''
         Given leaderboards ready for sending to the browser, applies selection options to self based on their content.
 
+        That is, provide the client with information for populating the selectors.
+
         :param leaderboards: leaderboards structured with LB_STRUCTURE.game_wrapped_session_wrapped_player_list
         '''
         if self.select_players:
@@ -971,13 +982,16 @@ class leaderboard_options:
               or self.is_enabled('min_plays')
               or self.is_enabled('played_since')
               or self.is_enabled('player_leagues_any')
-              or self.is_enabled('player_leagues_all'))
+              or self.is_enabled('player_leagues_all')
+              or self.is_enabled('select_players'))
 
     def player_nominated(self, player_pk):
         '''
         Returns True if a player was nominated specifically to be listed.
         '''
-        return (self.is_enabled('players_in') or self.is_enabled('players_ex')) and str(player_pk) in self.players
+        in_or_ex = (self.is_enabled('players_in') or self.is_enabled('players_ex'))
+        sel = self.select_players
+        return (in_or_ex and player_pk in self.players) or (sel and player_pk in getattr(self, 'session_players', []))
 
     def player_in_league(self, player_pk, league_pks):
         '''
@@ -1046,6 +1060,7 @@ class leaderboard_options:
         :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list
         '''
         leaderboard = leaderboard_snapshot[LB_STRUCTURE.session_data_element.value]
+        self.session_players = [str(p) for p in leaderboard_snapshot[LB_STRUCTURE.session_players_element.value]]
 
         # leaderboard is a well defined list of tuples that contain player info/metadata
         # The list is ordered by ranking.
@@ -1067,7 +1082,7 @@ class leaderboard_options:
 
                 # If the player is explicitly nominated respect that
                 if self.player_nominated(pk):
-                    if pk in self.players:
+                    if (pk in self.players) or (self.select_players and pk in self.session_players):
                         lbf.append(p)
                     continue
 

@@ -43,7 +43,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			Game session count,
 			Snap (true if next entry is snapshots, false if next entry is leaderboard)
 			Has_Reference (true if a reference snapshot is included - outside of the compare_back_to window)
-			Has_Baseline (true if a baseline snapshot is included - outside of any query, provided only for delt calculation)
+			Has_Baseline (true if a baseline snapshot is included - outside of any query, provided only for delta calculation)
 			Leaderboard (being a ranked list of players + data) or Snapshots (being a list of snapshots)
 			
 		Note: 	Reference snapshots are outside of the query and provided if possible for display as the leaderboard 
@@ -109,14 +109,19 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	const game_plays     = LB[iTotalPlays];
 	const game_sessions  = LB[iTotalSessions];
 	const snaps          = LB[iSnaps];
-	const hide           = LB[iBaseline] && !show_baseline;
+	const has_reference  = LB[iReference];
+	const has_baseline   = LB[iBaseline]; 
+	const hide           = has_baseline && !show_baseline;
+
+	let is_reference = false; 
+	let is_baseline  = false;
 
 	// A horendous hack but for now we determine if there's a session wrapper by checking the first element of the 
-	// Game data (or the firts snap in the game data). This will be a PK if it's  session wrapper, but will be a 
+	// Game data (or the first snap in the game data). This will be a PK if it's  session wrapper, but will be a 
 	// tuple if the game data is a player list. 
 	const test_element  = snaps ? LB[iGameData][0][0] : LB[iGameData][0];
-	const session_wrapper = !Array.isArray(test_element); 
-
+	const session_wrapper = !Array.isArray(test_element);
+	
 	let session = session_wrapper ? {} : null;
 	
 	// Fetch the player list
@@ -124,6 +129,17 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	if (snapshot != null && snaps) {
 		const count_snaps = LB[iGameData].length;
 		
+		// Determine if the requested snapshot is a reference or baseline.
+		// The snapshots include a baseline if Has_Baseline is true and a
+		// reference if Has_Refrence is true.
+		// If present the baseline is always the last, and if present the
+		// reference is the second last (if there's a baseline) or last  
+		// (if there isn't)
+		is_reference = (has_reference && has_baseline) ? snapshot == count_snaps-2 
+                     : has_reference ? snapshot == count_snaps-1 
+                     : false;
+		is_baseline  = has_baseline && snapshot == count_snaps-1;
+
 		// Return nothing if:
 		// 	snapshot is too high (beyond the last snapshot, >= count_snaps)  
 		// 	snapshot is too low (before the first snapshot, < 0)
@@ -289,7 +305,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	if (show_d_rating && !hide_d_rating) lb_cols++;
 	
 	const table = document.createElement('TABLE');
-	table.className = 'leaderboard'
+	table.className = is_reference ? 'leaderboard reference'
+	                : is_baseline ? 'leaderboard baseline'
+	                : 'leaderboard'
 
 	// Five header rows as follows:
 	// A full-width session detail block, or the date the leaderboard was set

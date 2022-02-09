@@ -21,7 +21,8 @@ from datetime import timedelta
 import json
 import trueskill
 
-from CoGs.logging import log
+from Site.logging import log
+
 
 class Game(AdminModel):
     TourneyRules = apps.get_model(APP, "TourneyRules", False)
@@ -193,7 +194,7 @@ class Game(AdminModel):
         :param asat: Optionally, the last performance as at this date/time
         '''
         Performance = apps.get_model(APP, "Performance")
-        
+
         pfilter = Q(session__game=self)
         if leagues:
             pfilter &= Q(player__leagues__in=leagues)
@@ -238,7 +239,7 @@ class Game(AdminModel):
         '''
         League = apps.get_model(APP, "League")
         Session = apps.get_model(APP, "Session")
-        
+
         # If a single league was provided make a list with one entry.
         if not isinstance(leagues, list):
             if leagues:
@@ -286,7 +287,7 @@ class Game(AdminModel):
         '''
         League = apps.get_model(APP, "League")
         Rating = apps.get_model(APP, "Rating")
-        
+
         # If a single league was provided make a list with one entry.
         if not isinstance(leagues, list):
             if leagues:
@@ -558,7 +559,7 @@ class Game(AdminModel):
         :param players:    a QuerySet of Players or a list of Players.
         '''
         Session = apps.get_model(APP, "Session")
-        
+
         # We want session in the future only of course
         dfilter = Q(date_time__gt=asat)
 
@@ -670,7 +671,7 @@ class Game(AdminModel):
         Session = apps.get_model(APP, "Session")
         Team = apps.get_model(APP, "Team")
         Performance = apps.get_model(APP, "Performance")
-        
+
         L = AssertLog(passthru)
 
         pfx = f"Game Integrity error (id: {self.id}):"

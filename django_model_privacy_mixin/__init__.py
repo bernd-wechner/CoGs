@@ -1,19 +1,16 @@
 '''
-Created on 8Mar.,2018
+Created on 8 Mar.,2018
 
 @author: Bernd Wechner
-@status: Alpha - works and is in use on a dedicated project. Is not complete, and needs testing for generalities.
+@status: Beta - works and is in use on a dedicated project.
 
 Provides one class PrivacyMixIn which adds Privacy support for model fields in a Django model.
-
-TODO: Document here
-
 '''
 
 import inspect
 from django.core.exceptions import PermissionDenied
 from django.forms.models import fields_for_model
-from cuser.middleware import CuserMiddleware
+from django_currentuser.middleware import get_current_user
 
 class PrivacyMixIn():
     '''
@@ -21,8 +18,11 @@ class PrivacyMixIn():
     an object with the names of fields that should be hidden. It is up to the other
     methods in the model to implement this hiding where desired.
     '''
+    # The text to replace hidden fields with
     HIDDEN = "<Hidden>"
-    HIDE_EMPTY_FIELD = False    # A flag that we cans et to enable or prevent replacing empty field values (None or empty string rep) with HIDDEN
+    
+    # A flag that we can set to enable or prevent replacing empty field values (None or empty string rep) with HIDDEN
+    HIDE_EMPTY_FIELD = False
     
     def fields_to_hide(self, user):
         '''
@@ -47,11 +47,15 @@ class PrivacyMixIn():
         '''
         def app_from_object(o):
             '''Given an object returns the name of the Django app that it's declared in'''
-            return type(o).__module__.split('.')[0]    
+            return type(o).__module__.split('.')[0]
         
         def model_from_object(o):
             '''Given an object returns the name of the Django model that it is an instance of'''
             return o._meta.model.__name__    
+        
+        def unique_object_id(o):
+            if hasattr(o, "pk"):
+                return "{}.{}.{}".format(app_from_object(o), model_from_object(o), o.pk)
         
         def get_User_extensions(user):
             '''
@@ -66,10 +70,6 @@ class PrivacyMixIn():
                             ext.append(field.name)
             return ext
     
-        def unique_object_id(obj):
-            if hasattr(obj, "pk"):
-                return "{}.{}.{}".format(app_from_object(obj), model_from_object(obj), obj.pk)
-        
         def get_User_membership(user, extensions, field_name):
             '''
             Given a user (from request.user, and extensions (from get_User_extensions) will check them for
@@ -196,7 +196,7 @@ class PrivacyMixIn():
         
         Uses django.forms.models.fields_for_model and just removes hidden fields.
         
-        This is what we should use in all forms that are going to display models that
+        This is what you should use in all forms that are going to display models that
         used the PrivacyMixIn.
         '''
         fields = fields_for_model(self._meta.model, *args, **kwargs)
@@ -206,80 +206,24 @@ class PrivacyMixIn():
                 if f in fields:
                     del fields[f]
         
-        return fields        
+        return fields
     
-    @classmethod
-    def create(cls, title):
-        '''
-        Override the create method. 
-        Runs the standard model create() then checks for and enforces privacy constraints.
-        '''
-        obj = super().create(title)
-        user = CuserMiddleware.get_user()
-        obj.hidden = obj.fields_to_hide(user)
-        if len(obj.hidden) > 0:
-            obj.save = obj.safe_save
-            for f in obj.hidden:
-                val = getattr(obj, f, None)
-                if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
-                    setattr(obj, f, cls.HIDDEN)
-        return obj
-
     @classmethod
     def from_db(cls, db, field_names, values):        
         '''
         Override the from_db method. 
         Runs the standard model from_db() then checks for and enforces privacy constraints.
+        
+        This is the central pinch point for database access and all requests for objects come 
+        through this method.
         '''
         obj = super().from_db(db, field_names, values)
-        user = CuserMiddleware.get_user()
+        user = get_current_user()
         obj.hidden = obj.fields_to_hide(user)
         if len(obj.hidden) > 0:
-            obj.save = obj.safe_save
             for f in obj.hidden:
                 val = getattr(obj, f, None)
                 if cls.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
                     setattr(obj, f, cls.HIDDEN)
         return obj
-
-    def refresh_from_db(self, using=None, fields=None, **kwargs):
-        '''
-        Override the refresh_from_db method. 
-        Runs the standard model refresh_from_db() then checks for and enforces privacy constraints.
-        '''
-        super().refresh_from_db(using, fields, **kwargs)
-        user = CuserMiddleware.get_user()
-        self.hidden = self.fields_to_hide(user)
-        if len(self.hidden) > 0:
-            self.save = self.safe_save
-            for f in self.hidden:
-                val = getattr(self, f, None)
-                if self.HIDE_EMPTY_FIELD or not (val is None or str(val) == ""):
-                    setattr(self, f, self.HIDDEN)
         
-    def safe_save(self, *args, **kwargs):
-        '''
-        A hamstrung save method that will respects the hidden fields (not saving them!)
-        '''
-        
-        # self.hidden was initialised when data was loaded. 
-        # Hidden fields should not appear on any edit forms
-        # If the do, and updates are attemped, here we protect
-        # them by removing them form the update_fields list. 
-        if hasattr(self,'hidden') and isinstance(self.hidden,  list) and len(self.hidden) > 0:
-            if 'update_fields' in kwargs:
-                field_names = kwargs['update_fields']
-                del kwargs['update_fields']
-            else:
-                field_names = set()
-                for field in self._meta.concrete_fields:
-                    if not field.primary_key and not hasattr(field, 'through'):
-                        field_names.add(field.name)                
-                
-            for f in self.hidden:
-                field_names.remove(f)
-                
-            super().save(update_fields=field_names, *args, **kwargs)
-        else:
-            super().save(*args, **kwargs)
-    

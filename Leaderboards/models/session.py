@@ -39,7 +39,8 @@ import trueskill
 import json
 import re
 
-from CoGs.logging import log
+from Site.logging import log
+
 
 class Session(TimeZoneMixIn, AdminModel):
     '''
@@ -133,7 +134,7 @@ class Session(TimeZoneMixIn, AdminModel):
         :param link:    Wrap player names in links according to the provided style.
         '''
         Rank = apps.get_model(APP, "Rank")
-        
+
         if as_string:
             players = []  # Build list to join later
         else:
@@ -248,7 +249,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         '''
         Performance = apps.get_model(APP, "Performance")
-        
+
         players = set()
         performances = Performance.objects.filter(session=self.pk)
 
@@ -270,7 +271,7 @@ class Session(TimeZoneMixIn, AdminModel):
         in a dictionary.
         '''
         Rank = apps.get_model(APP, "Rank")
-        
+
         teams = OrderedDict()
         if self.team_play:
             ranks = Rank.objects.filter(session=self.id)
@@ -626,7 +627,7 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         Team = apps.get_model(APP, "Team")
         Rank = apps.get_model(APP, "Rank")
-        
+
         # A TootlTip Format string
         ttf = "<div class='tooltip'>{}<span class='tooltiptext'>{}</span></div>"
 
@@ -1204,7 +1205,7 @@ class Session(TimeZoneMixIn, AdminModel):
         edited, or for that matter another one is (moved after this one for example)
         '''
         Rating = apps.get_model(APP, "Rating")
-        
+
         is_latest = {}
         for performance in self.performances.all():
             rating = Rating.get(performance.player, self.game)  # Creates a new rating if needed

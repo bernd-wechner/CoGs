@@ -1,19 +1,20 @@
 #!/bin/bash
-# Publish the CoGs Site SSL certifcates to the router 
+##############################################################################################################################
+# Publish the leaderboard.space Site SSL certificates to the router 
 # (as I can't find a way for SSL certicate queries to pass through the router to the web server)
 #
 # Webserver Script: This is designed to run on the webserver with router remote and be run as a certbot post renewal hook.
 #
-# There are two files that are need on the web server:
+# There are two files that are needed on the web server:
 #
-#		ssl.ca-file             = "/etc/letsencrypt/live/leaderboard.space/chain.pem"
-#		ssl.pemfile             = "/etc/letsencrypt/live/leaderboard.space/combined.pem"
+#		ssl.ca-file             = "/etc/letsencrypt/live/domain/chain.pem"
+#		ssl.pemfile             = "/etc/letsencrypt/live/domain/combined.pem"
 #
 # These two we want to replicate on the router. 
 # The second one is a concatination of:
 #
-#	/etc/letsencrypt/live/leaderboard.space/privkey.pem
-#	/etc/letsencrypt/live/leaderboard.space/cert.pem
+#	/etc/letsencrypt/live/domain/privkey.pem
+#	/etc/letsencrypt/live/domain/cert.pem
 #
 # And so after a renweal (which produces three files) we concatenate these two.
 #
@@ -22,28 +23,42 @@
 # so certbot runs it after renewing the certs. 
 #
 # See: https://media.readthedocs.org/pdf/letsencrypt/latest/letsencrypt.pdf
+##############################################################################################################################
+## CONFIGURATION
 
 files=(live/leaderboard.space/chain.pem live/leaderboard.space/combined.pem)
 combine=(live/leaderboard.space/privkey.pem live/leaderboard.space/cert.pem live/leaderboard.space/combined.pem)
 
+# Identify the server we're running on and the home user from that
+host=`hostname`
+if [ $host == "shelob" ];then
+	user="sting"
+elif [ $host == "arachne" ];then
+	user="weaver"
+fi
+
+##############################################################################################################################
+## DO THE WORK
+ 
 # To mount the router and webserver we need to have SSH access and SSH keys installed
 # as we'll use sshfs to mount them if needed
-rsa_file=/home/weaver/.ssh/id_rsa
+rsa_file=/home/$user/.ssh/id_rsa
 
 # The web server configs
-server_dir=/etc/letsencrypt/
+server_dir=/etc/letsencrypt
 
-# The router server configs
+# The router configs
 router=Cerberus
-router_mount_dir=/home/weaver/Mounts/leaderboard.space.ssl_target
+router_mount_dir=/home/$user/Mounts/certificates
 router_account=root@cerberus.lan
-router_dir=/etc/letsencrypt/
+router_dir=/etc/letsencrypt
 
-# Combine the certificates in a way that lighttpd requires
+# Combine the certificates in a way that lighttpd requires (before copying)
 echo "Combining certificates for lighttpd ..."
 cat $server_dir/${combine[0]} $server_dir/${combine[1]} > $server_dir/${combine[2]}
 
 # Ensure the router is properly mounted (or we can't publish to them)
+# -q sets status to 1 if it's a dir and 0 if it's a mountpoint
 mountpoint -q $router_mount_dir
 if [ $? != 0 ];then
 	if [ ! -d $router_mount_dir ]; then

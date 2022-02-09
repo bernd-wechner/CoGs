@@ -29,7 +29,7 @@ from django.contrib.auth.views import LoginView
 
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
-from django.db import connection, transaction
+from django.db import transaction
 # from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
 from django.http.response import HttpResponse, HttpResponseRedirect  # , JsonResponse
@@ -334,7 +334,7 @@ class DetailViewExtended(DetailView):
         self.format = get_object_display_format(self.request.GET)
 
         collect_rich_object_fields(self)
-
+        
         return self.obj
 
     def get_context_data(self, *args, **kwargs):
@@ -775,7 +775,7 @@ class CreateViewExtended(CreateView):
         initial = super().get_initial()
 
         try:
-            # TODO: Consider gerting the last object created by the logged in user instead
+            # TODO: Consider getting the last object created by the logged in user instead
             # of the last object created
             last = self.model.objects.latest()
         except ObjectDoesNotExist:

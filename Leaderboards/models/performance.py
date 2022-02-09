@@ -1,4 +1,5 @@
 from . import APP, FLOAT_TOLERANCE, TrueskillSettings
+from .rank import Rank
 
 from django.db import models
 from django.db.models import Q, OuterRef, QuerySet, Subquery
@@ -293,7 +294,7 @@ class Performance(AdminModel):
     add_related = None
     sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname']  # Need player to sort ties and team members.
 
-    # It is crucial that Performances for a session are ordered the same as Ranks when a rich from is constructed
+    # It is crucial that Performances for a session are ordered the same as Ranks when a rich form is constructed
     # Each row on a form in a standard session submission has a rank and a performance associated with it and the
     # player for each object must agree.
     @classmethod

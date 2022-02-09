@@ -48,7 +48,7 @@ from sortedcontainers import SortedDict
 
 # Debug logging
 from django.conf import settings
-from CoGs.logging import log
+from Site.logging import log
 
 
 def phi(x):

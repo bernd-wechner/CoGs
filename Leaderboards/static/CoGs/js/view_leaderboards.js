@@ -59,6 +59,20 @@ String.prototype.boolean = function() {
     }
   };
 
+// A regular expression escaper
+RegExp.escape = function(text) {
+  if (!arguments.callee.sRE) {
+    var specials = [
+      '/', '.', '*', '+', '?', '|',
+      '(', ')', '[', ']', '{', '}', '\\'
+    ];
+    arguments.callee.sRE = new RegExp(
+      '(\\' + specials.join('|\\') + ')', 'g'
+    );
+  }
+  return text.replace(arguments.callee.sRE, '\\$1');
+}
+
 // JQuery extension to provide outerHTML
 jQuery.fn.html_outer = function(s) {
     return s
@@ -415,17 +429,17 @@ async function URLopts(make_static) {
 	// For the radio buttons we just fetch the selected value
 	const evolution_selection = $("input[name='evolution_selection']:checked").val();
 	
+	// GOTCHA: If we intend on using any of these selectors' values we run a real risk of not 
+	// seeing what they should contain because of the ajax call used to populated them. It may 
+	// not have returned yet. To wit, if we are waiting for any data we now have to wait for 
+	// it or we can't build the URL options from the form data.
+	await until(finished_waiting)
+
 	// Then get the values of the three multiselect game specifierd
 	const games   = $('#games').val();
 	const leagues = $('#leagues').val();
 	const players = $('#players').val();
 	
-	// GOTCHA: If we intend on using any of these selectorss' values we run a real risk of not 
-	// seeing what they should contain because of the ajax call used to populated the. It may 
-	// not have returned yet. To wit, if we are waiting for any data we now have to wait for 
-	// it or we can't build the URL options from the form data.
-	await until(finished_waiting)
-
 	// Then the rest of the game selectors
 	const num_games        = $('#num_games').val();
 	const num_games_latest = $('#num_games_latest').val();
@@ -896,7 +910,7 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); copyStringToClipboard(window.location); } ) }
+function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location); } ) }
 function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
@@ -907,6 +921,16 @@ function enable_submissions(yes_or_no) {
 
 function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
+		// Let everyone know we're not waiting any more
+		const url = new URL(this.responseURL)
+		const chop = new RegExp("^"+RegExp.escape(url.origin));
+		const key = url.href.replace(chop, '');
+
+		waiting_for["leaderboards"].delete(key);
+		if (waiting_for["leaderboards"].size === 0) {
+			delete waiting_for["leaderboards"]; // If the set is empty remove the entry in the dict
+		}
+
 		// the request is complete, parse data
 		const response = JSON.parse(this.responseText);
 
@@ -951,6 +975,11 @@ async function refetchLeaderboards(reload_icon, make_static) {
 		// Disable all the submission buttons
 		enable_submissions(false);
 	
+		// Let everyone know we're waiting on leaderboards
+		if (!("leaderboards" in waiting_for)) waiting_for["leaderboards"] = new Set();
+		waiting_for["leaderboards"] = new Set([...waiting_for["leaderboards"], url]);;
+
+		// Send the request
 		REQUEST.open("GET", url, true); 
 		REQUEST.send(null);
 	} ); 

@@ -18,11 +18,11 @@ source_hostname="$1"
 target_hostname="$2"
 
 # permit an alias of "local" for "localhost"
-if [ $source_hostname == "local" ];then
+if [ "$source_hostname" == "local" ];then
 	source_hostname="localhost"
 fi
 
-if [ $target_hostname == "local" ];then
+if [ "$target_hostname" == "local" ];then
 	target_hostname="localhost"
 fi
 

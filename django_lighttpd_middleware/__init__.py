@@ -38,7 +38,6 @@ lighttpd 2 (which is not released at present and I'm using 1.4.55):
     
 It seems an odd sort of fix. 
 
-
 Herein is my fix. I implemented two approaches:
 
 1) the preferred approach, as a Django Middleware implementation
