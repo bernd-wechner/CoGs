@@ -911,7 +911,7 @@ def save_league_filters(session, league):
 
 
 class view_Home(TemplateViewExtended):
-    template_name = 'CoGs/view_home.html'
+    template_name = 'views/home.html'
     extra_context_provider = extra_context_provider
 
 
@@ -951,7 +951,7 @@ class view_Login(LoginViewExtended):
 
 
 class view_Add(LoginRequiredMixin, CreateViewExtended):
-    template_name = 'CoGs/form_data.html'
+    template_name = 'generic/form.html'
     operation = 'add'
     # fields = '__all__'
     extra_context_provider = extra_context_provider
@@ -961,7 +961,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
 
 
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
-    template_name = 'CoGs/form_data.html'
+    template_name = 'generic/form.html'
     operation = 'edit'
     extra_context_provider = extra_context_provider
     pre_transaction = pre_transaction_handler
@@ -972,7 +972,7 @@ class view_Edit(LoginRequiredMixin, UpdateViewExtended):
 class view_Delete(LoginRequiredMixin, DeleteViewExtended):
     # TODO: When deleting a session need to check for ratings that refer to it as last_play or last_win
     #        and fix the reference or delete the rating.
-    template_name = 'CoGs/delete_data.html'
+    template_name = 'generic/delete.html'
     operation = 'delete'
     format = object_display_format()
     extra_context_provider = extra_context_provider
@@ -981,14 +981,14 @@ class view_Delete(LoginRequiredMixin, DeleteViewExtended):
 
 
 class view_List(ListViewExtended):
-    template_name = 'CoGs/list_data.html'
+    template_name = 'generic/list.html'
     operation = 'list'
     format = list_display_format()
     extra_context_provider = extra_context_provider
 
 
 class view_Detail(DetailViewExtended):
-    template_name = 'CoGs/view_data.html'
+    template_name = 'generic/detail.html'
     operation = 'view'
     format = object_display_format()
     extra_context_provider = extra_context_provider
@@ -1214,7 +1214,7 @@ def view_Impact(request, model, pk):
                       "players_with_rankings_affected_by_rebuild": players_with_rankings_affected_by_rebuild,
                       })
 
-        return render(request, 'CoGs/view_session_impact.html', context=c)
+        return render(request, 'views/session_impact.html', context=c)
     else:
         return HttpResponseRedirect(reverse_lazy('view', kwargs={'model':model, 'pk':pk}))
 
@@ -1295,7 +1295,7 @@ def view_Leaderboards(request):
     add_timezone_context(request, c)
     add_debug_context(request, c)
 
-    return render(request, 'CoGs/view_leaderboards.html', context=c)
+    return render(request, 'views/leaderboards.html', context=c)
 
 #===============================================================================
 # AJAX providers
@@ -1722,7 +1722,7 @@ def view_Inspect(request, model, pk):
 
     result = getattr(o, "inspector", "{} has no 'inspector' property implemented.".format(model))
     c = {"title": "{} Inspector".format(model), "inspector": result}
-    return render(request, 'CoGs/view_inspector.html', context=c)
+    return render(request, 'views/inspector.html', context=c)
 
 #===============================================================================
 # Some Developement tools (Should not be on the production site)

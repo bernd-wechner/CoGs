@@ -16,7 +16,7 @@
 	We need form elements to enter all this and to properly initialise and respond to the various object IDs in this complex interrelationship.
 {% endcomment %}
 <table id='tableRankings'>
-    {% include "CoGs/form_rankings.html" %}
+    {% include "generic/form_Session_rankings.html" %}
 </table>
 
 <script>
@@ -150,4 +150,4 @@
 </script>
 
 {# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}
-<script src="{% static 'CoGs/js/form_rankings.js'%}"></script>
+<script src="{% static 'js/form_rankings.js'%}"></script>

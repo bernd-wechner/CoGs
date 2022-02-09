@@ -4,8 +4,8 @@
 	{% load static %}
 	<title>{% block title %}{% endblock %}</title>
 	
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/default.css' %}" />
-	<link rel="icon" href="{% static 'favicon.ico' %}">
+	<link rel="stylesheet" type="text/css" href="{% static 'css/default.css' %}" />
+	<link rel="icon" href="{% static 'img/favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
 	
@@ -43,8 +43,8 @@
 		const datetime_format = "{{default_datetime_input_format}}";
 	</script>
 	
-	<script src="{% static 'CoGs/js/jstz.min.js' %}"></script>
-	<script src="{% static 'CoGs/js/datetime_functions.js' %}"></script>
+	<script src="{% static 'js/jstz.min.js' %}"></script>
+	<script src="{% static 'js/datetime_functions.js' %}"></script>
 
 	<script>
 		// Template provided variables that submit_info.js expects.
@@ -56,7 +56,7 @@
 		const DJANGO_timezone = "{{ active_timezone }}";
 		const DJANGO_utcoffset = "{{ active_utcoffset }}";
 	</script>
-	<script src="{% static 'CoGs/js/submit_info.js' %}"></script>
+	<script src="{% static 'js/submit_info.js' %}"></script>
 
 	<script>
 		function check_for_leagues() {
@@ -122,7 +122,7 @@
 		    <div id="header">
 		        {% block branding %}
 		        <div id="branding">
-		        	<a href="{% static 'logo.png' %}"><img src="{% static 'logo.png' %}" align=left height=70></a>
+		        	<a href="{% static 'img/logo.png' %}"><img src="{% static 'img/logo.png' %}" align=left height=70></a>
 					{# SITE_TITLE is set int he Django Settings file based on hte host name #}
 					<h1 id="site-name"><a href="/">{{SITE_TITLE}}</a></h1>
 		        </div>
@@ -256,10 +256,10 @@
 		    {% block footer %}
 				{#	DEBUG is the settings.DEBUG flag and session["debug_mode"] flag#}
 			    {% if DEBUG or debug_mode %}
-					{% include "CoGs/include/timezone_diag.html" %}
-					{% include "CoGs/include/session_spy.html" %}
+					{% include "include/timezone_diag.html" %}
+					{% include "include/session_spy.html" %}
 				    {% if filters %}
-						{% include "CoGs/include/filter_spy.html" %}
+						{% include "include/filter_spy.html" %}
 			        {% endif %}
 		        {% endif %}
 		        

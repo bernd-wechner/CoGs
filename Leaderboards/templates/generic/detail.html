@@ -1,10 +1,10 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load filters %}
 {% block title %}{{title}}{% endblock %}
 
 {% block styles %}
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
 {% endblock %}
 
 {% block content %}
@@ -189,7 +189,7 @@
 				<b>Quick Views:</b>
 			</td>
 			<td class='tight options'>
-				<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+				<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 				<input type="button" id="opt_normal" value="Normal" onclick="set_flags('_normal'); refetch(event);">
 				<input type="button" id="opt_all_model" value="Complete Model" onclick="set_flags('_all_model'); refetch(event);">
 				<input type="button" id="opt_all" value="Model and Related" onclick="set_flags('_all'); refetch(event);">

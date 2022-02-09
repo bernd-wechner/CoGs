@@ -1,4 +1,4 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load filters %}
 {% load tags %}
@@ -28,7 +28,7 @@
 				Quick Views:
 			</th>
 			<td class='tight options'>
-				<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+				<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
 				<input type="button" id="opt_brief" value="Brief" onclick="check_button('brief'); reload(event);">
 				<input type="button" id="opt_verbose" value="Verbose" onclick="check_button('verbose'); reload(event);">
 				<input type="button" id="opt_rich" value="Rich" onclick="check_button('rich'); reload(event);">

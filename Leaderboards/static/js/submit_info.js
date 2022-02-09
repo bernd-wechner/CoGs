@@ -1,5 +1,5 @@
-// Basic Javascript to include in any page for it to submit to Django some client info. Specifically
-// 3 items are sent to Django:
+// Basic Javascript to include in any page for it to submit to Django some client info.
+// Specifically 3 items are sent to Django:
 //
 // timezone     - The TZ database timezone name
 // utcoffset    - Positive being East of Greenwich

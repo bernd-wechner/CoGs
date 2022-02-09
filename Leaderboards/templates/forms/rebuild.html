@@ -1,11 +1,13 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load filters %}
 {% load tags %}
 {% block title %}{{ title }}{% endblock %}
 
+{#TODO: A form that permits request of a rebuild. With controls to select a specific game or time rage or wahtever esle the rebuild methods support to target the rebuild.#}
+
 {% block styles %}
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
 {% endblock %}
 
 {#======================#}

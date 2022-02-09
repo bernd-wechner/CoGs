@@ -1,12 +1,12 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load tags %}
 {% load filters %}
 {% block title %}Session Impact{% endblock %}
 
 {% block styles %}
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/leaderboards.css' %}" />
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/leaderboards.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
 {% endblock %}
 
 {#TODO: Write a page/view that summarises sessions between two dates, as I do in mailouts. Speed up mailouts one more step! #}
@@ -262,7 +262,7 @@
 {% endblock %}
 
 {% block endscript %}
-<script src="{% static 'CoGs/js/leaderboard.js' %}"></script>
+<script src="{% static 'js/leaderboard.js' %}"></script>
 
 <script>
 	let board, HTML;

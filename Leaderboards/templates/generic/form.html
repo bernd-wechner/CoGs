@@ -1,4 +1,4 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load filters %}
 {% load tags %}
@@ -6,7 +6,7 @@
 {% block title %}{{ title }}{% endblock %}
 
 {% block styles %}
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
 {% endblock %}
 
 {#======================#}
@@ -57,7 +57,7 @@
 
 {% block startscript %}
 	<script>
-		const reload_icon = "{% static 'reload.png' %}";
+		const reload_icon = "{% static 'img/reload.png' %}";
 
 		// Catch related form errors that come in (in order to report them)
 		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};  

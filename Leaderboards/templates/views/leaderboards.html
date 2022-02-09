@@ -1,11 +1,11 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% block title %}Leaderboards{% endblock %}
 
 {% block styles %}
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/leaderboards.css' %}" />
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/tooltip.css' %}" />
-	<link rel="stylesheet" type="text/css" href="{% static 'CoGs/css/copy_with_style.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/leaderboards.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/copy_with_style.css' %}" />
 {% endblock %}
 
 {% block submenu %}
@@ -19,12 +19,12 @@
 		
 		<div class="lo_buttons">
 			<div class="lo_reload_icon">
-				<img id='reloading_icon' src='{% static "Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
+				<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
 			</div>
 			
 			<div class="lo_reload">
 				<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchLeaderboards();">
-					<img src="{% static 'reload.png' %}"  class='img_button'>
+					<img src="{% static 'img/reload.png' %}"  class='img_button'>
 					<span class="tooltiptext_right">Reload or redisplay leaderboards respecting the current options</span>
 				</button>
 			</div>
@@ -34,18 +34,18 @@
 				
 			<div class="lo_utils">
 				<button type="button" class="button_right tooltip" id='btnCopy'>
-					<img src="{% static 'copy.png' %}"  class='img_button'>
+					<img src="{% static 'img/copy.png' %}"  class='img_button'>
 					<span class="tooltiptext_left">Copy Leaderboards (for pasting elsewhere)</span>
 					<progress id='pgsCopy' value="0" max="100" style="height:10; margin-left: 1ch; display: none;"></progress>
 				</button>
 
 			  	<button type="button" class="button_right tooltip" id='btnShowURL_Static' onclick="show_url_static();">
-					<img src="{% static 'link_fat.png' %}"  class='img_button'>
+					<img src="{% static 'img/link_fat.png' %}"  class='img_button'>
 					<span class="tooltiptext_left">Copy Static URL</span>
 			  	</button>
 		
 			  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
-					<img src="{% static 'link_thin.png' %}" class='img_button'>		
+					<img src="{% static 'img/link_thin.png' %}" class='img_button'>		
 					<span class="tooltiptext_left">Copy URL</span>
 			  	</button>
 			</div>	
@@ -157,7 +157,7 @@
 		<section class="lo_advanced">
 			<div class="button_apply">
 				<button type="button" id='btnApply' onclick="refetchLeaderboards('reloading_icon_advanced');">Apply</button> 
-				<img id='reloading_icon_advanced' src='{% static "Reload.apng" %}' style='horizontal-align: left; vertical-align: middle; visibility:hidden;'>
+				<img id='reloading_icon_advanced' src='{% static "img/Reload.apng" %}' style='horizontal-align: left; vertical-align: middle; visibility:hidden;'>
 			</div>
 		
 			<div class="label_filtering">Filtering:</div>
@@ -351,7 +351,7 @@
 {% endblock %}
 
 {% block startscript %}
-<script src="{% static 'CoGs/js/copy_with_style.js' %}"></script>
+<script src="{% static 'js/copy_with_style.js' %}"></script>
 <script>
 
 	let preferred_league = {{ preferred_league|safe }};
@@ -401,8 +401,8 @@
 {% endblock %}
 
 {% block endscript %}
-<script src="{% static 'CoGs/js/leaderboard.js' %}"></script>	
-<script src="{% static 'CoGs/js/view_leaderboards.js' %}"></script>	
+<script src="{% static 'js/leaderboard.js' %}"></script>	
+<script src="{% static 'js/view_leaderboards.js' %}"></script>	
 {% endblock %}
 
 
