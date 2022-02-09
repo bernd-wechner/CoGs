@@ -71,7 +71,7 @@ RegExp.escape = function(text) {
     );
   }
   return text.replace(arguments.callee.sRE, '\\$1');
-}
+};
 
 // JQuery extension to provide outerHTML
 jQuery.fn.html_outer = function(s) {
@@ -910,7 +910,7 @@ function only_one(me, others) {	if (me.checked)	$(others).not(me).prop('checked'
 function mirror(me, to, uncheck_on_zero) { $(to).val(me.value); if (uncheck_on_zero && me.value == 0) $(uncheck_on_zero).prop("checked",false); }
 function copy_if_empty(me, to) { if ($(to).val() == '') $(to).val(me.value); }
 
-function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location); } ) }
+function show_url() { URLopts().then( (uo) => {const url = url_leaderboards.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location); } ) };
 function show_url_static() { refetchLeaderboards(null, true); }
 
 function enable_submissions(yes_or_no) {
@@ -922,9 +922,9 @@ function enable_submissions(yes_or_no) {
 function got_new_leaderboards() {
 	if (this.readyState === 4 && this.status === 200){
 		// Let everyone know we're not waiting any more
-		const url = new URL(this.responseURL)
+		const url = new URL(this.responseURL);
 		const chop = new RegExp("^"+RegExp.escape(url.origin));
-		const key = url.href.replace(chop, '');
+		const key = url.href.replace(chop, "");
 
 		waiting_for["leaderboards"].delete(key);
 		if (waiting_for["leaderboards"].size === 0) {
@@ -977,7 +977,7 @@ async function refetchLeaderboards(reload_icon, make_static) {
 	
 		// Let everyone know we're waiting on leaderboards
 		if (!("leaderboards" in waiting_for)) waiting_for["leaderboards"] = new Set();
-		waiting_for["leaderboards"] = new Set([...waiting_for["leaderboards"], url]);;
+		waiting_for["leaderboards"] = new Set([...waiting_for["leaderboards"], url]);
 
 		// Send the request
 		REQUEST.open("GET", url, true); 

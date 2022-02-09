@@ -334,7 +334,7 @@ class DetailViewExtended(DetailView):
         self.format = get_object_display_format(self.request.GET)
 
         collect_rich_object_fields(self)
-        
+
         return self.obj
 
     def get_context_data(self, *args, **kwargs):

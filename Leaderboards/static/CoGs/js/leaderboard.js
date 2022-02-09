@@ -135,10 +135,10 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		// If present the baseline is always the last, and if present the
 		// reference is the second last (if there's a baseline) or last  
 		// (if there isn't)
-		is_reference = (has_reference && has_baseline) ? snapshot == count_snaps-2 
-                     : has_reference ? snapshot == count_snaps-1 
+		is_reference = (has_reference && has_baseline) ? snapshot === count_snaps-2 
+                     : has_reference ? snapshot === count_snaps-1 
                      : false;
-		is_baseline  = has_baseline && snapshot == count_snaps-1;
+		is_baseline  = has_baseline && snapshot === count_snaps-1;
 
 		// Return nothing if:
 		// 	snapshot is too high (beyond the last snapshot, >= count_snaps)  
@@ -305,9 +305,9 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	if (show_d_rating && !hide_d_rating) lb_cols++;
 	
 	const table = document.createElement('TABLE');
-	table.className = is_reference ? 'leaderboard reference'
-	                : is_baseline ? 'leaderboard baseline'
-	                : 'leaderboard'
+	table.className = is_reference ? "leaderboard reference"
+					: is_baseline ? "leaderboard baseline"
+					: "leaderboard";
 
 	// Five header rows as follows:
 	// A full-width session detail block, or the date the leaderboard was set
