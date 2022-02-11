@@ -1,4 +1,29 @@
 {% extends "base.html" %}
+{% comment %}
+==================================================================================
+When game sessions are recorded they exert an impact on the leaderboards.
+
+This view summarisies impacts for a given session from logs that were 
+kept in the database.
+
+In the simplest instance this is the latest submisison and we provide a 
+view of the leaderboard as it was when this game started and how it is now 
+that the results of this game were submitted. That is the impact of this
+game session on the leaderboard.
+
+When adding a session retorspecively (not the latest) or editing an old one
+then the impact is slightly richer. The above still applies, but it also 
+triggers a rebuild of the leaderboard and so there is also a before and after 
+of the latest leaderboard presented. Before and after the leaderboard rebuild.
+
+A change_log is expected which describes the lestate of leaderboard before 
+this session and after it. DFor the first session recorded of any game there 
+is no before of course.
+
+A rebuild_log indicates a rebuild was triggered and needs summarising,  
+==================================================================================
+{% endcomment %}
+
 {% load static %}
 {% load tags %}
 {% load filters %}
