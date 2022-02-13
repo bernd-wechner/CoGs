@@ -12,6 +12,7 @@ from django_generic_view_extensions.model import field_render, link_target_url
 
 from ..trueskill_helpers import TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
 
+
 class Rank(AdminModel):
     '''
     The record, for a given Session of a Rank (i.e. 1st, 2nd, 3rd etc) for a specified Player or Team.
@@ -77,7 +78,7 @@ class Rank(AdminModel):
         Returns a list of one one or more players.
         '''
         Session = apps.get_model(APP, "Session")
-        
+
         session = Session.objects.get(id=self.session.id)
         if session.team_play:
             if self.team is None:

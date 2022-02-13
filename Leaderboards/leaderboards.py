@@ -427,20 +427,20 @@ class leaderboard_options:
         players = []
         leagues = []
 
-        if f'games' in urequest:
-            sgames = urequest[f'games']  # CSV string
+        if 'games' in urequest:
+            sgames = urequest['games']  # CSV string
             if sgames:
                 games = list(map(int, sgames.split(",")))  # list of ints
 
-        if f'players' in urequest:
-            splayers = urequest[f'players']  # CSV string
+        if 'players' in urequest:
+            splayers = urequest['players']  # CSV string
             if splayers:
                 players = list(map(int, splayers.split(",")))  # list of ints
 
-        # TODO check if we can spefic NO league filterig. That is where does preferred league come from?
+        # TODO check if we can specify NO league filtering. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
-        if f'leagues' in urequest:
-            sleagues = urequest[f'leagues']  # CSV string
+        if 'leagues' in urequest:
+            sleagues = urequest['leagues']  # CSV string
             if sleagues:
                 leagues = list(map(int, sleagues.split(",")))  # list of ints
 

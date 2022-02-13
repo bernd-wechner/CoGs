@@ -8,6 +8,7 @@ from .generic import view_Add, view_Edit, view_Delete, view_Detail, view_List
 from .inspect import view_Inspect
 
 from .leaderboards import view_Leaderboards, ajax_Leaderboards
+from .events import view_Events
 from .session_impact import view_Impact
 
 from .ajax import ajax_List, ajax_Detail, ajax_Game_Properties, ajax_BGG_Game_Properties

@@ -7,6 +7,8 @@ from django.apps import apps
 from django.urls import reverse
 from django.core.exceptions import ValidationError
 
+from django_cte import CTEManager
+
 from django_model_admin_fields import AdminModel
 
 from django_generic_view_extensions.util import AssertLog
@@ -16,6 +18,7 @@ import trueskill
 
 from math import isclose
 from datetime import datetime
+
 
 class Performance(AdminModel):
     '''
@@ -28,6 +31,8 @@ class Performance(AdminModel):
     and after the play (for data redundancy as the after values of one session are the before values of the next for a given player, which can
     also be asserted for data integrity).
     '''
+    objects = CTEManager()
+
     TS = TrueskillSettings()
 
     session = models.ForeignKey('Session', verbose_name='Session', related_name='performances', on_delete=models.CASCADE)  # If the session is deleted, dlete this performance
@@ -67,10 +72,10 @@ class Performance(AdminModel):
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU, editable=False)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY, editable=False)
 
-    Game  = apps.get_model(APP, "Game", require_ready=False)
+    Game = apps.get_model(APP, "Game", require_ready=False)
     Rank = apps.get_model(APP, "Rank", require_ready=False)
     Rating = apps.get_model(APP, "Rating", require_ready=False)
-    
+
     @property
     def game(self) -> Game:
         '''

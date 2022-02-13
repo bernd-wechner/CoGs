@@ -15,6 +15,8 @@ from django.utils.safestring import mark_safe
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 
+from django_cte import CTEManager
+
 from django_model_admin_fields import AdminModel
 
 from django_generic_view_extensions import FIELD_LINK_CLASS
@@ -46,6 +48,8 @@ class Session(TimeZoneMixIn, AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
+    objects = CTEManager()
+
     game = models.ForeignKey('Game', verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)  # If the game is deleted keep the session.
 
     date_time = models.DateTimeField('Time', default=timezone.now)

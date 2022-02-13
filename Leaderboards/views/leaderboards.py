@@ -98,10 +98,6 @@ def view_Leaderboards(request):
 
     return render(request, 'views/leaderboards.html', context=c)
 
-#===============================================================================
-# AJAX providers
-#===============================================================================
-
 
 def ajax_Leaderboards(request, raw=False, include_baseline=True):
     '''

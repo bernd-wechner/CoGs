@@ -100,4 +100,11 @@
 
 
 
+    <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
+        <path>/home/bernd/workspace/Django/django-cte</path>
+        <path>/media/Data/Workspace/Eclipse/Django/django-lighttpd-middleware/src</path>
+        <path>/media/Data/Workspace/Eclipse/Django/django-model-admin-fields/src</path>
+        <path>/media/Data/Workspace/Eclipse/Django/django-model-privacy-mixin/src</path>
+        <path>/media/Data/Workspace/Eclipse/Django/django-stats-middleware/src</path>
+    </pydev_pathproperty>
 </pydev_project>

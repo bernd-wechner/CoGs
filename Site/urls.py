@@ -58,6 +58,7 @@ urlpatterns = [
 
     # CoGs custom views
     path('leaderboards/', views.view_Leaderboards, name='leaderboards'),
+    path('events/', views.view_Events, name='events'),
 
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     # Specific URLS first

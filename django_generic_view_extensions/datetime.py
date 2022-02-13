@@ -41,7 +41,8 @@ def is_dst(zonename=None, when=None):
     else:
         testing_time = pytz.utc.localize(datetime.utcnow())
 
-    return testing_time.astimezone(tz).dst() != timedelta(0)
+    # Special case for datetime.min which cannot be given a timezone alas
+    return testing_time != datetime.min and testing_time.astimezone(tz).dst() != timedelta(0)
 
 
 def time_str(date_time):
