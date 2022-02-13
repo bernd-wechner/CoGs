@@ -7,7 +7,7 @@ from tailslide import Median
 from django.db import models
 from django.utils import timezone
 
-from django.db.models import Case, When, Q
+from django.db.models import Case, When
 from django.db.models.fields import DurationField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
@@ -16,7 +16,7 @@ from django.db.models.functions.window import Lag
 
 from django_cte import With
 
-from django_generic_view_extensions.queryset import get_SQL
+# from django_generic_view_extensions.queryset import get_SQL
 from django_generic_view_extensions.datetime import make_aware
 
 from django_model_admin_fields import AdminModel
