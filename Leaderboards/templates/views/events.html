@@ -105,6 +105,20 @@ Two types of event are envisaged.
 		<td>{{ stats.sessions__median|floatformat }}</td>
 		<td>{{ stats.sessions__max }}</td>
 	</tr>	
+	<tr>
+		<td>Duration</td>
+		<td>{{ stats.duration__min|duration:"phrase,minutes" }}</td>
+		<td>{{ stats.duration__avg|duration:"phrase,minutes" }}</td>
+		<td>{{ stats.duration__median|duration:"phrase,minutes" }}</td>
+		<td>{{ stats.duration__max|duration:"phrase,minutes" }}</td>
+	</tr>	
+	<tr>
+		<td>Gap Time</td>
+		<td>{{ stats.gap__min|duration:"phrase,days" }}</td>
+		<td>{{ stats.gap__avg|duration:"phrase,days"}}</td>
+		<td>{{ stats.gap__median|duration:"phrase,days" }}</td>
+		<td>{{ stats.gap__max|duration:"phrase,days" }}</td>
+	</tr>	
 </table>
 
 <h1>List of Events</h1>
@@ -115,6 +129,7 @@ Two types of event are envisaged.
 		<th>Start</th>
 		<th>End</th>
 		<th>Duration</th>
+		<th>Gap Time</th>
 		<th>Locations</th>
 {#		<th>Locations IDs</th>#}
 		<th>Location</th>
@@ -131,7 +146,8 @@ Two types of event are envisaged.
 		<td>{{ event.start|naturaltime }}</td>
 		<td>{{ event.start }}</td>
 		<td>{{ event.end }}</td>
-		<td>{{ event.duration }}</td>
+		<td>{{ event.duration|naturaltime }}</td>
+		<td>{{ event.gap_time|naturaltime }}</td>	
 		<td>{{ event.locations }}</td>
 {#		<td>{{ event.location_ids }}</td>#}
 		<td>{{ event.location_ids.0 }}</td>

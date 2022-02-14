@@ -8,10 +8,11 @@ from django.db import models
 from django.utils import timezone
 
 from django.db.models import Case, When
-from django.db.models.fields import DurationField
+from django.db.models.fields import DurationField, BigIntegerField, FloatField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.db.models.expressions import Window, F, ExpressionWrapper
+from django.db.models.functions import Cast, Extract
+from django.db.models.expressions import Window, F, ExpressionWrapper, Func
 from django.db.models.functions.window import Lag
 
 from django_cte import With
@@ -73,12 +74,6 @@ class Event(AdminModel):
         # Then get the events (as all runs of session with gap_days
         # between them.
 
-        # This annotation uses a min_date_time as a default  which must be
-        # TZ aware. To make datetime.min timezone aware however is not
-        # possible (crashes with errors) so we add one day and it works
-        # which serves our purpose of a minimum timezone aware datetime.
-        min_date_time = make_aware(datetime.min + timedelta(days=1), pytz.timezone('UTC'))
-
         # We need to anotate the sessions in two tiers alas, because we need a Window
         # to get the previous essions time, and then a window to group the sessions and
         # windows can't reference windows ... doh! The solution is what is to select
@@ -91,7 +86,7 @@ class Event(AdminModel):
         # Step 1 is to do the first windowing annotation, adding the prev_date_time and
         # based on it flagging the first session in each event.
         sessions = sessions.order_by("date_time").annotate(
-                    prev_date_time=Window(expression=Lag('date_time', default=min_date_time), order_by=F('date_time').asc()),
+                    prev_date_time=Window(expression=Lag('date_time'), order_by=F('date_time').asc()),
                     dt_difference=ExpressionWrapper(F('date_time') - F('prev_date_time'), output_field=DurationField()),
                     event_start=Case(When(dt_difference__gt=timedelta(days=gap_days), then='date_time')),
                 )
@@ -133,12 +128,14 @@ class Event(AdminModel):
                  .join(Performance, session_id=session_events.col.id)
                  .annotate(event=session_events.col.event,
                            location_id=session_events.col.location_id,
-                           game_id=session_events.col.game_id)
+                           game_id=session_events.col.game_id,
+                           gap_time=session_events.col.dt_difference)
                  .order_by('event')
                  .values('event')
                  .annotate(start=Min('session__date_time'),
                            end=Max('session__date_time'),
                            duration=F('end') - F('start'),
+                           gap_time=Max('gap_time'),
                            locations=Count('location_id', distinct=True),
                            location_ids=ArrayAgg('location_id', distinct=True),
                            sessions=Count('session_id', distinct=True),
@@ -166,7 +163,20 @@ class Event(AdminModel):
         if events is None:
             events = cls.implicit()
 
-        return events.aggregate(Min('sessions'),
+        # Tailwind's Median aggregator does not work on Durations (PostgreSQL Intervals)
+        # So we have to convert it to Epoch time. Extract is a Django method that can extract
+        # 'epoch' which is the documented method of casting a PostgreSQL interval to epoch time.
+        #    https://www.postgresql.org/message-id/19495.1059687790%40sss.pgh.pa.us
+        # Django does not document 'epoch' alas but it works:
+        #    https://docs.djangoproject.com/en/4.0/ref/models/database-functions/#extract
+        # We need a Django ExpressionWrapper to cast the uration field to DurationField as
+        # for some reason even though it's a PostgreSQL interval, Django still thinks of it
+        # as a DateTimeField (from the difference of two DateTimeFields I guess and a bug/feature)
+        # that fails tor ecast a difference of DateTimeFiled's as DurationField.
+        epoch_duration = Extract(ExpressionWrapper(F('duration'), output_field=DurationField()), lookup_name='epoch')
+        epoch_gap = Extract(ExpressionWrapper(F('gap_time'), output_field=DurationField()), lookup_name='epoch')
+
+        result = events.aggregate(Min('sessions'),
                                 Avg('sessions'),
                                 Median('sessions'),
                                 Max('sessions'),
@@ -177,7 +187,22 @@ class Event(AdminModel):
                                 Min('players'),
                                 Avg('players'),
                                 Median('players'),
-                                Max('players'))
+                                Max('players'),
+                                duration__min=Min('duration'),
+                                duration__avg=Avg('duration'),
+                                duration__median=Median(epoch_duration),
+                                duration__max=Max('duration'),
+                                gap__min=Min('gap_time'),
+                                gap__avg=Avg('gap_time'),
+                                gap__median=Median(epoch_gap),
+                                gap__max=Max('gap_time'))
+
+        # Aggregate is a QuerySet enpoint (i.e results in evaluation of the Query and returns
+        # a standard dict. To wit we can cast teh Epch times back to Durations for the consumer.
+        result['duration__median'] = timedelta(seconds=result['duration__median'])
+        result['gap__median'] = timedelta(seconds=result['gap__median'])
+
+        return result
 
     class Meta(AdminModel.Meta):
         verbose_name = "Event"
