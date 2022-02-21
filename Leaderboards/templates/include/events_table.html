@@ -1,0 +1,45 @@
+{% load filters %}
+{% load humanize %} 
+
+<table class="events" id="events">
+	<thead>
+		<tr>
+			<th data-type="number">Event</th>
+			<th data-type="duration_phrase">When</th>
+			<th data-type="date">Start</th>
+	{#		<th>End</th>#}
+			<th data-type="duration_phrase">Duration</th>
+			<th data-type="duration_phrase">Gap Time</th>
+			<th style="text-align: center;" data-type="number">Locations</th>
+	{#		<th>Locations IDs</th>#}
+			<th style="text-align: center;" data-type="number">Location</th>
+			<th style="text-align: center;" data-type="number">Players</th>
+	{#		<th>Player IDs</th>#}
+			<th style="text-align: center;" data-type="number">Games Played</th>
+	{#		<th>Game IDs</th>#}
+			<th style="text-align: center;" data-type="number">Sessions Played</th>
+	{#		<th>Session IDs</th>#}
+		</tr>
+	</thead>
+	<tbody>
+	{% for event in events %}
+		<tr>
+			<td>{{ event.event }}</td>
+			<td>{{ event.start|naturaltime }}</td>
+			<td>{{ event.start }}</td>
+	{#		<td>{{ event.end }}</td>#}
+			<td>{{ event.duration|duration:"phrase,minutes" }}</td>
+			<td>{{ event.gap_time|duration:"phrase,days" }}</td>	
+			<td style="text-align: center;">{{ event.locations }}</td>		
+	{#		<td>{{ event.location_ids }}</td>#}
+			<td style="text-align: center;">{{ event.location_ids.0 }}</td>
+			<td style="text-align: center;">{{ event.players }}</td>
+	{#		<td>{{ event.player_ids }}</td>#}
+			<td style="text-align: center;">{{ event.games }}</td>
+	{#		<td>{{ event.game_ids }}</td>#}
+			<td style="text-align: center;">{{ event.sessions }}</td>
+	{#		<td>{{ event.session_ids }}</td>#}
+		</tr>
+	{% endfor %}
+	<tbody>
+</table>

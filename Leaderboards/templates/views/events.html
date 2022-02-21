@@ -20,11 +20,16 @@ Two types of event are envisaged.
 {% load static %}
 {% load filters %}
 {% load tags %}
-{% load humanize %} 
+
 {% block title %}{{ title }}{% endblock %}
 
 {% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/events.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/weekday_widget.css' %}" />
+	
+     <link href=”http://cdn.pydata.org/bokeh/release/bokeh-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
+     <link href=”http://cdn.pydata.org/bokeh/release/bokeh-widgets-2.4.2.min.css" rel=”stylesheet” type=”text/css”>	
 {% endblock %}
 
 {#======================#}
@@ -32,6 +37,25 @@ Two types of event are envisaged.
 {#======================#}
 
 {% block submenu %}
+	<section id="EventOptions" class="event_options">
+		<div class="eo_header">
+			View Events:
+			<button type="button" class="button_left tooltip" id="btnReload"  onclick="refetchEvents();">
+				<img src="{% static 'img/reload.png' %}"  class='img_button'>
+				<span class="tooltiptext_right">Reload or redisplay events with current settings</span>
+			</button>
+			<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
+		</div>
+	
+		<div class="eo_leagues">Leagues: {{ widget_leagues }}</div>
+		<div class="eo_locations">Locations: {{ widget_locations }}</div>
+		<div class="eo_date_from">Sessions played between: <input id="date_from" type="text" class="DateTimeField dateonly" value="{{settings.date_from}}"></div>
+		<div class="eo_date_to">and <input id="date_to" type="text" class="DateTimeField dateonly" value="{{settings.date_to}}"></div>
+		<div class="eo_duration_min">Events between: <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_min}}"></div>
+		<div class="eo_duration_max">and <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_max}}"> in duration (days)</div>
+		<div class="eo_gap">Minimum gap between sessions that makes an event: <input id="gap_days" type="number" step="0.1" min="0" value="{{settings.gap_days}}"> (days)</div>	
+		<div class="eo_weekdays">Consider only events that started on these weekdays: {% include "include/weekday_widget.html" %}</div>
+	</section>
 {% endblock %}
 
 {#======================#}
@@ -39,128 +63,31 @@ Two types of event are envisaged.
 {#======================#}
 
 {% block content %}
-{% if filter %}
-<h1>Filters</h1>
-<table>
-	{% if filter.leagues %}
-	<tr>
-		<td>Leagues:</td><td>{{ filter.leagues }}</td>
-	</tr>	
-	{% endif %}
-	{% if filter.locations %}
-	<tr>
-		<td>Locations:</td><td>{{ filter.locations }}</td>
-	</tr>	
-	{% endif %}
-	{% if filter.date_from %}
-	<tr>
-		<td>From:</td><td>{{ filter.date_from }}</td>
-	</tr>	
-	{% endif %}
-	{% if filter.date_to %}
-	<tr>
-		<td>To:</td><td>{{ filter.date_to }}</td>
-	</tr>	
-	{% endif %}
-	{% if filter.num_days %}
-	<tr>
-		<td>Minimim number of days:</td><td>{{ filter.num_days }}</td>
-	</tr>	
-	{% endif %}
-	{% if filter.gap_days %}
-	<tr>
-		<td>Minimum gap in days, between events:</td><td>{{ filter.gap_days }}</td>
-	</tr>	
-	{% endif %}
-</table>
-{% endif %}
-
-<h1>Summary Statistics</h1>
-<table>
-	<tr>
-		<th>Count</th>
-		<th>Minimum</th>
-		<th>Average</th>
-		<th>Median</th>
-		<th>Maximum</th>
-	</tr>
-	<tr>
-		<td>Players</td>
-		<td>{{ stats.players__min }}</td>
-		<td>{{ stats.players__avg|floatformat }}</td>
-		<td>{{ stats.players__median|floatformat }}</td>
-		<td>{{ stats.players__max }}</td>
-	</tr>
-	<tr>
-		<td>Games</td>
-		<td>{{ stats.games__min }}</td>
-		<td>{{ stats.games__avg|floatformat }}</td>
-		<td>{{ stats.games__median|floatformat }}</td>
-		<td>{{ stats.games__max }}</td>
-	</tr>
-	<tr>
-		<td>Sessions</td>
-		<td>{{ stats.sessions__min }}</td>
-		<td>{{ stats.sessions__avg|floatformat }}</td>
-		<td>{{ stats.sessions__median|floatformat }}</td>
-		<td>{{ stats.sessions__max }}</td>
-	</tr>	
-	<tr>
-		<td>Duration</td>
-		<td>{{ stats.duration__min|duration:"phrase,minutes" }}</td>
-		<td>{{ stats.duration__avg|duration:"phrase,minutes" }}</td>
-		<td>{{ stats.duration__median|duration:"phrase,minutes" }}</td>
-		<td>{{ stats.duration__max|duration:"phrase,minutes" }}</td>
-	</tr>	
-	<tr>
-		<td>Gap Time</td>
-		<td>{{ stats.gap__min|duration:"phrase,days" }}</td>
-		<td>{{ stats.gap__avg|duration:"phrase,days"}}</td>
-		<td>{{ stats.gap__median|duration:"phrase,days" }}</td>
-		<td>{{ stats.gap__max|duration:"phrase,days" }}</td>
-	</tr>	
-</table>
-
-<h1>List of Events</h1>
-<table>
-	<tr>
-		<th>Event</th>
-		<th>When</th>
-		<th>Start</th>
-		<th>End</th>
-		<th>Duration</th>
-		<th>Gap Time</th>
-		<th>Locations</th>
-{#		<th>Locations IDs</th>#}
-		<th>Location</th>
-		<th>Players</th>
-{#		<th>Player IDs</th>#}
-		<th>Games Played</th>
-{#		<th>Game IDs</th>#}
-		<th>Sessions Played</th>
-{#		<th>Session IDs</th>#}
-	</tr>
-{% for event in events %}
-	<tr>
-		<td>{{ event.event }}</td>
-		<td>{{ event.start|naturaltime }}</td>
-		<td>{{ event.start }}</td>
-		<td>{{ event.end }}</td>
-		<td>{{ event.duration|naturaltime }}</td>
-		<td>{{ event.gap_time|naturaltime }}</td>	
-		<td>{{ event.locations }}</td>
-{#		<td>{{ event.location_ids }}</td>#}
-		<td>{{ event.location_ids.0 }}</td>
-		<td>{{ event.players }}</td>
-{#		<td>{{ event.player_ids }}</td>#}
-		<td>{{ event.games }}</td>
-{#		<td>{{ event.game_ids }}</td>#}
-		<td>{{ event.sessions }}</td>
-{#		<td>{{ event.session_ids }}</td>#}
-	</tr>
-{% endfor %}
-</table>
-
+	<h1>Summary Statistics</h1>
+		<section id="EventStats">
+		{% include "include/events_stats_table.html" %}	
+		</section>
+		
+	<h1>Graph of Event Attendance</h1>
+ 	{{ graph_div | safe }}
+ 	
+ 	<!-- 
+ 	This div has an attribute data-root-id="1078"
+ 	and this:
+ 	Bokeh.documents[0].get_model_by_id("1078")
+ 	gets the Plot object inside it. Getting warm.
+ 	
+ 	if plot=Bokeh.documents[0].get_model_by_id("1078")
+ 	
+ 	plot.renderers[0].data_source.data.x is the list oe x values
+ 	plot.renderers[0].data_source.data.top is the list of top values
+ 	has:
+	-->
+	
+	<h1>List of Events</h1>
+		<section id="Events">
+		{% include "include/events_table.html" %}	
+		</section>
 {% endblock %}
 
 {#======================#}
@@ -168,7 +95,169 @@ Two types of event are envisaged.
 {#======================#}
 
 {% block startscript %}
+<script src="{% static 'js/URIencoders.js' %}"></script> // provides tailored someURI encoders	
+<script src="{% static 'js/DALinit.js' %}"></script> // provides 'waiting_for', 'finished_waiting' and 'until'
+<script src="{% static 'js/regex.js' %}"></script> // provides 'RegExp.escape'
+<script src="{% static 'js/weekday_widget.js' %}"></script>
+<script>
+	const settings = {{ settings|safe }}; // A dict of settings
+	const url_json_events = "{% url 'json_events' %}";
+</script>
+
+{% if DEBUG_BokeJS %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.js"></script>
+{% else %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.min.js"></script>
+{% endif %}
+
+{{ graph_script| safe }}
 {% endblock %}
 
 {% block endscript %}
+<script>
+	const widget = new WeekdayWidget(document.getElementById('days'));
+	
+	const plotid  = "{{ plotid }}";  // Must be a string for use by get_model_by_id
+	let players   = {{ players }};   // Array of player counts
+	let frequency = {{ frequency }}; // Array of same length of counts of player counts
+	
+	async function URLopts() {
+		// GOTCHA: If we intend on using any of these selectors' values we run a real risk of not 
+		// seeing what they should contain because of the ajax call used to populated them. It may 
+		// not have returned yet. To wit, if we are waiting for any data we now have to wait for 
+		// it or we can't build the URL options from the form data.
+		await until(finished_waiting)
+	
+		// Get the values of the multiselect specifiers
+		const leagues      = $('#leagues').val();
+		const locations    = $('#locations').val();
+		
+		// Get the values of the date range 
+		const date_from    = $('#date_from').val();
+		const date_to      = $('#date_to').val();
+
+		// Get the values of the event duration range 
+		const duration_min = $('#duration_min').val();
+		const duration_max = $('#duration_max').val();
+		
+		// Get the value of the event gap minimum
+		const gap_days     = $('#gap_days').val();
+		
+		// Get the selected weekdays
+		const checked_days = Array.from(document.querySelectorAll('input[name=days]:checked'));
+		const day = {"0":"Sunday", "1":"Monday", "2":"Tuesday", "3":"Wednesday", "4":"Thursday", "5":"Friday", "6":"Saturday"};
+		const week_days = checked_days.map(cb => { return day[cb.value]; }).join(",");
+		
+		let opts = [];
+		
+		// Handle the list options
+		const league_list = encodeList(leagues.join(","));
+		if (league_list.length > 0) opts.push("leagues="+league_list);
+		
+		const location_list = encodeList(locations.join(","));
+		if (location_list.length > 0) opts.push("locations="+location_list);
+
+		// Handle the date range options
+		if (date_from) opts.push("date_from="+encodeDateTime(date_from));
+		if (date_to) opts.push("date_to="+encodeDateTime(date_to));
+
+		// Handle the event duration range options
+		if (duration_min) opts.push("duration_min="+duration_min);
+		if (duration_max) opts.push("duration_max="+duration_max);
+
+		// And the event gap minimum
+		if (gap_days) opts.push("gap_days="+gap_days);
+
+		// Submit any weekday restrictions
+		if (week_days) opts.push("week_days="+week_days);
+
+		return "?" + opts.join("&");
+	}
+	
+	const REQUEST = new XMLHttpRequest();
+	REQUEST.onreadystatechange = got_new_events;
+
+	async function refetchEvents() {
+		URLopts().then( (urlopts) => {
+			// Build the URL to fetch (AJAX)
+			const url = url_json_events + urlopts;
+			
+			// Display the reloading icon requeste
+			$("#reloading_icon").css("visibility", "visible");
+			
+			// Let everyone know we're waiting on leaderboards
+			if (!("events" in waiting_for)) waiting_for["events"] = new Set();
+			waiting_for["events"] = new Set([...waiting_for["events"], url]);
+	
+			// Send the request
+			REQUEST.open("GET", url, true); 
+			REQUEST.send(null);
+		} ); 
+	};
+	
+	function got_new_events() {
+		if (REQUEST.readyState === 4 && REQUEST.status === 200){
+			// Let everyone know we're not waiting any more
+			const url = new URL(REQUEST.responseURL);
+			const chop = new RegExp("^"+RegExp.escape(url.origin));
+			const key = url.href.replace(chop, "");
+	
+			waiting_for["events"].delete(key);
+			if (waiting_for["events"].size === 0) {
+				delete waiting_for["events"]; // If the set is empty remove the entry in the dict
+			}
+	
+			// the request is complete, parse data
+			const response = JSON.parse(REQUEST.responseText);
+	
+			const events = response[0]; 
+			const stats = response[1]; 
+			const settings = response[2];
+			players = response[3];
+			frequency = response[4];
+
+			// Update the controls from settings
+			InitControls(settings);
+			
+			// Replace the tables
+			$("#events").replaceWith(events);
+			$("#stats").replaceWith(stats);
+			TableSorter('events')
+
+			// Update the Bokeh plot
+			const plot = Bokeh.documents[0].get_model_by_id(plotid)
+			const source = plot.renderers[0].data_source
+			source.data.x = players;
+			source.data.top = frequency;
+			source.change.emit();
+			
+			// Hide all the reloading icons we're supporting
+			$("#reloading_icon").css("visibility", "hidden");		
+		}
+	};
+	
+	function InitControls(settings) {
+		// settings: a dictionary of settings to set the Controls to
+		
+		Select2Init($('#leagues'), settings.leagues);
+		Select2Init($('#locations'), settings.locations);
+		
+		$('#date_from').val(settings.date_from);
+		$('#date_to').val(settings.date_to);
+
+		$('#duration_min').val(settings.duration_min);
+		$('#duration_max').val(settings.duration_max);
+
+		$('#gap_days').val(settings.gap_days);
+	};
+</script>
+
+<script src="{% static 'js/table_sorter.js' %}"></script>	
+<script>document.addEventListener('DOMContentLoaded', TableSorter('events'));</script>
 {% endblock %}

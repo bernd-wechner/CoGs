@@ -170,8 +170,9 @@ def format_filterset(filterset, as_text=False):
                     field_name = "__".join(spec.components)
 
                 # DateTimeFields are a tad special.
-                # In as_tex mode, localize them. In normal mode fix the str representation.
-                # One for convenience and nicety, the other to get around a round-trip bug in Python!
+                # In as_text mode, localize them. In normal mode fix the str representation.
+                # One for convenience and nicety, the other to get around a round-trip bug
+                # in Python 3.6 and earlier!
                 field_value = (localize(spec.value) if isinstance(spec.value, datetime.datetime) else str(spec.value)) if as_text else urllib.parse.quote_plus(fix(spec.value))
 
             if as_text and spec.lookup in operation_text:

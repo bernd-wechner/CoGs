@@ -59,26 +59,16 @@ String.prototype.boolean = function() {
     }
   };
 
-// A regular expression escaper
-RegExp.escape = function(text) {
-  if (!arguments.callee.sRE) {
-    var specials = [
-      '/', '.', '*', '+', '?', '|',
-      '(', ')', '[', ']', '{', '}', '\\'
-    ];
-    arguments.callee.sRE = new RegExp(
-      '(\\' + specials.join('|\\') + ')', 'g'
-    );
-  }
-  return text.replace(arguments.callee.sRE, '\\$1');
-};
-
 // JQuery extension to provide outerHTML
 jQuery.fn.html_outer = function(s) {
     return s
         ? this.before(s).remove()
         : jQuery("<p>").append(this.eq(0).clone()).html();
 };
+
+function is_enabled(checkbox_id) {
+	return $("input[id='"+checkbox_id+"']").is(":checked");
+}
 
 // We fetch new leaderboards via AJAX and so need to reappraise them when they
 // arrive
@@ -97,85 +87,6 @@ function get_and_report_metrics(LB, show_baseline) {
 	lblSnapCount = document.getElementById("lblSnapCount");
 	lblSnapCount.innerHTML = "(" + totalshots + " snapshots)";
 	lblSnapCount.style.display = (totalshots > boardcount) ? "inline" : "none";
-}
-
-// An initialiser for Select2 widgets used. Alas not so trivial to set
-// as descrribed here:
-// https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
-//
-// Because we do an ajax call back to get names for PKs and there may be an delay of unknown
-// duration before it returns, we can't compare the request with the selector contents to 
-// determine if a request is needed. So we have to keep track in a global the requests issued
-// to refer to those in deciding if we need to issue a request.
-let waiting_for = {};
-function finished_waiting() {return Object.keys(waiting_for).length === 0};
-
-// Modern JS chicanery ;-)
-// TODO: We could do htis mor cleanly by wrapping the actual ajax request in a promise rather than a timer.
-//       await Promise.all([]promise1, promise2, promise3]) woudl wait for them to finish befoe proceeding.
-//       this method uses a timer based sleep to check the waiting_for logs of the requests to do same but
-//       is a tad klunkier.
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); } 
-async function until(fn) { while (!fn()) {	await sleep(10); } }
-
-function Select2Init(selector, values) {
-	const id = selector[0].id;
-	const selected = selector.val().map(Number);
-	const ordered_values = values.sort(function(a, b){return a-b});
-	
-	let request = new Set();
-	for (const value of ordered_values)
-		// We want to request a value only if it's not currently selected and we're not waiting for it (already requested it)'
-		if (!selected.includes(value) && (!(id in waiting_for) || !waiting_for[id].has(value))) 
-			request.add(value);
-	
-	if (request.size > 0) {
-		// Be VERY careful here. DAL paginates by default and may not return all of the objects that the q parmater asks for. 
-		// the all parameters disables that pagination. If thes evrer does not return all of the requeste dobjects we wil end
-		// up waiting endlessly on them.
-		// TODO: We can escape this weakness by implementing the promses better so as not to use wating_for
-		//	     The trick is, how?
-		const URL = url_selector.replace("__MODEL__", selector.prop('name')) + "?all&q=" + Array.from(request).join(",");
-		
-		selector.val(null).trigger('change');
-
-		if (!(id in waiting_for)) waiting_for[id] = new Set();	
-		
-		// Note locally that we've requested it and are waiting for an answer then issue the request 
-		// (should really be atomic). Bizaare JS syntax for set union using the spread operator (ellipsis)
-		waiting_for[id] = new Set([...waiting_for[id], ...request]);
-		$.ajax({
-		    type: 'GET',
-		    url: URL
-		}).then(function (data) {
-			// data arrives in JSON like:
-			// {"results": [{"id": "1", "text": "Bernd", "selected_text": "Bernd"}, {"id": "2", "text": "Blake", "selected_text": "Blake"}], "pagination": {"more": false}}
-			
-			for (const result of data.results) {
-				// create the option and append to Select2
-				var option = new Option(result.text, result.id, true, true);
-				selector.append(option);
-				// Take note that we're no longer waiting on it (id arrives as string, was stored as int)
-				// But we clobber both just in case ;-). Returns false if it didn't delete because it wasn't there, tue if it did. 
-				// that is fails silently on the redundant call.
-				waiting_for[id].delete(result.id); // Value we might have if we got our wires crossed
-				waiting_for[id].delete(parseInt(result.id)); // Expected value
-			}
-			selector.trigger('change');
-
-			if (waiting_for[id].size === 0) {
-				delete waiting_for[id]; // If the set is empty remove the entry in the dict
-			}
-	
-		    // manually trigger the `select2:select` event
-		    //selector.trigger({
-		    //    type: 'select2:select',
-		    //    params: {
-		    //        data: data
-		    //    }
-		    //});
-		});
-	}
 }
 
 function dval(value, def) { return value !== undefined ? value : def; }
@@ -376,43 +287,6 @@ function InitControls(options, exempt) {
 	if (options.made_static) { show_url();}
 }
 
-function is_enabled(checkbox_id) {
-	return $("input[id='"+checkbox_id+"']").is(":checked");
-}
-
-function encodeList(list) {
-	return encodeURIComponent(list).replace(/%2C/g, ",");
-}
-
-function encodeDateTime(datetime) {
-	// We communicate datetimes in the ISO 8601 format:
-	// https://en.wikipedia.org/wiki/ISO_8601
-	// but in URLs they turn into an ugly mess. If we make a few simple URL safe
-	// substitutions and unmake them at the server end all is good, and URLs
-	// become
-	// legible approximations to ISO 8601.
-	//
-	// Of note:
-	//
-	// + is a standard way to encode a space in URL. Though encodeURIComponent
-	// opts for %20.
-	// we can use + safely and it arrives at server as a space.
-	//
-	// : is encoded as %3A. It turns out : is not a recommended URL character
-	// and a
-	// reserved character, but it does transport fine at least on Chrome tests.
-	// Still we can substitue - for it and that is safe legible char already in
-	// use on the dates and can be decoded back to : by the server.
-	//
-	// The Timezone is introduced by + or -
-	//
-	// - travels unhindered. Is a safe URL character.
-	// + is encoded as %2B, but we can encode it with + which translates to a
-	// space at the server, but known we did this it can decdoe the space back
-	// to +.
-	return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
-}
-
 async function URLopts(make_static) {
 	// The opposite so to speak of InitControls() here we read those same
 	// controls and prepare URL options for self same to submit an AJAX 
@@ -435,7 +309,7 @@ async function URLopts(make_static) {
 	// it or we can't build the URL options from the form data.
 	await until(finished_waiting)
 
-	// Then get the values of the three multiselect game specifierd
+	// Then get the values of the three multiselect game specifiers
 	const games   = $('#games').val();
 	const leagues = $('#leagues').val();
 	const players = $('#players').val();
@@ -588,7 +462,7 @@ async function URLopts(make_static) {
 		// We submit changed_since with a date/time. If it's not submitted
 		// or submitted as an empty string then the server should not be
 		// enforcing a game_activity filter on games.
-		opts.push("changed_since="+encodeDateTime(changed_since));			
+		opts.push("changed_since="+encodeDateTime(changed_since));
 	
 	if (is_enabled("chk_num_days") && num_days)
 		// We submit session_games as the length of the session in days, only if
@@ -920,9 +794,9 @@ function enable_submissions(yes_or_no) {
 }
 
 function got_new_leaderboards() {
-	if (this.readyState === 4 && this.status === 200){
+	if (REQUEST.readyState === 4 && REQUEST.status === 200){
 		// Let everyone know we're not waiting any more
-		const url = new URL(this.responseURL);
+		const url = new URL(REQUEST.responseURL);
 		const chop = new RegExp("^"+RegExp.escape(url.origin));
 		const key = url.href.replace(chop, "");
 
@@ -932,7 +806,7 @@ function got_new_leaderboards() {
 		}
 
 		// the request is complete, parse data
-		const response = JSON.parse(this.responseText);
+		const response = JSON.parse(REQUEST.responseText);
 
 		// Capture response in leaderboards
 		$('#title').html(response[0]); 
@@ -1203,5 +1077,3 @@ InitControls(options);
 // ===================================================================================
 
 DrawTables("tblLB");
-
-

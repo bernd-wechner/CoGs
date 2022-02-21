@@ -1,0 +1,9 @@
+/* Taken from: https://jsfiddle.net/schinckel/gge7v234/ */
+
+.weekday-select > div {
+  display: inline-block;
+  vertical-align: top
+}
+.weekday-select > div > label {
+  display: block;
+}

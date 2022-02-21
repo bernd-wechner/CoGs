@@ -173,7 +173,7 @@ TIME_ZONE = str(get_localzone())
 
 DATETIME_FORMAT = 'D, j M Y H:i'
 
-DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S%z'] + global_settings.DATETIME_INPUT_FORMATS
+DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S %z'] + global_settings.DATETIME_INPUT_FORMATS
 
 # The MapBox key for mapbox_location_field
 MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9.1R5AO1qnzLzmTawb3ykFnQ"
@@ -271,6 +271,7 @@ if DEBUG:
 
     log.debug(f"Django settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
     log.debug(f"Django version: {django.__version__}")
+    log.debug(f"Python version: {sys.version}")
     log.debug(f"Django loaded from: {django.__file__}")
     log.debug(f"Using Path: {sys.path}")
     log.debug(f"Process Info: {pinfo()}")

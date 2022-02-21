@@ -63,6 +63,7 @@ urlpatterns = [
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     # Specific URLS first
     path('json/leaderboards/', views.ajax_Leaderboards, name='json_leaderboards'),
+    path('json/events/', views.ajax_Events, name='json_events'),
     path('json/game/<pk>', views.ajax_Game_Properties, name='get_game_props'),
     path('json/bgg_game/<pk>', views.ajax_BGG_Game_Properties, name='get_bgg_game_props'),
 

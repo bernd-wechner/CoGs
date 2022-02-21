@@ -137,13 +137,16 @@ def duration(value, args=None):
 
     The arguments are provided in a CSV list.
     '''
+    if not isinstance(value, datetime.timedelta):
+        return value
+
     if args is None:
         return False
 
     arg_list = [arg.strip() for arg in args.split(',')]
 
     mode = arg_list[0]  # Required argument
-    assert mode in ["machine", "phrase", "clock"]
+    assert mode in ["machine", "phrase", "phrase_lines", "clock"]
 
     # An optional argument
     resolutions = ["microseconds", "milliseconds", "seconds", "minutes", "hours", "days"]
@@ -197,7 +200,7 @@ def duration(value, args=None):
             fractionseconds=str(milliseconds * 1000 + microseconds).zfill(6),
         )
 
-    elif mode == "phrase":
+    elif mode in ("phrase", "phrase_lines"):
 
         response = []
         if days and resolution <= 5:
@@ -243,8 +246,20 @@ def duration(value, args=None):
                 )
             )
 
+        if mode == "phrase":
+            delim = ", "
+        elif mode == "phrase_lines":
+            delim = "<br>"
+
         if response:
-            response = ", ".join(response)
+            # The response is a phrase with spaces between the numbers and units
+            # and after the commas, sort of like:
+            #     3 days, 6 hours, 34 minutes
+            # and if the browser wraps this it should wrap atthe commas and
+            # not at the spaces between the numbers and units. So we force the
+            # latter to be non breaking spaces, and makr the strig safe so they
+            # render (as is needed when the delim is <br> too.
+            response = mark_safe(re.sub(r"([^,])(\s)(\S)", r"\1&nbsp;\3", delim.join(response)))
         else:
             response = "zero"
 

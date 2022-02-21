@@ -2,7 +2,9 @@
 /* CSS Document */
 
 :root {
-  --background-color: AliceBlue;
+  --background-color: HSL(208, 100%, 97%);
+  --background-shaded: HSL(208, 100%, 93%);
+  --background-highlight: HSL(92, 100%, 93%);
 }
 
 
@@ -324,8 +326,8 @@ td.note {
 
 
 /* DateTimeFields should be wide enough for the date_time formats in use */
-.DateTimeField {
-	width: 22ch;
+.DateTimeField:not(.dateonly) {
+	width: 30ch;
 }
 
 div.inspector th,

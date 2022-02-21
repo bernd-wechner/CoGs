@@ -85,7 +85,7 @@ boards ofinterest. This is the central product of the leaderboards app.
 				</select>
 		</div>
 		
-		{#	ToolTips have a cruddy implmentation here. With manually tuned widths to look good one trial. Will not travel well alas. #}		 
+		{#	ToolTips have a cruddy implmentation here. With manually tuned widths to look good, on trial. Will not travel well alas. #}		 
 		<div class="lo_visibility">
 			<div class="lo_highlight_players">
 				<input type="checkbox" id="chk_highlight_players" oninput='toggle_highlights("players", this);'> 		
@@ -143,16 +143,16 @@ boards ofinterest. This is the central product of the leaderboards app.
 			</div>	
 			<div class="lo_select_players">
 				{% comment %} 
-				TODO: This checkbox requires a server round trip. This is in part because it needs to kow the session player PKs 
+				TODO: This checkbox requires a server round trip. This is in part because it needs to know the session player PKs 
 				(available in the leaderboards client side too) and the context of snapshots (manual request or event based) which 
 				is also available client side. Thus could implement this client side. But it's complicated by the nature of what 
-				it does. It populates the Players selector. Could to that wehn checked. But it trvales with the URL opts as does 
-				the player list. And what happens if it is checked then the snap context changed or the Players selctor changed manually. 
-				In the latter case if any of the view players are removed, this should uncheck.If otehrs are added, no impact. If the
+				it does. It populates the Players selector. Could to that when checked. But it travels with the URL opts as does 
+				the player list. And what happens if it is checked, then the snap context changed or the Players selector changed manually. 
+				In the latter case if any of the view players are removed, this should uncheck. If others are added, no impact. If the
 				snap context changes, and this is checked the Players selector needs repopulating. Always with a superset of what was 
-				in there,only adding players technically - so manual adds aren't clobbered. If this is unchecked it should just 
-				leave the Players list untouched. So it becomes a kind of pump. And option that suroves round trip and hence is used in
-				generating the inital view.
+				in there, only adding players technically - so manual adds aren't clobbered. If this is unchecked it should just 
+				leave the Players list untouched. So it becomes a kind of pump. And option that survives round tripping and hence is 
+				used in generating the inital view.
 				{% endcomment %} 
 				<input type="checkbox" id="chk_select_players">
 				<label for="chk_select_players" class="tooltip">Select players
@@ -408,6 +408,9 @@ boards ofinterest. This is the central product of the leaderboards app.
 {% endblock %}
 
 {% block endscript %}
+<script src="{% static 'js/URIencoders.js' %}"></script>	
+<script src="{% static 'js/DALinit.js' %}"></script>	
+<script src="{% static 'js/regex.js' %}"></script>
 <script src="{% static 'js/leaderboard.js' %}"></script>	
 <script src="{% static 'js/view_leaderboards.js' %}"></script>	
 {% endblock %}

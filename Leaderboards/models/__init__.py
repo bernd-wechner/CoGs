@@ -25,9 +25,10 @@ MAX_NAME_LENGTH = 200  # The maximum length of a name in the database, i.e. the 
 FLOAT_TOLERANCE = 0.0000000000001  # Tolerance used for comparing float values of Trueskill settings and results between two objects when checking integrity.
 
 # Some reserved names for ALL objects in a model (note ID=0 is reserved for the same meaning).
-ALL_LEAGUES = "Global"  # A reserved key in leaderboard dictionaries used to represent "all leagues" in some requests
-ALL_PLAYERS = "Everyone"  # A reserved key for leaderboard filtering representing all players
-ALL_GAMES = "All Games"  # A reserved key for leaderboard filtering representing all games
+ALL_LEAGUES = "Global"  # A reserved key in dictionaries used to represent "all leagues" in some requests
+ALL_PLAYERS = "Everyone"  # A reserved key for filtering representing all players
+ALL_GAMES = "All Games"  # A reserved key for filtering representing all games
+ALL_LOCATIONS = "Anywhere"  # A reserved key for filtering representing all locations
 
 # TODO: consider a special league that filters all "My" thins
 # So on list views all things I am involved in (my leagues, my games, my players, my locations, my sessions, etc) and on Leaderboards too.
@@ -36,6 +37,7 @@ MY_PSEUDO_LEAGUE = "Mine"
 MIN_TIME_DELTA = timedelta.resolution  # A nominally smallest time delta we'll consider.
 
 MISSING_VALUE = -1  # Used primarily for PKs (which are  never negative)
+
 
 #===============================================================================
 # A structured approach to rating rebuild logging
@@ -61,6 +63,7 @@ class RATING_REBUILD_TRIGGER(Enum):
 # Import the models
 #===============================================================================
 
+
 # Get the app name for getting model classes in model methods
 APP = __package__.split('.')[0]
 
@@ -84,4 +87,3 @@ from .session import Session
 
 from .event import Event
 from .log import RebuildLog, ChangeLog
- 

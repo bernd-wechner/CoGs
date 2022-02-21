@@ -620,9 +620,12 @@ def post_generic(self, request, *args, **kwargs):
                             # Uncloak self.form.instance. From here on in we can proceed as normal.
                             self.form.instance = self.object
                             # Reclean the data which ensures this instance has the form data applied now.
-                            # This raises a ValidationError if it fails to apply form data to the instance
+                            # This may raise a ValidationError if it fails to apply form data to the instance
                             # for any reason.  Which rightly, rolls back our transaction.
                             self.form.full_clean()
+                            # Or maybe not, so check for errors and raise one if found:
+                            if self.form.errors:
+                                raise ValidationError('Some errors were detected in your submission.')
 
                         self.object = self.form.save()
                         log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")

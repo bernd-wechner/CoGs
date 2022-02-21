@@ -46,8 +46,10 @@ def get_SQL(queryset, explain=False):
         # quotes
         params = list(params)
         for i, p in enumerate(params):
-            if isinstance(p, (datetime, timedelta)):
+            if isinstance(p, datetime):
                 params[i] = "'" + str(p) + "'"
+            elif isinstance(p, timedelta):
+                params[i] = "INTERVAL '" + str(p) + "'"
         params = tuple(params)
 
         # And this is used when excuted as described here:

@@ -1,6 +1,5 @@
-import pytz
-
-from datetime import datetime, timedelta
+from datetime import timedelta
+from collections import Counter
 
 from tailslide import Median
 
@@ -8,17 +7,16 @@ from django.db import models
 from django.utils import timezone
 
 from django.db.models import Case, When
-from django.db.models.fields import DurationField, BigIntegerField, FloatField
+from django.db.models.fields import DateTimeField, DurationField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.db.models.functions import Cast, Extract
+from django.db.models.functions import Extract
 from django.db.models.expressions import Window, F, ExpressionWrapper, Func
 from django.db.models.functions.window import Lag
 
 from django_cte import With
 
-# from django_generic_view_extensions.queryset import get_SQL
-from django_generic_view_extensions.datetime import make_aware
+from django_generic_view_extensions.queryset import get_SQL
 
 from django_model_admin_fields import AdminModel
 
@@ -42,19 +40,36 @@ class Event(AdminModel):
     registrars = models.ManyToManyField('Player', verbose_name='Registrars', blank=True, related_name='registrar_at')
 
     @classmethod
-    def implicit(cls, leagues=None, locations=None, dt_from=None, dt_to=None, num_days=None, gap_days=1):
+    def implicit(cls, leagues=None,
+                      locations=None,
+                      dt_from=None,
+                      dt_to=None,
+                      duration_min=None,
+                      duration_max=None,
+                      week_days=None,
+                      gap_days=1,
+                      minimum_event_duration=2):
         '''
         Implicit events are those inferred from Session records, and not explicitly recorded as events.
 
         They are defined as all block of contiguous sessions that have gap_days (defaulting 1) between
         them. The remaining arguments are filters
 
-        :param leagues:    A list of League PKs to restrict the events to (a Session filter)
-        :param locations:  A list of location PKs to restrict the events to (a Session filter)
-        :param dt_from:    The start of a datetime window (a Session filter)
-        :param dt_to:      The end of a datetime window (a Session filter)
-        :param num_days:   The minimum duration (in days) of events (an Event filter)
-        :param gap_days:   The gape between sessions that marks a gap between implicit Events.
+        :param cls:
+        :param leagues:      A list of League PKs to restrict the events to (a Session filter)
+        :param locations:    A list of location PKs to restrict the events to (a Session filter)
+        :param dt_from:      The start of a datetime window (a Session filter)
+        :param dt_to:        The end of a datetime window (a Session filter)
+        :param duration_min: The minimum duration (in days) of events (an Event filter)
+        :param duration_max: The maximum duration (in days) of events (an Event filter)
+        :param gap_days:     The gap between sessions that marks a gap between implicit Events.
+        :param minimum_event_duration: Sessions are recorded with a single time (nominally completion).
+                                       Single session events will have a duration of 0 as a consequence.
+                                       This, in hours expresses the average game duration of a single game
+                                       session.  It's nominal and should ideally be the duration it takes
+                                       that one session to play through, which we can only estimate in any
+                                       case from the expected play time of the game. But to use that will
+                                       require a more complicated query joining the Game model,
         :return: A QuerySet of events (lazy, i.e no database hits in preparing it)
         '''
         # Build an annotated session queury that we can use (lazy)
@@ -126,13 +141,13 @@ class Event(AdminModel):
 
         events = (session_events
                  .join(Performance, session_id=session_events.col.id)
-                 .annotate(event=session_events.col.event,
+                 .annotate(event=session_events.col.event + 1,  # Move from 0 based to 1 based
                            location_id=session_events.col.location_id,
                            game_id=session_events.col.game_id,
                            gap_time=session_events.col.dt_difference)
                  .order_by('event')
                  .values('event')
-                 .annotate(start=Min('session__date_time'),
+                 .annotate(start=ExpressionWrapper(Min('session__date_time') - timedelta(hours=minimum_event_duration), output_field=DateTimeField()),
                            end=Max('session__date_time'),
                            duration=F('end') - F('start'),
                            gap_time=Max('gap_time'),
@@ -146,9 +161,14 @@ class Event(AdminModel):
                            player_ids=ArrayAgg('player_id', distinct=True)
                           ))
 
+        if week_days:
+            day = {"sunday":1, "monday":2, "tuesday":2, "wednesday":4, "thursday":5, "friday":6, "saturday":7}
+            week_days = list(filter(None, [day.get(d.strip().lower(), None) for d in week_days.split(",")]))
+            events = events.filter(start__week_day__in=week_days)
+
         # Finally, apply the event filters
-        if num_days:
-            events = events.filter(duration__lte=num_days)
+        if duration_min: events = events.filter(duration__gte=duration_min)
+        if duration_max: events = events.filter(duration__lte=duration_max)
 
         # Return a QuerySet of events (still lazy)
         return events.order_by("-end")
@@ -163,46 +183,83 @@ class Event(AdminModel):
         if events is None:
             events = cls.implicit()
 
-        # Tailwind's Median aggregator does not work on Durations (PostgreSQL Intervals)
-        # So we have to convert it to Epoch time. Extract is a Django method that can extract
-        # 'epoch' which is the documented method of casting a PostgreSQL interval to epoch time.
-        #    https://www.postgresql.org/message-id/19495.1059687790%40sss.pgh.pa.us
-        # Django does not document 'epoch' alas but it works:
-        #    https://docs.djangoproject.com/en/4.0/ref/models/database-functions/#extract
-        # We need a Django ExpressionWrapper to cast the uration field to DurationField as
-        # for some reason even though it's a PostgreSQL interval, Django still thinks of it
-        # as a DateTimeField (from the difference of two DateTimeFields I guess and a bug/feature)
-        # that fails tor ecast a difference of DateTimeFiled's as DurationField.
-        epoch_duration = Extract(ExpressionWrapper(F('duration'), output_field=DurationField()), lookup_name='epoch')
-        epoch_gap = Extract(ExpressionWrapper(F('gap_time'), output_field=DurationField()), lookup_name='epoch')
+        if events:
+            # Tailwind's Median aggregator does not work on Durations (PostgreSQL Intervals)
+            # So we have to convert it to Epoch time. Extract is a Django method that can extract
+            # 'epoch' which is the documented method of casting a PostgreSQL interval to epoch time.
+            #    https://www.postgresql.org/message-id/19495.1059687790%40sss.pgh.pa.us
+            # Django does not document 'epoch' alas but it works:
+            #    https://docs.djangoproject.com/en/4.0/ref/models/database-functions/#extract
+            # We need a Django ExpressionWrapper to cast the uration field to DurationField as
+            # for some reason even though it's a PostgreSQL interval, Django still thinks of it
+            # as a DateTimeField (from the difference of two DateTimeFields I guess and a bug/feature)
+            # that fails tor ecast a difference of DateTimeFiled's as DurationField.
+            epoch_duration = Extract(ExpressionWrapper(F('duration'), output_field=DurationField()), lookup_name='epoch')
+            epoch_gap = Extract(ExpressionWrapper(F('gap_time'), output_field=DurationField()), lookup_name='epoch')
 
-        result = events.aggregate(Min('sessions'),
-                                Avg('sessions'),
-                                Median('sessions'),
-                                Max('sessions'),
-                                Min('games'),
-                                Avg('games'),
-                                Median('games'),
-                                Max('games'),
-                                Min('players'),
-                                Avg('players'),
-                                Median('players'),
-                                Max('players'),
-                                duration__min=Min('duration'),
-                                duration__avg=Avg('duration'),
-                                duration__median=Median(epoch_duration),
-                                duration__max=Max('duration'),
-                                gap__min=Min('gap_time'),
-                                gap__avg=Avg('gap_time'),
-                                gap__median=Median(epoch_gap),
-                                gap__max=Max('gap_time'))
+            result = events.aggregate(Min('sessions'),
+                                      Avg('sessions'),
+                                      Median('sessions'),
+                                      Max('sessions'),
+                                      Min('games'),
+                                      Avg('games'),
+                                      Median('games'),
+                                      Max('games'),
+                                      Min('players'),
+                                      Avg('players'),
+                                      Median('players'),
+                                      Max('players'),
+                                      duration__min=Min('duration'),
+                                      duration__avg=Avg('duration'),
+                                      duration__median=Median(epoch_duration),
+                                      duration__max=Max('duration'),
+                                      gap__min=Min('gap_time'),
+                                      gap__avg=Avg('gap_time'),
+                                      gap__median=Median(epoch_gap),
+                                      gap__max=Max('gap_time'))
 
-        # Aggregate is a QuerySet enpoint (i.e results in evaluation of the Query and returns
-        # a standard dict. To wit we can cast teh Epch times back to Durations for the consumer.
-        result['duration__median'] = timedelta(seconds=result['duration__median'])
-        result['gap__median'] = timedelta(seconds=result['gap__median'])
+            # Aggregate is a QuerySet enpoint (i.e results in evaluation of the Query and returns
+            # a standard dict. To wit we can cast teh Epch times back to Durations for the consumer.
+            result['duration__median'] = timedelta(seconds=result['duration__median'])
+            result['gap__median'] = timedelta(seconds=result['gap__median'])
+        else:
+            result = None
 
         return result
+
+    @classmethod
+    def frequency(cls, field, events=None, as_lists=False):
+        '''
+        Returns a dict keyed on the values of field and the number of times it crops up in the
+        events supplied.
+
+        :param events: A queryset of events, that have the fields sessions, games, players
+        '''
+        if events is None:
+            events = cls.implicit()
+
+        # We want to take a Count of field, but field is quite possibly an aggregate itself
+        # and that doesn't work, so enter CTEs once more.
+        # BUT Alas, this BROKEN. with_events.queryset() for some reason includes JOINS with sessions
+        # and players and is not a clean select from the CTE. it tried a quick diagnosis studying
+        # queryset() but it will be costly, it's not bery lucid. So I bail and try another approach.
+        # with_events = With(events, "events")
+        # result = with_events.queryset()
+        # result = result.annotate(**{field: getattr(with_events.col, field)}).annotate(Count(field))
+
+        result = {e["event"]: e[field] for e in events.values("event", field)}
+        result = Counter(result.values())
+
+        if as_lists:
+            field_values = []
+            value_frequencies = []
+            for val in sorted(result):
+                field_values.append(val)
+                value_frequencies.append(result[val])
+
+            return field_values, value_frequencies
+        else:
+            return result
 
     class Meta(AdminModel.Meta):
         verbose_name = "Event"

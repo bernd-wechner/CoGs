@@ -1,0 +1,51 @@
+{% load filters %}
+{% load humanize %} 
+
+<table class="stats" id="stats">
+	<thead>
+		<tr>
+			<th>Count</th>
+			<th style="text-align: center;">Minimum</th>
+			<th style="text-align: center;">Average</th>
+			<th style="text-align: center;">Median</th>
+			<th style="text-align: center;">Maximum</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr>
+			<td>Players</td>
+			<td style="text-align: center;">{{ stats.players__min }}</td>
+			<td style="text-align: center;">{{ stats.players__avg|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.players__median|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.players__max }}</td>
+		</tr>
+		<tr>
+			<td>Games</td>
+			<td style="text-align: center;">{{ stats.games__min }}</td>
+			<td style="text-align: center;">{{ stats.games__avg|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.games__median|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.games__max }}</td>
+		</tr>
+		<tr>
+			<td>Sessions</td>
+			<td style="text-align: center;">{{ stats.sessions__min }}</td>
+			<td style="text-align: center;">{{ stats.sessions__avg|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.sessions__median|floatformat }}</td>
+			<td style="text-align: center;">{{ stats.sessions__max }}</td>
+		</tr>	
+		<tr>
+			<td>Duration</td>
+			<td style="text-align: center;">{{ stats.duration__min|duration:"phrase_lines,minutes" }}</td>
+			<td style="text-align: center;">{{ stats.duration__avg|duration:"phrase_lines,minutes" }}</td>
+			<td style="text-align: center;">{{ stats.duration__median|duration:"phrase_lines,minutes" }}</td>
+			<td style="text-align: center;">{{ stats.duration__max|duration:"phrase_lines,minutes" }}</td>
+		</tr>	
+		<tr>
+			<td>Gap Time</td>
+			<td style="text-align: center;">{{ stats.gap__min|duration:"phrase_lines,days" }}</td>
+			<td style="text-align: center;">{{ stats.gap__avg|duration:"phrase_lines,days"}}</td>
+			<td style="text-align: center;">{{ stats.gap__median|duration:"phrase_lines,days" }}</td>
+			<td style="text-align: center;">{{ stats.gap__max|duration:"phrase_lines,days" }}</td>
+		</tr>	
+	</tbody>
+</table>

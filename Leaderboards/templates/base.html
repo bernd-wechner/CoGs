@@ -17,8 +17,8 @@
 	{#  DAL should not reload either of these two libraries if we have loaded them already!#}
 	{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
 
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.3.1/jquery.js" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.5/js/select2.full.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.min.js" crossorigin="anonymous"></script>
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
@@ -29,14 +29,21 @@
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
 
+	{# Underscroe library of useful functions #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
+
 	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}	
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+	{# Configure DateTime inputs #}	
+	// Transition to flatpickr
+{#	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css" integrity="sha512-bYPO5jmStZ9WI2602V2zaivdAnbAhtfzmxnEGh9RwtlI00I9s8ulGe4oBa5XxiC6tCITJH/QG70jswBhbLkxPw==" crossorigin="anonymous" referrerpolicy="no-referrer" />	#}
+{#	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js" crossorigin="anonymous"></script>#}
 	
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
-	{# Include the javascript jQuery library and a datetimepicker that leaves the Django one for dead #}
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css" integrity="sha512-bYPO5jmStZ9WI2602V2zaivdAnbAhtfzmxnEGh9RwtlI00I9s8ulGe4oBa5XxiC6tCITJH/QG70jswBhbLkxPw==" crossorigin="anonymous" referrerpolicy="no-referrer" />	
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/2.3.0/luxon.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 	
 	<script>
 		//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
@@ -46,6 +53,7 @@
 	<script src="{% static 'js/jstz.min.js' %}"></script>
 	<script src="{% static 'js/datetime_functions.js' %}"></script>
 
+	{# Set some global variables based on context data  #}	
 	<script>
 		// Template provided variables that submit_info.js expects.
 		const CSRF_field 	= '{% csrf_token %}';
@@ -274,12 +282,105 @@
 <script>			
 	// Attach a datetimepicker to all DateTimeFields. 
 	// Assumes DateTimeField widgets have the class "DateTimeField"
-	$(function(){
-		$(".DateTimeField").datetimepicker({
-			"format": datetime_format,
-			"step" : 15
-		});
-	});
+	const DateTime = luxon.DateTime;
+
+	Number.prototype.mins2offset = function () {
+	    let hours   = Math.floor(this / 60);
+	    let minutes = Math.floor((this - ((hours * 3600)) / 60));
+	    let pfx = this >= 0 ? "+" : "-";
+	
+	    if (hours   < 10) hours   = "0"+hours;
+	    if (minutes < 10) minutes = "0"+minutes;
+	    
+	    // If this is for a datetme field, Django accepts expected 
+	    // formats for form cleaning in the setting DATETIME_INPUT_FORMATS
+	    //    See: https://docs.djangoproject.com/en/4.0/ref/settings/#std:setting-DATETIME_INPUT_FORMATS
+	    // And these lean only on Python strptime format codes:
+	    //    See: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+	    // which in turn only support timezone offsets with the %z code and it must be 
+	    // of format: ±HHMM[SS[.ffffff]]
+	    // We of course have zero interest in sub minute timezone offsets.
+	    //     See: https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
+	    // i.e. they are all on 15 minute boundaries no, there is no timezone
+	    // that has an offset that needs seconds or fractions of seconds resoltion.
+	    //
+	    // Boggles the mind why %z supports that even and not HH[:]MM (that is an
+	    // optional colon separating the mins).
+	    //
+	    // If the site we're submitting too does a pre-clean of form submitted data 
+	    // to remove any colons in the timezone offset then they can feasibly be 
+	    // submitted. Else they need to be removed before submission client side
+	    // or server side one receipt of a request.
+	    //
+	    // To make the mattter even harder to decide on, luxon, which we use for 
+	    // convenience as a datetime parser here allows us to set timezone with an 
+	    // offset and seemingly only with a colon! 
+	    //     See: https://github.com/moment/luxon/blob/master/src/zones/fixedOffsetZone.js
+	    // Doh! Both luxon and python broken in their own way and incompatible in 
+	    // this space.
+	    return pfx+hours+':'+minutes
+	}	
+
+	String.prototype.mins2offset = function () {
+	    const mins_num = parseFloat(this.replace(':',''), 10);
+	    return mins_num.mins2offset();
+	}
+	
+	flatpickr(".DateTimeField:not(.dateonly)", 
+			 {  enableTime: true,
+			    time_24hr: true,
+			    // Using the Luxon codes, not flatpickr codes.
+			    // https://moment.github.io/luxon/index.html#/formatting?id=macro-tokens
+			    dateFormat: 'yyyy-MM-dd HH:mm:ss ZZ',
+			    dateVariants: ['yyyy-MM-dd HH:mm:ss',
+			    			   'yyyy-MM-dd HH:mm ZZ',
+			    			   'yyyy-MM-dd HH:mm',
+			    			   'yyyy-MM-dd ZZ',
+			    			   'yyyy-MM-dd'],
+			    ariaDateFormat: 'cccc d, y',
+			    showMonths: 1,
+			    allowInput: true,
+			    parseDate(dateString, format) {
+			    	// JS Dates suck. They are always in local time zone (client) or UTC.
+			    	// 		See: https://stackoverflow.com/a/15171030/4002633 
+			    	// They provide no way to express a TZ preference. So we have to keep 
+			    	// note of an expressed preference when parsing and rememeber it.
+			    	// We are only interested in TZ offsets here not in timezones.
+			    	// 		See: https://spin.atomicobject.com/2016/07/06/time-zones-offsets
+			    	// timezones are way-complicate things and a TZ offset is all that is
+			    	// need to create an unambiguous time for database storage. We simply 
+			    	// permit 
+			    	const ustzo =  DateTime.fromFormatExplain(dateString, format)["zone"];
+			    	this.user_specified_offset = ustzo ? ustzo.fixed : undefined;
+
+					// Try parsing the default dateFormat first 
+			    	console.log("Parsing: ",dateString, format)
+			    	let date = DateTime.fromFormat(dateString, format);
+					// If that fails walk through the dateVariants to try and find a parse that works
+					let variant = 0;
+			    	while (!date.isValid && variant < this.dateVariants.length) {
+			    		date = DateTime.fromFormat(dateString, this.dateVariants[variant]);
+			    		variant++;
+			    	};
+			    	return date.isValid ? date.toJSDate() : this.last_formatted_date;
+			    },
+			    formatDate(date, format) {
+			        // When the date was parsed any user entered TZ offset was stored. We now use that to 
+			        // format the date that was entered. If none was offered we use the Session preferrred
+			        // TZ offset.
+			    	const sptzo = "UTC"+SESSION_utcoffset.mins2offset(); // The preferred session timezone
+			    	const ustzo = this.user_specified_offset === undefined ? sptzo : "UTC"+this.user_specified_offset.mins2offset();
+			    	console.log("Formating: ",sptzo, ustzo, date)
+			    	this.last_formatted_date = date;
+			    	return DateTime.fromJSDate(date).setZone(ustzo).toFormat(format);
+			    },
+			});
+
+	flatpickr(".DateTimeField.dateonly", {enableTime: false});
+
+			
+	// Turn off autocomplete on DateTimeFields. Broswers produce a dropdown that gets in the way of flatpickr's drop down when it's on.
+	$('.DateTimeField').attr('autocomplete','off');
 	
 	// Monitor the headers div for size changes and respond by moving the content div
 	(new ResizeObserver(() => { 

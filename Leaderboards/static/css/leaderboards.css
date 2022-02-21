@@ -4,11 +4,6 @@
 /* LEADERBOARD OPTIONS */
 
 
-/*.leaderboard_options * {  */
-/* 	border: 1px solid red; */
-/* }	 */
-	
-	
 /* 	
 	TODO: Show only the button row by default, with a drop arrow. 
 	That reveals the basic options, and an Advanced options drop arrow, 
@@ -16,7 +11,7 @@
 	of the grid.  
 */ 
 
-/* Example of use color variables
+/* Example of using color variables
 :root {
   --background-color: AliceBlue;
 }
