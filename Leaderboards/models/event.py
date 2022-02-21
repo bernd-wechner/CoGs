@@ -11,7 +11,7 @@ from django.db.models.fields import DateTimeField, DurationField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models.functions import Extract
-from django.db.models.expressions import Window, F, ExpressionWrapper, Func
+from django.db.models.expressions import Window, F, ExpressionWrapper
 from django.db.models.functions.window import Lag
 
 from django_cte import With

@@ -31,15 +31,15 @@ table.events td, table.stats td
 	white-space: nowrap;
 }
 
+table.stats td {
+	vertical-align: top;
+}
+
 table.events thead,
 table.stats thead,
 table.stats td:nth-of-type(1) 
 { 
  	background-color:var(--background-highlight);
-}
-
-table.stats td {
-	vertical-align: top;
 }
 
 table.events tr:nth-child(6n+5), 
