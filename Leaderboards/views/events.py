@@ -17,7 +17,6 @@ from bokeh.models.callbacks import CustomJS
 from ..models import Event, League, Location, ALL_LEAGUES, ALL_LOCATIONS
 
 from .widgets import html_selector
-from Leaderboards.views.context import html_league_options
 
 
 def view_Events(request):

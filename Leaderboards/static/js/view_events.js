@@ -16,7 +16,7 @@ let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy")
 									  //tags_to_debug: ["canvas"]
 									}); 
 
-function show_url() { URLopts().then( (uo) => {const url = url_events.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location); } ) };
+function show_url() { URLopts().then( uo => {const url = url_events.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location)})};
 
 async function URLopts() {
 	// GOTCHA: If we intend on using any of these selectors' values we run a real risk of not 
