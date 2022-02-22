@@ -32,8 +32,6 @@ let maxshots = 0;
 let totalshots = 0;
 let boardshots = [ ];
 
-// A place to store our copy clipboard
-//clipboard.schedule(document.getElementById("tblLB"));
 let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy"),
  									  stylesheets: ["leaderboards.css", "tooltip.css", "default.css"],
 									  element: document.getElementById("tblLB"),

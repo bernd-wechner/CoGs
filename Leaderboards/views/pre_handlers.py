@@ -382,7 +382,7 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
         elif isinstance(self, UpdateViewExtended):
             old_session = self.object
             # Create a ChangeLog with the session now (pre_save status)
-            # This captures the eladerboard_impact of the session as it
+            # This captures the leaderboard_impact of the session as it
             # stands now. We need to update it again after saving the
             # session to capture the leaderboard_impact after the change
             # too.

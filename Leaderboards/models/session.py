@@ -1692,6 +1692,12 @@ class Session(TimeZoneMixIn, AdminModel):
             for key in result:
                 check(key)
 
+            # Record whether changes were seen in any fields
+            if changes:
+                changes.add("changed")
+            else:
+                changes.add("unchanged")
+
             # Some changes are expected to have no impact on leaderboards (for example different location
             # and league - as boards are global and leagues only used for filtering views). Other changes
             # impact the leaderboard. If any of those chnage we add a psudo_field "leaderboard" in changes.
@@ -1707,6 +1713,10 @@ class Session(TimeZoneMixIn, AdminModel):
             # hence the leaderboard_after. We can't know this from the delta but we can divine it from this session.
 
             result["changes"] = tuple(changes)
+
+        # Called with no form data when the object is created. No change is expected.
+        else:
+            changes.add("created")
 
         return result
 

@@ -14,7 +14,7 @@
 		// Save the URL when we load, for later use
 		function init() {
 			filters	= {{filters|safe}};
-			object_browser = {{view.object_browser|NoneToNull}};
+			object_browser = {{view.object_browser|json}};
 			
 			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
 			

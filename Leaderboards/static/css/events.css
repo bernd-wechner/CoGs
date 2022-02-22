@@ -42,9 +42,9 @@ table.stats td:nth-of-type(1)
  	background-color:var(--background-highlight);
 }
 
+table.events tr:nth-child(6n+4), 
 table.events tr:nth-child(6n+5), 
-table.events tr:nth-child(6n+6), 
-table.events tr:nth-child(6n+7) {
+table.events tr:nth-child(6n+6) {
  	background-color:var(--background-shaded);
 }
 
@@ -65,6 +65,7 @@ table.events tr:nth-child(6n+7) {
 }
 
 /* Map classes into the grid areas */
+.eo_header       { grid-area: eo_header; }
 .eo_leagues      { grid-area: eo_leagues; }
 .eo_locations    { grid-area: eo_locations; }
 .eo_date_from    { grid-area: eo_date_from; }

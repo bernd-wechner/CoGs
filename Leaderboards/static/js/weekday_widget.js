@@ -1,62 +1,53 @@
 // Taken from: https://jsfiddle.net/schinckel/gge7v234/
+// And modernised and simplified a little
+//
+// Some nomenclature:
+// 	Days are Sunday,Monday,Tuesday,Wednesday,Thursday,Friday,Saturday
+// 	Parts are Any Day, Weekends, Weekdays
 
-function isChecked(element) {
-  return element.checked;
-}
+class WeekdayWidget {
+    constructor(element) {
+        this.element = element;
+        this.parts = Array.from(element.querySelectorAll('.week-parts [type=checkbox]'));
+        this.days = Array.from(element.querySelectorAll('.days [type=checkbox]'));
 
-function getValue(element) {
-  return element.value;
-}
-
-function WeekdayWidget(element) {
-  var parts = Array.apply(null, element.querySelectorAll('.week-parts [type=checkbox]'));
-  var days = Array.apply(null, element.querySelectorAll('.days [type=checkbox]'));
-
-  function value() {
-    return days.filter(isChecked).map(getValue);
-  }
-
-  this.value = value;
-
-  function updateParts(selected) {
-
-    function notSelected(val) {
-      return selected.indexOf(val) === -1;
+        element.addEventListener('change', this.click_event_handler.bind(this));
     }
 
-    parts.forEach(function(part) {
-      var partDays = part.dataset.values.split(',');
-      var notSelectedParts = partDays.filter(notSelected);
-      if (notSelectedParts.length === 0) {
-        part.checked = true;
-        part.indeterminate = false;
-      } else if (notSelectedParts.length === partDays.length) {
-        part.checked = false;
-        part.indeterminate = false;
-      } else {
-        part.indeterminate = true;
-      }
-      // if (partDays.length === partDays.filter(notSelected).length)
-      // part.checked = partDays.filter(notSelected).length === 0;
-    });
-  }
-
-  function updateDays(values, checked) {
-    days.forEach(function(ele) {
-      if (values.indexOf(ele.value) > -1) {
-        ele.checked = checked;
-      }
-    });
-  }
-
-  element.addEventListener('change', function(event) {
-    if (event.target.tagName === 'INPUT') {
-      if (event.target.name === element.dataset.name) {
-        updateParts(value());
-      } else {
-        updateDays(event.target.dataset.values.split(','), event.target.checked);
-        updateParts(value());
-      }
+    click_event_handler(event) {
+        if (event.target.tagName === 'INPUT') {
+            if (event.target.name === this.element.dataset.name) {
+                this.updateParts();
+            } else {
+                this.updateDays(event.target.dataset.values.split(','), event.target.checked);
+                this.updateParts();
+            }
+        }
     }
-  });
+
+    updateParts() {
+        const selected = this.days.filter(e => e.checked).map(e => e.value);
+
+        this.parts.forEach(function(part) {
+            const partDays = part.dataset.values.split(',');
+            const notSelectedParts = partDays.filter(d => selected.indexOf(d) === -1);
+            if (notSelectedParts.length === 0) {
+                part.checked = true;
+                part.indeterminate = false;
+            } else if (notSelectedParts.length === partDays.length) {
+                part.checked = false;
+                part.indeterminate = false;
+            } else {
+                part.indeterminate = true;
+            }
+        });
+    }
+
+    updateDays(values, checked) {
+        this.days.forEach(function(e) {
+            if (values.indexOf(e.value) > -1) {
+                e.checked = checked;
+            }
+        });
+    }
 }

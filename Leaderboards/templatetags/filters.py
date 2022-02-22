@@ -35,25 +35,6 @@ def index(indexable, i):
 
 
 @register.filter
-def NoneToNull(value):
-    """
-    Replaces all "None" elements in a list with a null.
-    Returns a list with the results.
-    """
-
-    def none_to_null(obj):
-        """
-        Returns an object untouched unless it is None then returns null
-        """
-        if obj is None:
-            return "null"
-        else:
-            return str(obj)
-
-    return "[" + ", ".join([none_to_null(obj) for obj in value]) + "]"
-
-
-@register.filter
 def ToArray(value):
     return list(value)
 

@@ -61,21 +61,6 @@ background-color: var(--background-color);
 .lbl_basic      { grid-area: lbl_basic;    font-weight: bold !important; }
 .lbl_advanced   { grid-area: lbl_advanced; font-weight: bold !important; white-space: nowrap !important;}
 
-.button_left { 
-	float: left; 
-	margin-right: 0.5em;
-	margin-bottom: 5px;
-}
-
-.button_right { 
-	float: right; 
-	margin-left: 0.5em;
-	margin-bottom: 5px;
-}
-
-button:hover:enabled { cursor: pointer; }
-button:hover:disabled { cursor: wait; }
-
 .lo_visibility {
   	display: grid;
 	grid-area: lo_visibility;

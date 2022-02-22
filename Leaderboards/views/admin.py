@@ -42,6 +42,8 @@ def view_CheckIntegrity(request):
 
     models = ['Game', 'Performance', 'Rank', 'Session', 'Rating']
 
+    quiet = 'quiet' in request.GET
+
     do_all = True
     for model in models:
         if model in request.GET:
@@ -53,7 +55,7 @@ def view_CheckIntegrity(request):
         for G in Game.objects.all():
             fails = G.check_integrity()
 
-            print(f"Game {G.id}: {rich(G)}. {len(fails)} assertion failures.", flush=True)
+            if not quiet: print(f"Game {G.id}: {rich(G)}. {len(fails)} assertion failures.", flush=True)
             for f in fails:
                 print(f"\t{f}", flush=True)
 
@@ -65,7 +67,7 @@ def view_CheckIntegrity(request):
         for P in Performance.objects.all().order_by('-pk'):
             fails = P.check_integrity()
 
-            print(f"Performance {P.id}: {rich(P)}. {len(fails)} assertion failures.", flush=True)
+            if not quiet: print(f"Performance {P.id}: {rich(P)}. {len(fails)} assertion failures.", flush=True)
             for f in fails:
                 print(f"\t{f}", flush=True)
 
@@ -78,7 +80,7 @@ def view_CheckIntegrity(request):
         for R in Rank.objects.all():
             fails = R.check_integrity()
 
-            print(f"Rank {R.id}: {rich(R)}. {len(fails)} assertion failures.", flush=True)
+            if not quiet: print(f"Rank {R.id}: {rich(R)}. {len(fails)} assertion failures.", flush=True)
             for f in fails:
                 print(f"\t{f}", flush=True)
 
@@ -90,7 +92,7 @@ def view_CheckIntegrity(request):
         for S in Session.objects.all():
             fails = S.check_integrity(True)
 
-            print(f"Session {S.id}: {rich(S)}. {len(fails)} assertion failures.", flush=True)
+            if not quiet: print(f"Session {S.id}: {rich(S)}. {len(fails)} assertion failures.", flush=True)
             for f in fails:
                 print(f"\t{f}", flush=True)
 
@@ -115,7 +117,7 @@ def view_CheckIntegrity(request):
         for R in Rating.objects.all().filter(rfilter).order_by('last_play'):
             fails = R.check_integrity()
 
-            print(f"Rating {R.id}: {rich(R)}. {len(fails)} assertion failures.", flush=True)
+            if not quiet: print(f"Rating {R.id}: {rich(R)}. {len(fails)} assertion failures.", flush=True)
             for f in fails:
                 print(f"\t{f}", flush=True)
 
@@ -173,6 +175,16 @@ def view_RebuildRatings(request):
         try:
             From = decodeDateTime(request.GET['from'])
             reason += f" from {From}"
+        except:
+            From = None
+    else:
+        From = None
+
+    if 'from_session' in request.GET:
+        try:
+            session = Session.objects.get(pk=request.GET['session'])
+            From = Session.date_time
+            reason += f" from session {session} ({From})"
         except:
             From = None
     else:

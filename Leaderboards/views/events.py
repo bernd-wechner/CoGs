@@ -17,6 +17,7 @@ from bokeh.models.callbacks import CustomJS
 from ..models import Event, League, Location, ALL_LEAGUES, ALL_LOCATIONS
 
 from .widgets import html_selector
+from Leaderboards.views.context import html_league_options
 
 
 def view_Events(request):
@@ -37,48 +38,67 @@ def ajax_Events(request, raw=False):
 
     2. The explicit event (from the events model) - not yet in use.
     '''
-    # The user request
-    urequest = request.GET
-
     # Fetch the user-session filter
     ufilter = request.session.get('filter', {})
+
+    # Get the preferred league and lolcation from the user filter
+    preferred_league = ufilter.get('league', None)
+    preferred_location = ufilter.get('location', None)
+
+    if not preferred_league:
+        preferred_league = request.session.get("preferred_league", 0)
+
+    # Default settings
+    defaults = { "leagues": preferred_league,
+                 "locations": preferred_location,
+                 "date_from": None,
+                 "date_to": None,
+                 "duration_min": None,
+                 "duration_max": None,
+                 "week_days": None,
+                 "gap_days": "1"}
+
+    # The user request
+    urequest = request.GET
 
     # TODO check if we can specify NO league filtering. That is where does preferred league come from?
     # This is in leaderboards view as well with same request to check behaviour
     leagues = []
-    preferred_league = ufilter.get('league', None)
     if 'leagues' in urequest:
         sleagues = urequest['leagues']  # CSV string
         if sleagues:
             leagues = list(map(int, sleagues.split(",")))  # list of ints
 
         if preferred_league and not leagues:
-            leagues = [preferred_league]
+            leagues = [defaults["leagues"]]
+    elif defaults["leagues"]:
+        leagues = [defaults["leagues"]]
 
     # We support a locatoion filter as well
     locations = []
-    preferred_location = ufilter.get('location', None)
     if 'locations' in urequest:
         slocations = urequest['locations']  # CSV string
         if slocations:
             locations = list(map(int, slocations.split(",")))  # list of ints
 
         if preferred_location and not locations:
-            locations = [preferred_location]
+            locations = [defaults["leagues"]]
+    elif defaults["locations"]:
+        locations = [defaults["locations"]]
 
     # Suppport for a date range
-    date_from = urequest.get("date_from", None)
-    date_to = urequest.get("date_to", None)
+    date_from = urequest.get("date_from", defaults["date_from"])
+    date_to = urequest.get("date_to", defaults["date_to"])
 
     # Support a duration filer
-    duration_min = urequest.get("duration_min", None)
-    duration_max = urequest.get("duration_max", None)
+    duration_min = urequest.get("duration_min", defaults["duration_min"])
+    duration_max = urequest.get("duration_max", defaults["duration_max"])
 
     # The week day reestrictions if any
-    week_days = urequest.get("week_days", None)
+    week_days = urequest.get("week_days", defaults["week_days"])
 
     # The number of days between sessions that breaks session groups into events.
-    gap_days = float(urequest.get("gap_days", 1))
+    gap_days = float(urequest.get("gap_days", defaults["gap_days"]))
 
     # Collect the implcit events
     events = Event.implicit(leagues, locations, date_from, date_to, duration_min, duration_max, week_days, gap_days)
@@ -99,8 +119,26 @@ def ajax_Events(request, raw=False):
                       border_fill_alpha=0,
                       tools="pan,wheel_zoom,box_zoom,save,reset")
 
-        plot.xaxis.ticker = list(range(min(players), max(players) + 1))
-        plot.yaxis.ticker = list(range(0, max(frequency) + 1))
+        # These are empircially tuned. The figure size is specified above
+        # and the ticks and labels are by default adjusted below, but those
+        # adjustments can pack them so close they overlap. Which is pretty
+        # uggly. These two tuners will be respected to adjust the packing
+        # in config to follow and are sort of judged by eye. More than this
+        # number of labels is considered too tight, packing wise.
+        max_xticks = 30
+        max_yticks = 40
+
+        # Now we want to und the x axis from the min to max number of
+        # players. And the frequency axis we'd like to run from 0 to the
+        # max frequency.
+        xticks = 1 + max(players) - min(players)
+        xspace = 1 + xticks // max_xticks
+
+        yticks = 1 + max(frequency)
+        yspace = 1 + yticks // max_yticks
+
+        plot.xaxis.ticker = list(range(min(players), max(players) + 1, xspace))
+        plot.yaxis.ticker = list(range(0, max(frequency) + 1, yspace))
         plot.toolbar.logo = None
 
         plot.y_range.start = 0
@@ -109,31 +147,39 @@ def ajax_Events(request, raw=False):
 
         # This example is good: https://docs.bokeh.org/en/latest/docs/user_guide/interaction/callbacks.html#customjs-for-widgets
         # But not perfect. How to trigger that onchange in JS?
-        bars.data_source.js_on_change("change", CustomJS(args=dict(xticker=plot.xaxis.ticker, yticker=plot.yaxis.ticker), code="""
+        bars.data_source.js_on_change("change", CustomJS(args=dict(xticker=plot.xaxis.ticker, yticker=plot.yaxis.ticker), code=f"""
             //console.log("DEBUG! Data source changed!");
             const startx = Math.min(...players); const endx = Math.max(...players);
             const starty = 0;                    const endy = Math.max(...frequency);
 
-            xticker.ticks = _.range(startx, endx+1);
-            yticker.ticks = _.range(starty, endy+1);
+            const xticks = 1 + endx - startx;
+            const xspace = 1 + Math.floor(xticks / {max_xticks});
+
+            const yticks = 1 + endy - starty;
+            const yspace = 1 + Math.floor(yticks / {max_yticks});
+
+            xticker.ticks = _.range(startx, endx+1, xspace);
+            yticker.ticks = _.range(starty, endy+1, yspace);
             //debugger;
         """))
 
         graph_script, graph_div = components(plot)
 
-    settings = {}  # @ReservedAssignment
+    settings = {}
     if leagues: settings["leagues"] = leagues
     if locations: settings["locations"] = locations
     if date_from: settings["date_from"] = date_from
     if date_to: settings["date_to"] = date_to
     if duration_min: settings["duration_min"] = duration_min
     if duration_max: settings["duration_max"] = duration_max
+    if week_days: settings["week_days"] = week_days
     if gap_days: settings["gap_days"] = gap_days
 
     context = {"title": "Game Events",
                "events": events,
                "stats": stats,
                "settings": settings,
+               "defaults": defaults,
                "players": players,
                "frequency": frequency,
                "DEBUG_BokeJS": True
@@ -147,7 +193,8 @@ def ajax_Events(request, raw=False):
                         "widget_locations": html_selector(Location, "locations", settings.get("locations", None), ALL_LOCATIONS),
                         "graph_script": graph_script,
                         "graph_div": graph_div,
-                        "plotid": plot.id})
+                        "plotid": plot.id,
+                        "barsid": bars.id})
 
         return context
     else:

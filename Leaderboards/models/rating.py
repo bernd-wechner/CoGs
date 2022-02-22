@@ -363,6 +363,8 @@ class Rating(RatingModel):
         :param Trigger:  A RATING_REBUILD_TRIGGER value
         :param Session:  A Session object if an edit (create or update) of a session triggered this rebuild
         '''
+        SessionModel = apps.get_model(APP, "Session")
+
         # If ever performed keep a record of duration overall and per
         # session to permit a cost estimate should it happen again.
         # On a large database this could be a costly exercise, causing
@@ -385,7 +387,7 @@ class Rating(RatingModel):
             if settings.DEBUG:
                 log.debug(f"Rebuilding ALL leaderboard ratings.")
 
-            sessions = Session.objects.all().order_by('date_time')
+            sessions = SessionModel.objects.all().order_by('date_time')
             first_session = sessions.first()
         else:
             if settings.DEBUG:
@@ -394,7 +396,7 @@ class Rating(RatingModel):
             sfilterg = Q(game=Game) if Game else Q()
             sfilterf = Q(date_time__gte=From) if isinstance(From, datetime) else Q()
 
-            sessions = Session.objects.filter(sfilterg & sfilterf).order_by('date_time')
+            sessions = SessionModel.objects.filter(sfilterg & sfilterf).order_by('date_time')
             first_session = sessions.first()
 
         affected_games = set([s.game for s in sessions])

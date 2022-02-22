@@ -76,6 +76,21 @@ body {
     vertical-align: bottom;
 }
 
+.button_left { 
+	float: left; 
+	margin-right: 0.5em;
+	margin-bottom: 5px;
+}
+
+.button_right { 
+	float: right; 
+	margin-left: 0.5em;
+	margin-bottom: 5px;
+}
+
+button:hover:enabled { cursor: pointer; }
+button:hover:disabled { cursor: wait; }
+
 /* 
 	This is a bug fix of sorts. The DAL select2 widgets take a visble moment to render, before which 
 	the standard HTML selct widget is visible. The style difference is so glarring this jolts visually

@@ -22,6 +22,7 @@ import json
 # Administrative models
 #===============================================================================
 
+
 class ChangeLog(AdminModel):
     '''
     A model for storing a log of edits to recorded sessions. Any such edit has an immediate impact,
@@ -70,7 +71,7 @@ class ChangeLog(AdminModel):
     session = models.ForeignKey('Session', verbose_name='Session', related_name='change_logs', null=True, blank=True, on_delete=models.SET_NULL)  # If the session is deleted we may NEED the impact of that!
 
     # A JSON field that stores a change summary produced by Session.__json__()
-    # This shoudl saliently record which fields changed and for those that changed the value before and after the change
+    # This should saliently record which fields changed and for those that changed the value before and after the change
     changes = models.TextField(verbose_name='Changes logged for this session', null=True)
 
     # Any changes to the game a session relates are centrally important to note because
@@ -375,7 +376,7 @@ class RebuildLog(AdminModel):
         '''
         Returns a tuple of game instances affected by the rebuild
         '''
-        Game  = apps.get_model(APP, "Game")
+        Game = apps.get_model(APP, "Game")
         return tuple([safe_get(Game, pk) for pk in self.games])
 
     @property
