@@ -14,8 +14,8 @@
 	{#  VERY SENSITIVE - If we load jquery, and dal_media, alas dal_media reloads jquery #}
 	{#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
 	{#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
-	{#  DAL should not reload either of these two libraries if we have loaded them already!#}
-	{#  NEWS: As of my move to a venv and redounload of DAL it doesn't! #}
+	{#  DAL should not reload either of these two libraries if we have loaded them already! #}
+	{#  NEWS: As of my move to a venv and redownload of DAL it doesn't! #}
 
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.min.js" crossorigin="anonymous"></script>
@@ -29,7 +29,7 @@
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
 
-	{# Underscroe library of useful functions #}
+	{# Underscore library of useful functions #}
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
 
 	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}	
@@ -37,16 +37,11 @@
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
 	{# Configure DateTime inputs #}	
-	// Transition to flatpickr
-{#	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.css" integrity="sha512-bYPO5jmStZ9WI2602V2zaivdAnbAhtfzmxnEGh9RwtlI00I9s8ulGe4oBa5XxiC6tCITJH/QG70jswBhbLkxPw==" crossorigin="anonymous" referrerpolicy="no-referrer" />	#}
-{#	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery-datetimepicker/2.5.20/jquery.datetimepicker.full.js" crossorigin="anonymous"></script>#}
-	
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/2.3.0/luxon.min.js"></script>
 	<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 	
 	<script>
-		//Attach the datetimepicker to all DateTimeFields. Assumes DateTimeField widgets have the class "DateTimeField"
 		const datetime_format = "{{default_datetime_input_format}}";
 	</script>
 	
@@ -64,6 +59,7 @@
 		const DJANGO_timezone = "{{ active_timezone }}";
 		const DJANGO_utcoffset = "{{ active_utcoffset }}";
 	</script>
+
 	<script src="{% static 'js/submit_info.js' %}"></script>
 
 	<script>
@@ -378,7 +374,6 @@
 
 	flatpickr(".DateTimeField.dateonly", {enableTime: false});
 
-			
 	// Turn off autocomplete on DateTimeFields. Broswers produce a dropdown that gets in the way of flatpickr's drop down when it's on.
 	$('.DateTimeField').attr('autocomplete','off');
 	

@@ -95,11 +95,11 @@ Two types of event are envisaged.
 {#======================#}
 
 {% block startscript %}
-<script src="{% static 'js/URIencoders.js' %}"></script> // provides tailored someURI encoders	
-<script src="{% static 'js/DALinit.js' %}"></script> // provides 'waiting_for', 'finished_waiting' and 'until'
-<script src="{% static 'js/regex.js' %}"></script> // provides 'RegExp.escape'
-<script src="{% static 'js/weekday_widget.js' %}"></script>
-<script src="{% static 'js/copy_with_style.js' %}"></script>
+<script src="{% static 'js/URIencoders.js' %}"></script>     {# provides tailored someURI encoders	#}
+<script src="{% static 'js/DALinit.js' %}"></script>         {# provides 'waiting_for', 'finished_waiting' and 'until'#}
+<script src="{% static 'js/regex.js' %}"></script>           {# provides 'RegExp.escape'#}
+<script src="{% static 'js/weekday_widget.js' %}"></script>  {# provides the week day widget #}
+<script src="{% static 'js/copy_with_style.js' %}"></script> {# provides the copy button support #}
 
 {% if DEBUG_BokeJS %}
 <script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.js"></script>
