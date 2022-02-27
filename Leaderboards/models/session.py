@@ -1685,12 +1685,12 @@ class Session(TimeZoneMixIn, AdminModel):
         from_object = self.dict_from_object
         result = from_object.copy()
 
+        # Find what changed and take note of it (replaceing the data bvalue with two-tuple and adding the key to the changed set)
+        changes = set()
+
         if form_data:
             # dict_from_form is a class method so it is available when no model instance is.
             from_form = self._meta.model.dict_from_form(form_data)
-
-            # Find what changed and take note of it (replaceing the data bvalue with two-tuple and adding the key to the changed set)
-            changes = set()
 
             def check(key):
                 if from_form[key] != from_object[key]:
