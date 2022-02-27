@@ -23,7 +23,7 @@ from .widgets import html_selector
 from ..models import Player, Game, League, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
 from ..leaderboards import leaderboard_options, NameSelections, LinkSelections, augment_with_deltas, LB_STRUCTURE
 
-from Site.logging import log
+from Site.logutils import log
 
 
 def view_Leaderboards(request):

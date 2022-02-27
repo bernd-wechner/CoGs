@@ -15,13 +15,13 @@ table.events, table.stats
 	margin-right: 10px;
 	border-color: #600;
 	border-style: solid;
-	border-width: 0 0 1px 1px;  /* top, right, bottom, left */ 
+	border-width: 0 0 1px 1px;  /* top, right, bottom, left */
 	border-collapse: collapse;
 	border-spacing: 10px;
 }
 
 table.events th, table.stats th,
-table.events td, table.stats td 
+table.events td, table.stats td
 {
 	border-color: #600;
 	border-style: solid;
@@ -37,13 +37,13 @@ table.stats td {
 
 table.events thead,
 table.stats thead,
-table.stats td:nth-of-type(1) 
-{ 
+table.stats td:nth-of-type(1)
+{
  	background-color:var(--background-highlight);
 }
 
-table.events tr:nth-child(6n+4), 
-table.events tr:nth-child(6n+5), 
+table.events tr:nth-child(6n+4),
+table.events tr:nth-child(6n+5),
 table.events tr:nth-child(6n+6) {
  	background-color:var(--background-shaded);
 }
@@ -54,7 +54,7 @@ table.events tr:nth-child(6n+6) {
 	grid-template-columns: min-content min-content 1fr;
 	grid-auto-rows: min-content;
 	grid-column-gap: 15px;
-	grid-row-gap: 5px; 
+	grid-row-gap: 5px;
 	grid-template-areas:
 	  	"eo_header       eo_header        "
 	  	"eo_leagues      eo_locations     "
@@ -76,3 +76,6 @@ table.events tr:nth-child(6n+6) {
 .eo_weekdays     { grid-area: eo_weekdays; }
 
 
+details summary::-webkit-details-marker {
+  display:none;
+}

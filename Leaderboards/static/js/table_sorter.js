@@ -27,7 +27,7 @@ function TableSorter(table_id) {
 				const parts = content.match(/(\d+(\s|&nbsp;)\w+)/g);
 				let value = 0;
 				if (parts != null && typeof parts[Symbol.iterator] === 'function')
-					for (part of parts) {
+					for (let part of parts) {
 						const clean = part.replace(/(\s|&nbsp;)/g, " ")
 						const [val, unit] = clean.split(" ");
 						switch (unit) {
@@ -79,6 +79,14 @@ function TableSorter(table_id) {
 		}
 	};
 
+	const getContent = function(element) {
+		if (element.children.length === 1 && element.children[0].tagName === "DETAILS") {
+			return element.children[0].getElementsByTagName("SUMMARY")[0].innerHTML;
+		} else {
+			return element.innerHTML;
+		}
+	}
+
 	const sortColumn = function(index) {
 		// Get the current direction
 		const direction = directions[index] || 'asc';
@@ -89,8 +97,8 @@ function TableSorter(table_id) {
 		const newRows = Array.from(rows);
 
 		newRows.sort(function(rowA, rowB) {
-			const cellA = rowA.querySelectorAll('td')[index].innerHTML;
-			const cellB = rowB.querySelectorAll('td')[index].innerHTML;
+			const cellA = getContent(rowA.querySelectorAll('td')[index]);
+			const cellB = getContent(rowB.querySelectorAll('td')[index]);
 
 			const a = transform(index, cellA);
 			const b = transform(index, cellB);

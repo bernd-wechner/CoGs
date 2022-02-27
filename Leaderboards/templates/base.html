@@ -60,6 +60,7 @@
 		const DJANGO_utcoffset = "{{ active_utcoffset }}";
 	</script>
 
+	{# Include a client information subitter  #}	
 	<script src="{% static 'js/submit_info.js' %}"></script>
 
 	<script>
@@ -139,13 +140,14 @@
 				        		[ <a href="/admin">Admin</a> ]
 							{% endif %}
 								        	
-				        	[ <a href="{% url 'leaderboards' %}">Leaderboards</a> ]
+				        	[ <a href="{% url 'leaderboards' %}">Leaderboards</a> |
+				        	  <a href="{% url 'events' %}">Events</a>]
 				        	
 				        	[ <a href="{% url 'list' 'League' %}">Leagues</a> |
-				        	<a href="{% url 'list' 'Game' %}">Games</a> |
-				        	<a href="{% url 'list' 'Player' %}">Players</a> |
-				        	<a href="{% url 'list' 'Location' %}">Locations</a> |
-				        	<a href="{% url 'list' 'Session' %}">Sessions</a>]
+				        	  <a href="{% url 'list' 'Game' %}">Games</a> |
+				        	  <a href="{% url 'list' 'Player' %}">Players</a> |
+				        	  <a href="{% url 'list' 'Location' %}">Locations</a> |
+				        	  <a href="{% url 'list' 'Session' %}">Sessions</a>]
 			
 							{% if user.is_authenticated %}
 					        	[<a href="{% url 'list' 'Team' %}">Teams</a> |

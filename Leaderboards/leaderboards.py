@@ -26,7 +26,7 @@ from django_generic_view_extensions.datetime import decodeDateTime
 # Local imports
 # models imports from this module. To avoid a circular import error we need to import models into its own namespace.
 # which means accessing a model is then models.Model
-from Site.logging import log
+from Site.logutils import log
 from . import models
 
 # Some useful enums to use in the options. Really just a way of encapsulating related

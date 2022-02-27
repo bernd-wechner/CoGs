@@ -8,7 +8,7 @@ https://docs.djangoproject.com/en/1.8/howto/deployment/wsgi/
 """
 
 import os
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "CoGs.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "Site.settings")
 
 from django_lighttpd_middleware import METHOD
 

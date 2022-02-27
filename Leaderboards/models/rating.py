@@ -26,7 +26,7 @@ from collections import OrderedDict
 
 from timezone_field import TimeZoneField
 
-from Site.logging import log
+from Site.logutils import log
 
 
 class RatingModel(TimeZoneMixIn, AdminModel):

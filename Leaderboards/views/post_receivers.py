@@ -7,7 +7,7 @@ from django.conf import settings
 from django.http.response import HttpResponse
 from django.utils.timezone import activate
 
-from Site.logging import log
+from Site.logutils import log
 
 from .site import save_league_filters
 

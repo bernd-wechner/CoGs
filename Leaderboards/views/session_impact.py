@@ -13,7 +13,7 @@ from django_generic_view_extensions.datetime import time_str
 from ..models import ChangeLog, RebuildLog, RATING_REBUILD_TRIGGER
 from ..leaderboards import restyle_leaderboard, augment_with_deltas, leaderboard_changed, pk_keys, LB_PLAYER_LIST_STYLE, LB_STRUCTURE
 
-from Site.logging import log
+from Site.logutils import log
 
 
 def view_Impact(request, model, pk):

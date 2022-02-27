@@ -14,7 +14,7 @@ from bokeh.plotting import figure
 from bokeh.embed import components
 from bokeh.models.callbacks import CustomJS
 
-from ..models import Event, League, Location, ALL_LEAGUES, ALL_LOCATIONS
+from ..models import Event, Player, League, Location, ALL_LEAGUES, ALL_LOCATIONS
 
 from .widgets import html_selector
 
@@ -31,7 +31,7 @@ def ajax_Events(request, raw=False):
         we could default to "flexible" when no duration is specifed.
         League and location filters are important
         "flexible" could walk backwards in time, through sessions meeting the
-            filter, and fidning one pegging an end of event then walkimg backwards
+            filter, and finding one pegging an end of event then walkimg backwards
             until a game of more than 1 day is found and pegging an event start
             there.
 
@@ -181,7 +181,7 @@ def ajax_Events(request, raw=False):
                "defaults": defaults,
                "players": players,
                "frequency": frequency,
-               "DEBUG_BokeJS": True
+               "DEBUG_BokehJS": True
                }
 
     if raw:

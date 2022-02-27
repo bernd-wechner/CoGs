@@ -28,6 +28,10 @@ STATIC_URL = "/static/"
 # This is where FileField will store files
 MEDIA_ROOT = os.path.join(BASE_DIR, "media/")
 
+# As of Django 3.2 this is needed (was the default prior, needs to be
+# explicit now to avoid unwelcome warnings)
+DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
+
 import platform
 HOSTNAME = platform.node().lower()
 
@@ -102,7 +106,7 @@ MIDDLEWARE = (
     'django.middleware.security.SecurityMiddleware',
     'django_generic_view_extensions.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
-    'Site.logging.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
+    'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
 
 if SITE_IS_LIVE:
@@ -145,6 +149,16 @@ DATABASES = {
         'PASSWORD': 'ManyTeeth',
         'HOST': '127.0.0.1',
         'PORT': '5432',
+    }
+}
+
+# Caching
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.memcached.PyMemcacheCache',
+        'LOCATION': 'unix:/run/memcached/socket',
+        'KEY_PREFIX': "Leaderboards",
+        'TIMEOUT': 60 * 60 * 24 * 14  # in seconds (sec2min*min2hr*hr2day*days)
     }
 }
 
@@ -242,7 +256,7 @@ else:
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
 # Pass our logger to Django Generic View Extensions
-from Site.logging import log
+from Site.logutils import log
 from logging import DEBUG as loglevel_DEBUG
 import logging.config
 

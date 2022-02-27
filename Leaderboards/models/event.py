@@ -125,7 +125,7 @@ class Event(AdminModel):
         # are not counted, returns how many event_starts there are before this row. And so a count
         # events before this row. A sneaky SQL trick. It relies on the event_start not having a
         # default value (an ELSE clause) and hence defaulting to null. Count() ignores the nulls.
-        session_events = sessions.queryset().annotate(
+        sessions_with_event = sessions.queryset().annotate(
                             event=Window(expression=Count(sessions.col.event_start), order_by=sessions.col.date_time)
                         )
 
@@ -137,14 +137,14 @@ class Event(AdminModel):
         # orderig and if that is included, it forces one row per Perfornce obvect EVEN after
         # .values('event') and .distinct() diesn't even help int hat instance (I tried). Short
         # story is, use explicit ordering on the group by field (.values() field)
-        session_events = With(session_events, "outer_sessions")
+        sessions_with_event = With(sessions_with_event, "outer_sessions")
 
-        events = (session_events
-                 .join(Performance, session_id=session_events.col.id)
-                 .annotate(event=session_events.col.event + 1,  # Move from 0 based to 1 based
-                           location_id=session_events.col.location_id,
-                           game_id=session_events.col.game_id,
-                           gap_time=session_events.col.dt_difference)
+        events = (sessions_with_event
+                 .join(Performance, session_id=sessions_with_event.col.id)
+                 .annotate(event=sessions_with_event.col.event + 1,  # Move from 0 based to 1 based
+                           location_id=sessions_with_event.col.location_id,
+                           game_id=sessions_with_event.col.game_id,
+                           gap_time=sessions_with_event.col.dt_difference)
                  .order_by('event')
                  .values('event')
                  .annotate(start=ExpressionWrapper(Min('session__date_time') - timedelta(hours=minimum_event_duration), output_field=DateTimeField()),

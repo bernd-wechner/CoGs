@@ -23,7 +23,7 @@ from django_generic_view_extensions.datetime import time_str
 
 from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER
 
-from Site.logging import log
+from Site.logutils import log
 
 
 def updated_user_from_form(user, request):

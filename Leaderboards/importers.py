@@ -6,7 +6,7 @@ from django.http import HttpResponse
 from django.db import transaction
 from django_generic_view_extensions.html import fmt_str
 
-from Site.logging import log
+from Site.logutils import log
 from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating
 
 

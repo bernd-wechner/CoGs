@@ -8,6 +8,7 @@ from django.apps import apps
 from django.urls import reverse
 from django.contrib import admin
 from django.contrib.auth.models import User
+from django.utils.functional import cached_property
 
 from django_model_admin_fields import AdminModel
 
@@ -20,6 +21,7 @@ from django_generic_view_extensions.model import field_render, link_target_url
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 
+
 class Player(PrivacyMixIn, AdminModel):
     '''
     A player who is presumably collecting Ratings on Games and participating in leaderboards in one or more Leagues.
@@ -28,7 +30,7 @@ class Player(PrivacyMixIn, AdminModel):
     '''
     Team = apps.get_model(APP, "Team", False)
     League = apps.get_model(APP, "League", False)
-    
+
     # Basic Player fields
     name_nickname = models.CharField('Nickname', max_length=MAX_NAME_LENGTH, unique=True)
     name_personal = models.CharField('Personal Name', max_length=MAX_NAME_LENGTH)
@@ -66,19 +68,19 @@ class Player(PrivacyMixIn, AdminModel):
     visibility_email_address = BitField(visibility, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
     visibility_BGGname = BitField(visibility, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
 
-    @property
+    @cached_property
     def owner(self) -> User:
         return self.user
 
-    @property
+    @cached_property
     def full_name(self) -> str:
         return "{} {}".format(self.name_personal, self.name_family)
 
-    @property
+    @cached_property
     def complete_name(self) -> str:
         return "{} {} ({})".format(self.name_personal, self.name_family, self.name_nickname)
 
-    @property
+    @cached_property
     def games_played(self) -> list:
         '''
         Returns all the games that that this player has played
@@ -87,7 +89,7 @@ class Player(PrivacyMixIn, AdminModel):
         games = Game.objects.filter((Q(sessions__ranks__player=self) | Q(sessions__ranks__team__players=self))).distinct()
         return None if (games is None or games.count() == 0) else games
 
-    @property
+    @cached_property
     def games_won(self) -> list:
         '''
         Returns all the games that that this player has won
@@ -124,7 +126,7 @@ class Player(PrivacyMixIn, AdminModel):
 
         return None if (plays is None or plays.count() == 0) else plays[0]
 
-    @property
+    @cached_property
     def last_plays(self) -> list:
         '''
         Returns the session of last play for each game played.
@@ -135,7 +137,7 @@ class Player(PrivacyMixIn, AdminModel):
             sessions[game] = self.last_play(game)
         return sessions
 
-    @property
+    @cached_property
     def last_wins(self) -> list:
         '''
         Returns the session of last play for each game won.
@@ -148,7 +150,7 @@ class Player(PrivacyMixIn, AdminModel):
                 sessions[game] = self.last_win(game)
         return sessions
 
-    @property
+    @cached_property
     def leaderboard_positions(self) -> list:
         '''
         Returns a dictionary of leagues, each value being a dictionary of games with a
@@ -174,7 +176,7 @@ class Player(PrivacyMixIn, AdminModel):
 
         return positions
 
-    @property
+    @cached_property
     def leaderboards_winning(self) -> list:
         '''
         Returns a dictionary of leagues, each value being a list of games this player
@@ -201,11 +203,11 @@ class Player(PrivacyMixIn, AdminModel):
 
         return result
 
-    @property
+    @cached_property
     def link_internal(self) -> str:
         return reverse('view', kwargs={"model":self._meta.model.__name__, "pk": self.pk})
 
-    @property
+    @cached_property
     def link_external(self) -> str:
         if self.BGGname and not 'BGGname' in self.hidden:
             return "https://boardgamegeek.com/user/{}".format(self.BGGname)
@@ -258,7 +260,7 @@ class Player(PrivacyMixIn, AdminModel):
     def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
-        
+
         :param cls: Our class (so we can build a queryset on it to return)
         :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
         :param session: The request session (if there's a filter recorded there we honor it)
@@ -316,6 +318,4 @@ class Player(PrivacyMixIn, AdminModel):
 @admin.register(Player)
 class PlayerAdmin(admin.ModelAdmin):
     formfield_overrides = { BitField: {'widget': BitFieldCheckboxSelectMultiple}, }
-
-
 

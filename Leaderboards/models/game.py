@@ -21,7 +21,7 @@ from datetime import timedelta
 import json
 import trueskill
 
-from Site.logging import log
+from Site.logutils import log
 
 
 class Game(AdminModel):

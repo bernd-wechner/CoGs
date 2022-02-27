@@ -12,12 +12,14 @@ from django.utils import timezone
 from django.utils.formats import localize
 from django.utils.timezone import localtime
 from django.utils.safestring import mark_safe
+from django.utils.functional import cached_property
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 
 from django_cte import CTEManager
 
 from django_model_admin_fields import AdminModel
+from django_cache_memoized import memoized
 
 from django_generic_view_extensions import FIELD_LINK_CLASS
 from django_generic_view_extensions.model import TimeZoneMixIn
@@ -41,7 +43,7 @@ import trueskill
 import json
 import re
 
-from Site.logging import log
+from Site.logutils import log
 
 
 class Session(TimeZoneMixIn, AdminModel):
@@ -240,7 +242,7 @@ class Session(TimeZoneMixIn, AdminModel):
     @property_method
     def str_ranked_players(self, link=flt.internal) -> str:
         '''
-        Returns a list of players 9as a CSV string) in rank order (with team members and tied annotated)
+        Returns a list of players (as a CSV string) in rank order (with team members and tied annotated)
         '''
         return self._ranked_players(True, link)
 
@@ -1504,17 +1506,26 @@ class Session(TimeZoneMixIn, AdminModel):
 
         return self.trueskill_impacts
 
+    # @memoized("event_detail({self.pk},{link})")
+    # @memoized()
+    @memoized
+    def event_detail(self, link=flt.internal):
+        '''
+        A simple string representation of the session used in event summaries.
+
+        We're interested in the game, and the ranked players, mainly.
+
+        :param self:
+        '''
+        return f'{field_render(self.game, link)}: {self.str_ranked_players(link)}'
+
     def __unicode__(self):
         return f'{time_str(self.date_time)} - {self.game}'
 
     def __str__(self): return self.__unicode__()
 
     def __verbose_str__(self):
-        return u'{} - {} - {} - {}'.format(
-            time_str(self.date_time),
-            self.league,
-            self.location,
-            self.game)
+        return f'{time_str(self.date_time)} - {self.league} - {self.location} - {self.game}'
 
     def __rich_str__(self, link=None):
         url_view_self = reverse('view', kwargs={'model': self._meta.model_name, 'pk': self.pk}) if link == flt.internal else None
