@@ -287,7 +287,31 @@ def view_Fix(request):
 
         return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
 
-    rebuild_play_and_victory_counts()
+    def fix_0000_session_times():
+        '''
+        Move them 9pm. Earlyr ecorded session lacked a time of day, and so have 00:00 as their time.
+        Those played on same day havwere given in an earlier force_unique_session_times fix small
+        increments of 1 second to give them unique times. We'll conserve those.
+
+        For the enw events page we want the tims to be a roughe stimate at least and with a7pm start
+        on games nights a 9pm game finish seems a good rough estimate on average say.
+        '''
+        title = "Forced Unique Session Times"
+        result = ""
+
+        sessions = Session.objects.all().order_by('date_time')
+        for s in sessions:
+            if s.date_time_local.hour == 0 and s.date_time_local.minute == 0:
+                old_time = s.date_time
+                s.date_time = s.date_time + timedelta(hours=21)
+                s.save()
+                result += f"Moved session from {old_time} to {s.date_time}\n"
+
+        now = datetime.now()
+
+        return "<html><body<p>{0}</p><p>It is now {1}.</p><p><pre>{2}</pre></p></body></html>".format(title, now, result)
+
+    result = fix_0000_session_times()
 
     # DONE: Used this to create Performance objects for existing Rank objects
     #     sessions = Session.objects.all()
@@ -375,9 +399,7 @@ def view_Fix(request):
     #         ctz = get_current_timezone()
     #         log.debug(f"dt_raw: {dt_raw}    ctz;{ctz}    dt_local:{dt_local}    dt_naive:{dt_naive}")
 
-    html = "Success"
-
-    return HttpResponse(html)
+    return HttpResponse(result)
 
 
 def view_Kill(request, model, pk):

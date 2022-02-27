@@ -55,6 +55,7 @@ def ajax_Events(request, raw=False):
                  "duration_min": None,
                  "duration_max": None,
                  "week_days": None,
+                 "month_weeks": None,
                  "gap_days": "1"}
 
     # The user request
@@ -93,14 +94,17 @@ def ajax_Events(request, raw=False):
     duration_min = urequest.get("duration_min", defaults["duration_min"])
     duration_max = urequest.get("duration_max", defaults["duration_max"])
 
-    # The week day reestrictions if any
+    # The week day restrictions if any
     week_days = urequest.get("week_days", defaults["week_days"])
+
+    # The month week restrictions if any
+    month_weeks = urequest.get("month_weeks", defaults["month_weeks"])
 
     # The number of days between sessions that breaks session groups into events.
     gap_days = float(urequest.get("gap_days", defaults["gap_days"]))
 
     # Collect the implcit events
-    events = Event.implicit(leagues, locations, date_from, date_to, duration_min, duration_max, week_days, gap_days)
+    events = Event.implicit(leagues, locations, date_from, date_to, duration_min, duration_max, week_days, month_weeks, gap_days)
 
     # And some stats about them
     stats = Event.stats(events)
@@ -172,6 +176,7 @@ def ajax_Events(request, raw=False):
     if duration_min: settings["duration_min"] = duration_min
     if duration_max: settings["duration_max"] = duration_max
     if week_days: settings["week_days"] = week_days
+    if month_weeks: settings["month_weeks"] = month_weeks
     if gap_days: settings["gap_days"] = gap_days
 
     context = {"title": "Game Events",

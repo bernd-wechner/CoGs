@@ -27,6 +27,7 @@ Two types of event are envisaged.
 	<link rel="stylesheet" type="text/css" href="{% static 'css/events.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'css/weekday_widget.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/monthweek_widget.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'css/copy_with_style.css' %}" />
 
 	<link href=”http://cdn.pydata.org/bokeh/release/bokeh-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
@@ -66,6 +67,7 @@ Two types of event are envisaged.
 		<div class="eo_duration_max">and <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_max}}"> in duration (days)</div>
 		<div class="eo_gap">Minimum gap between sessions that makes an event: <input id="gap_days" type="number" step="0.1" min="0" value="{{settings.gap_days}}"> (days)</div>
 		<div class="eo_weekdays">Consider only events that started on these weekdays: {% include "include/weekday_widget.html" %}</div>
+		<div class="eo_monthweeks">and on these weeks of the month: {% include "include/monthweek_widget.html" %}</div>
 	</section>
 {% endblock %}
 

@@ -7,7 +7,7 @@ from django.db import models
 from django.utils import timezone
 
 from django.db.models import Case, When
-from django.db.models.fields import DateTimeField, DurationField
+from django.db.models import DateTimeField, DurationField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models.functions import Extract
@@ -16,10 +16,11 @@ from django.db.models.functions.window import Lag
 
 from django_cte import With
 
-from django_generic_view_extensions.queryset import get_SQL
+# from django_generic_view_extensions.queryset import get_SQL
 
 from django_model_admin_fields import AdminModel
 
+import Site.query
 from .session import Session
 from .performance import Performance
 
@@ -47,6 +48,7 @@ class Event(AdminModel):
                       duration_min=None,
                       duration_max=None,
                       week_days=None,
+                      month_weeks=None,
                       gap_days=1,
                       minimum_event_duration=2):
         '''
@@ -63,6 +65,8 @@ class Event(AdminModel):
         :param duration_min: The minimum duration (in days) of events (an Event filter)
         :param duration_max: The maximum duration (in days) of events (an Event filter)
         :param gap_days:     The gap between sessions that marks a gap between implicit Events.
+        :param week_days     A CSV string list of week day numbers (0-6)
+        :param month_weeks   A CSV string list of month wek numbers (1-5)
         :param minimum_event_duration: Sessions are recorded with a single time (nominally completion).
                                        Single session events will have a duration of 0 as a consequence.
                                        This, in hours expresses the average game duration of a single game
@@ -118,7 +122,7 @@ class Event(AdminModel):
         #
         #    https://stackoverflow.com/a/56729571/4002633
         #    https://dbfiddle.uk/?rdbms=postgres_11&fiddle=0360fd313400e533cd76fbc39d0e22d3
-        #
+        # week
         # It works because a Window that has no partition_by included, makes a single partition
         # of all the row from this one to the end. Which is why we need to ensure and order_by
         # clause in the Window. Ordered by date_time, a count of all the event_start values (nulls)
@@ -165,6 +169,9 @@ class Event(AdminModel):
             day = {"sunday":1, "monday":2, "tuesday":2, "wednesday":4, "thursday":5, "friday":6, "saturday":7}
             week_days = list(filter(None, [day.get(d.strip().lower(), None) for d in week_days.split(",")]))
             events = events.filter(start__week_day__in=week_days)
+
+        if month_weeks:
+            events = events.filter(start__month_week__in=[int(w) for w in month_weeks.split(",")])
 
         # Finally, apply the event filters
         if duration_min: events = events.filter(duration__gte=duration_min)
