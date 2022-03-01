@@ -18,7 +18,7 @@ from datetime import datetime
 from django.conf import settings
 from django.urls import reverse
 from django.utils.html import conditional_escape
-from django.utils.encoding import force_text
+from django.utils.encoding import force_str
 from django.utils.safestring import mark_safe
 
 # Package imports
@@ -88,9 +88,9 @@ def fmt_str(obj, safe=False):
         if obj == NEVER:
             text = "NEVER"
         else:
-            text = force_text(time_str(obj))
+            text = force_str(time_str(obj))
     else:
-        text = force_text(str(obj))
+        text = force_str(str(obj))
 
     # Not object should land here with HTML embedded really, bar PRE strings. So
     # mark PRE strings as safe, and escape the rest.
@@ -404,7 +404,7 @@ def object_html_output(self, ODM=None):
             value = field.value
 
             if hasattr(field, 'label') and field.label:
-                label = conditional_escape(force_text(field.label))
+                label = conditional_escape(force_str(field.label))
             else:
                 label = ''
 
@@ -470,7 +470,7 @@ def object_html_output(self, ODM=None):
                         value = indentVAL(value, indent)
 
             if hasattr(field, 'help_text') and field.help_text:
-                help_text = help_text_html % force_text(field.help_text)
+                help_text = help_text_html % force_str(field.help_text)
             else:
                 help_text = ''
 
@@ -481,7 +481,7 @@ def object_html_output(self, ODM=None):
             else:
                 label_format = '{}'
 
-            html_label = label_format.format(force_text(label))
+            html_label = label_format.format(force_str(label))
             html_value = six.text_type(value)
             html_help = help_text
 

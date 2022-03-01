@@ -244,7 +244,7 @@ def add_timezone_context(view_request, context):
     context['session_timezone'] = str(dt.tzinfo)
     context['session_utcoffset'] = dt.tzinfo._utcoffset
 
-    active_tz = get_current_timezone()
+    active_tz = pytz.timezone(get_current_timezone().key)
     active_dt = active_tz.localize(naive_now)
     context['active_datetime'] = str(active_dt)
     context['active_timezone'] = str(active_dt.tzinfo)
