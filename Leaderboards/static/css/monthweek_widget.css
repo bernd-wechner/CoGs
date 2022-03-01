@@ -1,9 +1,0 @@
-/* Taken from: https://jsfiddle.net/schinckel/gge7v234/ */
-
-.monthweek-select > div {
-  display: inline-block;
-  vertical-align: top
-}
-.monthweek-select > div > label {
-  display: block;
-}

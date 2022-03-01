@@ -4,7 +4,7 @@ Django Generic View Extensions
 QuerySet Extensions
 
 '''
-import re
+import re, sqlparse
 
 from datetime import datetime, timedelta
 
@@ -27,7 +27,8 @@ def get_SQL(queryset, explain=False):
     The work around was published by Zach Borboa here:
         https://code.djangoproject.com/ticket/17741#comment:4
 
-    :param query:
+    :param queryset: A Django QuerySet
+    :param explain:  If True uses the server's EXPLAIN function. Not good for invalid SQL alas.
     '''
     if explain:
         sql, params = queryset.query.sql_with_params()
@@ -67,6 +68,18 @@ def get_SQL(queryset, explain=False):
         return SQL
 
 
+def print_SQL(queryset, explain=False):
+    '''
+    A trivial wrapper around get_SQL that simply prints the result. Useful primarily in a debugger say, to
+    produce a SQL straing htat can be copied/ and pasted into a Query Tool. That is, it doesn't have quotes
+    around it for example.
+
+    :param queryset: A Django QuerySet
+    :param explain:  If True uses the server's EXPLAIN function. Not good for invalid SQL alas.
+    '''
+    print(sqlparse.format(get_SQL(queryset, explain), reindent=True, keyword_case='upper'))
+
+
 def wrap_filter(queryset, sql_where_crtiteria):
     '''
     A sad shortfall in Django at present is that we cannot filter on Window functions used as
@@ -78,7 +91,7 @@ def wrap_filter(queryset, sql_where_crtiteria):
             "the window function expression should be wrapped in an inner query,
             and the filtering should be done in an outer query."
 
-    Here  is our workaround untilt that is fixed in Django, namely we wrap a select/where
+    Here  is our workaround until that is fixed in Django, namely we wrap a select/where
     around the exisitng queryset explicitly.
 
     Alas in so doing we turn it into a raw queryset.
@@ -119,6 +132,7 @@ def top(queryset, number_of_rows, use_slice=True):
     Though to be honest it mostly doesn't and slicing with [:number_of_rows] may well,
     if it's the last operation, also returns an unevaluated QuerySet.
 
+        #     params is a list or dictionary of parameters.
     This method:
 
     a) is postgresql specific, no guarantee it will work on another database engine

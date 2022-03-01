@@ -8,7 +8,7 @@
 			<th data-type="number">Event</th>
 			<th data-type="duration_phrase">When</th>
 			<th data-type="date">Start</th>
-	{#		<th>End</th>#}
+			<th data-type="day of month">Day of Month</th>
 			<th data-type="duration_phrase">Duration</th>
 			<th data-type="duration_phrase">Gap Time</th>
 			<th style="text-align: center;" data-type="number">Location</th>
@@ -24,40 +24,40 @@
 			<td>{{ event.event }}</td>
 			<td>{{ event.start|naturaltime }}</td>
 			<td>{{ event.start }}</td>
-	{#		<td>{{ event.end }}</td>#}
+			<td>{{ event.start|day_of_month }}</td>
 			<td>{{ event.duration|duration:"phrase,minutes" }}</td>
 			<td>{{ event.gap_time|duration:"phrase,days" }}</td>
-			<td style="text-align: center;">{% gattribute "Location" event.location_ids.0 "name" %}</td>
+			<td style="text-align: center;">{% field_str "Location" event.location_ids.0 %}</td>
 			<td style="text-align: center;">
 				<details>
-					<summary>{{ event.locations }}</summary>
+					<summary class="plain">{{ event.locations }}</summary>
 					{% for id in event.location_ids %}
-						{% gattribute "Location" id "name" %}<br>
+						{% field_str "Location" id %}<br>
 					{% endfor %}
 				</details>
 			</td>
 			<td style="text-align: center;">
 				<details>
-					<summary>{{ event.players }}</summary>
+					<summary class="plain">{{ event.players }}</summary>
 					{% for id in event.player_ids %}
-						{% gattribute "Player" id "full_name" %}<br>
+						{% field_str "Player" id %}<br>
 					{% endfor %}
 				</details>
 			</td>
 			<td style="text-align: center;">
 				<details>
-					<summary>{{ event.games }}</summary>
+					<summary class="plain">{{ event.games }}</summary>
 					{% for id in event.game_ids %}
-						{% gattribute "Game" id "name" %}<br>
+						{% field_str "Game" id %}<br>
 					{% endfor %}
 				</details>
 			</td>
 			<td style="text-align: center;">
 				<details>
-					<summary>{{ event.sessions }}</summary>
+					<summary class="plain">{{ event.sessions }}</summary>
 					<div style="text-align: left;">
 					{% for id in event.session_ids %}
-						{% gattribute "Session" id "event_detail" %}<br>
+						{% get_attr "Session" id "event_detail" %}<br>
 					{% endfor %}
 					<div>
 				</details>

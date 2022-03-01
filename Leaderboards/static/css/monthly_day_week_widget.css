@@ -1,0 +1,40 @@
+.weekday-select {
+	white-space: nowrap;
+	display: grid;
+	margin-left: 4ch;
+	grid-template-columns: min-content min-content 1fr;
+	grid-auto-rows: min-content;
+	grid-column-gap: 15px;
+	grid-row-gap: 5px;
+	grid-template-areas:
+	  	"dayhead weekshead"
+	  	"day0  	 weeks0"
+	  	"day2    weeks2"
+	  	"day3    weeks3"
+	  	"day4    weeks4"
+	  	"day5    weeks5"
+	  	"day6    weeks6"
+	  	"day7    weeks7"
+	  	"day1    weeks1";
+}
+
+.day_header   { grid-area: dayhead; font-weight: bold }
+.day0         { grid-area: day0; }
+.day1         { grid-area: day1; }
+.day2         { grid-area: day2; }
+.day3         { grid-area: day3; }
+.day4         { grid-area: day4; }
+.day5         { grid-area: day5; }
+.day6         { grid-area: day6; }
+.day7         { grid-area: day7; }
+.weeks_header { grid-area: weekshead; ; font-weight: bold }
+.weeks0       { grid-area: weeks0; }
+.weeks1       { grid-area: weeks1; }
+.weeks2       { grid-area: weeks2; }
+.weeks3       { grid-area: weeks3; }
+.weeks4       { grid-area: weeks4; }
+.weeks5       { grid-area: weeks5; }
+.weeks6       { grid-area: weeks6; }
+.weeks7       { grid-area: weeks7; }
+
+.week_check { margin-right: 3ch; }

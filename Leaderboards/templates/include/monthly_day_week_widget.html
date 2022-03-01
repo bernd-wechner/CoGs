@@ -1,0 +1,113 @@
+{# Originally taken from https://jsfiddle.net/schinckel/gge7v234/ #}
+{# And very  severely modified #}
+<script>
+	function check_day(cb) {
+		if (cb.name === "days") {
+			if (cb.value == 0) {
+				document.querySelectorAll('input[type="checkbox"][name="days"]').forEach(cb=> {if (cb.value>0) cb.checked=false});
+			} else {
+				document.querySelector('input[type="checkbox"][name="days"][value="0"]').checked = false;
+			}
+		} else {
+			if (cb.checked) {
+				const day = document.querySelector(`input[type="checkbox"][name="days"][value="${cb.getAttribute('day')}"]`);
+				day.checked = true;
+				check_day(day);
+			}
+		}
+	}
+</script>
+
+
+<div class="weekday-select" data-name="days" id="days">
+	<div class="day_header">Day of Week</div>
+	<div class="weeks_header">Week of Month</div>
+
+	<div class="day0">
+		<label class="day_check"><input type="checkbox" value="0" name="days" onchange="check_day(this);" checked> Any</label>
+	</div>
+	<div class="weeks0">
+		<label class="week_check"><input type="checkbox" day="0" value="1" name="week_1" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="0" value="2" name="week_1" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="0" value="3" name="week_1" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="0" value="4" name="week_1" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="0" value="5" name="week_1" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day1">
+		<label class="day_check"><input type="checkbox" value="1" name="days" onchange="check_day(this);"> Sunday</label>
+	</div>
+	<div class="weeks1">
+		<label class="week_check"><input type="checkbox" day="1" value="1" name="week_1" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="1" value="2" name="week_1" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="1" value="3" name="week_1" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="1" value="4" name="week_1" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="1" value="5" name="week_1" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day2">
+		<label class="day_check"><input type="checkbox" value="2" name="days" onchange="check_day(this);"> Monday</label>
+	</div>
+	<div class="weeks2">
+		<label class="week_check"><input type="checkbox" day="2" value="1" name="week_2" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="2" value="2" name="week_2" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="2" value="3" name="week_2" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="2" value="4" name="week_2" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="2" value="5" name="week_2" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day3">
+		<label class="day_check"><input type="checkbox" value="3" name="days" onchange="check_day(this);"> Tuesday</label>
+	</div>
+	<div class="weeks3">
+		<label class="week_check"><input type="checkbox" day="3" value="1" name="week_3" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="3" value="2" name="week_3" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="3" value="3" name="week_3" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="3" value="4" name="week_3" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="3" value="5" name="week_3" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day4">
+		<label class="day_check"><input type="checkbox" value="4" name="days" onchange="check_day(this);"> Wednesday</label>
+	</div>
+	<div class="weeks4">
+		<label class="week_check"><input type="checkbox" day="4" value="1" name="week_4" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="4" value="2" name="week_4" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="4" value="3" name="week_4" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="4" value="4" name="week_4" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="4" value="5" name="week_4" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day5">
+		<label class="day_check"><input type="checkbox" value="5" name="days" onchange="check_day(this);"> Thursday</label>
+	</div>
+	<div class="weeks5">
+		<label class="week_check"><input type="checkbox" day="5" value="1" name="week_5" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="5" value="2" name="week_5" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="5" value="3" name="week_5" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="5" value="4" name="week_5" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="5" value="5" name="week_5" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day6">
+		<label class="day_check"><input type="checkbox" value="6" name="days" onchange="check_day(this);"> Friday</label>
+	</div>
+	<div class="weeks6">
+		<label class="week_check"><input type="checkbox" day="6" value="1" name="week_6" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="6" value="2" name="week_6" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="6" value="3" name="week_6" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="6" value="4" name="week_6" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="6" value="5" name="week_6" onchange="check_day(this);"> 5</label>
+	</div>
+
+	<div class="day7">
+		<label class="day_check"><input type="checkbox" value="7" name="days" onchange="check_day(this);"> Saturday</label>
+	</div>
+	<div class="weeks7">
+		<label class="week_check"><input type="checkbox" day="7" value="1" name="week_7" onchange="check_day(this);"> 1</label>
+		<label class="week_check"><input type="checkbox" day="7" value="2" name="week_7" onchange="check_day(this);"> 2</label>
+		<label class="week_check"><input type="checkbox" day="7" value="3" name="week_7" onchange="check_day(this);"> 3</label>
+		<label class="week_check"><input type="checkbox" day="7" value="4" name="week_7" onchange="check_day(this);"> 4</label>
+		<label class="week_check"><input type="checkbox" day="7" value="5" name="week_7" onchange="check_day(this);"> 5</label>
+	</div>
+</div>

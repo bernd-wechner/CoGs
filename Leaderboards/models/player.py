@@ -225,7 +225,7 @@ class Player(PrivacyMixIn, AdminModel):
         rather than fixing the rendering at server side.
         '''
         # TODO: flexi has to use a delimeter that cannot be in a name and that should be enforced (names have them escaped
-        #       currently using comma, but names can stil have commas!
+        #       currently using comma, but names can still have commas!
         return (self.name_nickname if style == "nick"
            else self.full_name if style == "full"
            else self.complete_name if style == "complete"

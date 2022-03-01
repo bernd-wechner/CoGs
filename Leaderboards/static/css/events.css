@@ -10,6 +10,13 @@
 background-color: var(--background-color);
 */
 
+details summary.plain::marker,
+details summary.plain::-webkit-details-marker
+{
+  display:none;
+  content: "";
+}
+
 table.events, table.stats
 {
 	margin-right: 10px;
@@ -61,7 +68,8 @@ table.events tr:nth-child(6n+6) {
 	  	"eo_date_from    eo_date_to       "
 	  	"eo_duration_min eo_duration_max  "
 	  	"eo_gap          eo_gap           "
-	  	"eo_weekdays     eo_monthweeks    "
+	  	"eo_days         eo_days          "
+	  	/*"eo_weekdays     eo_monthweeks    "*/
 }
 
 /* Map classes into the grid areas */
@@ -73,10 +81,7 @@ table.events tr:nth-child(6n+6) {
 .eo_duration_min { grid-area: eo_duration_min; }
 .eo_duration_max { grid-area: eo_duration_max; }
 .eo_gap          { grid-area: eo_gap; }
-.eo_weekdays     { grid-area: eo_weekdays; }
-.eo_monthweeks   { grid-area: eo_monthweeks; }
+.eo_days     { grid-area: eo_days; }
+/*.eo_weekdays     { grid-area: eo_weekdays; }
+.eo_monthweeks   { grid-area: eo_monthweeks; }*/
 
-
-details summary::-webkit-details-marker {
-  display:none;
-}

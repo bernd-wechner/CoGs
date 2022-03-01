@@ -108,13 +108,37 @@ def fallback(value, fallback):
 
 
 @register.filter
+def ordinal(n):
+    s = ('th', 'st', 'nd', 'rd') + ('th',) * 10
+    v = n % 100
+    if v > 13:
+        return f'{n}{s[v%10]}'
+    else:
+        return f'{n}{s[v]}'
+
+
+@register.filter
+def day_of_month(dt):
+    '''
+    Given a datetime object will return an ordinal day of the month in form of
+    1st Saturday or 3rd Friday
+
+    :param dt:
+    '''
+    day = dt.strftime("%A")
+    # if day == 'Friday': breakpoint()
+    week = ordinal(1 + (dt.day - 1) // 7)
+    return f"{week} {day}"
+
+
+@register.filter
 def duration(value, args=None):
     '''
     Format a timedelta object cleanly.
 
     Taken from: https://stackoverflow.com/a/65293775/4002633
 
-    And improved to incldue a resolution argument.
+    And improved to include a resolution argument.
 
     The arguments are provided in a CSV list.
     '''

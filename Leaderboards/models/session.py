@@ -1517,7 +1517,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         :param self:
         '''
-        return f'{field_render(self.game, link)}: {self.str_ranked_players(link)}'
+        return f'{field_render(self.game, self.link_internal)}: {self.str_ranked_players(link)}'
 
     def __unicode__(self):
         return f'{time_str(self.date_time)} - {self.game}'

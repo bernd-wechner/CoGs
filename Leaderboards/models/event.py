@@ -6,21 +6,23 @@ from tailslide import Median
 from django.db import models
 from django.utils import timezone
 
-from django.db.models import Case, When
-from django.db.models import DateTimeField, DurationField
+from django.db.models import Q, Case, When, DateTimeField, DurationField
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.db.models.functions import Extract
 from django.db.models.expressions import Window, F, ExpressionWrapper
 from django.db.models.functions.window import Lag
 
+from django_generic_view_extensions.util import isInt
+
 from django_cte import With
 
-# from django_generic_view_extensions.queryset import get_SQL
+from django_generic_view_extensions.queryset import get_SQL, print_SQL
 
 from django_model_admin_fields import AdminModel
 
 import Site.query
+
 from .session import Session
 from .performance import Performance
 
@@ -47,8 +49,7 @@ class Event(AdminModel):
                       dt_to=None,
                       duration_min=None,
                       duration_max=None,
-                      week_days=None,
-                      month_weeks=None,
+                      month_days=None,
                       gap_days=1,
                       minimum_event_duration=2):
         '''
@@ -64,9 +65,10 @@ class Event(AdminModel):
         :param dt_to:        The end of a datetime window (a Session filter)
         :param duration_min: The minimum duration (in days) of events (an Event filter)
         :param duration_max: The maximum duration (in days) of events (an Event filter)
+        :param month_days    A CSV string list of month day identifiers Entries are like Monday_N
+                             where N is the week of the month (1-5). Any week when N is missing.
+                             Amy day win that week when the day is missing.
         :param gap_days:     The gap between sessions that marks a gap between implicit Events.
-        :param week_days     A CSV string list of week day numbers (0-6)
-        :param month_weeks   A CSV string list of month wek numbers (1-5)
         :param minimum_event_duration: Sessions are recorded with a single time (nominally completion).
                                        Single session events will have a duration of 0 as a consequence.
                                        This, in hours expresses the average game duration of a single game
@@ -130,15 +132,18 @@ class Event(AdminModel):
         # events before this row. A sneaky SQL trick. It relies on the event_start not having a
         # default value (an ELSE clause) and hence defaulting to null. Count() ignores the nulls.
         sessions_with_event = sessions.queryset().annotate(
-                            event=Window(expression=Count(sessions.col.event_start), order_by=sessions.col.date_time)
+                            event=Window(expression=Count(sessions.col.event_start), order_by=sessions.col.date_time),
+                            # local_time=ExpressionWrapper(F('date_time__local'), output_field=DateTimeField())
                         )
+
+        print_SQL(sessions_with_event)
 
         # Step 4: We have to bring players into the fold, and they are stored in Performance objects.
         # Now we want to select from the from the session_events queryset joined with Performance.
         # and group by events to collect session counts and player lists and player counts.
         #
-        # WARNING: We need an explicit order_by('events') as the Perfroamnce object has a default
-        # orderig and if that is included, it forces one row per Perfornce obvect EVEN after
+        # WARNING: We need an explicit order_by('events') as the Performance object has a default
+        # ordering and if that is included, it forces one row per Perfornce obvect EVEN after
         # .values('event') and .distinct() diesn't even help int hat instance (I tried). Short
         # story is, use explicit ordering on the group by field (.values() field)
         sessions_with_event = With(sessions_with_event, "outer_sessions")
@@ -151,8 +156,8 @@ class Event(AdminModel):
                            gap_time=sessions_with_event.col.dt_difference)
                  .order_by('event')
                  .values('event')
-                 .annotate(start=ExpressionWrapper(Min('session__date_time') - timedelta(hours=minimum_event_duration), output_field=DateTimeField()),
-                           end=Max('session__date_time'),
+                 .annotate(start=ExpressionWrapper(Min('session__date_time__local') - timedelta(hours=minimum_event_duration), output_field=DateTimeField()),
+                           end=Max('session__date_time__local'),
                            duration=F('end') - F('start'),
                            gap_time=Max('gap_time'),
                            locations=Count('location_id', distinct=True),
@@ -165,13 +170,48 @@ class Event(AdminModel):
                            player_ids=ArrayAgg('player_id', distinct=True)
                           ))
 
-        if week_days:
-            day = {"sunday":1, "monday":2, "tuesday":2, "wednesday":4, "thursday":5, "friday":6, "saturday":7}
-            week_days = list(filter(None, [day.get(d.strip().lower(), None) for d in week_days.split(",")]))
-            events = events.filter(start__week_day__in=week_days)
+        # PROBLEM: start and end are in UTC here. They do not use the recorded TZ of the ession datetime.
+        # Needs fixing!
 
-        if month_weeks:
-            events = events.filter(start__month_week__in=[int(w) for w in month_weeks.split(",")])
+        if month_days:
+            daynum = {"sunday":1, "monday":2, "tuesday":2, "wednesday":4, "thursday":5, "friday":6, "saturday":7}
+
+            # Build a canonical list of days (lower case, and None's removed)
+            days = [d.strip().lower() for d in month_days.split(",")]
+
+            efilter = Q()
+
+            for day in days:
+                try:
+                    day_filter = None
+                    week_filter = None
+
+                    # Can be of form "day", "day_n" or "n"
+                    parts = day.split("_")
+                    if len(parts) == 1:
+                        if parts[0] in daynum:
+                            day_filter = daynum[parts[0]]
+                        elif isInt(parts[0]):
+                            week_filter = int(parts[0])
+                    else:
+                        day_filter = daynum.get(parts[0], None)
+                        week_filter = int(parts[1])
+                except:
+                    raise ValueError(f"Bad month/day specifier: {day}")
+
+                # A dw filter is the day file AND the week filter
+                if day_filter or week_filter:
+                    dwfilter = Q()
+                    if day_filter:
+                        dwfilter &= Q(start__week_day=day_filter)
+                    if week_filter:
+                        dwfilter &= Q(start__month_week=week_filter)
+                    # An event filter is one dw filter OR another.
+                    efilter |= dwfilter
+
+            # Q() if Falsey which is good
+            if efilter:
+                events = events.filter(efilter)
 
         # Finally, apply the event filters
         if duration_min: events = events.filter(duration__gte=duration_min)

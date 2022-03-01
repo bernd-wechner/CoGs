@@ -1,8 +1,8 @@
-const dayname = {"0":"Sunday", "1":"Monday", "2":"Tuesday", "3":"Wednesday", "4":"Thursday", "5":"Friday", "6":"Saturday"};
-const daynum =  _.invert(dayname);
+const dayname = {"1":"Sunday", "2":"Monday", "3":"Tuesday", "4":"Wednesday", "5":"Thursday", "6":"Friday", "7":"Saturday"};
+const daynum =  Object.fromEntries(Object.entries(_.invert(dayname)).map(([key, val]) => [key.toLowerCase(), val]));
 
 let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy"),
- 									  stylesheets: ["events.css", "tooltip.css", "default.css"],
+ 									  stylesheets: ["events.css", "monthly_day_week_widget.css", "tooltip.css", "default.css"],
 									  element: document.getElementById("content"),
 									  mode: "attribute",
 									  //defer: false,
@@ -11,9 +11,9 @@ let clipboard = new Copy_With_Style({ button: document.getElementById("btnCopy")
 									  //log_HTML_to_console: true,
 									  //log_performance: true,
 									  //debug: true,
-									  //classes_to_debug: ["tooltiptext"]
+									  //classes_to_debug: ["plain"],
 									  //styles_to_debug: ["background-color"]
-									  //tags_to_debug: ["canvas"]
+									  //tags_to_debug: ["summary"]
 									});
 
 function show_url() { URLopts().then( uo => {const url = url_events.replace(/\/$/, "") + uo; window.history.pushState("","", url); clipboard.copy(window.location)})};
@@ -37,16 +37,18 @@ async function URLopts() {
 	const duration_min = $('#duration_min').val();
 	const duration_max = $('#duration_max').val();
 
+	// Get the selected days
+	const checked_days = Array.from(document.querySelectorAll('input[name=days]:checked'));
+	function checked_weeks(n) { return Array.from(document.querySelectorAll(`input[name=week_${n}]:checked`)); }
+
+	const month_days = checked_days.map(d => {
+		const weeks = checked_weeks(d.value);
+		if (weeks.length > 0) return weeks.map(w => { return `${dayname[d.value]}_${w.value}` }).join(",");
+		else return dayname[d.value];
+	}).join(",");
+
 	// Get the value of the event gap minimum
 	const gap_days     = $('#gap_days').val();
-
-	// Get the selected weekdays
-	const checked_days = Array.from(document.querySelectorAll('input[name=days]:checked'));
-	const week_days = checked_days.map(cb => dayname[cb.value]).join(",");
-
-	// Get the selected monthweeks
-	const checked_weeks = Array.from(document.querySelectorAll('input[name=monthweek]:checked'));
-	const month_weeks = checked_weeks.map(cb => cb.value).join(",");
 
 	let opts = [];
 
@@ -65,14 +67,11 @@ async function URLopts() {
 	if (duration_min && duration_min != defaults["duration_min"]) opts.push("duration_min="+duration_min);
 	if (duration_max && duration_max != defaults["duration_max"]) opts.push("duration_max="+duration_max);
 
+	// Submit any weekday restrictions
+	if (month_days && month_days != defaults["month_days"]) opts.push("month_days="+month_days);
+
 	// And the event gap minimum
 	if (gap_days && gap_days != defaults["gap_days"]) opts.push("gap_days="+gap_days);
-
-	// Submit any weekday restrictions
-	if (week_days && week_days != defaults["week_days"]) opts.push("week_days="+week_days);
-
-	// Submit any monthweek restrictions
-	if (month_weeks && month_weeks != defaults["month_weeks"]) opts.push("month_weeks="+month_weeks);
 
 	return "?" + opts.join("&");
 }
@@ -143,26 +142,47 @@ function got_new_events() {
 	}
 };
 
-function InitWeekDays(values) {
-	const day_chks = Array.from(document.querySelectorAll('input[name=days]'));
-	if (values === undefined) {
-		day_chks.forEach(cb => (cb.checked = false));
-	} else {
-		if (typeof values == "string") values = values.split(/\s*,\s*/);
-		if (!Array.isArray(values)) return; // move on silently
-		values = Number(values[0]) ? values : values.map(v => daynum[v]);
-		day_chks.forEach(cb => (cb.checked = values.includes(cb.value)));
-	}
-}
+function isInt(str) { return !isNaN(str) && Number.isInteger(parseFloat(str)); }
 
-function InitMonthWeeks(values) {
-	const week_chks = Array.from(document.querySelectorAll('input[name=monthweek]'));
-	if (values === undefined) {
-		week_chks.forEach(cb => (cb.checked = false));
+function InitDays(values) {
+	// Reset the checkboxes first
+	for (group of ["days", "weeks0", "weeks1", "weeks2", "weeks3", "weeks4", "weeks5", "weeks6", "weeks7"])
+		document.querySelectorAll(`input[type="checkbox"][name=${group}]`).forEach(cb=> {cb.checked=false});
+
+	if (values) {
+		// Then set the ones specified
+		values = values.split(/\s*,\s*/);
+		for (val of values) {
+			const parts = val.toLowerCase().split("_");
+			let day = null;
+			let week = null;
+			if (parts.length === 1) {
+				if (Object.keys(daynum).includes(parts[0].toLowerCase())) day = daynum[parts[0]];
+				else if (isInt(parts[0])) {
+					day = 0;  // Any Day
+					const int_part = parseInt(parts[0]);
+					if (int_part && int_part >= 1 && int_part <= 5) week = int_part;
+				}
+			} else if (parts.length === 2) {
+				const int_part = parseInt(parts[1]);
+				if (Object.keys(daynum).includes(parts[0].toLowerCase())) day = daynum[parts[0]];
+				if (int_part && int_part >= 1 && int_part <= 5) week = int_part;
+			} else {
+				// Malformed value. Feedback somehow.
+			}
+
+			if (isInt(day)) {
+				const chk_day = document.querySelector(`input[name="days"][value="${day}"]`);
+				chk_day.checked = true;
+
+				if (isInt(week)) {
+					const chk_week = document.querySelector(`input[name="week_${day}"][value="${week}"]`);
+					chk_week.checked = true;
+				}
+			}
+		}
 	} else {
-		if (typeof values == "string") values = values.split(/\s*,\s*/);
-		if (!Array.isArray(values)) return; // move on silently
-		week_chks.forEach(cb => (cb.checked = values.includes(cb.value)));
+		document.querySelector('input[type="checkbox"][name="days"][value="0"]').checked = true;
 	}
 }
 
@@ -172,6 +192,8 @@ function InitControls(settings) {
 	Select2Init($('#leagues'), settings.leagues);
 	Select2Init($('#locations'), settings.locations);
 
+	InitDays(settings.month_days);
+
 	$('#date_from').val(settings.date_from);
 	$('#date_to').val(settings.date_to);
 
@@ -179,8 +201,4 @@ function InitControls(settings) {
 	$('#duration_max').val(settings.duration_max);
 
 	$('#gap_days').val(settings.gap_days);
-
-	InitWeekDays(settings.week_days);
-
-	InitMonthWeeks(settings.month_weeks);
 };
