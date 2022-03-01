@@ -6,7 +6,7 @@
 #
 #  	Postgresql of same version running, and that passwords for postgres and db_user are in ~/.pgpass for both servers
 #	Lighttpd and uwsgi are configured and running on both servers in a compatible manner
-#	The ssh keys are copied for passwordless login from host machine (script is running on) to destination and 
+#	The ssh keys are copied for passwordless login from host machine (script is running on) to destination and
 #	from destination to source.
 ##############################################################################################################################
 
@@ -206,15 +206,17 @@ if [ "$copy_site" = true ]; then
 
 	if [ $target_host != "localhost" ]; then
 		prepare_then="cd \"$server_site_dir\"; source \"$server_venv_dir/bin/activate\";"
+		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
+		# This has to happen before we collect static (next step) as missing packages will cause manage.py to fail.
+		echo "Collecting Python packages on $target_host"
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install -r requirements.txt"
+
 		# If we are copying the site to a web server (not localhost, the development machine) then we need to run collectstatic on
 		# the target. A Django requirment. TO be honest when stable this is not needed. But if static files are added, removed or
 		# altered they won't be available to a webserver until collectstatic is run.
 		echo "Collecting static files on $target_host"
 		${prefix}ssh $target_user@$target_host "$prepare_then python manage.py collectstatic --noinput"
 
-		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
-		echo "Collecting Python packages on $target_host"
-		${prefix}ssh $target_user@$target_host "$prepare_then pip install -r requirements.txt"
 	fi
 fi
 
