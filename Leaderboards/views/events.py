@@ -14,7 +14,7 @@ from bokeh.plotting import figure
 from bokeh.embed import components
 from bokeh.models.callbacks import CustomJS
 
-from ..models import Event, Player, League, Location, ALL_LEAGUES, ALL_LOCATIONS
+from ..models import Event, League, Location, ALL_LEAGUES, ALL_LOCATIONS
 
 from .widgets import html_selector
 

@@ -21,8 +21,6 @@ from django_generic_view_extensions.queryset import get_SQL, print_SQL
 
 from django_model_admin_fields import AdminModel
 
-import Site.query
-
 from .session import Session
 from .performance import Performance
 

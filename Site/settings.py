@@ -263,8 +263,10 @@ import logging.config
 import django_generic_view_extensions
 django_generic_view_extensions.log = log
 
-# Log some config debugs
+# Include local query extensions (register them with Django)
+import Site.query
 
+# Log some config debugs
 if DEBUG:
     import django  # So we have access to the version for reporting
     import psutil  # So we can access process details
@@ -302,3 +304,4 @@ if DEBUG:
 #
 #     sys.settrace(trace_func)
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+

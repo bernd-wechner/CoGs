@@ -27,7 +27,7 @@
 .day5         { grid-area: day5; }
 .day6         { grid-area: day6; }
 .day7         { grid-area: day7; }
-.weeks_header { grid-area: weekshead; ; font-weight: bold }
+.weeks_header { grid-area: weekshead; font-weight: bold }
 .weeks0       { grid-area: weeks0; }
 .weeks1       { grid-area: weeks1; }
 .weeks2       { grid-area: weeks2; }
