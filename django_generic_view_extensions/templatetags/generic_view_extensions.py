@@ -2,7 +2,7 @@ from os.path import splitext
 
 from django import template
 from django.template.loader_tags import do_include
-from django.template.base import Token
+from django.template.base import Token, Origin
 
 register = template.Library()
 
@@ -42,6 +42,8 @@ class IncludeVariant(template.Node):
             words[1] = f"'{parts[0]}_{variant}{parts[1]}'"
 
             include = do_include(self.parser, Token(self.token.token_type, " ".join(words)))
+            # A Django 4 fix: as of 4 it demands an origin that do_include does not provide!
+            include.origin = template.loader.get_template(path).origin
             return include.render(context)
         except template.TemplateDoesNotExist:
             return ''
