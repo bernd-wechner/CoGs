@@ -1,0 +1,120 @@
+#!/bin/bash
+##############################################################################################################################
+# Publish the CoGs Site to a  webserver
+
+# To mount the router and webserver we need to have SSH access and SSH keys installed
+# as we'll use sshfs to mount them if needed
+rsa_file=/home/bernd/.ssh/id_rsa
+
+# Activate the local venv
+source ~/.virtualenvs/CoGs/bin/activate
+
+##############################################################################################################################
+# Web Server CONFIGURATION
+server_name=Arachne
+server=arachne
+server_mount_dir=/home/bernd/Mounts/leaderboard.space.$server
+server_account=weaver@arachne.lan
+
+server_dir=/data/www/leaderboard.space
+server_venv=/data/venv/CoGs/bin/activate
+
+# The files and directories to copy to the server
+site=(requirements.txt static CoGs Leaderboards Scripts django_generic_view_extensions django_lighttpd_middleware django_stats_middleware django_model_admin_fields django_model_privacy_mixin manage.py uwsgi_shelob.ini uwsgi_arachne.ini)
+
+##############################################################################################################################
+# Web Server Backup CONFIGURATION
+backup_timestamp=`date +"%s"`
+backup_mount_dir=/home/bernd/Mounts/leaderboard.space.$server.backup.$backup_timestamp
+backup_dir=/data/www/leaderboard.space.backup.$backup_timestamp
+
+##############################################################################################################################
+# DO THE WORK 
+
+# Get the source dir (we expect this script to be in a subdirectory of scripts in the source dir)
+source_dir=$(cd `dirname $0`/.. && pwd)
+echo "Source directory: $source_dir"
+
+# Ensure the desitination dir exists on the webserver
+ssh -o IdentityFile=$rsa_file $server_account "mkdir -p $server_dir" 
+
+# Ensure the server is properly mounted (or we can't publish to them)
+mountpoint -q $server_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $server_mount_dir ]; then
+		echo "Creating destination directory $server_mount_dir ..."
+	    mkdir -p $server_mount_dir
+	fi
+
+	echo Mounting $server_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$server_dir $server_mount_dir
+else
+	echo "Destination directory: $server_mount_dir"
+fi
+
+# Ensure the server backup directory is properly mounted (or we can't backup to it)
+mountpoint -q $backup_mount_dir
+if [ $? != 0 ];then
+	if [ ! -d $backup_mount_dir ]; then
+		echo "Creating destination directory $backup_mount_dir ..."
+	    mkdir -p $backup_mount_dir
+	fi
+	
+	# Ensure the server hasd a back directory available
+	ssh -o IdentityFile=$rsa_file $server_account mkdir -p $backup_dir
+
+	echo Mounting $backup_mount_dir ...
+	sshfs -o IdentityFile=$rsa_file $server_account:$backup_dir $backup_mount_dir
+else
+	echo "Backup directory: $backup_mount_dir"
+fi
+
+# Backup the server site before we publish
+echo "Backuping up to server directory: $backup_dir"
+rsync -r "$server_mount_dir/" "$backup_mount_dir"
+
+# Build an rsync exclusons file
+exclusion_file="publish-exclusions"
+cat > $exclusion_file <<-EOF
+	__pycache__
+	*.pyc
+	migrations
+EOF
+
+# Now collect the static files
+# Stuff that the settings file writes to screen escapes the 0 verbosity and is displayed
+# So redirect stdout to /dev/null
+echo "Collecting static files ..."
+$source_dir/manage.py collectstatic  --verbosity 0 --noinput > /dev/null
+
+# Now publish the site
+echo "Copying site to $server_name..."
+for source in ${site[@]}; do
+	# If we're excluding an app subdir type we still want to copy a root level version (probably). Calssic example, if "static" is in $exclusion_file
+	if grep -q $source $exclusion_file; then
+		exclude=""
+	else
+		exclude="--exclude-from $exclusion_file"
+	fi
+
+	rsync -r $exclude $source_dir/$source $server_mount_dir
+done
+
+# March 2021 I found we need to collectstatic on the server, because the local collectstatic isn't providing the minimised file
+# My best guess is, this is because locally we have debug settings and on the server live settings, and in the latter collectstatic
+# provides the minified JS files.
+#
+# To do so, we have to cd to to the sites home directory, activate the venv and then run manage.py collectstatic. 
+echo "Collecting static files ..."
+ssh -o IdentityFile=$rsa_file $server_account "cd $server_dir; source $server_venv; python manage.py collectstatic --verbosity 0 --noinput --clear"
+
+# Make sure any packages we've added are installed
+echo "Making sure python packages are up to date   ..."
+ssh -o IdentityFile=$rsa_file $server_account "cd $server_dir; source $server_venv; pip -q install -r requirements.txt"
+
+# We need to reloading the uwsgi services for changes to take effect
+echo "Reloading UWSGI services on $server_name ..."
+# Restart is very slow. Reload is faster - and generally works.
+ssh -o IdentityFile=$rsa_file $server_account "sudo service uwsgi reload"
+
+echo "Done."

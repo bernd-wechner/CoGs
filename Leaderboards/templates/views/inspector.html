@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+An object inspector. Provides a view on objects that can be customised to display
+everything of interest for diagnosing issues and understanding relations.
+==================================================================================
+{% endcomment %}
+
+{% load static %}
+{% block title %}{{title}}{% endblock %}
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+{% endblock %}
+{% block content %}{{inspector|safe}}{% endblock %}

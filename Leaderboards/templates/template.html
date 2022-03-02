@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+ABOUT
+==================================================================================
+{% endcomment %}
+
+{% load static %}
+{% load filters %}
+{% load tags %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+{% endblock %}
+
+{#======================#}
+{#		A SUB MENU		#}
+{#======================#}
+
+{% block submenu %}
+{% endblock %}
+
+{#======================#}
+{#		CONTENT			#}
+{#======================#}
+
+{% block content %}
+{% endblock %}
+
+{#======================#}
+{#		SCRIPTS			#}
+{#======================#}
+
+{% block startscript %}
+{% endblock %}
+
+{% block endscript %}
+{% endblock %}

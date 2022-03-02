@@ -1,0 +1,68 @@
+{% load filters %}
+{% load tags %}
+{% load humanize %}
+
+<table class="events" id="events">
+	<thead>
+		<tr>
+			<th data-type="number">Event</th>
+			<th data-type="duration_phrase">When</th>
+			<th data-type="date">Start</th>
+			<th data-type="day of month">Day of Month</th>
+			<th data-type="duration_phrase">Duration</th>
+			<th data-type="duration_phrase">Gap Time</th>
+			<th style="text-align: center;" data-type="number">Location</th>
+			<th style="text-align: center;" data-type="number">Locations</th>
+			<th style="text-align: center;" data-type="number">Players</th>
+			<th style="text-align: center;" data-type="number">Games Played</th>
+			<th style="text-align: center;" data-type="number">Sessions Played</th>
+		</tr>
+	</thead>
+	<tbody>
+	{% for event in events %}
+		<tr>
+			<td>{{ event.event }}</td>
+			<td>{{ event.start|naturaltime }}</td>
+			<td>{{ event.start }}</td>
+			<td>{{ event.start|day_of_month }}</td>
+			<td>{{ event.duration|duration:"phrase,minutes" }}</td>
+			<td>{{ event.gap_time|duration:"phrase,days" }}</td>
+			<td style="text-align: center;">{% field_str "Location" event.location_ids.0 %}</td>
+			<td style="text-align: center;">
+				<details>
+					<summary class="plain">{{ event.locations }}</summary>
+					{% for id in event.location_ids %}
+						{% field_str "Location" id %}<br>
+					{% endfor %}
+				</details>
+			</td>
+			<td style="text-align: center;">
+				<details>
+					<summary class="plain">{{ event.players }}</summary>
+					{% for id in event.player_ids %}
+						{% field_str "Player" id %}<br>
+					{% endfor %}
+				</details>
+			</td>
+			<td style="text-align: center;">
+				<details>
+					<summary class="plain">{{ event.games }}</summary>
+					{% for id in event.game_ids %}
+						{% field_str "Game" id %}<br>
+					{% endfor %}
+				</details>
+			</td>
+			<td style="text-align: center;">
+				<details>
+					<summary class="plain">{{ event.sessions }}</summary>
+					<div style="text-align: left;">
+					{% for id in event.session_ids %}
+						{% get_attr "Session" id "event_detail" %}<br>
+					{% endfor %}
+					<div>
+				</details>
+			</td>
+		</tr>
+	{% endfor %}
+	<tbody>
+</table>

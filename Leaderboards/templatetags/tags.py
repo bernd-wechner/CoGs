@@ -1,11 +1,17 @@
 import json
 
 from django import template
+from django.apps import apps
+from django.core.cache import cache
 from django.utils.safestring import mark_safe
 # from django.template.loader_tags import do_include
 
-from django_generic_view_extensions.model import object_in_list_format
+from django_generic_view_extensions.model import object_in_list_format, field_render
 from django_generic_view_extensions.util import numeric_if_possible
+
+from django_cache_memoized import memoized
+
+from ..models import APP
 
 register = template.Library()
 
@@ -62,3 +68,39 @@ def leaderboard_after_rebuild(rebuild_log, game):
     :param game: an instance of Game:
     '''
     return mark_safe(rebuild_log.leaderboard_after(game))
+
+
+@register.simple_tag()
+@memoized("{model}[{pk}]({link},{fmt})")
+def field_str(model, pk, link=None, fmt=None):
+    '''
+
+    See: https://docs.djangoproject.com/en/4.0/topics/cache/#the-low-level-cache-api
+
+    :param model: The name of a model
+    :param pk: A primary key value for that model (object id)
+    :param attribute: The name of an attribute of such an object (a model field or method)
+    '''
+    Model = apps.get_model(APP, model)
+    obj = Model.objects.get(pk=pk)
+    return field_render(obj, link, fmt)
+
+
+@register.simple_tag()
+@memoized("{model}[{pk}].{attribute}")
+def get_attr(model, pk, attribute):
+    '''
+
+    See: https://docs.djangoproject.com/en/4.0/topics/cache/#the-low-level-cache-api
+
+    :param model: The name of a model
+    :param pk: A primary key value for that model (object id)
+    :param attribute: The name of an attribute of such an object (a model field or method)
+    '''
+    Model = apps.get_model(APP, model)
+    obj = Model.objects.get(pk=pk)
+    attr = getattr(obj, attribute)
+    if callable(attr):
+        return mark_safe(attr())
+    else:
+        return mark_safe(attr)

@@ -19,16 +19,16 @@ uwsgi service mystery
             That in turn is called from /usr/share/uwsgi/init/do_command: do_command()
             That in turn is called from "/etc/init.d/uwsgi start"
 
-Mytsery solved:
+Mystery solved:
 
 This is a bizarre construct in Linux balancing SysV init scripts with systemd services. Totally
 hard to identify but the secret lies in:
 
     /lib/lsb/init-functions.d/40-systemd
 
-which when loaded makes a call as to whether to let the init script run uwsgi (with do_start_specific_daemon) or use systemctl to start it. 
-The weirdness is that systemctl just runs the init script again (i.e recurses), this however, on the second pass, the call is made to 
-let the init script run uwsgi (with do_start_specific_daemon). So, ultimately it is do_start_specific_daemon that loads the uwsgi daemon, 
+which when loaded makes a call as to whether to let the init script run uwsgi (with do_start_specific_daemon) or use systemctl to start it.
+The weirdness is that systemctl just runs the init script again (i.e recurses), this however, on the second pass, the call is made to
+let the init script run uwsgi (with do_start_specific_daemon). So, ultimately it is do_start_specific_daemon that loads the uwsgi daemon,
 there's just a weird way to get there.
 
 The decision is made as follows:

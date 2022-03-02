@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+A page that offers a view on event statistics.
+
+Two types of event are envisaged.
+
+1. The implicit event of n days duration (nominally 1 for a games night)
+	we could default to "flexible" when no duration is specifed.
+	League and location filters are important
+	"flexible" could walk backwards in time, through sessions meeting the
+		filter, and fidning one pegging an end of event then walkimg backwards
+		until a game of more than 1 day is found and pegging an event start
+		there.
+
+2. The explicit event (from the events model) - not yet in use.
+==================================================================================
+{% endcomment %}
+
+{% load static %}
+{% load filters %}
+{% load tags %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/events.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/monthly_day_week_widget.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/copy_with_style.css' %}" />
+
+	<link href=”http://cdn.pydata.org/bokeh/release/bokeh-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
+	<link href=”http://cdn.pydata.org/bokeh/release/bokeh-widgets-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
+{% endblock %}
+
+{#======================#}
+{#		A SUB MENU		#}
+{#======================#}
+
+{% block submenu %}
+	<section id="EventOptions" class="event_options">
+		<div class="eo_header">
+			View Events:
+			<button type="button" class="tooltip" id="btnReload"  onclick="refetchEvents();">
+				<img src="{% static 'img/reload.png' %}"  class='img_button'>
+				<span class="tooltiptext_right">Reload or redisplay events with current settings</span>
+			</button>
+			<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
+
+			<button type="button" class="button_right tooltip" id='btnCopy'>
+				<img src="{% static 'img/copy.png' %}"  class='img_button'>
+				<span class="tooltiptext_left">Copy Leaderboards (for pasting elsewhere)</span>
+				<progress id='pgsCopy' value="0" max="100" style="height:10; margin-left: 1ch; display: none;"></progress>
+			</button>
+		  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
+				<img src="{% static 'img/link_thin.png' %}" class='img_button'>
+				<span class="tooltiptext_left">Copy URL</span>
+		  	</button>
+		</div>
+
+		<div class="eo_leagues">Leagues: {{ widget_leagues }}</div>
+		<div class="eo_locations">Locations: {{ widget_locations }}</div>
+		<div class="eo_date_from">Sessions played between: <input id="date_from" type="text" class="DateTimeField dateonly" value="{{settings.date_from}}"></div>
+		<div class="eo_date_to">and <input id="date_to" type="text" class="DateTimeField dateonly" value="{{settings.date_to}}"></div>
+		<div class="eo_duration_min">Events between: <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_min}}"></div>
+		<div class="eo_duration_max">and <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_max}}"> in duration (days)</div>
+		<div class="eo_gap">Minimum gap between sessions that makes an event: <input id="gap_days" type="number" step="0.1" min="0" value="{{settings.gap_days}}"> (days)</div>
+		<div class="eo_days">
+			<details><summary>Consider only events that started on specific days of the month.</summary>{% include "include/monthly_day_week_widget.html" %}</details></div>
+	</section>
+{% endblock %}
+
+{#======================#}
+{#		CONTENT			#}
+{#======================#}
+
+{% block content %}
+	<h1>Summary Statistics</h1>
+		<section id="EventStats">
+		{% include "include/events_stats_table.html" %}
+		</section>
+
+	<h1>Graph of Event Attendance</h1>
+	<section id="Graphs">
+ 	{{ graph_div | safe }}
+	</section>
+
+	<h1>List of Events</h1>
+		<section id="Events">
+		{% include "include/events_table.html" %}
+		</section>
+{% endblock %}
+
+{#======================#}
+{#		SCRIPTS			#}
+{#======================#}
+
+{% block startscript %}
+<script src="{% static 'js/URIencoders.js' %}"></script>     {# provides tailored someURI encoders	#}
+<script src="{% static 'js/DALinit.js' %}"></script>         {# provides 'waiting_for', 'finished_waiting' and 'until'#}
+<script src="{% static 'js/regex.js' %}"></script>           {# provides 'RegExp.escape'#}
+<script src="{% static 'js/copy_with_style.js' %}"></script> {# provides the copy button support #}
+
+{% if DEBUG_BokehJS %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.js"></script>
+{% else %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.min.js"></script>
+{% endif %}
+{{ graph_script| safe }}
+{% endblock %}
+
+{% block endscript %}
+<script>
+	const settings 			= {{ settings | json | safe }}; // A dict of settings
+	const defaults 			= {{ defaults | json | safe }}; // A dict of default settings
+
+	const url_events 		= "{% url 'events' %}";
+	const url_json_events 	= "{% url 'json_events' %}";
+
+	const plotid  			= "{{ plotid }}";  // Must be a string for use by get_model_by_id
+	const barsid  			= "{{ barsid }}";  // Must be a string for use by get_model_by_id
+	let players   			= {{ players }};   // Array of player counts
+	let frequency 			= {{ frequency }}; // Array of same length of counts of player counts
+</script>
+<script src="{% static 'js/view_events.js' %}"></script>
+<script src="{% static 'js/table_sorter.js' %}"></script>
+{% if settings.month_days %}
+<script>
+	InitDays("{{ settings.month_days }}");
+</script>
+{% endif %}
+<script>document.addEventListener('DOMContentLoaded', TableSorter('events'));</script>
+{% endblock %}

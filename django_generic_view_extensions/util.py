@@ -46,7 +46,7 @@ def special_titles(text, all_caps=False):
     Returning a string, will ask titlecase to use that string.
 
     :param text: the text to return as title case
-    :param all_caps: provided my titlecase and True if the string is all caps
+    :param all_caps: provided by titlecase and True if the string is all caps
     '''
 
     # Return text in brackets unchanged

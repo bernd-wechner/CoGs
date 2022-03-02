@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% load static %}
+{% load filters %}
+{% load tags %}
+{% load generic_view_extensions %}
+{% block title %}{{ title }}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+{% endblock %}
+
+{#======================#}
+{#		CONTENT			#}
+{#======================#}
+
+{% block content %}
+<p>
+<a href="{% url 'list' model_name %}">[List]</a>
+</p>
+
+<form id="formData" action="" method="post">
+	<!-- START FORM media -->
+	{{ form.media }}
+	<!-- END FORM media -->
+	{% csrf_token %}
+	<table>
+	    {{ form.as_table }}
+	    
+		{% if debug and model_name == 'Session' %}
+			<tr>
+				<th>Show trash:</th>
+				<td><input type="checkbox" onchange="showhideTrash(event)"></td>
+			</tr>	
+		{% endif %}		    
+	</table>
+
+	{% include_variant model_name %}
+	
+	<input type="submit" value="Submit" style="margin-top:20px;"/>
+	{% if debug %}
+		<br>	
+		<br><input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
+		<br><input type="checkbox" id="debug_form_data" name="debug_form_data" value="on"> Display form data only (do not process submission)
+		<br><input type="checkbox" id="debug_rebuild_request" name="debug_rebuild_request" value="on"> Display rebuild request log only (do not save anything to database)
+		<br><br>
+		<div class='tooltip'>
+			<input type="button" value="Prepare Submission" id="prepare_submission"/>
+			<span class='tooltiptext' style='width: 300%;'>Runs the OnSubmit event handler without submitting. So the page can be inspected in its state just prior to submission.</span>
+		</div>
+	{% endif %}	
+</form>
+{% endblock %}
+
+{#======================#}
+{#		SCRIPTS			#}
+{#======================#}
+
+{% block startscript %}
+	<script>
+		const reload_icon = "{% static 'img/reload.png' %}";
+
+		// Catch related form errors that come in (in order to report them)
+		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};  
+	</script>
+{% endblock %}

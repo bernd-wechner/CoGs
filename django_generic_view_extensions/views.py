@@ -29,7 +29,7 @@ from django.contrib.auth.views import LoginView
 
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
-from django.db import connection, transaction
+from django.db import transaction
 # from django.db.models.query import QuerySet
 from django.db.utils import IntegrityError
 from django.http.response import HttpResponse, HttpResponseRedirect  # , JsonResponse
@@ -43,7 +43,6 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from url_filter.filtersets import ModelFilterSet
 from url_filter.constants import StrictMode
 from dal import autocomplete
-from cuser.middleware import CuserMiddleware
 
 # Package imports
 from . import log
@@ -227,9 +226,6 @@ class ListViewExtended(ListView):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
 
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-
         self.format = get_list_display_format(self.request.GET)
 
         self.ordering = get_ordering(self)
@@ -303,9 +299,6 @@ class DetailViewExtended(DetailView):
     def get_object(self, *args, **kwargs):
         self.model = class_from_string(self, self.kwargs['model'])
         self.pk = self.kwargs['pk']
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
 
         # Get the ordering
         self.ordering = get_ordering(self)
@@ -388,9 +381,6 @@ def get_context_data_generic(self, *args, **kwargs):
     self.model = class_from_string(self, self.kwargs['model'])
     if not hasattr(self, 'fields') or self.fields == None:
         self.fields = '__all__'
-
-    # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-    CuserMiddleware.set_user(self.request.user)
 
     if isinstance(self, CreateView):
         # Note that the super.get_context_data initialises the form with get_initial
@@ -630,9 +620,12 @@ def post_generic(self, request, *args, **kwargs):
                             # Uncloak self.form.instance. From here on in we can proceed as normal.
                             self.form.instance = self.object
                             # Reclean the data which ensures this instance has the form data applied now.
-                            # This raises a ValidationError if it fails to apply form data to the instance
+                            # This may raise a ValidationError if it fails to apply form data to the instance
                             # for any reason.  Which rightly, rolls back our transaction.
                             self.form.full_clean()
+                            # Or maybe not, so check for errors and raise one if found:
+                            if self.form.errors:
+                                raise ValidationError('Some errors were detected in your submission.')
 
                         self.object = self.form.save()
                         log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
@@ -785,7 +778,7 @@ class CreateViewExtended(CreateView):
         initial = super().get_initial()
 
         try:
-            # TODO: Consider gerting the last object created by the logged in user instead
+            # TODO: Consider getting the last object created by the logged in user instead
             # of the last object created
             last = self.model.objects.latest()
         except ObjectDoesNotExist:
@@ -846,9 +839,6 @@ class UpdateViewExtended(UpdateView):
         else:
             self.fields = fields_for_model(self.model)
 
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
-
         return self.obj
 
 
@@ -873,9 +863,6 @@ class DeleteViewExtended(DeleteView):
     def get_object(self, *args, **kwargs):
         self.app = app_from_object(self)
         self.model = class_from_string(self, self.kwargs['model'])
-
-        # Communicate the request user to the models (Django doesn't make this easy, need cuser middleware)
-        CuserMiddleware.set_user(self.request.user)
 
         self.pk = self.kwargs['pk']
         self.obj = get_object_or_404(self.model, pk=self.kwargs['pk'])

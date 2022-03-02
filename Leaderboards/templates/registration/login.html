@@ -1,4 +1,4 @@
-{% extends "CoGs/base.html" %}
+{% extends "base.html" %}
 {% load static %}
 {% load tz %}
 {% get_current_timezone as TIME_ZONE %}
@@ -9,7 +9,7 @@
 	{{ form }}
 	
 	{# We want to submit the local timezone info as best we can and store it a session variable #}
-	<script src="{% static 'CoGs/js/jstz.min.js'%}"></script>
+	<script src="{% static 'js/jstz.min.js'%}"></script>
 
     <label for="timezone">Time zone:</label>
     <select id="timezone" name="timezone">

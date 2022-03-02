@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html>
+<head>
+	{% load static %}
+	<title>{% block title %}{% endblock %}</title>
+
+	<link rel="stylesheet" type="text/css" href="{% static 'css/default.css' %}" />
+	<link rel="icon" href="{% static 'img/favicon.ico' %}">
+	<meta name="robots" content="NONE,NOARCHIVE" />
+	<meta charset="UTF-8" />
+
+	{% block styles %}{% endblock %}
+
+	{#  VERY SENSITIVE - If we load jquery, and dal_media, alas dal_media reloads jquery #}
+	{#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
+	{#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
+	{#  DAL should not reload either of these two libraries if we have loaded them already! #}
+	{#  NEWS: As of my move to a venv and redownload of DAL it doesn't! #}
+
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.min.js" crossorigin="anonymous"></script>
+	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
+		<!-- START DAL media -->
+		{{ dal_media }}
+		<!-- END DAL media -->
+	{% endif %}
+
+	{# Bootstrap theme for select2 widget #}
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
+
+	{# Underscore library of useful functions #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
+
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+	{# Configure DateTime inputs #}
+	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/2.3.0/luxon.min.js"></script>
+	<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+
+	<script>
+		const datetime_format = "{{default_datetime_input_format}}";
+	</script>
+
+	<script src="{% static 'js/jstz.min.js' %}"></script>
+	<script src="{% static 'js/datetime_functions.js' %}"></script>
+
+	{# Set some global variables based on context data  #}
+	<script>
+		// Template provided variables that submit_info.js expects.
+		const CSRF_field 	= '{% csrf_token %}';
+		const POST_RECEIVER = "{% url 'post_client_info' %}";
+		const SESSION_timezone = "{{ request.session.timezone }}";
+		const SESSION_utcoffset = "{{ request.session.utcoffset }}";
+		const SESSION_location = "{{ request.session.location }}";
+		const DJANGO_timezone = "{{ active_timezone }}";
+		const DJANGO_utcoffset = "{{ active_utcoffset }}";
+	</script>
+
+	{# Include a client information subitter  #}
+	<script src="{% static 'js/submit_info.js' %}"></script>
+
+	<script>
+		function check_for_leagues() {
+			if ("{{league_options|escapejs}}"=="")
+				document.getElementById("league_selector").style.display = 'none';
+		}
+
+		function setting_changed(event) {
+			// Django provides (and demands, if the server implements it) Cross Site Request Forgery (CSRF) protection
+			// Django provides us with a csrf_token which it wants to see in a POST submission or it will reject it.
+			// This how Django knows the POST came from this form here and not some other submitter.
+			// The token comes as a HTML hidden form element, and we're building our own POST submission so
+			// need to extract the name and value and compose a URI (Uniform Resource Identifer).
+			const CSRF_name = CSRF_field.match( /name="(.*?)"/ )[1];
+			const CSRF_value = CSRF_field.match( /value="(.*?)"/ )[1];
+			const CSRF_uri = CSRF_name + "="  + encodeURI(CSRF_value);
+
+			// Determine the setting we're changing
+			let FILTER_RECEIVER = null;
+			let submission = null;
+			if (event.target.id == "id_league_view" ) {
+				FILTER_RECEIVER = "{% url 'post_filter' %}";
+				submission = CSRF_uri + "&league=" + encodeURI(event.target.value)
+			}
+			else if (event.target.id == "id_debug_mode" ) {
+				FILTER_RECEIVER = "{% url 'post_debugmode' %}";
+				submission = CSRF_uri + "&debug_mode=" + encodeURI(event.target.checked)
+			}
+
+			if (FILTER_RECEIVER) {
+				const POST_FILTER = new XMLHttpRequest();
+				POST_FILTER.open("POST", FILTER_RECEIVER, true);
+				POST_FILTER.setRequestHeader("Content-Type", "application/x-www-form-urlencoded");
+
+				// This asks for a page reload after posting of the league filter returns
+				// TODO: The receiver should really return a signal to indicate success.
+				// TODO: A full page reload is a bit of overkill given some pages already
+				//       do wonderful AJAX refreshes of the bits that change when settings
+				//       change. We should consider a way for the page to set a global variable
+				//       which registers a callback to run in place of location.reload(); and
+				//       use location.reload(); as a fallback if none is registered.
+				// TODO: similarly some pages may wish to disable a reload altogether, for
+				//		 example a login page, or a delete confirmation page etc. These
+				//		 could set that callback to null as a signal to disable reload
+				//		 alltogether. SO here we check for undefined in which case we
+				//		 reload the page, check for null in which case do nothing, and
+				//		 finallyc heck that a function is provided and call that.
+				POST_FILTER.onreadystatechange = function () { location.reload(); }
+				POST_FILTER.send(submission);
+			}
+		}
+	</script>
+
+	{% block startscript %}{% endblock %}
+</head>
+
+<body class="body"  onload="check_for_leagues()">
+	<!-- Container -->
+	<div id="container">
+	    <!-- HEADERS: header and subheader -->
+	    <div id="headers">
+		    <!-- HEADER -->
+		    <div id="header">
+		        {% block branding %}
+		        <div id="branding">
+		        	<a href="{% static 'img/logo.png' %}"><img src="{% static 'img/logo.png' %}" align=left height=70></a>
+					{# SITE_TITLE is set int he Django Settings file based on hte host name #}
+					<h1 id="site-name"><a href="/">{{SITE_TITLE}}</a></h1>
+		        </div>
+		        {% endblock %}
+
+		        {% block menu %}
+			        <div id="menu-line" style="display: flex; flex-direction: row; justify-content: space-between; align-items: center;">
+				        <div id="menu">
+							{% if user.is_authenticated %}
+				        		[ <a href="/admin">Admin</a> ]
+							{% endif %}
+
+				        	[ <a href="{% url 'leaderboards' %}">Leaderboards</a> |
+				        	  <a href="{% url 'events' %}">Events</a>]
+
+				        	[ <a href="{% url 'list' 'League' %}">Leagues</a> |
+				        	  <a href="{% url 'list' 'Game' %}">Games</a> |
+				        	  <a href="{% url 'list' 'Player' %}">Players</a> |
+				        	  <a href="{% url 'list' 'Location' %}">Locations</a> |
+				        	  <a href="{% url 'list' 'Session' %}">Sessions</a>]
+
+							{% if user.is_authenticated %}
+					        	[<a href="{% url 'list' 'Team' %}">Teams</a> |
+					        	 <a href="{% url 'list' 'Rank' %}">Ranks</a> |
+					        	 <a href="{% url 'list' 'Performance' %}">Performances</a> |
+					        	 <a href="{% url 'list' 'Rating' %}">Ratings</a> ] |
+					        	 <input type="checkbox" name="debug_mode" id="id_debug_mode" onchange="setting_changed(event)" {% if debug_mode %}checked{% endif %}> Debug
+							{% endif %}
+				        </div>
+		{#		        TODO: This league selecter needs to be set:#}
+		{#		          1) When logging in, set it to the default league of the logged in user.#}
+		{#						- for this we need to give each logged in user a default league.#}
+		{#		          2) When viewing a session, set it to the league of the session that was loaded.#}
+				        <div id="league_selector">League:
+							<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
+								{{league_options|safe}}
+							</select>
+		{#					{{league_widget|safe}}#}
+				        </div>
+				        <div id="login"">
+							{% if user.is_authenticated %}
+					        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> |
+							{% else %}
+					        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a> |
+							{% endif %}
+
+							<a href="{% url 'about' %}">About</a> ]
+				        </div>
+			        </div>
+		        {% endblock %}
+
+		        {% block usertools %}
+			        {% if has_permission %}
+				        <div id="user-tools">
+				            {% block welcome-msg %}
+				                Welcome,
+				                <strong>{% firstof user.get_short_name user.get_username %}</strong>.
+				            {% endblock %}
+				            {% block userlinks %}
+				                {% if site_url %}
+				                    <a href="{{ site_url }}">View site</a> /
+				                {% endif %}
+				                {% if user.is_active and user.is_staff %}
+				                    {% url 'django-admindocs-docroot' as docsroot %}
+				                    {% if docsroot %}
+				                        <a href="{{ docsroot }}">Documentation</a> /
+				                    {% endif %}
+				                {% endif %}
+				                {% if user.has_usable_password %}
+				                	<a href="{% url 'admin:password_change' %}">Change password</a> /
+				                {% endif %}
+				                <a href="{% url 'admin:logout' %}">Log out</a>
+				            {% endblock %}
+				        </div>
+			        {% endif %}
+		        {% endblock %}
+		    </div>
+		    <!-- END Header -->
+
+		    <div id="heading">
+		        {% block heading %}
+			        {% block content_title %}<h1><div id='title'>{% autoescape off %}{{ title }}{% endautoescape %}</div></h1>{% endblock %}
+			        {% block content_subtitle %}{% if subtitle %}<h2><div id='subtitle'>{% autoescape off %}{{ subtitle }}{% endautoescape %}<div></h2>{% endif %}{% endblock %}
+		        {% endblock %}
+		    </div>
+
+		    <div id="subheader">
+		        {% block submenu %}
+		        {% endblock %}
+		    </div>
+	    </div>
+
+		<div id="body">
+		    <!-- MESSAGES -->
+		    {% block messages %}
+		        {% if messages %}
+			    <div id="messages" class="messages">
+			        <ul class="messagelist">
+			        	{% for message in messages %}
+			          		<li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message|capfirst }}</li>
+			        	{% endfor %}
+			        </ul>
+		        </div>
+		        {% endif %}
+		    {% endblock messages %}
+
+			{#			DEBUGGING OUTPUT	#}
+			{#			<pre> {% filter force_escape %} {% debug %} {% endfilter %} </pre>#}
+			{#			<pre> {{ request.META }}  </pre>#}
+			{#	<pre id="version_debug_info">#}
+			{#	Django source: {{ Django_source }}#}
+			{#	Django version: {{ Django_version }}#}
+			{#	DAL source: {{ DAL_source }}#}
+			{#	DAL version: {{ DAL_version }}#}
+			{#	</pre> #}
+			{#	<script>#}
+			{#		const v1 = jQuery.fn.jquery;#}
+			{#		const v2 = $().jquery;#}
+			{#		const e = document.getElementById("version_debug_info");#}
+			{#		e.innerText = e.innerText + "JQuery fn version: " + v1 + "\n\tJQuery $ version: " + v2;#}
+			{#	</script>#}
+
+		    <!-- CONTENT -->
+		    <div id="content" class="content">
+		        {% block content %}{% endblock %}
+		        {% block sidebar %}{% endblock %}
+		        <br class="clear" />
+		    </div>
+		    <!-- END Content -->
+
+		    <!-- FOOTER -->
+		    {% block footer %}
+				{#	DEBUG is the settings.DEBUG flag and session["debug_mode"] flag#}
+			    {% if DEBUG or debug_mode %}
+					{% include "include/timezone_diag.html" %}
+					{% include "include/session_spy.html" %}
+				    {% if filters %}
+						{% include "include/filter_spy.html" %}
+			        {% endif %}
+		        {% endif %}
+
+			    <div id="footer">{{footer}}</div>
+		    {% endblock %}
+		</div>
+		<!-- END Body -->
+	</div>
+	<!-- END Container -->
+</body>
+
+<script>
+	// Attach a datetimepicker to all DateTimeFields.
+	// Assumes DateTimeField widgets have the class "DateTimeField"
+	const DateTime = luxon.DateTime;
+
+	Number.prototype.mins2offset = function () {
+	    let hours   = Math.floor(this / 60);
+	    let minutes = Math.floor((this - ((hours * 3600)) / 60));
+	    let pfx = this >= 0 ? "+" : "-";
+
+	    if (hours   < 10) hours   = "0"+hours;
+	    if (minutes < 10) minutes = "0"+minutes;
+
+	    // If this is for a datetme field, Django accepts expected
+	    // formats for form cleaning in the setting DATETIME_INPUT_FORMATS
+	    //    See: https://docs.djangoproject.com/en/4.0/ref/settings/#std:setting-DATETIME_INPUT_FORMATS
+	    // And these lean only on Python strptime format codes:
+	    //    See: https://docs.python.org/3/library/datetime.html#strftime-and-strptime-format-codes
+	    // which in turn only support timezone offsets with the %z code and it must be
+	    // of format: ±HHMM[SS[.ffffff]]
+	    // We of course have zero interest in sub minute timezone offsets.
+	    //     See: https://en.wikipedia.org/wiki/List_of_UTC_time_offsets
+	    // i.e. they are all on 15 minute boundaries no, there is no timezone
+	    // that has an offset that needs seconds or fractions of seconds resoltion.
+	    //
+	    // Boggles the mind why %z supports that even and not HH[:]MM (that is an
+	    // optional colon separating the mins).
+	    //
+	    // If the site we're submitting too does a pre-clean of form submitted data
+	    // to remove any colons in the timezone offset then they can feasibly be
+	    // submitted. Else they need to be removed before submission client side
+	    // or server side one receipt of a request.
+	    //
+	    // To make the mattter even harder to decide on, luxon, which we use for
+	    // convenience as a datetime parser here allows us to set timezone with an
+	    // offset and seemingly only with a colon!
+	    //     See: https://github.com/moment/luxon/blob/master/src/zones/fixedOffsetZone.js
+	    // Doh! Both luxon and python broken in their own way and incompatible in
+	    // this space.
+	    return pfx+hours+':'+minutes
+	}
+
+	String.prototype.mins2offset = function () {
+	    const mins_num = parseFloat(this.replace(':',''), 10);
+	    return mins_num.mins2offset();
+	}
+
+	flatpickr(".DateTimeField:not(.dateonly)",
+			 {  enableTime: true,
+			    time_24hr: true,
+			    // Using the Luxon codes, not flatpickr codes.
+			    // https://moment.github.io/luxon/index.html#/formatting?id=macro-tokens
+			    dateFormat: 'yyyy-MM-dd HH:mm:ss ZZ',
+			    dateVariants: ['yyyy-MM-dd HH:mm:ss',
+			    			   'yyyy-MM-dd HH:mm ZZ',
+			    			   'yyyy-MM-dd HH:mm',
+			    			   'yyyy-MM-dd ZZ',
+			    			   'yyyy-MM-dd'],
+			    ariaDateFormat: 'cccc d, y',
+			    showMonths: 1,
+			    allowInput: true,
+			    parseDate(dateString, format) {
+			    	// JS Dates suck. They are always in local time zone (client) or UTC.
+			    	// 		See: https://stackoverflow.com/a/15171030/4002633
+			    	// They provide no way to express a TZ preference. So we have to keep
+			    	// note of an expressed preference when parsing and rememeber it.
+			    	// We are only interested in TZ offsets here not in timezones.
+			    	// 		See: https://spin.atomicobject.com/2016/07/06/time-zones-offsets
+			    	// timezones are way-complicate things and a TZ offset is all that is
+			    	// need to create an unambiguous time for database storage. We simply
+			    	// permit
+			    	const ustzo =  DateTime.fromFormatExplain(dateString, format)["zone"];
+			    	this.user_specified_offset = ustzo ? ustzo.fixed : undefined;
+
+					// Try parsing the default dateFormat first
+			    	console.log("Parsing: ",dateString, format)
+			    	let date = DateTime.fromFormat(dateString, format);
+					// If that fails walk through the dateVariants to try and find a parse that works
+					let variant = 0;
+			    	while (!date.isValid && variant < this.dateVariants.length) {
+			    		date = DateTime.fromFormat(dateString, this.dateVariants[variant]);
+			    		variant++;
+			    	};
+			    	return date.isValid ? date.toJSDate() : this.last_formatted_date;
+			    },
+			    formatDate(date, format) {
+			        // When the date was parsed any user entered TZ offset was stored. We now use that to
+			        // format the date that was entered. If none was offered we use the Session preferrred
+			        // TZ offset.
+			    	const sptzo = "UTC"+SESSION_utcoffset.mins2offset(); // The preferred session timezone
+			    	const ustzo = this.user_specified_offset === undefined ? sptzo : "UTC"+this.user_specified_offset.mins2offset();
+			    	this.last_formatted_date = date;
+			    	return DateTime.fromJSDate(date).setZone(ustzo).toFormat(format);
+			    },
+			});
+
+	flatpickr(".DateTimeField.dateonly", {enableTime: false});
+
+	// Turn off autocomplete on DateTimeFields. Broswers produce a dropdown that gets in the way of flatpickr's drop down when it's on.
+	$('.DateTimeField').attr('autocomplete','off');
+
+	// Monitor the headers div for size changes and respond by moving the content div
+	(new ResizeObserver(() => {
+		const height = getComputedStyle(document.getElementById("headers")).height;
+		document.getElementById("body").style.marginTop = height;
+	})).observe(document.getElementById("headers"));
+</script>
+
+{% block endscript %}{% endblock %}
+</html>

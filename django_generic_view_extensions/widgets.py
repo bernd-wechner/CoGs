@@ -86,12 +86,6 @@ class FilterWidget(SelectMultiple):
         # TODO: if an option follows a relation we'll need to get the fields/widgest from the related model!
         fields = fields_for_model(self.model)
 
-        # TODO:
-        # Only useful if a) not already done on page and with jquery added. So better idea is to supply
-        # context items for including jquery, and the datetimepiccker bits and for including this scriplet.
-        # i.e. not here.
-        script = ""  # '<script>$(function(){$(".DateTimeField").datetimepicker({"format": datetime_format,"step" : 15});});</script>'
-
         for index, (option, _) in enumerate(self.choices):
             option = self.choices[index][0]
             parts = option.split('__')
@@ -116,7 +110,7 @@ class FilterWidget(SelectMultiple):
                 if widget:
                     self.choices[index] = (option, "{} {} {}".format(label, operation, widget.render(option, value, attrs=attrs)))
 
-        return mark_safe("<div id={}>".format(name) + " and ".join([choice[1] for choice in self.choices]) + "</div>" + script)
+        return mark_safe("<div id={}>".format(name) + " and ".join([choice[1] for choice in self.choices]) + "</div>")
 
     def __str__(self):
         return self.render("{}_filtering_widget".format(self.model._meta.model_name), "")

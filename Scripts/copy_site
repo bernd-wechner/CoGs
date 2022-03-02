@@ -1,0 +1,290 @@
+#!/bin/bash
+##############################################################################################################################
+# Copy the CoGs website from one server to another
+#
+# Assumes both machines have:
+#
+#  	Postgresql of same version running, and that passwords for postgres and db_user are in ~/.pgpass for both servers
+#	Lighttpd and uwsgi are configured and running on both servers in a compatible manner
+#	The ssh keys are copied for passwordless login from host machine (script is running on) to destination and
+#	from destination to source.
+##############################################################################################################################
+
+show_help_and_exit () {
+	echo "Usage: copy_script -smdvtc0D source destination"
+	echo "   or: copy_script -smdvtc0D destination"
+	echo ""
+	echo "where:"
+	echo "	-s	copies the site source code, sans the site media"
+	echo "	-m	copies the site media"
+	echo "	-d	copies the site database"
+	echo "	-v	copies the site venv (only useful where venvs have same path)"
+	echo "	-0	requests no action just a report of command line parsing"
+	echo "	-D	requests a dry run that echoes all commands that would be run (but aren't)"
+	echo
+	echo "	source is the name of a webserver server to copy from ('localhost' assumed if not provided)"
+	echo "	destination is the name of a webserver server to copy to (required)"
+	echo ""
+	echo "Known servers are:"
+	echo "	arachne is the sandbox server"
+	echo "	shelob is the live server"
+	echo "	localhost is the development server (assuming this script is run in that context as is expected)"
+	echo "	local is an acceptable abbreviation for localhost"
+	echo ""
+	exit
+}
+
+##############################################################################################################################
+# CAPTURE ARGS
+
+copy_site=false
+copy_media=false
+copy_database=false
+copy_venv=false
+
+test_args=false
+dry_run=false
+
+copy_DB="$(dirname $(realpath $0))/copy_database"
+
+while getopts "smdv0Dh" flag; do
+	case "$flag" in
+	    s) copy_site=true ;;
+	    m) copy_media=true ;;
+	    d) copy_database=true ;;
+	    v) copy_venv=true ;;
+	    0) test_args=true ;;
+		D) dry_run=true ;;
+		h) show_help_and_exit;;
+	esac
+done
+
+# Basic names of source and target host (for naming files and reporting etc)
+source_hostname="${@:$OPTIND:1}"
+target_hostname="${@:$OPTIND+1:1}"
+
+# permit an alias of "local" for "localhost"
+if [ "$source_hostname" = "local" ];then
+	source_hostname="localhost"
+fi
+
+if [ "$target_hostname" = "local" ];then
+	target_hostname="localhost"
+fi
+
+# If only one argument then assume it is a destination and localhost the source. Unless of course it is localhost.
+if [ "$source_hostname" != "" ] && [ "$target_hostname" = "" ]; then
+	if [ "$source_hostname" != "localhost" ] ;then
+		target_hostname="$source_hostname"
+		source_hostname="localhost"
+	fi
+fi
+
+if [ "$test_args" = true ]; then
+	echo "copy_site: $copy_site"
+	echo "copy_media: $copy_media"
+	echo "copy_database: $copy_database"
+	echo "copy_venv: $copy_venv"
+	echo "copy_DB: $copy_DB"
+	echo "test_args: $test_args"
+	echo "dry_run: $dry_run"
+	echo "source_hostname: $source_hostname"
+	echo "target_hostname: $target_hostname"
+	exit
+fi;
+
+if [ "$target_hostname" = "" ]; then
+	echo "No destination specified."
+	show_help_and_exit;
+fi
+
+##############################################################################################################################
+# CONFIGS
+
+# The local domain name (expected at end of server names, added if missing)
+localdomain="lan"
+
+site_name="CoGs"
+
+backup_timestamp=`date +"%s"`
+
+# Webserver configis
+server_site_dir="/data/www/leaderboard.space"
+server_venv_dir="/data/venv/CoGs"
+server_site_bup="$server_site_dir.backup.$backup_timestamp"
+
+# localhost configs (Development machine - script must be run on the dev machine and it must have paswordless ssh access to the webserver)
+dev_site_dir="/home/bernd/workspace/CoGs"
+dev_venv_dir="/home/bernd/.virtualenvs/CoGs"
+
+# resolveable domain names for the source and target host (we append the local domain if it's not localhost)
+if [ "$source_hostname" = "localhost" ];then
+	source_host="$source_hostname"
+elif [[ "$source_hostname" = *.$localdomain ]]; then
+	source_host="$source_hostname"
+else
+	source_host="$source_hostname.$localdomain"
+fi
+
+if [ "$target_hostname" = "localhost" ];then
+	target_host="$target_hostname"
+elif [[ "$target_hostname" = *.$localdomain ]]; then
+	target_host="$target_hostname"
+else
+	target_host="$target_hostname.$localdomain"
+fi
+
+# Find a username to use for the host when using ssh
+if [ "$source_host" = "shelob.lan" ];then
+	source_user="sting"
+elif [ "$source_host" = "arachne.lan" ];then
+	source_user="weaver"
+elif [ "$source_hostname" != "localhost" ];then
+	echo "Host: $source_hostname is not configured"
+	exit
+else
+	source_user="<not needed>"
+fi
+
+if [ "$target_host" = "shelob.lan" ];then
+	target_user="sting"
+elif [ "$target_host" = "arachne.lan" ];then
+	target_user="weaver"
+elif [ "$target_host" != "localhost" ];then
+	echo "Host: $target_hostname is not configured"
+	exit
+else
+	target_user="<not needed>"
+fi
+
+if [ $dry_run = true ]; then
+	echo "source_host: $source_host"
+	echo "source_user: $source_user"
+	echo "target_host: $target_host"
+	echo "target_user: $target_user"
+fi
+
+##############################################################################################################################
+# DO THE WORK
+
+#opts="-rLKvz"
+opts="-rL"
+
+# A prefix to use before commands that do stuff
+if [ $dry_run = true ];then
+	prefix="echo "
+	echo "Dry run (commands that would be executed are):"
+else
+	prefix=""
+fi
+
+site_files_copied=false
+code_files_copied=false
+
+# Copy the site if configured to
+if [ "$copy_site" = true ]; then
+	echo "Backing up site to $server_site_bup"
+
+	${prefix}ssh $target_user@$target_host "mv $server_site_dir $server_site_bup"
+
+	echo "Copying $site_name website from $source_hostname to $target_hostname"
+
+	exclude="--exclude 'media' --exclude '__pycache__'  --exclude '*.pyc'"
+	if [ $source_host = "localhost" ]; then
+		# push to server
+		${prefix}rsync $opts $exclude "$dev_site_dir/" "$target_user@$target_host:$server_site_dir"
+	elif [ $target_host = "localhost" ]; then
+		# pull from server
+		${prefix}rsync $opts $exclude "$source_user@$source_host:$server_site_dir/" "$dev_site_dir"
+	else
+		# run on target and pull to server
+		${prefix}ssh $target_user@$target_host "rsync $opts $exclude \"$source_user@$source_host:$server_site_dir/\" \"$server_site_dir\""
+	fi
+
+	site_files_copied=true
+	code_files_copied=true
+
+	if [ $target_host != "localhost" ]; then
+		prepare_then="cd \"$server_site_dir\"; source \"$server_venv_dir/bin/activate\";"
+		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
+		# This has to happen before we collect static (next step) as missing packages will cause manage.py to fail.
+		echo "Collecting Python packages on $target_host"
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade -r requirements.txt"
+
+		# If we are copying the site to a web server (not localhost, the development machine) then we need to run collectstatic on
+		# the target. A Django requirment. TO be honest when stable this is not needed. But if static files are added, removed or
+		# altered they won't be available to a webserver until collectstatic is run.
+		echo "Collecting static files on $target_host"
+		${prefix}ssh $target_user@$target_host "$prepare_then python manage.py collectstatic --noinput"
+
+	fi
+fi
+
+# Copy site media if asked to
+if [ "$copy_media" = true ]; then
+	echo "Copying $site_name website media from $source_hostname to $target_hostname"
+
+	if [ $source_host = "localhost" ]; then
+		# push to server
+		${prefix}rsync $opts "$dev_site_dir/media/" "$target_user@$target_host:$server_site_dir/media"
+	elif [ $target_host = "localhost" ]; then
+		# pull from server
+		${prefix}rsync $opts "$source_user@$source_host:$server_site_dir/media/" "$dev_site_dir/media"
+	else
+		# run on target and pull to server
+		${prefix}ssh $target_user@$target_host "rsync $opts \"$source_user@$source_host:$server_site_dir/media/\" \"$server_site_dir/media\""
+	fi
+
+	site_files_copied=true
+	code_files_copied=true
+fi
+
+# Copy site database if asked to
+if [ "$copy_database" = true ]; then
+	${prefix}$copy_DB "$source_host" "$target_host"
+fi
+
+# Copy venv if configured to
+if [ "$copy_venv" = true ]; then
+	# Only copy venv is the source and target dirs are same. Venv's unfortunately
+	# have loads of hardcoded full pathnames in them. A known venv portability issue
+	if [ "$dev_venv_dir" = "$server_venv_dir" ]; then
+		if [ $source_host = "localhost" ]; then
+			echo "Copying $site_name venv from $source_hostname to $target_hostname"
+			# push to server
+			${prefix}rsync $opts "$dev_venv_dir/" "$target_user@$target_host:$server_venv_dir"
+		elif [ $target_host = "localhost" ]; then
+			echo "Copying $site_name venv from $source_hostname to $target_hostname"
+			# pull from server
+			${prefix}rsync $opts "$source_user@$source_host:$server_venv_dir" "$dev_venv_dir"
+		else
+			echo "Copying $site_name venv from $source_hostname to $target_hostname"
+			# run on target and pull to server
+			# We assume the venv dirs match across servers
+			${prefix}ssh $target_user@$target_host "rsync $opts \"$source_user@$source_host:$server_venv_dir/\" \"$server_venv_dir\""
+		fi
+		code_files_copied=true
+	else
+		echo "NOT Copying $site_name venv from $source_hostname to $target_hostname as the venv dirs do not match (\"$dev_venv_dir\" != \"$server_venv_dir\")"
+	fi
+fi
+
+# The rsync copies are often with odd owners we want to coerce ownership of the site proper
+if [ "$target_hostname" != "localhost" ]; then
+	if [ "$site_files_copied" = true ];then
+		echo "Ensuring files readable by www-data "
+		${prefix}ssh root@$target_host "chown -R :www-data $server_site_dir"
+	fi
+fi
+
+# Assume we're running on a development machine and all other targets are
+# ssh reachable and webservers where UWSGI has database connections open
+if [ "$target_hostname" != "localhost" ];then
+	if [ "$site_files_copied" = true ]; then
+		# Reload UWSGI configs on the target site
+		echo "Reloading the UWSGI configurations on $target_hostname"
+		${prefix}ssh root@$target_host "service uwsgi reload"
+	fi
+fi
+
+echo "Done."

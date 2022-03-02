@@ -4,7 +4,7 @@ Django Generic View Extensions
 Datetime management
 '''
 # Python imports
-import pytz
+import pytz, re
 from datetime import datetime, timedelta
 from dateutil import parser
 
@@ -41,7 +41,8 @@ def is_dst(zonename=None, when=None):
     else:
         testing_time = pytz.utc.localize(datetime.utcnow())
 
-    return testing_time.astimezone(tz).dst() != timedelta(0)
+    # Special case for datetime.min which cannot be given a timezone alas
+    return testing_time != datetime.min and testing_time.astimezone(tz).dst() != timedelta(0)
 
 
 def time_str(date_time):
@@ -86,7 +87,7 @@ def make_aware(date_time, timezone=None):
         return date_time
 
 
-def decodeDateTime(dt):
+def decodeDateTime(dt, test=False):
     '''
     decodes a DateTime that was URL encoded.
     Has to agree with the URL encoding chosen by the Javascript that
@@ -110,66 +111,75 @@ def decodeDateTime(dt):
     or encoded versions of it that we try to decode here.
 
     ref1 and ref 2 are ISO 8601 datetimes with and without timezone
-    used do our work here.
+    used to do our work her
 
     :param dt: A URL encoded date time
     '''
-    ref1 = "2019-03-01 18:56:16+1100"
-    ref2 = "2019-03-01 18:56:16"
-    ref3 = "2019-03-01"
 
-    # strings are immutable and we need to listify them to
-    # make character referenced substitutions
-    new = list(dt)
+    # An RE that decomposes a passed in datetime and can accept the translations
+    # we perform in URLencoding a datetimes namely:
+    #
+    # HMS can be separated by : or -
+    # Date and time can be separated by T or space
+    # Offset sign + can be space (or better said space implies +)
+    # The : in the TZ offset is optional and can be -
+    # The TZ offset is optional (as a group)
+    # Seconds are optional inside of na optiona time group
+    # Date is mandatory
+    pattern = (r"^(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})"
+               +"(([T\s](?P<hour>\d{2})[:-](?P<minutes>\d{2}))?([:-](?P<seconds>\d{2}))?)?"
+               +"\s?"
+               +"((?P<offset_sign>[\s+-])(?P<offset_hours>\d{2})[:-]?(?P<offset_minutes>\d{2}))?$")
 
-    if not len(dt) in [len(ref1), len(ref2), len(ref3)]:
+    if m := re.match(pattern, dt):
+        p = m.groupdict()
+        decoded = f"{p['year']}-{p['month']}-{p['day']}"
+        if not p.get('hour', None) is None: decoded += f" {p['hour']}:{p['minutes']}"
+        if not p.get('seconds', None) is None: decoded += f":{p['seconds']}"
+        if not p.get('offset_sign', None) is None:
+            sign = '+' if p['offset_sign'] in ('+', ' ') else '-'
+            decoded += f" {sign}{p['offset_hours']}:{p['offset_minutes']}"
+
+        if test:
+            return decoded
+        else:
+            return parser.parse(decoded)
+    else:
         return dt
-
-    if len(dt) == len(ref1):
-        if dt[-5] == " ":
-            new[-5] = "+"
-
-    if len(dt) >= len(ref2):
-        # The first time colon (was encoded as -)
-        if dt[13] == "-":
-            new[13] = ":"
-
-        # The second time colon (was encoded as -)
-        if dt[16] == "-":
-            new[16] = ":"
-
-    # The n stringify the list again.
-    decoded = "".join(new)
-
-    return fix_time_zone(parser.parse(decoded))
 
 # A Javascript function that encodes a datetime (the partner of decodeDateTime above.
 #
-#         function encodeDateTime(datetime) {
-#             // We communicate datetimes in the ISO 8601 format:
-#             // https://en.wikipedia.org/wiki/ISO_8601
-#             // but in URLs they turn into an ugly mess. If we make a few simple URL safe
-#             // substitutions and unmake them at the server end all is good, and URLs
-#             // become
-#             // legible approximations to ISO 8601.
-#             //
-#             // Of note:
-#             //
-#             // + is a standard way to encode a space in URL. Though encodeURIComponent
-#             // opts for %20.
-#             // we can use + safely and it arrives at server as a space.
-#             //
-#             // : is encoded as %3A. It turns out : is not a recommended URL character
-#             // and a
-#             // reserved character, but it does transport fine at least on Chrome tests.
-#             // Still we can substitue - for it and that is safe legible char already in
-#             // use on the dates and can be decoded back to : by the server.
-#             //
-#             // The Timezone is introduced by + or -
-#             //
-#             // - travels unhindered. Is a safe URL character.
-#             // + is encoded as %2B, but we can encode it with + which translates to a
-#             // space at the server, but known we did this it can decdoe the space back
-#             // to +.
-#             return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
-#         }
+# function encodeDateTime(datetime) {
+#     // We communicate datetimes in the ISO 8601 format:
+#     // https://en.wikipedia.org/wiki/ISO_8601
+#     // but in URLs they turn into an ugly mess. If we make a few simple URL safe
+#     // substitutions and unmake them at the server end all is good, and URLs
+#     // become legible approximations to ISO 8601.
+#     //
+#     // ISO 8601 permits TZ offests with and with the : so +10:00 and +1000 are
+#     // fine, but we are also more flexible and permit a space before the TZ offset
+#     // and indeed in place of the unsighlty T between date and time in ISO 8601.
+#     // So in effect we only care about approximating the standard ;-).
+#     //
+#     // Of note:
+#     //
+#     // + is a standard way to encode a space in URL. Though encodeURIComponent
+#     // opts for %20.
+#     //
+#     // we can use + safely and it arrives at the server as a space.
+#     //
+#     // : is encoded as %3A. It turns out : is not a recommended URL character
+#     // and a reserved character, but it does transport fine at least on Chrome
+#     // tests.
+#     //
+#     // Still we can substitue - for it and that is a safe legible char already
+#     // in use on the dates and can be decoded back to : by the server.
+#     //
+#     // The Timezone is introduced by + or -
+#     //
+#     // - travels unhindered. Is a safe URL character.
+#     // + is encoded as %2B, but we can encode it with + which translates to a
+#     // space at the server, but known we did this it can decdoe the space back
+#     // to +.
+#     return encodeURIComponent(datetime).replace(/%20/g, "+").replace(/%3A/g, "-").replace(/%2B/g, "+");
+# }

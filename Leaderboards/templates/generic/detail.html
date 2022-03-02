@@ -1,0 +1,313 @@
+{% extends "base.html" %}
+{% load static %}
+{% load filters %}
+{% block title %}{{title}}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+{% endblock %}
+
+{% block content %}
+
+{% if view %}
+	<script type="text/javascript">
+		// Save the URL when we load, for later use
+		function init() {
+			filters	= {{filters|safe}};
+			object_browser = {{view.object_browser|json}};
+			
+			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
+			
+			// It's awkward how we can to land here via the template/context on load and via the ajax response on browsing. 
+			// So this kind of info has to pass into the page from two directions. 
+			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse) 
+			{% if view.object_browser.0 %}
+				URL_prior = "{% url 'get_detail_html' model=model_name pk=view.object_browser.0 %}";
+			{% else %}
+				URL_prior = URL
+			{% endif %}
+
+			{% if view.object_browser.1 %}
+				URL_next = "{% url 'get_detail_html' model=model_name pk=view.object_browser.1 %}";
+			{% else %}
+				URL_next = URL
+			{% endif %}
+			
+			update_browser();
+		}
+		window.onload = init;
+		
+		function update_browser() {
+			pk_prior = object_browser[0];
+			pk_next = object_browser[1];
+		
+			$("#browser_prior").css("visibility", pk_prior == null ? "hidden" : "visible");
+			$("#browser_next").css("visibility", pk_next == null ? "hidden" : "visible");
+			
+			url = "{% url 'list' model_name %}"
+			if ({{filters|length}}>0) url += "?{{filters|join:'&'}}";
+			html = "{{model_name}} " + object_browser[2] + " of <a href='" + url + "'>" + object_browser[3] + "</a>";
+			
+			$("#browser_position").html(html);
+		}
+		
+		function toggle_filters() {
+			current = $(".toggle")[0].style.visibility;
+			if (current == "collapse") {
+				$(".toggle").css('visibility', 'visible'); 
+				show_hide_list_formats($('#opt_list').is(':checked')); 
+			}
+			else
+				$(".toggle").css('visibility', 'collapse');		
+		}
+
+		function show_hide_list_formats(show) {
+			if (show) 
+				$("#opt_list_formats").css('visibility', 'visible');
+			else
+				$("#opt_list_formats").css('visibility', 'collapse');		
+		}
+		
+		function set_flags(mode) {
+			// if one of the shortcut modes is clicked sets all the check boxes to reflect the choice
+			switch(mode) {
+			{% for shorthand, list in format_shorthands.items %}
+				case "{{shorthand}}": 
+					{% for setting, value in format_flags.items %}
+						{% if setting in list %}
+							$("#opt_{{setting}}").prop("checked", true);
+						{% else %}
+							$("#opt_{{setting}}").prop("checked", false);
+						{% endif %}
+					{% endfor %}
+					break;
+			{% endfor %}
+			}		
+		}
+		
+		function URLopts() {
+			opts = []
+		
+			{% for setting, value in format_flags.items %}
+				if ($('#opt_{{setting}}').is(':checked')) 
+					opts.push("{{setting}}");
+				else 
+					opts.push("no{{setting}}")
+			{% endfor %}
+
+			// The basic formatting and layout options
+			format_object = $('input[type=radio][name=opt_as]:checked').attr('value');
+			format_list_vals = $('input[type=radio][name=opt_list_values_as]:checked').attr('value');
+			format_obj_str = $('input[type=radio][name=opt_sum_format]:checked').attr('value');
+			format_link_fmt = $('input[type=radio][name=opt_link_format]:checked').attr('value');
+			format_char_lim = $('#opt_char_limit').val();
+			format_indent = $('#opt_indent').val();
+			format_line_width = $('#opt_line_width').val();
+			
+			opts.push(format_object);
+			opts.push(format_list_vals);
+			opts.push(format_obj_str);
+			opts.push(format_link_fmt);
+			opts.push('charlim='+format_char_lim);
+			opts.push('indent='+format_indent);
+			opts.push('linewidth='+format_line_width);
+
+			// The filter if specified (relevant only for prior/next browsing, but needs to be conserved if specified)
+			for (f in filters) opts.push(filters[f]);
+			
+			url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
+
+			// Add the global league filter to URL opts used in GET requests 
+			$league_id = $("#id_league_view").val();
+			url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
+
+			return url_opts;
+		}		
+		
+		function show_url() {
+			var url = "{% url 'view' model=model_name pk=pk %}" + URLopts();
+			window.history.pushState("","", url);
+		}
+				
+		var REQUEST = new XMLHttpRequest();
+		REQUEST.onreadystatechange = function () {
+		    // Process the returned JSON
+			if (this.readyState === 4 && this.status === 200){
+				var response = JSON.parse(this.responseText);
+				$("#data").html(response.HTML);
+				
+				URL = response.json_URL 
+				URL_prior = response.json_URL_prior
+				URL_next = response.json_URL_next
+				object_browser = response.object_browser
+				update_browser();
+				
+     			window.history.pushState("","", response.view_URL);
+				
+				$("#reloading_icon").css("visibility", "hidden");
+				$("#opt_normal").prop('disabled', false);
+				$("#opt_all_model").prop('disabled', false);
+				$("#opt_all").prop('disabled', false);
+				$("#opt_specified").prop('disabled', false);
+			}
+		};
+
+		function refetch(event) {
+			// refetch the object without reloading the whole page (AJAX request)
+			$("#reloading_icon").css("visibility", "visible");
+			$("#opt_normal").prop('disabled', true);
+			$("#opt_all_model").prop('disabled', true);
+			$("#opt_all").prop('disabled', true);
+			$("#opt_specified").prop('disabled', true);
+			var url = URL + URLopts();
+			REQUEST.open("GET", url, true);
+			REQUEST.send(null);
+		}
+		
+		function fetch_neighbour(url) {
+			// fetch a neighbouring object without reloading the whole page (AJAX request)
+			$("#reloading_icon").css("visibility", "visible");
+			REQUEST.open("GET", url + URLopts(), true);
+			REQUEST.send(null);
+		}								
+	</script>
+	
+	<div id="pagemenu">
+		<p>
+			{% if user.is_authenticated %}
+				<a href="{% url 'edit' model_name pk %}">[Edit]</a>
+				<a href="{% url 'delete' model_name pk %}">[Delete]</a>
+				<a href="{% url 'add' model_name %}">[New]</a>
+			{% endif %}	  
+				<a href="{% url 'list' model_name %}">[List]</a>
+		</p>
+	</div>
+	
+	<table id="DetailViewOptions" class="tight">
+		<tr>
+			<td class='tight options'>
+				<b>Quick Views:</b>
+			</td>
+			<td class='tight options'>
+				<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+				<input type="button" id="opt_normal" value="Normal" onclick="set_flags('_normal'); refetch(event);">
+				<input type="button" id="opt_all_model" value="Complete Model" onclick="set_flags('_all_model'); refetch(event);">
+				<input type="button" id="opt_all" value="Model and Related" onclick="set_flags('_all'); refetch(event);">
+				<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_filters();">&#9660;</a></b></span>
+			</td>
+		</tr>
+		<tr id="opt_field_types" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+			    <br/>
+				<input type="button" id="opt_specified" value="Show:" onclick="refetch(event);">
+				<a onclick='show_url()' style='margin-left: 8ch;'>URL</a>
+				<a 
+			</td>
+			<td class='tight options'>
+				<br/>
+				<input type="checkbox" id="opt_flat" value="flat" {{format_flags.flat|checked}}>Scalar Values 
+				<input type="checkbox" id="opt_list" value="list" {{format_flags.list|checked}} onclick="show_hide_list_formats(this.checked);"}>List Values
+			</td>
+		</tr>
+		<tr id="opt_field_categories" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>of:</b>
+			</td>
+			<td class='tight options'>
+				<input type="checkbox" id="opt_model" value="model" {{format_flags.model|checked}}>Model Fields
+				<input type="checkbox" id="opt_internal" value="internal" {{format_flags.internal|checked}}>Internal Fields
+				<input type="checkbox" id="opt_related" value="related" {{format_flags.related|checked}}>Related Fields
+				<input type="checkbox" id="opt_properties" value="properties" {{format_flags.properties|checked}}>Properties
+				<input type="checkbox" id="opt_methods" value="methods" {{format_flags.methods|checked}}>Methods
+				<input type="checkbox" id="opt_summaries" value="summaries" {{format_flags.summaries|checked}}>Summaries
+			</td>
+		</tr>
+		<tr id="opt_separators" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>with:</b>
+			</td>
+			<td class='tight options'>
+				<input type="checkbox" id="opt_separated" value="separated" {{format_flags.separated|checked}}>Separtion between categories
+				<input type="checkbox" id="opt_header" value="header" {{format_flags.header|checked}}>Category headers
+				<input type="checkbox" id="opt_line" value="line" {{format_flags.line|checked}}>Separation lines
+			</td>
+		</tr>
+		<tr id="opt_object_formats" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>as:</b>
+			</td>
+			<td class='tight options'>
+				<input type="radio" name="opt_as" id="opt_as_table" value="as_table" {{format_modes.object|checked:1}}>Table
+				<input type="radio" name="opt_as" id="opt_as_ul" value="as_ul" {{format_modes.object|checked:2}}>List
+				<input type="radio" name="opt_as" id="opt_as_p" value="as_p" {{format_modes.object|checked:3}}>Paragraphs
+				<input type="radio" name="opt_as" id="opt_as_p" value="as_br" {{format_modes.object|checked:4}}>A paragraph
+			</td>
+		</tr>
+		<tr id="opt_list_formats" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>and long list items as:</b>
+			</td>
+			<td class='tight options'>
+				<input type="radio" name="opt_list_values_as" id="opt_list_values_as_table" value="list_values_as_table" {{format_modes.list_values|checked:1}}>Table
+				<input type="radio" name="opt_list_values_as" id="opt_list_values_as_ul" value="list_values_as_ul" {{format_modes.list_values|checked:2}}>List
+				<input type="radio" name="opt_list_values_as" id="opt_list_values_as_p" value="list_values_as_p" {{format_modes.list_values|checked:3}}>Paragraphs
+				<input type="radio" name="opt_list_values_as" id="opt_list_values_as_br" value="list_values_as_br" {{format_modes.list_values|checked:4}}>A paragraph
+			</td>
+		</tr>
+		<tr id="opt_summary_formats" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>formatting objects:</b>
+			</td>
+			<td class='tight options'>
+				<input type="radio" name="opt_sum_format" id="opt_sum_format_brief" value="brief_sums" {{format_modes.sum_format|checked:1}}>Brief
+				<input type="radio" name="opt_sum_format" id="opt_sum_format_verbose" value="verbose_sums" {{format_modes.sum_format|checked:2}}>Verbose
+				<input type="radio" name="opt_sum_format" id="opt_sum_format_rich" value="rich_sums" {{format_modes.sum_format|checked:3}}>Rich
+			</td>
+		</tr>
+		<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options'>
+				<b>links:</b>
+			</td>
+			<td class='tight options'>
+				<input type="radio" name="opt_link_format" id="opt_link_format_none" value="no_links" {{format_modes.link|checked:0}}>None
+				<input type="radio" name="opt_link_format" id="opt_link_format_internal" value="internal_links" {{format_modes.link|checked:1}}>CoGs
+				<input type="radio" name="opt_link_format" id="opt_link_format_external" value="external_links" {{format_modes.link|checked:2}}>BGG
+			</td>
+		</tr>		
+		<tr id="opt_misc_formats" class='tight options toggle' style="visibility:collapse;">
+			<td class='tight options' valign="top">
+				<b>and:</b>
+			</td>
+			<td class='tight options'>
+				<b>with a short string threshold of:</b>
+				<input type="number" name="opt_char_limit" id="opt_char_limit" value="{{format_modes.char_limit}}" min="1" max="500" style="width: 6ch">
+				characters
+				<br>
+				<b>indenting by:</b>
+				<input type="number" name="opt_indent" id="opt_indent" value="{{format_modes.indent}}" min="0" max="50" style="width: 6ch">
+				characters where needed.
+				<br>
+				<b>separating categories with lines:</b>
+				<input type="number" name="opt_line_width" id="opt_line_width" value="{{format_modes.line_width}}" min="0" max="500" style="width: 6ch">
+				characters wide.
+			</td>
+		</tr>
+	</table>
+	<p/>
+
+	<div id="browser_control"><p>
+		{# The best site I know for finding good arrows: http://stackoverflow.com/questions/6520445/overriding-get-method-in-models #}
+		<a id="browser_prior" onclick="fetch_neighbour(URL_prior);">&#9664;</a>
+		<span id="browser_position"></span>		
+		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>	
+		{% if filters_text %}
+			in the <b>filtered set:</b> {{filters_text}}			
+		{% endif %}
+		</p>
+	</div>
+
+	<div id="data">{{ view.as_html }}</div>
+{% else %}
+    <p>No {{model_name}}.</p>
+{% endif %}
+{% endblock %}
