@@ -43,10 +43,13 @@ SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
 if HOSTNAME == PRODUCTION:
     SITE_TITLE = "CoGs Leaderboard Space"
+    DEBUG = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
+    DEBUG = True
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
+    DEBUG = True
 
 
 # Make sure the SITE_TITLE is visible in context
@@ -69,7 +72,6 @@ if SITE_IS_LIVE:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
-    DEBUG = False
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
     from Site.settings_development import *
