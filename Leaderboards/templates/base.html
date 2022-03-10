@@ -17,8 +17,25 @@
 	{#  DAL should not reload either of these two libraries if we have loaded them already! #}
 	{#  NEWS: As of my move to a venv and redownload of DAL it doesn't! #}
 
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
+	{# Underscore library of useful functions #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
+
+	{# JQuery #}
+`	{% if DEBUG_JQuery %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.js" crossorigin="anonymous"></script>
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+`	{% else %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.min.js" crossorigin="anonymous"></script>
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+`	{% endif %}
+
+	{# Django Autocomplete Light (DAL) #}
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
@@ -28,13 +45,6 @@
 	{# Bootstrap theme for select2 widget #}
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
-
-	{# Underscore library of useful functions #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
-
-	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
 	{# Configure DateTime inputs #}
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
@@ -165,8 +175,8 @@
 							<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
 								{{league_options|safe}}
 							</select>
-		{#					{{league_widget|safe}}#}
-				        </div>
+							{{league_widget|safe}}
+						</div>
 				        <div id="login"">
 							{% if user.is_authenticated %}
 					        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> |
