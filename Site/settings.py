@@ -187,6 +187,8 @@ USE_TZ = True
 # via the login form.
 TIME_ZONE = str(get_localzone())
 
+# In the flatpickr format:
+# https://flatpickr.js.org/formatting/
 DATETIME_FORMAT = 'D, j M Y H:i'
 
 DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S %z'] + global_settings.DATETIME_INPUT_FORMATS

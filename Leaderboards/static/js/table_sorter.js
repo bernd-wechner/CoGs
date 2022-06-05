@@ -81,9 +81,9 @@ function TableSorter(table_id) {
 
 	const getContent = function(element) {
 		if (element.children.length === 1 && element.children[0].tagName === "DETAILS") {
-			return element.children[0].getElementsByTagName("SUMMARY")[0].innerHTML;
+			return element.children[0].getElementsByTagName("SUMMARY")[0].innerText;
 		} else {
-			return element.innerHTML;
+			return element.innerText;
 		}
 	}
 

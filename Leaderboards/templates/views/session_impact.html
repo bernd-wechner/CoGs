@@ -3,24 +3,24 @@
 ==================================================================================
 When game sessions are recorded they exert an impact on the leaderboards.
 
-This view summarisies impacts for a given session from logs that were 
+This view summarisies impacts for a given session from logs that were
 kept in the database.
 
-In the simplest instance this is the latest submisison and we provide a 
-view of the leaderboard as it was when this game started and how it is now 
+In the simplest instance this is the latest submisison and we provide a
+view of the leaderboard as it was when this game started and how it is now
 that the results of this game were submitted. That is the impact of this
 game session on the leaderboard.
 
 When adding a session retorspecively (not the latest) or editing an old one
-then the impact is slightly richer. The above still applies, but it also 
-triggers a rebuild of the leaderboard and so there is also a before and after 
+then the impact is slightly richer. The above still applies, but it also
+triggers a rebuild of the leaderboard and so there is also a before and after
 of the latest leaderboard presented. Before and after the leaderboard rebuild.
 
-A change_log is expected which describes the lestate of leaderboard before 
-this session and after it. DFor the first session recorded of any game there 
+A change_log is expected which describes the lestate of leaderboard before
+this session and after it. DFor the first session recorded of any game there
 is no before of course.
 
-A rebuild_log indicates a rebuild was triggered and needs summarising,  
+A rebuild_log indicates a rebuild was triggered and needs summarising,
 ==================================================================================
 {% endcomment %}
 
@@ -45,37 +45,39 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 		[<a href="{% url 'list' model_name %}">List all {{ model_name_plural.title }}</a>]
 		[<a href="{% url 'list' model_name %}?game={{game.pk}}">List {{game.name}} {{ model_name_plural.title }}</a>]
 	</p>
-{% endif %}	   
-
-{% if is_submission_feedback %}
-<p>Thanks for submitting the results of your game of {{ game.name }} played on {{ date_time }}.</p>
-{% else %}
-<p>This is a summary of changes caused by the submission of a {{ submission }} on {{ date_time }}.</p>
 {% endif %}
-	   
+
+{% if submission == "create" %}
+<p>Thanks for submitting the results of your game of {{ game.name }} played on {{ date_time }}.</p>
+{% elif submission == "update" %}
+<p>Thanks for submitting updates for your game of {{ game.name }} played on {{ date_time }}.</p>
+{% else %}
+<p>This is a summary of changes caused by the submission of a {{ submission }} {{model_name.title}} request at {{ change_date_time }}.</p>
+{% endif %}
+
 
 {% if change_log %}
 	{% if rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
 	<p>A rebuild of ratings was triggered by a {{ rebuild_trigger | lower }}.</p>
-	<p>Ratings and hence leaderboard positions from {{ rebuild_log.date_time_from }} were updated 
-	affecting a total of {{ rebuild_log.sessions.all.count }} game sessions.</p> 
+	<p>Ratings and hence leaderboard positions from {{ rebuild_log.date_time_from }} were updated
+	affecting a total of {{ rebuild_log.sessions.all.count }} game sessions.</p>
 	<p>Ratings were updated affecting:</p>
 	<ul>
 		<li> leaderboards for {{ games | length }} games</li>
-	 	<li>the ratings for {{ num_players_with_ratings_affected_by_rebuild }} players</li> 
+	 	<li>the ratings for {{ num_players_with_ratings_affected_by_rebuild }} players</li>
 	 	<li>the rankings (leaderboard positons) for {{num_players_with_rankings_affected_by_rebuild}} players</li>
-	</ul>  
+	</ul>
 	{% endif %}
-		
-	{% if is_first %}	
-	<p>It is the first session recorded for {{ game.name }}, and so no leaderboard existed prior to it.</p>   
+
+	{% if is_first %}
+	<p>It is the first session recorded for {{ game.name }}, and so no leaderboard existed prior to it.</p>
 	{% endif %}
 
 	<p>The impact of this {% if lb_impact_before_change %}session <b>after</b> the submitted change{% else %}submission{% endif %}:</p>
 
 	<table class='leaderboard wrapper'>
 		<tr>
-			<th>The result of the edited session</th>
+			<th>The new result of the {% if submission == "create" %}submitted{% elif submission == "update" %}edited{% else %}changed{% endif %} session</th>
 			{% if not is_first %}
 			<th>The result of the session prior</th>
 			{% endif %}
@@ -93,7 +95,7 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 
 	<table class='leaderboard wrapper'>
 		<tr>
-			<th>The result of the edited session</th>
+			<th>The previous result of the {% if submission == "create" %}submitted{% elif submission == "update" %}edited{% else %}changed{% endif %} session</th>
 			{% if not is_first %}
 			<th>The result of the session prior</th>
 			{% endif %}
@@ -107,9 +109,9 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	</table>
 	{% endif %}
 
-	{#	This will be for one or two games only on a submission feedback. More are possible on feedback for user requested rebuild#}
+	{#	This will be for one or two games only on a submission feedback. More are possible on feedback for user requested rebuild #}
 	{#	That is submission_feedback would be false and games would have more than entries.#}
-	
+
 	{% if rebuild_log %} {# A rebuild was triggered, so this was not the latest session in that game #}
 	<p>The impact of the rebuild on the standing leaderboards:</p>
 
@@ -153,41 +155,41 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 
 	<p>These {{ rebuild_log.sessions.all.count }} sessions were rebuilt:</p>
 	<ul>
-	{% for session in rebuild_log.sessions.all %}  
+	{% for session in rebuild_log.sessions.all %}
 	 	<li>{{ session }}</li>
 	{% endfor %}
 	</ul>
 
 	<p>These {{ players_with_ratings_affected_by_rebuild|length }} player's ratings were affected:</p>
 	<ul>
-	{% for pk, name in players_with_ratings_affected_by_rebuild.items %}  
+	{% for pk, name in players_with_ratings_affected_by_rebuild.items %}
 	 	<li>{{ name }}</li>
 	{% endfor %}
 	</ul>
 
 	<p>These {{ players_with_rankings_affected_by_rebuild|length }} player's leaderboard positions were affected:</p>
 	<ul>
-	{% for pk, name in players_with_rankings_affected_by_rebuild.items %}  
+	{% for pk, name in players_with_rankings_affected_by_rebuild.items %}
 	 	<li>{{ name }}</li>
 	{% endfor %}
 	</ul>
 
 	{% endif %} {# rebuild_log #}
-	
-	
+
+
 	{% if players_affected %}
 	<p>These player's ratings were affected by the rebuild:</p>
 	<div id="affected_players"></div>
 	{% endif %}
-		
+
 {% elif is_first and is_latest %}
-	<p>This is the {% if is_first %} first and {% endif %}latest result for that game and the resulting leaderboard is:</p>   
+	<p>This is the {% if is_first %} first and {% endif %}latest result for that game and the resulting leaderboard is:</p>
 
 	{# TODO: test and consider how to do this. Currently not saving changelog for every newly created session. Why flood the database?#}
 	{#	Thought: in the creation case the view receives the info it needs from a changelog instead from a session key saved  #}
 	{#	That's the system I first trialled/ Such reports are ephemeral of course. #}
 	{#	But if it's the latest it can also always fall back on the actual latest board!#}
-	
+
 	{#	We display just the leaderboard for this game which is the latest#}
 	{#	We should maybe provide the one after this game (based on Performances) and the latest#}
 	{#	 one (based on Ratings) and just validate that they are the same and if not consider #}
@@ -231,20 +233,20 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 		</table>
 	{% endif %}
 {% endif %}
- 
+
 {% endblock %}
 
 {% block startscript %}
 <script>
 	const games = {{ games | json }};
-	
+
 	{% if change_log %}
 	const change_log = {{ change_log.changes | safe }};
 	const changes = {{ changes | safe }};
 	const change_log_is_dated = {{ change_log_is_dated | json }};
 	const change_date_time = "{{ change_date_time }}";
-	const lb_impact_after_change = {{ lb_impact_after_change | json }}; 
-	const lb_impact_before_change = {{ lb_impact_before_change | json }}; 
+	const lb_impact_after_change = {{ lb_impact_after_change | json }};
+	const lb_impact_before_change = {{ lb_impact_before_change | json }};
 	const latest_game_boards_now = {{ latest_game_boards_now | json }};
 	{% endif %}
 
@@ -252,7 +254,7 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	const rebuild_log_is_dated = {{ rebuild_log_is_dated | json }};
 	const rebuild_date_time = "{{ rebuild_date_time | safe }}";
 	const lb_impact_rebuild = {{ lb_impact_rebuild | json }};
-	
+
 	const players_with_ratings_affected_by_rebuild = {{ players_with_ratings_affected_by_rebuild | json }};
 	const players_with_rankings_affected_by_rebuild = {{ players_with_rankings_affected_by_rebuild | json }};
 	const player_rating_impacts_of_rebuild = {{ player_rating_impacts_of_rebuild | json }};
@@ -260,11 +262,11 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	{% endif %}
 
 	let url_view_Game = "{% url 'view' 'Game' '00' %}";		// 00 is replaced by PK in the JavaScript code
-	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code		
-	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
-	let url_view_Session = "{% url 'view' 'Session' '00' %}"; 	// 00 is replaced by PK in the JavaScript code		
+	let url_view_Player = "{% url 'view' 'Player' '00' %}"; // 00 is replaced by PK in the JavaScript code
+	let url_view_Team = "{% url 'view' 'Team' '00' %}"; 	// 00 is replaced by PK in the JavaScript code
+	let url_view_Session = "{% url 'view' 'Session' '00' %}"; 	// 00 is replaced by PK in the JavaScript code
 	let url_list_Sessions = "{% url 'list' 'Session'%}";
-	
+
 	const LB_options = [
 		true,    // highlight_players,
 		true,    // highlight_changes,
@@ -272,11 +274,11 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 		true,    // details,
 		false,   // analysis_pre,
 		false,   // analysis_post,
-		true,    // show_d_rank 
+		true,    // show_d_rank
 		true,    // show_d_rating
-		true	 // show baseline 
-	];	
-	
+		true	 // show baseline
+	];
+
 	// Configurable, should agree with what the Django view is configured to deliver.
 	// if the Django view is delivering baseline boards this should be true and we will
 	// not render them and use them only for calculating rank deltas. If it is false
@@ -291,7 +293,7 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 
 <script>
 	let board, HTML;
-	
+
 	{% if change_log %}
 	{% if lb_impact_before_change %}
 	board = lb_impact_before_change;
@@ -301,13 +303,13 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
 	$('#before_change_session_board_before').append(HTML)
     {% endif %} {# lb_impact_before_change #}
-	
+
 	board = lb_impact_after_change;
 	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
 	$('#after_change_session_board_after').append(HTML)
 
 	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
-	$('#after_change_session_board_before').append(HTML)	
+	$('#after_change_session_board_before').append(HTML)
     {% endif %} {# change_log #}
 
 	{% if rebuild_log %}
@@ -335,9 +337,9 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	board = latest_game_boards_now;
 	HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
 	$('#latest_game_board_now1').append(HTML)
-	{% endif %} {# rebuild_log_is_dated #} 
+	{% endif %} {# rebuild_log_is_dated #}
 	{% endif %} {# games|length > 1 #}
-	
+
     {% endif %} {# rebuild_log #}
 </script>
 {% endblock %}

@@ -32,7 +32,7 @@ def view_Leaderboards(request):
     '''
     # Fetch the leaderboards
     # We always request raw (so it's not JSON but Python data
-    leaderboards = ajax_Leaderboards(request, raw=True)
+    leaderboards = ajax_Leaderboards(request, as_list=True)
 
     session_filter = request.session.get('filter', {})
     tz = pytz.timezone(request.session.get("timezone", "UTC"))
@@ -78,9 +78,9 @@ def view_Leaderboards(request):
 
          # Widgets to use in the form
          'dal_media': autocomplete.Select2().media,
-         'widget_leagues': html_selector(League, "leagues", leagues, ALL_LEAGUES),
-         'widget_players': html_selector(Player, "players", players, ALL_PLAYERS),
-         'widget_games': html_selector(Game, "games", games, ALL_GAMES),
+         'widget_leagues': html_selector(League, "leagues", leagues, ALL_LEAGUES, multi=True),
+         'widget_players': html_selector(Player, "players", players, ALL_PLAYERS, multi=True),
+         'widget_games': html_selector(Game, "games", games, ALL_GAMES, multi=True),
 
          # Time and timezone info
          'now': timezone.now(),
@@ -99,11 +99,11 @@ def view_Leaderboards(request):
     return render(request, 'views/leaderboards.html', context=c)
 
 
-def ajax_Leaderboards(request, raw=False, include_baseline=True):
+def ajax_Leaderboards(request, as_list=False, include_baseline=True):
     '''
     A view that returns a JSON string representing requested leaderboards.
 
-    This is used with raw=True as well by view_Leaderboards to get the leaderboard data,
+    This is used with as_list=True as well by view_Leaderboards to get the leaderboard data,
     not JSON encoded.
 
     Should only validly be called from view_Leaderboards when a view is rendered
@@ -306,10 +306,10 @@ def ajax_Leaderboards(request, raw=False, include_baseline=True):
         request.session["leaderboard_cache"] = lb_cache
 
     if settings.DEBUG:
-        log.debug(f"Supplying {len(leaderboards)} leaderboards as {'a python object' if raw else 'as a JSON string'}.")
+        log.debug(f"Supplying {len(leaderboards)} leaderboards as {'a python object' if as_list else 'as a JSON string'}.")
 
     # Last, but not least, Apply the selection options
     lo.apply_selection_options(leaderboards)
 
-    # raw is asked for on a standard page load, when a true AJAX request is underway it's false.
-    return leaderboards if raw else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))
+    # as_list is asked for on a standard page load, when a true AJAX request is underway it's false.
+    return leaderboards if as_list else HttpResponse(json.dumps((title, subtitle, lo.as_dict(), leaderboards), cls=DjangoJSONEncoder))

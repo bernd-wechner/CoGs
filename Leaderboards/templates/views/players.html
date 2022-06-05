@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+A page that offers a view on player statistics.
+
+
+A sortable list/table of players on which we can show:
+
+NickName
+Number of (implicit) events they have attended
+Number of game leaderboards they are on
+Number of boards they are topping
+Number of boards they are in the top N
+Number of game sessions they have recorded
+First recorded session time
+Last recorded session time
+Session/unit_time (how often they played)
+Last game they played
+Game they've played most of (most recent as tie breaker)
+Mean sessions per game (repeat play measure)
+Largest game played (player count)
+Smallest game played (player count)
+Median session size (player count)
+
+We will need configs for:
+
+top N - a number box (default 10)
+Event attendance - a defintion of implicit events, and so the whole events options
+					as an expandable box, defaulting to all the league events.
+
+Perhaps a histogram of number of events attended (X), Number of players (Y)
+	Just because we can.
+Another
+
+==================================================================================
+{% endcomment %}
+
+{% load static %}
+{% load filters %}
+{% load tags %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block styles %}
+	<link rel="stylesheet" type="text/css" href="{% static 'css/events.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/tooltip.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/monthly_day_week_widget.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'css/copy_with_style.css' %}" />
+
+	<link href=”http://cdn.pydata.org/bokeh/release/bokeh-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
+	<link href=”http://cdn.pydata.org/bokeh/release/bokeh-widgets-2.4.2.min.css" rel=”stylesheet” type=”text/css”>
+{% endblock %}
+
+{#======================#}
+{#		A SUB MENU		#}
+{#======================#}
+
+{% block submenu %}
+	<section id="EventOptions" class="event_options">
+		<div class="eo_header">
+			View Events:
+			<button type="button" class="tooltip" id="btnReload"  onclick="refetchEvents();">
+				<img src="{% static 'img/reload.png' %}"  class='img_button'>
+				<span class="tooltiptext_right">Reload or redisplay events with current settings</span>
+			</button>
+			<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden; display: inline-block'>
+
+			<button type="button" class="button_right tooltip" id='btnCopy'>
+				<img src="{% static 'img/copy.png' %}"  class='img_button'>
+				<span class="tooltiptext_left">Copy Leaderboards (for pasting elsewhere)</span>
+				<progress id='pgsCopy' value="0" max="100" style="height:10; margin-left: 1ch; display: none;"></progress>
+			</button>
+		  	<button type="button" class="button_right tooltip" id='btnShowURL' onclick="show_url();">
+				<img src="{% static 'img/link_thin.png' %}" class='img_button'>
+				<span class="tooltiptext_left">Copy URL</span>
+		  	</button>
+		</div>
+
+		<div class="eo_leagues">Leagues: {{ widget_leagues }}</div>
+		<div class="eo_locations">Locations: {{ widget_locations }}</div>
+		<div class="eo_date_from">Sessions played between: <input id="date_from" type="text" class="DateTimeField dateonly" value="{{settings.date_from}}"></div>
+		<div class="eo_date_to">and <input id="date_to" type="text" class="DateTimeField dateonly" value="{{settings.date_to}}"></div>
+		<div class="eo_duration_min">Events between: <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_min}}"></div>
+		<div class="eo_duration_max">and <input id="duration_min" type="number" step="0.1" min="0" value="{{settings.duration_max}}"> in duration (days)</div>
+		<div class="eo_gap">Minimum gap between sessions that makes an event: <input id="gap_days" type="number" step="0.1" min="0" value="{{settings.gap_days}}"> (days)</div>
+		<div class="eo_days">
+			<details><summary>Consider only events that started on specific days of the month.</summary>{% include "include/monthly_day_week_widget.html" %}</details></div>
+	</section>
+{% endblock %}
+
+{#======================#}
+{#		CONTENT			#}
+{#======================#}
+
+{% block content %}
+	<h1>Graph of Event Attendance</h1>
+	<section id="Graphs">
+ 	{{ graph_div | safe }}
+	</section>
+
+	<h1>List of Players</h1>
+		<section id="Players">
+		{% include "include/players_table.html" %}
+		</section>
+{% endblock %}
+
+{#======================#}
+{#		SCRIPTS			#}
+{#======================#}
+
+{% block startscript %}
+<script src="{% static 'js/URIencoders.js' %}"></script>     {# provides tailored someURI encoders	#}
+<script src="{% static 'js/DALinit.js' %}"></script>         {# provides 'waiting_for', 'finished_waiting' and 'until'#}
+<script src="{% static 'js/regex.js' %}"></script>           {# provides 'RegExp.escape'#}
+<script src="{% static 'js/copy_with_style.js' %}"></script> {# provides the copy button support #}
+
+{% if DEBUG_BokehJS %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.js"></script>
+{% else %}
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-widgets-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-tables-2.4.2.min.js"></script>
+<script src="https://cdn.bokeh.org/bokeh/release/bokeh-api-2.4.2.min.js"></script>
+{% endif %}
+{{ graph_script| safe }}
+{% endblock %}
+
+{% block endscript %}
+<script src="{% static 'js/view_events.js' %}"></script>
+<script src="{% static 'js/table_sorter.js' %}"></script>
+{% if settings.month_days %}
+<script>
+	InitDays("{{ settings.month_days }}");
+</script>
+{% endif %}
+<script>document.addEventListener('DOMContentLoaded', TableSorter('players'));</script>
+{% endblock %}

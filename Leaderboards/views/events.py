@@ -20,10 +20,10 @@ from .widgets import html_selector
 
 
 def view_Events(request):
-    return render(request, 'views/events.html', context=ajax_Events(request, raw=True))
+    return render(request, 'views/events.html', context=ajax_Events(request, as_context=True))
 
 
-def ajax_Events(request, raw=False):
+def ajax_Events(request, as_context=False):
     '''
     Two types of event are envisaged.
 
@@ -108,9 +108,9 @@ def ajax_Events(request, raw=False):
     # Build a graph (test for now)
     (players, frequency) = Event.frequency("players", events, as_lists=True)
 
-    # We need include the graph only on a raw call (the inital page load), not on
+    # We need include the graph only on a as_context call (the inital page load), not on
     # AJAZ calls (that return the data update)
-    if raw:
+    if as_context:
         plot = figure(height=350,
                       x_axis_label="Count of Players",
                       y_axis_label="Number of Events",
@@ -184,12 +184,12 @@ def ajax_Events(request, raw=False):
                "DEBUG_BokehJS": True
                }
 
-    if raw:
+    if as_context:
         # Widgets and the graph and the ID of the graph all only needed on page load not in the JSON
         # returned to AJAX callers (only apage that ghas all these should be calling back anyhow)
         context.update({"dal_media": autocomplete.Select2().media,
-                        "widget_leagues": html_selector(League, "leagues", settings.get("leagues", None), ALL_LEAGUES),
-                        "widget_locations": html_selector(Location, "locations", settings.get("locations", None), ALL_LOCATIONS),
+                        "widget_leagues": html_selector(League, "leagues", settings.get("leagues", None), ALL_LEAGUES, multi=True),
+                        "widget_locations": html_selector(Location, "locations", settings.get("locations", None), ALL_LOCATIONS, multi=True),
                         "graph_script": graph_script,
                         "graph_div": graph_div,
                         "plotid": plot.id,

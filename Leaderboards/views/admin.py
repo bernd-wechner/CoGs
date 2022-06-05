@@ -1,7 +1,7 @@
 #===============================================================================
 # Admin related views
 #
-# A work in progress, were hack code is plugged in for admin interventions on
+# A work in progress, where hack code is plugged in for admin interventions on
 # the site.
 #===============================================================================
 import cProfile, pstats, io

@@ -9,6 +9,7 @@ from .inspect import view_Inspect
 
 from .leaderboards import view_Leaderboards, ajax_Leaderboards
 from .events import view_Events, ajax_Events
+from .players import view_Players, ajax_Players
 from .session_impact import view_Impact
 
 from .ajax import ajax_List, ajax_Detail, ajax_Game_Properties, ajax_BGG_Game_Properties
@@ -16,3 +17,5 @@ from .ajax import ajax_List, ajax_Detail, ajax_Game_Properties, ajax_BGG_Game_Pr
 from .post_receivers import receive_ClientInfo, receive_DebugMode, receive_Filter
 
 from .admin import view_CheckIntegrity, view_RebuildRatings, view_UnwindToday, view_Kill, view_Fix
+
+from .test import view_DALtest

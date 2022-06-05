@@ -209,7 +209,7 @@ if [ "$copy_site" = true ]; then
 		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
 		# This has to happen before we collect static (next step) as missing packages will cause manage.py to fail.
 		echo "Collecting Python packages on $target_host"
-		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade -r requirements.txt"
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade -qqr requirements.txt"
 
 		# If we are copying the site to a web server (not localhost, the development machine) then we need to run collectstatic on
 		# the target. A Django requirment. TO be honest when stable this is not needed. But if static files are added, removed or

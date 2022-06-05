@@ -170,7 +170,7 @@ class field_link_target():
     internal = 1  # Render internal links - uses a models link_internal property which must be defined for this to render.
     external = 2  # Render external links - uses a models link_external property which must be defined for this to render.
     mailto = 3  # Render the field as a mailto link (i.e. assume field is an email address)
-    template = 4  # Links to a template value rendered as {link_model_pk} for example {link_Player_23}
+    template = 4  # Links to a template value are rendered as {link_model_pk} for example {link_Player_23}
 
 
 # A shorthand for the field link targets

@@ -46,6 +46,16 @@ import re
 from Site.logutils import log
 
 
+def game_duration(session):
+    '''
+    Return a time delta suggestion for a new session from the last session. That is, just return the
+    expecte duration of thet game in from_session.
+
+    :param session: A session that identifies the game
+    '''
+    return session.game.expected_play_time
+
+
 class Session(TimeZoneMixIn, AdminModel):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
@@ -54,6 +64,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
     game = models.ForeignKey('Game', verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)  # If the game is deleted keep the session.
 
+    # Note: date_time initial has an inherited delta below (inherit_fields and inherit_time_delta)
     date_time = models.DateTimeField('Time', default=timezone.now)
     date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
 
@@ -91,7 +102,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
     # Specify which fields to inherit from entry to entry when creating a string of objects
     inherit_fields = ["date_time", "league", "location", "game"]
-    inherit_time_delta = timedelta(minutes=90)
+    inherit_time_delta = game_duration  # A callable (function) that is supplies with the previous session
 
     @property
     def date_time_local(self):
@@ -971,8 +982,8 @@ class Session(TimeZoneMixIn, AdminModel):
             tied_rankers_html = []
             for r in tied_rankers:
                 if isinstance(r, Team):
-                    # Teams we can render with the default format
-                    ranker = field_render(r, flt.template)
+                    # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
+                    ranker = field_render(r, flt.template, osf.verbose)
                     data.append((r.pk, None))  # No BGGname for a team
                 elif isinstance(r, Player):
                     # Render the field first as a template which has:
@@ -1735,7 +1746,7 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         A basic JSON serializer
 
-        If form data is supplied willl build a chnage description by replacing each changed
+        If form data is supplied willl build a change description by replacing each changed
         value with a 2-tuple containing the object value and recording which values changed
         (and are now 2-tuples) in the "changes" element.
 
@@ -1956,5 +1967,6 @@ class Session(TimeZoneMixIn, AdminModel):
     class Meta(AdminModel.Meta):
         verbose_name = "Session"
         verbose_name_plural = "Sessions"
+        get_latest_by = ["date_time"]
         ordering = ['-date_time']
 

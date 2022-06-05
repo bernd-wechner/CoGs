@@ -244,6 +244,7 @@ def add_timezone_context(view_request, context):
     context['session_timezone'] = str(dt.tzinfo)
     context['session_utcoffset'] = dt.tzinfo._utcoffset
 
+    # active_tz = get_current_timezone()
     active_tz = pytz.timezone(get_current_timezone().key)
     active_dt = active_tz.localize(naive_now)
     context['active_datetime'] = str(active_dt)
@@ -278,5 +279,8 @@ def add_debug_context(view_request, context):
 
     context['DAL_source'] = dal.__spec__.origin  # @UndefinedVariable
     context['DAL_version'] = get_distribution("django-autocomplete-light").version
+
+    context['DEBUG_JQuery'] = settings.DEBUG
+    context['DEBUG_BokehJS'] = settings.DEBUG
 
     return context

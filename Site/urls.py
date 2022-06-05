@@ -59,11 +59,13 @@ urlpatterns = [
     # CoGs custom views
     path('leaderboards/', views.view_Leaderboards, name='leaderboards'),
     path('events/', views.view_Events, name='events'),
+    path('players/', views.view_Players, name='players'),
 
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     # Specific URLS first
     path('json/leaderboards/', views.ajax_Leaderboards, name='json_leaderboards'),
     path('json/events/', views.ajax_Events, name='json_events'),
+    path('json/players/', views.ajax_Players, name='json_players'),
     path('json/game/<pk>', views.ajax_Game_Properties, name='get_game_props'),
     path('json/bgg_game/<pk>', views.ajax_BGG_Game_Properties, name='get_bgg_game_props'),
 
@@ -110,6 +112,8 @@ if settings.DEBUG:  # and not settings.SITE_IS_LIVE:
         path('unwind', views.view_UnwindToday, name='unwind'),
         path('check', views.view_CheckIntegrity, name='check'),
         path('rebuild', views.view_RebuildRatings, name='rebuild'),
+
+        path('daltest/', views.view_DALtest),
 
         # Currrently tailored to needs each time
         # TODO: Write a generic importer

@@ -777,17 +777,46 @@ class CreateViewExtended(CreateView):
 
         initial = super().get_initial()
 
+        ####################################################################
+        # Inheritance support
+        #
+        # Initial values can be inherites from earlier objects that were
+        # created. Specifically we honor three special model fields that
+        # can communicate inheritance preferences:
+        #
+        # inherit_fields: A list of fields that whoul be inherited from
+        #                 "latest" object of the same model, entered by
+        #                 the same user.
+        #
+        # inherit_time_delta: for any field in inherit_fields that is a
+        #                     date_time will add this delta. if it is callable
+        #                     will be called with the "latest" object as an arg.
+        #
+        # Latest is defined by Djangos latest() method whcuh respects amodels
+        # Meta setting "get_latest_by".
+
         try:
-            # TODO: Consider getting the last object created by the logged in user instead
-            # of the last object created
-            last = self.model.objects.latest()
+            user = self.request.user
+            last = self.model.objects.filter(created_by=user).latest()
         except ObjectDoesNotExist:
             last = None
 
         for field_name in inherit_fields(self.model):
             field_value = getattr(last, field_name)
-            if (isinstance(field_value, datetime.datetime)):
-                initial[field_name] = field_value + getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
+            if isinstance(field_value, datetime.datetime):
+                # If there's a local date_time on offer use that!
+                if hasattr(last, field_name + "_local"):
+                    field_value = getattr(last, field_name + "_local")
+
+                # Find a time delta if any
+                delta = getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
+
+                # If delta is a callable, call it
+                if callable(delta):
+                    delta = delta(last)
+
+                if delta:
+                    initial[field_name] = field_value + delta
             else:
                 initial[field_name] = field_value
 

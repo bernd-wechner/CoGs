@@ -594,7 +594,7 @@ class leaderboard_options:
         self.need_enabling.add('changed_since')
         if 'changed_since' in urequest:
             try:
-                self.changed_since = decodeDateTime(urequest['changed_since'])
+                self.changed_since = fix_time_zone(decodeDateTime(urequest['changed_since']), utz)
             except:
                 self.changed_since = None  # Must be a a Falsey value
 
@@ -602,7 +602,7 @@ class leaderboard_options:
 
         # A request for an event impact presentaton comes in the form
         # of num_days, where num yays flags the length of the event to
-        # look for (looknig back from now or as_at). We record it in
+        # look for (looking back from now or as_at). We record it in
         # self.num_days to flag that this is what we want to the processor.
         # Other filters of  course may impact on this and reduce the number
         # of games, which can in fact be handy if say the games of a long and
@@ -748,9 +748,11 @@ class leaderboard_options:
 
         # Now we capture the persepctive request if it provides a valid datetime
         self.need_enabling.add('as_at')
-        if 'as_at' in urequest:
+        # asat is a permissible, legacy alias for as_at
+        if 'as_at' in urequest or 'asat' in urequest:
+            as_at = urequest.get('as_at', urequest.get('asat'))
             try:
-                self.as_at = decodeDateTime(urequest['as_at'])
+                self.as_at = fix_time_zone(decodeDateTime(as_at), utz)
             except:
                 self.as_at = None  # Must be a a Falsey value
 

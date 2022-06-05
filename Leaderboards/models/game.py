@@ -618,7 +618,7 @@ class Game(AdminModel):
 
         if query:
             # TODO: Should really respect s['filter_priorities'] as the list view does.
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+            qs = qs.filter(**{f'{cls.selector_field}__icontains': query})
 
         qs = qs.annotate(play_count=Count('sessions')).order_by("-play_count")
 

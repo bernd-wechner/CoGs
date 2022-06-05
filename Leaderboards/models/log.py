@@ -45,8 +45,6 @@ class ChangeLog(AdminModel):
         a list of ranks (one per ranker, being a team or player depending on mode)
         a list of performances (one per performer, being a player).
 
-
-
     A given session has two leaderboard of interest, the state of the game's leaderboard before that
     session was played and after. This is what provides a measure of the impact that session has on a
     leaderboard (the state of the leaderboard before the session is of course its state immediately
@@ -247,7 +245,7 @@ class ChangeLog(AdminModel):
         Either way is fine.
 
         :param session:        A Session object, the change to which we are logging.
-        :param change_summary:        A JSON log of change_summary, as produced by session.__json__(form_data)
+        :param change_summary: A JSON log of change_summary, as produced by session.__json__(form_data)
         :param rebuild_log:    An instance of RebuildLog (to link to this ChangeLog)
         '''
 

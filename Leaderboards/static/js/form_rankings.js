@@ -2,16 +2,16 @@
 
 const debug = true;
 
-// Load the session data (function is defined in the loading html file because it needs 
+// Load the session data (function is defined in the loading html file because it needs
 // to use on Django template tags to get input from Django with which to populate the
 // Sessions structure.
-const Session = get_session_data();	
+const Session = get_session_data();
 
 /*
 	Session is the key data structure for communicating a session between Django and this form and for
-	managing form alterations (specifically play mode switches). It's useful therefore to see a sample 
+	managing form alterations (specifically play mode switches). It's useful therefore to see a sample
 	of the two play modes.
-	
+
 	Unknown IDs (Rank, Player, Team, Performance) will carry a string of form "id_n" where n is 0, 1, 2 ...
 	That being a sign that the id is unknown (this data not saved yet and given a database ID)
 */
@@ -19,8 +19,8 @@ const Session = get_session_data();
 
 // Note: The Django Generic widgets are created by Django with __prefix__ conveniently in the widget name
 //       where the Django formset saver expects to find a form identifier. Replacig this with a number which
-//		 is consistent for all widgets inside of one form in a formset associates them all. The should be 
-//		 numbered 0, 1, 2, 3 etc ...  
+//		 is consistent for all widgets inside of one form in a formset associates them all. The should be
+//		 numbered 0, 1, 2, 3 etc ...
 
 const id_prefix   =	 "id_";				// This is the prefix to element ID strings Django formsets use. A form element has "id=id_yadayada name=yadayada" properties
 const form_number = '__prefix__';		// This should be replaced by the number of the form, 0, 1, 2, 3 and so on for each form in the formset
@@ -75,10 +75,8 @@ const id_num_team_players  = id_prefix + name_num_team_players;
 
 // Define the IDs of some vital control elements for the smooth operation of the form.
 const id_indiv_div		  = "divIndividualPlay";										// The div displayed in individual mode
-const id_teams_div 		  = "divTeamPlay";												// The div displayed in team mode 
-
-const id_indiv_tbl		  = "tblIndividualPlay";										// The table for individual mode
-const id_teams_tbl 		  = "tblTeamPlay";												// The table for team mode 
+const id_teams_div 		  = "divTeamPlay";												// The div displayed in team mode
+let   id_visbl_div 		  = undefined;													// The visible (in use div)
 
 const id_num_players	  = "NumPlayers";												// ID of the field that contains the number of players (in in Individual Play mode)
 const id_num_teams		  = "NumTeams";													// ID of the field that contains the number of teams (in in Team Play mode)
@@ -88,31 +86,31 @@ const id_tbl_teams 		  = "tblTeamsTable";											// ID of the table that cont
 
 const id_team_switch  	  = id_prefix + 'team_play';								 	// The checkbox used to switch between Individual play mode and Team play mode
 
-// an enum for types of table we'll support so that type specific actions 
+// an enum for types of table we'll support so that type specific actions
 // can be taken by generic routines and table builders and manipulators.
 const TableType 		  = Object.freeze({"Players":1, "Teams":2, "TeamPlayers":3});
 
-// If the default displayed game has no values for these presume sesnible individual play defaults 
+// If the default displayed game has no values for these presume sesnible individual play defaults
 if (game_min_players_per_team == 0) game_min_players_per_team = 1;
 if (game_max_players_per_team == 0) game_max_players_per_team = 1;
 
-// Define some neat globals for the default displayed game 
+// Define some neat globals for the default displayed game
 let game_min_teams = Math.max(game_min_players/game_max_players_per_team, 2);
 let game_max_teams = Math.max(game_max_players/game_min_players_per_team, 2);
 
 // Add event listeners to initialize the form and to tidy it on submit
-window.addEventListener('load', OnLoad, true);
-window.addEventListener('submit', OnSubmit, true);
+document.addEventListener('load', OnLoad, true);
+document.addEventListener('submit', OnSubmit, true);
 
 function OnLoad(event) {
 	// Bind a listener to the team switch (so the form can adapt to the selected play mode)
 	const team_switch = $$(id_team_switch);
 	team_switch.addEventListener('click', switchMode)
-	
+
 	// Add a listener to the game selector (so that the form can adapt to the properties of the newly selected game)
 	const game_selector = $("#"+id_prefix+"game");
 	game_selector.on("change", switchGame);
-	
+
 	// DAL is flakey with the above change event handle. While sorting this I need a way to
 	// manually invoke it so we add a button beside it.
 	//	const target = "$('#" + game_selector[0].id + "')[0]";
@@ -121,76 +119,79 @@ function OnLoad(event) {
 	//					<span class="tooltiptext">Switch game</span>
 	//				    </button>`;
 	//	game_selector.after(button);
-		
-	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form 
+
+	// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form
 	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
 	// what's going on if something isn't working.
 	const prepare_submission = $$("prepare_submission");
-	if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit) 
-	
+	if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit)
+
 	//if (operation === "edit") {
 	// We have Session data if it's an edit operation or if it's an add operation that is being rerendered (with feedback).
 	if (Session.provided) {
 		if (is_team_play) {
-			$$(id_indiv_div).style.display = 'none';
-			$$(id_teams_div).style.display = 'block';
-			
-			// Constrain the supplied data to expected bounds 
+			showDiv("teams");
+
+			// Constrain the supplied data to expected bounds
 			let num_teams = Session["rIDs"].length; // one rank per team
-			if (num_teams < game_min_teams) num_teams = game_min_teams;  
-			if (num_teams > game_max_teams) num_teams = game_max_teams; 
-			$$(id_num_teams).value = num_teams;
-	
-			// This will create the teams table with a header row and 2 rows per team (body and details).		
-			adjustTable($$(id_num_teams));
-	
+			if (num_teams < game_min_teams) num_teams = game_min_teams;
+			if (num_teams > game_max_teams) num_teams = game_max_teams;
+			const elem_num_teams = $$(id_num_teams);
+			elem_num_teams.value = num_teams;
+	    	elem_num_teams.tabIndex = 1;
+
+			// This will create the teams table with a header row and 2 rows per team (body and details).
+			adjustTable(elem_num_teams);
+
 			// For each team build the Team players table.
-			// which goes on the details row of the teams table just created, in the teams detail cell. 
+			// which goes on the details row of the teams table just created, in the teams detail cell.
 			for (let i = 0; i < num_teams; i++) {
 				const rID = Session["rIDs"][i];
 				const tID = Session["rTeams"][rID];
 				let num_players = Session["tTeamPlayers"][tID].length;
-				if (num_players < game_min_players_per_team) num_players = game_min_players_per_team;  
-				if (num_players > game_max_players_per_team) num_players = game_max_players_per_team; 
-				
+				if (num_players < game_min_players_per_team) num_players = game_min_players_per_team;
+				if (num_players > game_max_players_per_team) num_players = game_max_players_per_team;
+
 				if (num_players > 0) {
 			    	const idTable = 'tblTeamsBody' + i;
 			    	const Table = $$(idTable);
-	
+
 			    	// This is the number of players in the team. Used only in form processing.
 			    	const real_name_num_team_players = name_num_team_players.replace(form_number,i);
-			    	const boxNum = findChildByName(Table, real_name_num_team_players); 	
-	
+			    	const boxNum = findChildByName(Table, real_name_num_team_players);
+
 	                boxNum.value = num_players;
-	
+
 	                adjustTable(boxNum);
 	            }
 	        }
 		} else {
-			$$(id_teams_div).style.display = 'none';
-			$$(id_indiv_div).style.display = 'block';
-	
-			// Constrain the supplied data to expected bounds 
+			showDiv("indiv");
+
+			// Constrain the supplied data to expected bounds
 			const min_players = game_min_players;
-			const max_players = game_max_players;			
+			const max_players = game_max_players;
 			let num_players = Session["rIDs"].length; // one rank per player
-			if (num_players < min_players) num_players = min_players;  
-			if (num_players > max_players) num_players = max_players; 
-	    	$$(id_num_players).value = num_players;
-	    	$$(id_num_players).defaultValue = num_players;
-	
-	        adjustTable($$(id_num_players));
+			if (num_players < min_players) num_players = min_players;
+			if (num_players > max_players) num_players = max_players;
+
+			const elem_num_players = $$(id_num_players);
+	    	elem_num_players.value = num_players;
+	    	elem_num_players.defaultValue = num_players;
+	    	elem_num_players.tabIndex = 1;
+
+	        adjustTable(elem_num_players);
 		}
 	} else
 		// Make sure the game is properly configured
 		configureGame();
-	
+
 	// If an illegal game mode is loaded, or both game modes are supported the team_switch is enabled
-	const lock = !( (team_switch.checked && !game_team_play) 
-				|| (!team_switch.checked && !game_individual_play) 
-				|| (game_individual_play && game_team_play) 
+	const lock = !( (team_switch.checked && !game_team_play)
+				|| (!team_switch.checked && !game_individual_play)
+				|| (game_individual_play && game_team_play)
 				);
-				  
+
 	team_switch.disabled = lock;
 }
 
@@ -198,7 +199,7 @@ function OnSubmit(event) {
 	// Remove the templates from the submission
 	if ($$("templatePlayersTable")) $$("templatePlayersTable").remove();
 	if ($$("templateTeamsTable")) $$("templateTeamsTable").remove();
-	if ($$("templateTeamPlayersTable")) $$("templateTeamPlayersTable").remove();	
+	if ($$("templateTeamPlayersTable")) $$("templateTeamPlayersTable").remove();
 
 	// Remove and elements flagged as NoSubmit by class
 	const killthem = document.getElementsByClassName("NoSubmit");
@@ -207,35 +208,35 @@ function OnSubmit(event) {
 	// Tidy up the submission to meet Django formset expectations (to simplify processing when submitted)
 	const team_switch = $$(id_team_switch);
 	const team_play = team_switch.checked;
-	
+
 	// enable the team_switch if it was disabled
 	// disabled elements don't get submitted with the POST
 	// checkbox elemnts don't support the readonly attribute
 	// only recourse is to disable it when not supported but
-	// enable it here before submission so Django gets to see 
-	// it in the form submission (and save the session object 
-	// with this flag). 
+	// enable it here before submission so Django gets to see
+	// it in the form submission (and save the session object
+	// with this flag).
 	team_switch.disabled = false;
-	
+
 	// If it's a team play submission
 	if (team_play) {
 		const num_teams = $$(id_num_teams).value
     	const tbl_teams = $$(id_tbl_teams);
-				
-		// Keep a count ranks, performancs and teams we've requested deletion of 
+
+		// Keep a count ranks, performancs and teams we've requested deletion of
 		// (so we can number the forms properly, sort of like num_teams+deleted_ranks)
 		let	deleted_ranks = 0;
 		let	deleted_perfs = 0;
 		let	deleted_teams = 0;
-		
-		// A performance pointer that helps us keep a list of perfs to upate followed by perfs to create 
+
+		// A performance pointer that helps us keep a list of perfs to upate followed by perfs to create
 		let P = 0;
-		
-		// Keep a list of spare rank IDs 
+
+		// Keep a list of spare rank IDs
 		let spare_rids = [];
-		
+
 		// Process players (performances) in two passes, capturing all those with IDs first and then those without.
-		// Django expects INITIAL_FORMS and TOTAL_FORMS and the first INITIAL_FORMS items need IDs and the 
+		// Django expects INITIAL_FORMS and TOTAL_FORMS and the first INITIAL_FORMS items need IDs and the
 		// rest need blank IDs and Django will create IDs for them after submission.
 		//
 		// So pass 0 collect Performances with IDs and Ranks
@@ -255,13 +256,13 @@ function OnSubmit(event) {
 	            const num_players = box_num_players.value;
 
 	            // Rank ID management happens in two passes as well but only for edits, for add
-	            // oprations one pass suffices. 
+	            // oprations one pass suffices.
 				const rid = getWidget(tbl_teams, name_rid, t);
-	            
-				if (operation === "add" && pass == 0) 
+
+				if (operation === "add" && pass == 0)
 					rid.remove();
 				else if (operation === "edit") {
-					// If rids were joined by any indiv->team conversion then joined_rids.length > 1					
+					// If rids were joined by any indiv->team conversion then joined_rids.length > 1
 					const joined_rids = rid.value.split("&");
 
 					// On the first pass we look for spare rank ids that appear in folded lists
@@ -269,39 +270,39 @@ function OnSubmit(event) {
 		            // rank id and keep them in a list. Any placeholder ids after the first one can be
 		            // discarded in the same pass.
 		            if (pass == 0) {
-						// If we're editing, we had Rank IDs and now we may have some folded Ranks IDs 
-						// after a conversion from individual play to team play. These we have to unfold, 
+						// If we're editing, we had Rank IDs and now we may have some folded Ranks IDs
+						// after a conversion from individual play to team play. These we have to unfold,
 						// which means we keep the first one and request the remaining rank objects be deleted.
 						if (joined_rids.length > 1) {
-							// keep only the first one 
-							rid.value = joined_rids[0];						
-							
+							// keep only the first one
+							rid.value = joined_rids[0];
+
 							// Catch the rest in our spare_rids list
 							for (let r=1; r<joined_rids.length; r++) {
 								const rID = joined_rids[r];
-							
+
 								// catch as a spare only if it's a real id not a placeholder
- 								// placeholders after the first one (joined_rids[0]) can be safely 
+ 								// placeholders after the first one (joined_rids[0]) can be safely
 								// discarded in fact should be. That is, simply ignored here.
 								if (!isNaN(rID)) spare_rids.push(rID);
 							}
-						}						
-		            } 
-		            // On the second pass we look for any placeholder ids, and use a spare rank id if it's 
+						}
+		            }
+		            // On the second pass we look for any placeholder ids, and use a spare rank id if it's
 		            // available, to recycle it for use on this team. All the rids at this stage are not
-		            // joined (were cleaned up in pass 0), and if more than 1 is left we have an integrity 
+		            // joined (were cleaned up in pass 0), and if more than 1 is left we have an integrity
 		            // error in this code.
 		            else if (pass == 1) {
 						if (joined_rids.length == 1)
 							if (isNaN(joined_rids[0])) {
 								if (spare_rids.length > 0)
 									rid.value = spare_rids.shift();
-								// If no spare rids are available remove the rid element altogether							
-								// TODO: do we need to check that the management form is good 
-								// here, and/or ensure that all removed rids have a form number 
+								// If no spare rids are available remove the rid element altogether
+								// TODO: do we need to check that the management form is good
+								// here, and/or ensure that all removed rids have a form number
 								// above valid rids? Or does this code already ensure that? Perhaps,
 								// because of the way we fold and unfold here? Needs a think.
-								else 
+								else
 									rid.remove();
 							}
 						else if (joined_rids.length > 1)
@@ -313,18 +314,18 @@ function OnSubmit(event) {
 	            // Until we've used all the PIDs, then on pass 1 we'll continue with P = n, n+1, n+2 ... m
 	            // Which is why we neeed two passes
 	    		for (let p = 0; p < num_players; p++) {
-	    			// pid is found on first pass, but then if it has a value is renamed 
-	    			// so that on the second pass only those without value are left. The 
-	    			// original names have a form number in the format team.player (e.g. 1.2)  
+	    			// pid is found on first pass, but then if it has a value is renamed
+	    			// so that on the second pass only those without value are left. The
+	    			// original names have a form number in the format team.player (e.g. 1.2)
 	    			// as this is how they've been managed in the form. We rename to 0, 1, 2, etc.
-	    			// so on the second pass those without a value remai and still have the 
-	    			// compound form number so are easy to find.   
+	    			// so on the second pass those without a value remai and still have the
+	    			// compound form number so are easy to find.
 	    			const cfn = t + "." + p;							// Compound Form Number
 	    			const pid = getWidget(tbl_teams, name_pid, cfn);
 
 	    			// On first pass do those which have a pid are grouped as form numbers 0, 1, 2, ... n
 	    			// On the second pass those that are left get form numbers n+1, n+2, n+3 ...
-	    			// 
+	    			//
 	    			// On the first pass we rename the pid widget from a t.p form_number to P
 	    			// On the second pass those pids renamed on first pass are no longer found and pid is undefined
 	    			// It is only pids that have no value that remain defined on the second pass.
@@ -335,10 +336,11 @@ function OnSubmit(event) {
 		    			const weight = fixWidget(tbl_teams, name_weight, cfn, P);
 		    			P++;
 
-		                // Add a hidden element that submits the team index number for this Performance. 
-		                // It is set so that the server can later (when submitted) associate the player 
-		    			// with other players on the same team. That is how we define teams, as a collection 
-		    			// of players.
+		                // Add a hidden element that submits the team index number for this Performance.
+		                // It is set so that the server can later (when submitted) associate the player
+		    			// with other players on the same team. That is how we define teams, as a collection
+		    			// of players.der
+			// i.e. set tabIndex to -1, and then add a span following the select which has a
 		                const team_num  = document.createElement("input");
 		                team_num.type 	= "hidden";
 		                team_num.value 	= t;
@@ -355,9 +357,9 @@ function OnSubmit(event) {
 		                if (pid && operation === "add" || !pid.value || isNaN(pid.value)) pid.remove();
 	    			}
 				}
-	    		
+
 	    		// On the second pass after P has reached m, we can look for any deleted performances
-	    		// and add delete forms numbered m+1, m+2, m+3 ... Of course we only have performances 
+	    		// and add delete forms numbered m+1, m+2, m+3 ... Of course we only have performances
 	    		// to delete on an edit operation not if we are adding (started with a blank form)
 	    		if (operation == "edit" && pass == 1) {
 					// we'll look in the teamplayer trash for any deleted players (performances)
@@ -370,16 +372,16 @@ function OnSubmit(event) {
 
 					for (let p = 0; p < count; p++) {
 			            const row = trash.row[p];
-			            
+
 			            // In the trash the pid is in an element with id = name_pid, but
 			            // that contains an unknown form number, so we'll search for it with the
-			            // prefix and suffix, expect one result and use that to get the value 
+			            // prefix and suffix, expect one result and use that to get the value
 			            const pid = row.querySelector("[id^='"+id_prefix+performance_prefix+"'][id$='-id']");
-			            
+
 						// Add a hidden pair of elements that convey the rank ID and the -DELETE request.
 						// We need to use form numbers above those used by actual forms, so starting with
 						// num_teams. That is forms 0, 1, 2 ... num_teams-1 will all have a rank for a team.
-						// And forms num_teams,num_teams+1, num_teams+2 ... Are ones we can add delete 
+						// And forms num_teams,num_teams+1, num_teams+2 ... Are ones we can add delete
 						// requests for. But we need to keep track of how many we've deleted.
 
 						// Fix the pid element's name and id so that the form number is not in the t.p format
@@ -396,27 +398,27 @@ function OnSubmit(event) {
 		                perf_del.name	 = pid.name.replace("-id", "-DELETE");
 			            perf_del.style.display = 'none';
 		                insertAfter(perf_del, pid);
-		                
+
 		                P++; deleted_perfs++;
-					}											    			
+					}
 	    		}
 	        }
 
 		if (operation == "edit") {
-			// If after the rank management above there are still spare_rids we have to request their 
+			// If after the rank management above there are still spare_rids we have to request their
 			// deletion. they are rank IDs we don't need in the database). One use case is a 10 player
-			// game session (individual mode) is loaded from database converted from indiv mode to 
-			// team and there are less thant 10 teams then some of the rids of those players will 
+			// game session (individual mode) is loaded from database converted from indiv mode to
+			// team and there are less thant 10 teams then some of the rids of those players will
 			// remain spare.
 			for (let r = 0; r < spare_rids.length; r++) {
 				// Add a hidden pair of elements that convey the rank ID and the -DELETE request.
 				// We need to use form numbers above those used by actual forms, so starting with
 				// num_teams. That is forms 0, 1, 2 ... num_teams-1 will all have a rank for a team.
-				// And forms num_teams, num_teams+1, num_teams+2 ... Are ones we can add delete 
+				// And forms num_teams, num_teams+1, num_teams+2 ... Are ones we can add delete
 				// requests for. But we need to keep track of how many we've deleted.
 				const fn = Number(num_teams) + Number(deleted_ranks);
 
-				// We need to add an ID field to identify the Rank 
+				// We need to add an ID field to identify the Rank
 		        const rank_id = document.createElement("input");
 		        rank_id.type 	= "hidden";
 		        rank_id.value 	= spare_rids[r];
@@ -424,7 +426,7 @@ function OnSubmit(event) {
 		        rank_id.name	= name_rid.replace(form_number, fn)
 		        tbl_teams.parentNode.appendChild(rank_id);
 
-				// And a -DELETE checkbox to request its deletion 
+				// And a -DELETE checkbox to request its deletion
 		        const rank_del = document.createElement("input");
 		        rank_del.type 	 = "checkbox";
 		        rank_del.value 	 = "on";
@@ -434,10 +436,10 @@ function OnSubmit(event) {
 		        rank_del.style.display = 'none';
 		        tbl_teams.parentNode.appendChild(rank_del);
 
-		        deleted_ranks++;				
+		        deleted_ranks++;
 			}
-			
-			// We may also have deleted teams! If so, we'll find them in the team trash and need 
+
+			// We may also have deleted teams! If so, we'll find them in the team trash and need
 			// to process them, requesting that the associated Rank objects be deleted.
 			const id_template = "templateTeamsTable";
 			const id_table = id_template.replace("template", "tbl");
@@ -445,13 +447,13 @@ function OnSubmit(event) {
 			const table = $$(id_table);
 			const trash = $$(id_trash);
 			const count = trash.rows.length;
-			
+
 			for (let t = 0; t < count; t++) {
 	            const row = trash.row[t];
-			
+
 	            // In the trash the rid is in an element with id = name_rid, but
 	            // that contains an unknown form number, so we'll search for it with the
-	            // prefix and suffix, expect one result and use that to the value 
+	            // prefix and suffix, expect one result and use that to the value
 	            const rid = row.querySelectorAll("[id^=['"+id_prefix+rank_prefix+"'][id$='-id']")[0];
 
 	            if (rid.value && !isNaN(rid.value)) {
@@ -459,7 +461,7 @@ function OnSubmit(event) {
 		            let fn = Numer(num_teams) + Number(deleted_ranks);
 	                rid.id 	 = id_pid.replace(form_number, fn);
 	                rid.name = name_pid.replace(form_number, fn);
-		            	            
+
 	                // Then add a -DELETE request in the form of a checkbox as Django expects.
 		            const rank_del = document.createElement("input");
 		            rank_del.type 	 = "checkbox";
@@ -469,8 +471,8 @@ function OnSubmit(event) {
 		            rank_del.name	 = rid.name.replace("-id", "-DELETE");
 		            rank_del.style.display = 'none';
 	                insertAfter(rank_del, rid);
-	                
-	                deleted_ranks++; 
+
+	                deleted_ranks++;
 	            } else {
 	            	rid.remove();
 	            }
@@ -487,7 +489,7 @@ function OnSubmit(event) {
 		            let fn = Number(num_teams) + (deleted_teams);
 	                tid.id 	 = id_pid.replace(form_number, fn);
 	                tid.name = name_pid.replace(form_number, fn);
-		            	            
+
 	                // Then add a -DELETE request in the form of a checkbox as Django expects.
 		            const team_del = document.createElement("input");
 		            team_del.type 	 = "checkbox";
@@ -496,44 +498,44 @@ function OnSubmit(event) {
 		            team_del.id 	 = tid.id.replace("-id", "-DELETE");
 		            team_del.name 	 = tid.name.replace("-id", "-DELETE");
 	                insertAfter(team_del, tid);
-	                
+
 	                deleted_teams++;
 	            } else {
-	            	tid.remove();	            	
-	            }	            	            	            
-			}			
+	            	tid.remove();
+	            }
+			}
 		}
-		
-		// Finally if submitting teams tidy up the submission a tad. may have 
-		// some mock IDs and names (placeholders) in place auto filled from either 
-		// a conversion from individual play (in the case of Team IDs) or simply a 
-		// form creation (in the the case of Team Name). Neither should be submitted 
+
+		// Finally if submitting teams tidy up the submission a tad. may have
+		// some mock IDs and names (placeholders) in place auto filled from either
+		// a conversion from individual play (in the case of Team IDs) or simply a
+		// form creation (in the the case of Team Name). Neither should be submitted
 		// in that form
 		for (let t=0; t<num_teams; t++) {
 			const team_id = getWidget(tbl_teams, name_tid, t);
 			const team_name = getWidget(tbl_teams, name_team_name, t);
-			
+
 			// Remove the ID completely if needed
 			if (team_id != undefined && isNaN(team_id.value)) team_id.remove();
-			
-			// Submit an empty name if it's just a placeholder value (This makes it 
+
+			// Submit an empty name if it's just a placeholder value (This makes it
 			// impossible to name ream teams in the format "Team n" of course.
 			team_name.value = /^Team \d+$/.test(team_name.value) ? "" : team_name.value;
-			
+
 			// If we have no team name, don't submit it
 			if (team_name.value === "") team_name.remove();
-		}			
-		
+		}
+
 		// We have to add the number of deleted forms to the TOTAL_FORMS field in the management form
 		// or Django will ignore them (i.e. only process TOTAL_FORMS forms not these extra ones.
 		updateManagementForms($$(id_teams_div));
-		
+
 		// Remove the individual play form completely before submitting
 		if ($$(id_indiv_div)) $$(id_indiv_div).remove();
-	} 
+	}
 	else { // it's individual play (the team_play checkbox is not checked)
 		const num_players = Number($$(id_num_players).value);
-		
+
         // On Add operations remove the rid and pid for each player from the submission as a safety.
 		// Django will create ids for us when saving to the database.
 		if (operation === "add") {
@@ -547,7 +549,7 @@ function OnSubmit(event) {
                 if (pid) pid.remove();
 			}
 		} else {
-			// It's an individual play mode session being submitted but it may have been 
+			// It's an individual play mode session being submitted but it may have been
 			// a team play session when loaded (if this is an edit form).
 			//
 			// In that case there may be teams that are no longer relevant and need deletion
@@ -555,7 +557,7 @@ function OnSubmit(event) {
 			// must be done server side, on client side here we can check for any deleted
 			// teams and ensure we add -DELETE requests to the submission.
 			//
-			// The server should only delete such teams of coursem if there are no references 
+			// The server should only delete such teams of coursem if there are no references
 			// left to that team and so these -DELETE requests still need server side attention.
 			//
 			// is_team_play is true only if session.team_play of the session loaded for editing
@@ -571,8 +573,8 @@ function OnSubmit(event) {
 				const table = $$(id_table);
 				const trash = $$(id_trash);
 
-		    	const div_players = $$(id_indiv_div);				
-				
+		    	const div_players = $$(id_indiv_div);
+
 				let T = 0;
 				for (let tbl of [table, trash]) {
 					for (let row of tbl.rows) {
@@ -599,7 +601,7 @@ function OnSubmit(event) {
 			                team_id.id 	  = id_tid.replace(form_number, T)
 			                team_id.name  = name_tid.replace(form_number, T)
 			                div_players.appendChild(team_id);
-	
+
 			                const team_del   = document.createElement("input");
 			                team_del.type 	 = "checkbox";
 			                team_del.value 	 = "on";
@@ -608,18 +610,18 @@ function OnSubmit(event) {
 			                team_del.name	 = team_id.name.replace("-id", "-DELETE");
 				            team_del.style.display = 'none';
 			                div_players.appendChild(team_del);
-			                
+
 			                T++;
 			            }
 					}
 				}
-				
-				// having dealt with team IDs we need to deal with Rank IDs. The thing is if a team session 
+
+				// having dealt with team IDs we need to deal with Rank IDs. The thing is if a team session
 				// is converted to individual play, then there's only one rank per team and only one of the players
 				// from the erstwhile team can get that rank the others will have placeholders (in form id_n.m)
 				// At a bare minimum we need these placeholders removed so that Django creates new Rank objects
-				// with new IDs when saving. But we also want to order the forms in such a way that the ones 
-				// with Rank IDs are 0 to n and the ones without are n+1 to m. 
+				// with new IDs when saving. But we also want to order the forms in such a way that the ones
+				// with Rank IDs are 0 to n and the ones without are n+1 to m.
 				//
 				// First let's fetch all the rid elements
 	            const rids = $$(id_indiv_div).querySelectorAll("[id^='"+id_prefix+rank_prefix+"'][id$='-id']");
@@ -636,25 +638,25 @@ function OnSubmit(event) {
 						rid_fns_bad.push(fn);
 						rids[r].remove();
 					} else
-						rid_fns_good.push(fn);										
+						rid_fns_good.push(fn);
 				}
 
 				// And build a new list of form numbers
 	            let rid_fns_new = [];
-				for (let f=0; f<rid_fns_good.length; f++) rid_fns_new.push(rid_fns_good[f]);	            
+				for (let f=0; f<rid_fns_good.length; f++) rid_fns_new.push(rid_fns_good[f]);
 				for (let f=0; f<rid_fns_bad.length; f++) rid_fns_new.push(rid_fns_bad[f]);
-	            
+
 				// Now if the two lists differ we have to map the now form numbers to the new form numbers
 				// but that involves renumbering all the form elements from one index to the next
 				// The beauty is that POSTed data is keyed on element names, not IDs and by default
 				// the names and IDs all hold the same form number, so we need only change the name, not
 				// the ID of the form elements in order to produce a clean POST.
-				for (let f=0; f<rid_fns_now.length; f++) 
+				for (let f=0; f<rid_fns_now.length; f++)
 	            	mapElementNames($$(id_indiv_div), ["Rank", "Performance"], rid_fns_now[f], rid_fns_new[f]);
-			} 
-			else { 
-				// We are editing a session that had session.team_play=false when the form was initialised. 
-				// We have to check the trash for deleted players. We have a rank ID and a performance ID 
+			}
+			else {
+				// We are editing a session that had session.team_play=false when the form was initialised.
+				// We have to check the trash for deleted players. We have a rank ID and a performance ID
 				// for each one that we need to request the deletion of.
 				const id_template = "templatePlayersTable";
 				const id_table = id_template.replace("template", "tbl");
@@ -665,10 +667,10 @@ function OnSubmit(event) {
 
 				let	deleted_ranks = 0;
 				let	deleted_perfs = 0;
-							
+
 				for (let t = 0; t < count; t++) {
 		            const row = trash.rows[t];
-		
+
 		            // In the trash row the rid and pid elements have an unknown form number
 		            // embedded in the id so we have to find it with a pattern match.
 		            // The ids of the elelements that contain rank and performance ids resemble:
@@ -679,7 +681,7 @@ function OnSubmit(event) {
 		            // the rank and performance we need to request deletion of.
 		            const rid = row.querySelectorAll("[id^='"+id_prefix+rank_prefix+"'][id$='-id']")[0];
 		            const pid = row.querySelectorAll("[id^='"+id_prefix+performance_prefix+"'][id$='-id']")[0];
-				
+
 		            // Only request a deletion if the rid has a value (was not not added during this edit session)
 		            if (rid.value) {
 						// Add a hidden checkbox element for the -DELETE request.
@@ -688,13 +690,13 @@ function OnSubmit(event) {
 			            rank_del.value 	 = "on";
 			            rank_del.checked = true
 			            rank_del.id 	 = rid.id.replace("-id", "-DELETE");
-			            rank_del.name	 = rid.name.replace("-id", "-DELETE");		            
+			            rank_del.name	 = rid.name.replace("-id", "-DELETE");
 			            rank_del.style.display = 'none';
 			            row.appendChild(rank_del);
-			            
-			            deleted_ranks++; 
+
+			            deleted_ranks++;
 		            }
-		            
+
 		            // Only request a deletion if the pid has a value (was not not added during this edit session)
 		            if (pid.value) {
 						// Add a hidden element for the -DELETE request.
@@ -706,11 +708,11 @@ function OnSubmit(event) {
 		                perf_del.name	 = pid.name.replace("-id", "-DELETE");
 			            perf_del.style.display = 'none';
 		                row.appendChild(perf_del);
-		                
+
 		                deleted_perfs++;
 		            }
-				}				
-			}		
+				}
+			}
 		}
 
 		// We have to add the number of deleted forms to the TOTAL_FORMS field in the management form
@@ -718,8 +720,8 @@ function OnSubmit(event) {
 		updateManagementForms($$(id_indiv_div));
 
 		// Remove the team play form completely before submitting
-		if ($$(id_teams_div)) $$(id_teams_div).remove();	
-	}	
+		if ($$(id_teams_div)) $$(id_teams_div).remove();
+	}
 }
 
 // Re-configures the form for a new game if the game is changed (on an edit form).
@@ -731,26 +733,26 @@ function configureGame() {
     // Set some useful derived globals
 	game_min_teams = Math.max(game_min_players/game_max_players_per_team, 2);
 	game_max_teams = Math.max(game_max_players/game_min_players_per_team, 2);
-	
+
 	// Reads the global game options and ses the play mode as needed and limits the player counts as needed.
 	const team_switch = $$(id_team_switch);
-	
+
 	// game_individual_play is true if the game supports individual play mode
 	// game_team_play is true if the game supports team play mode
-	// These are game properties.	
+	// These are game properties.
 
 	// Decide which mode (individual play or team play to display)
 	let show_team_play = false;
-	
+
 	// If the game supports both modes, the Team play selector will have been delivered
 	// by Django with a default value and we respect that
 	if (game_team_play && game_individual_play) show_team_play = team_switch.checked;
-	
+
 	// If the game supports only one mode, force that mode.
 	else if (game_individual_play && !game_team_play) show_team_play = false;
 	else if (game_team_play && !game_individual_play) show_team_play = true;
-		
-	// If the game supports only one mode, force that mode. 
+
+	// If the game supports only one mode, force that mode.
 	if (show_team_play) {
 		if (!team_switch.checked) {
 			team_switch.checked = true;
@@ -758,30 +760,29 @@ function configureGame() {
 		}
 
 		const num_teams = $$(id_num_teams);
-		if (num_teams.value < game_min_teams) num_teams.value = game_min_teams;  
-		if (num_teams.value > game_max_teams) num_teams.value = game_max_teams; 
-		num_teams.defaultValue = num_teams.value; 
+		if (num_teams.value < game_min_teams) num_teams.value = game_min_teams;
+		if (num_teams.value > game_max_teams) num_teams.value = game_max_teams;
+		num_teams.defaultValue = num_teams.value;
+		num_teams.tabIndex = 1;
 		num_teams.setAttribute('min', game_min_teams);
 		num_teams.setAttribute('max', game_max_teams);
-		
+
 		adjustTable(num_teams);
 
 		for (let i = 0; i < num_teams.value; i++) {
 	    	const idTable = 'tblTeamsBody' + i;
 	    	const Table = $$(idTable);
             const num_players = findChildByName(Table, name_num_team_players.replace(form_number,i));
-			if (num_players.value < game_min_players_per_team) num_players.value = game_min_players_per_team;  
-			if (num_players.value > game_max_players_per_team) num_players.value = game_max_players_per_team; 
+			if (num_players.value < game_min_players_per_team) num_players.value = game_min_players_per_team;
+			if (num_players.value > game_max_players_per_team) num_players.value = game_max_players_per_team;
 			num_players.setAttribute('min', game_min_players_per_team);
 			num_players.setAttribute('max', game_max_players_per_team);
-			num_players.setAttribute('defaultValue', num_players.value); 
-			
+			num_players.setAttribute('defaultValue', num_players.value);
+
 			adjustTable(num_players);
 		}
-		
-		$$(id_indiv_div).style.display = 'none';
-		$$(id_teams_div).style.display = 'block';		
-	
+
+		showDiv("teams");
 	} else {
 		if (team_switch.checked) {
 			team_switch.checked = false;
@@ -789,23 +790,23 @@ function configureGame() {
 		}
 
 		const num_players = $$(id_num_players);
-		if (num_players.value < game_min_players) num_players.value = game_min_players;  
+		if (num_players.value < game_min_players) num_players.value = game_min_players;
 		if (num_players.value > game_max_players) num_players.value = game_max_players;
-		num_players.defaultValue = num_players.value; 
+		num_players.defaultValue = num_players.value;
+		num_players.tabIndex = 1;
 		num_players.setAttribute('min', game_min_players);
-		num_players.setAttribute('max', game_max_players);	
+		num_players.setAttribute('max', game_max_players);
 
 		adjustTable(num_players);
-		
-		$$(id_teams_div).style.display = 'none';		
-		$$(id_indiv_div).style.display = 'block';		
-	} 	
-	
+
+		showDiv("indiv");
+	}
+
 	// Else do nothing, the form can stay in the mode its in (Individual or Team Play)
-	
+
 	// But in all cases lock the team switch if only one mode is available.
 	const lock = (!game_individual_play || !game_team_play);
-	team_switch.disabled = lock;	
+	team_switch.disabled = lock;
 }
 
 // Event handler for a new game selection
@@ -813,14 +814,14 @@ function switchGame(event) {
 	const selector = event.target;
 	const game_pk = selector.value;
 	const url = game_props_url.replace(/\d+$/, game_pk); // Replace the dummy Game PK with the selected one
-	
+
 	let REQUEST = new XMLHttpRequest();
-	
+
 	REQUEST.onreadystatechange = function () {
 	    if (this.readyState === 4 && this.status === 200){
-	        // the request is complete, parse data 
+	        // the request is complete, parse data
 	        const response = JSON.parse(this.responseText);
-	        
+
 	        // and save in the global game properties
 	        game_individual_play 	  = response.individual_play;
 			game_team_play 			  = response.team_play;
@@ -836,55 +837,47 @@ function switchGame(event) {
 	REQUEST.send(null);
 }
 
-// Event handler for new play mode selection (swapping from Individual to Team or vice versa) 
+// Event handler for new play mode selection (swapping from Individual to Team or vice versa)
 function switchMode(event) {
 	const team_switch = $$(id_team_switch);
 
 	const table_players = $$(id_tbl_players);
-	const table_teams = $$(id_tbl_teams);	
-	
+	const table_teams = $$(id_tbl_teams);
+
     if (team_switch.checked && table_players != undefined) {
     	// Switch from individual play to team play
-		const num_teams = $$(id_num_teams);	
+		const num_teams = $$(id_num_teams);
 
 		const session = convert_session_data_from(table_players);
 
 		num_teams.value = session["rIDs"].length;
-		num_teams.defaultValue = num_teams.value; 
-    	
+		num_teams.defaultValue = num_teams.value;
+
 		const table_teams = adjustTable(num_teams, session);
-		
+
 		for (let t=0; t<num_teams.value; t++) {
 	    	const real_name_num_team_players = name_num_team_players.replace(form_number,t);
 	    	const id_table = 'tblTeamsBody' + t;
-	    	const table_teams = $$(id_table);	    	
+	    	const table_teams = $$(id_table);
 			const num_team_players = findChildByName(table_teams, real_name_num_team_players);
-			
+
 			adjustTable(num_team_players, session);
 		}
 
-		$$(id_indiv_div).style.display = 'none';
-    	$$(id_teams_div).style.display = 'block';
-    	
-    	enableChildren($$(id_indiv_div), false);
-    	enableChildren($$(id_teams_div), true);    	
+		showDiv("teams");
     } else if (!team_switch.checked && table_teams != undefined) {
     	// Switch from team play to individual play
 		const num_players = $$(id_num_players);
 
 		const session = convert_session_data_from(table_teams);
-		
-		num_players.value = session["rIDs"].length;		
-		num_players.defaultValue = num_players.value; 
-		
+
+		num_players.value = session["rIDs"].length;
+		num_players.defaultValue = num_players.value;
+
 		adjustTable(num_players, session);
 
-    	$$(id_teams_div).style.display = 'none';
-    	$$(id_indiv_div).style.display = 'block';
-    	
-    	enableChildren($$(id_teams_div), false);
-    	enableChildren($$(id_indiv_div), true);
-    }    
+		showDiv("indiv");
+    }
 }
 
 // from_table can be one of tblIndividualPlay or tblTeamPlay from the associated template
@@ -906,20 +899,20 @@ function convert_session_data_from(from_table) {
 		// as an & separated list. The last team if needed will accept the remainder.
 		const rIDs = [];
 		const ridRanks = {};
-		const ridTeams = {}; 
-		const tidTeamNames = {}; 
-		const tidTeamPlayers = {}; 
+		const ridTeams = {};
+		const tidTeamNames = {};
+		const tidTeamPlayers = {};
 		const plidPerformances = {};
 		const plidWeights = {};
-		
+
 		// Get the number of teams and players respecting minima specifed by globals
 		// game_min_teams and game_min_players_per_teamn trying to divide up the specifed
 		// number players into teams and then padding out the number of players if needed
-		// to satsify the mimima specified. 
+		// to satsify the mimima specified.
 		const np = Number($$(id_num_players).value);
-		const num_teams = Math.max(game_min_teams, Math.trunc(np / game_min_players_per_team));		
+		const num_teams = Math.max(game_min_teams, Math.trunc(np / game_min_players_per_team));
 		const num_players = Math.max(np, game_min_teams * game_min_players_per_team);
-				
+
 		const ranks = [];
 		for (let p=0; p<num_players; p++) {
 			const rid 		= getWidget(from_table, name_rid, p);
@@ -927,14 +920,14 @@ function convert_session_data_from(from_table) {
 			const rank 		= getWidget(from_table, name_rank, p);
 			const player 	= getWidget(from_table, name_player, p);
 			const weight 	= getWidget(from_table, name_weight, p);
-			
-			const t = Math.trunc(p / game_min_players_per_team);	
+
+			const t = Math.trunc(p / game_min_players_per_team);
 			const tID = id_prefix+t;
 			tidTeamNames[tID] = "Team " + t;
 
 			// Get values for all the fields, but store placeholder values of the form id_n
 			// where none is available because the Session object we're building wants to use
-			// id's for indexes. We'll have to make sure before we submit that any such 
+			// id's for indexes. We'll have to make sure before we submit that any such
 			// placeholder values are removed.
 			const default_id = id_prefix+p;
 			const rID = getNumberValue(rid, default_id);
@@ -953,8 +946,8 @@ function convert_session_data_from(from_table) {
 				// Add a player to the list
 				rIDs[t] = rIDs[t] + "&" + rID;
 				tidTeamPlayers[tID].push(plID);
-			}			
-			
+			}
+
 			plidPerformances[plID] = pID;
 			plidWeights[plID] = wVal;
 		}
@@ -962,21 +955,21 @@ function convert_session_data_from(from_table) {
 		for (let t=0; t< rIDs.length; t++) {
 			const rID = rIDs[t];
 			const tID = id_prefix+t;
-			
+
 			ridTeams[rID] = tID;
 			ridRanks[rID] = ranks[t];
 		}
-		
+
 		const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
-		 		 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID 
-		 		 		 'Players'		: {},	    		// dict of player IDs keyed on rID 
+		 		 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID
+		 		 		 'Players'		: {},	    		// dict of player IDs keyed on rID
 		 		 		 'Teams'		: ridTeams, 		// dict of team IDs keyed on rID
 		 		 		 'TeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
 		 		 		 'TeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
-		 		 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID 
+		 		 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID
 		 		 		 'Weights'		: plidWeights}		// dict of performance weights keyed on player ID
 
-		return Session;		
+		return Session;
 	}
 	else if (from_table.id = id_tbl_teams) {
 		// We look for
@@ -991,29 +984,29 @@ function convert_session_data_from(from_table) {
 		// The player properties have an embedded form_number which is of form t.p where t and p are 0, 1, 2, 3 sequentially
 		// t being the team form number and p being the player form number inside of the team.
 		//
-		// The number of teams is stored in id_num_teams and the number of players in each team in name_num_team_players 
+		// The number of teams is stored in id_num_teams and the number of players in each team in name_num_team_players
 		// which has form_number in it of 0, 1, 2, 3 etc for each team.
-		
+
 		// Initialise the session data buckets
 		let rIDs = [];
 		let ridRanks = {};
-		let ridPlayers = {}; 
+		let ridPlayers = {};
 		let plidPerformances = {};
 		let plidWeights = {};
-		
+
 		const num_teams = $$(id_num_teams).value;
 		for (let t=0; t<num_teams; t++) {
 			// The rank widgets
 			const rid 		= getWidget(from_table, name_rid, t);
 			const rank 		= getWidget(from_table, name_rank, t);
 			const team_name = getWidget(from_table, name_team_name, t);
-			
+
 			// The number of players in the team at this rank
 			const real_name_num_team_players = name_num_team_players.replace(form_number,t);
-			const num_team_players = findChildByName(from_table, real_name_num_team_players).value;			
-			
+			const num_team_players = findChildByName(from_table, real_name_num_team_players).value;
+
 			// Collect the player data from all the team members
-			const rids = rid.value.split("&");    // rIDs may have been folded from a previous individual->team mode conversion (above) 
+			const rids = rid.value.split("&");    // rIDs may have been folded from a previous individual->team mode conversion (above)
 			const pids = [];
 			const players = [];
 			const weights = [];
@@ -1026,41 +1019,41 @@ function convert_session_data_from(from_table) {
 				pids.push(pid.value);
 				players.push(player.value);
 				weights.push(weight.value);
-				
+
 				// The first player in each team gets the teams rank ID
 				// subsequent players get a rank ID of id_prefix+form_number
-				// which is a placeholder only, and on submission we have to 
-				// blank that out so that a standard Django formset save knows 
-				// to generate a new rank ID for that player. 
+				// which is a placeholder only, and on submission we have to
+				// blank that out so that a standard Django formset save knows
+				// to generate a new rank ID for that player.
 				//
-				// The rank IDs of the teams can be recycled for use by	the first 
-				// player on each team.				
+				// The rank IDs of the teams can be recycled for use by	the first
+				// player on each team.
 				if (p>=rids.length) rids.push(id_prefix+form_num);
 			}
-			
+
 			// Now push all the players into the session data buckets
 			for (let p=0; p<num_team_players; p++) {
 				const rid = rids[p];
 				rIDs.push(rid);
 				ridRanks[rid] = rank.value;
-				
+
 				const plid =  players[p];
 				ridPlayers[rid] = plid;
-				
+
 				plidPerformances[plid] = pids[p];
-				plidWeights[plid] = weights[p];				
-			}			
+				plidWeights[plid] = weights[p];
+			}
 		}
-		
+
 		const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
-				 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID 
-				 		 'Players'		: ridPlayers,	    // dict of player IDs keyed on rID 
+				 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID
+				 		 'Players'		: ridPlayers,	    // dict of player IDs keyed on rID
 				 		 'Teams'		: {}, 				// dict of team IDs keyed on rID
 				 		 'TeamNames'	: {}, 				// dict of team names keyed on tID.
 				 		 'TeamPlayers'	: {}, 				// dict of team player lists keyed on tID with list of player IDs as value
-				 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID 
+				 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID
 				 		 'Weights'		: plidWeights}		// dict of performance weights keyed on player ID
-	
+
 		return Session;
 	}
 }
@@ -1073,7 +1066,7 @@ function convert_session_data_from(from_table) {
 //		Number of Players on a given team
 function OnRowcountChange(event) {
 	const num_box = event.target;
-	
+
 	const Table = adjustTable(num_box);
 
 	// TODO: Diagnose - This fails. Want to add 2 players to newly added teams. How?
@@ -1087,21 +1080,21 @@ function OnRowcountChange(event) {
 }
 
 // Event handler for change of a selected player
-// In Individual Play Mode, the player is identified in both a Rank object and a Performance Object. 
+// In Individual Play Mode, the player is identified in both a Rank object and a Performance Object.
 // And so the form has to contain two widgets:
 //		form.related_forms.Rank.player
 //		form.related_forms.Performance.player
 // One should be display the other hidden. This event handler attached to the displayed, copies the selected
-// player ID to the hidden one. This ensures that both the Rank and Performance update the relevant Rank and 
-// Performance database objects on a standard Django formset save. 
+// player ID to the hidden one. This ensures that both the Rank and Performance update the relevant Rank and
+// Performance database objects on a standard Django formset save.
 function OnPlayerChange(event) {
 	const id = event.target.id
-	let player_copy_id = id.includes(performance_prefix) 
+	let player_copy_id = id.includes(performance_prefix)
 					   ? event.target.id.replace(performance_prefix, rank_prefix)
 					   : id.includes(rank_prefix)
 					   ? event.target.id.replace(rank_prefix, performance_prefix):
 					   null;
-					   
+
 	if (player_copy_id != null) {
 		const row = event.target.parentElement.parentElement;
 		const player_copy = $$(player_copy_id, row);
@@ -1109,7 +1102,7 @@ function OnPlayerChange(event) {
 	}
 }
 
-// Event handler for the Team Detail visibility checkbox. 
+// Event handler for the Team Detail visibility checkbox.
 // Hides or shows the the TeamPlayersTable
 function showhideTeamPlayers(event) {
     const checked = event.target.checked;
@@ -1124,7 +1117,7 @@ function showhideTeamPlayers(event) {
 // Event handler for showing and hiding the trasg
 function showhideTrash(event) {
     const checked = event.target.checked;
-	if (checked) $(".trash").show(); else $(".trash").hide(); 
+	if (checked) $(".trash").show(); else $(".trash").hide();
 }
 
 // There are managment forms for both Rank and Performance that must be included in the template.
@@ -1133,13 +1126,13 @@ function showhideTrash(event) {
 //			{{ form.related_forms.Performance.management_form }}
 // and these contain hidden fields with known names (defined in the header above).
 ///
-// Given an embracing div element, this will find the relevant management form fields 
+// Given an embracing div element, this will find the relevant management form fields
 // and update them. Notably the TOTAL values to reflect the number of Ranks and Performances
 // respectively that will be submitted.
 //
 // If the TOTAL is less than the INITIAL then Ranks and/or Performances were removed on an
-// edit and we need to submit -DELETE fields to ensure those records are destroyed in the 
-// database by the Django form saver. 
+// edit and we need to submit -DELETE fields to ensure those records are destroyed in the
+// database by the Django form saver.
 function updateManagementForms(div) {
     // Keep the Django Management form totals up to date.
 	//
@@ -1147,13 +1140,13 @@ function updateManagementForms(div) {
     // When it's an "edit" form these will be set already by Django to the correct counts
 	//
     // When it's an "add" form Django sets them to the count of objects in the database (rather than 0)
-    // But as we are creating an initial form with Javascript we MUST update the INITIAL values too to 
+    // But as we are creating an initial form with Javascript we MUST update the INITIAL values too to
 	// be 0 for Django to read these as creations and generate primary keys
 	//
 	// INITIAL is very relevant to "edit" formas as well, as when TOTAL is below INITIAL we need to
 	// destroy Rank or Perfomance objects (we've removed competitors from the ranking). These must
 	// be flagged with a -DELETE element.
-	
+
     const rinit  = findChildByName(div, name_rinit);
     const pinit  = findChildByName(div, name_pinit);
     const tinit  = findChildByName(div, name_tinit);
@@ -1161,9 +1154,9 @@ function updateManagementForms(div) {
     const ptotal = findChildByName(div, name_ptotal);
     const ttotal = findChildByName(div, name_ttotal);
 
-    // On an add operation, rinit and pinit come in oddly as the total number 
+    // On an add operation, rinit and pinit come in oddly as the total number
     // of Rank and Performance items respectively in the database.
-    // Django needs them to be 0 to understand that the Ranks and Performances 
+    // Django needs them to be 0 to understand that the Ranks and Performances
     // submitted are new and need new primary keys
 	if (operation === "add") {
 		rinit.value = 0;
@@ -1171,17 +1164,17 @@ function updateManagementForms(div) {
 		if (tinit) tinit.value = 0;  // tinit is undefined when in individual mode
 	}
 
-	// Find all the -DELETE requests that exist, each one of these represents a form in the formset 
+	// Find all the -DELETE requests that exist, each one of these represents a form in the formset
 	// and so we must add their count to the number declared in $$(id_num_players)
     const rdels = div.querySelectorAll("[id^='"+id_prefix+rank_prefix+"'][id$='-DELETE']").length;
     const pdels = div.querySelectorAll("[id^='"+id_prefix+performance_prefix+"'][id$='-DELETE']").length;
-    const tdels = div.querySelectorAll("[id^='"+id_prefix+team_prefix+"'][id$='-DELETE']").length;	
-	
+    const tdels = div.querySelectorAll("[id^='"+id_prefix+team_prefix+"'][id$='-DELETE']").length;
+
     if (div.id === id_indiv_div) {
     	const num_players = Number($$(id_num_players).value);
     	rtotal.value = num_players + rdels;
     	ptotal.value = num_players + pdels;
-    } else if (div.id === id_teams_div) {    	
+    } else if (div.id === id_teams_div) {
     	const num_teams = Number($$(id_num_teams).value);
     	rtotal.value = num_teams + rdels;
 
@@ -1193,86 +1186,46 @@ function updateManagementForms(div) {
 	    	const table = $$(id_table);
             const box_num_players = findChildByName(table, name_num_team_players.replace(form_number,t));
     		P += Number(box_num_players.value);
-    		
-    		// If the team has a valid Team ID (is not blank or a placeholder inserted 
-    		// elsewhere for form management (in form id_n generally) the add 1 to the 
-    		// team count, other wise remove the team ID element (don't submit it). 
+
+    		// If the team has a valid Team ID (is not blank or a placeholder inserted
+    		// elsewhere for form management (in form id_n generally) the add 1 to the
+    		// team count, other wise remove the team ID element (don't submit it).
 	    	const real_name_tid = name_tid.replace(form_number,t);
 	    	const tid = findChildByName(table, real_name_tid);
 	    	if (tid != undefined && tid.value && !isNaN(tid.value)) T++;
         }
 		ptotal.value = P + pdels;
-		
+
     	ttotal.value = num_teams + tdels;
-    	
+
     	// tinit is special, because it should be the number of teams that have Team IDs
-    	// which is from 0 to num_teams really because if we were editing a individual play 
+    	// which is from 0 to num_teams really because if we were editing a individual play
     	// mode session and converted to team mode they won't have IDs and if we're editing
-    	// a team play session but add some teams those too won't have IDs. And tinit should 
+    	// a team play session but add some teams those too won't have IDs. And tinit should
     	// be the number of teams that have IDs.
     	tinit.value = T;
     }
-
-	updateTabIndex(div);
-}
-
-function updateTabIndex(div) {
-    const ptotal = findChildByName(div, name_ptotal);
-    const rtotal = findChildByName(div, name_rtotal);
-
-	const np = Number(ptotal.value);
-	const nr = Number(rtotal.value);
-
-	// Not all the divs this is calle don have all the widgest we're looking for
-	// So this is robust against widgets not being found.
-	for (let i = 0; i<np; i++) {
-		let player = getWidget(div, name_player, i);
-
-		if (player) {
-			// Select 2 widgets are odd in that they remove they select widget from the tab order
-			// i.e. set tabIndex to -1, and then add a span follwoing the select which has a span 
-			// in it which has a span in it which has tabIndex set to (i.e is in the natural tab 
-			// order). It is that one we want to set a tabIndex on. This is empirically determined
-			// as none of these spans have ids or names and so can't be found by id or name and have
-			// to be found by their spatial relationship to the select widget they modify.
-			if (Number(player.tabIndex) === -1 && Number(player.nextSibling.firstChild.firstChild.tabIndex) === 0)
-				player = player.nextSibling.firstChild.firstChild;
-			
-			player.tabIndex = 1+i;
-		}
-	}
-
-	for (let i = 0; i<nr; i++) {
-		const rank = getWidget(div, name_rank, i);
-		if (rank) rank.tabIndex = np+1+i;
-	}
-
-
-	for (let i = 0; i<nr; i++) {
-		const weight = getWidget(div, name_weight, i);
-		if (weight) weight.tabIndex = np+nr+1+i;
-	}
 }
 
 function insertErrors() {
 // Errors if any are provided in the global related_form_errors
-// These are provided if a formwm as submitted, failed validation 
+// These are provided if a formwm as submitted, failed validation
 // and rerenders with the indent of feeding back error information.
-// 
+//
 // It's a dict, and we want the Rank and performance entries if
-// they exist. The value will be a list, with one entry per form 
+// they exist. The value will be a list, with one entry per form
 // in the formset.
 
 // In individual mode, we have one row per Rank and Performance
-// inside a table with ID based on tblPlayersTable. 
+// inside a table with ID based on tblPlayersTable.
 
-// In Team mode with one row per team rank and one per player 
-// performance under it. So Rank freedback goes above a team 
-// Rank row in tblTeamsTable and player Performance feedback 
+// In Team mode with one row per team rank and one per player
+// performance under it. So Rank freedback goes above a team
+// Rank row in tblTeamsTable and player Performance feedback
 // above a Performance row in tblTeamPlayersTable.
 
-// We can genralise this by searching for the Rank widget and the TR 
-// its in and instering a tR before it with amessage if there's a 
+// We can genralise this by searching for the Rank widget and the TR
+// its in and instering a tR before it with amessage if there's a
 // message and doing same for a Performance widget (Player name)
 	if (related_form_errors) {
 		if (related_form_errors.hasOwnProperty("Performance")) {
@@ -1281,29 +1234,29 @@ function insertErrors() {
 				const n_errors = Object.keys(related_form_errors.Performance[i]).length
 				if ( n_errors > 0) {
 					const id = id_player.replace(form_number, i);
-					const row = $(`#${id}`).closest('tr'); 
+					const row = $(`#${id}`).closest('tr');
 					for (let j in related_form_errors.Performance[i]) {
 				    	const new_row = $(`<tr class="error"><td colspan=10>Performance error: ${related_form_errors.Performance[i][j]}</td></tr>`);
 				    	new_row.insertBefore(row);
 					}
 				}
-			} 
+			}
 		}
-		
+
 		if (related_form_errors.hasOwnProperty("Rank")) {
 			// Look for id "Rank-n-rank"
 			for (let i = 0; i < related_form_errors.Rank.length; i++) {
 				const n_errors = Object.keys(related_form_errors.Rank[i]).length
 				if ( n_errors > 0) {
 					const id = id_rank.replace(form_number, i);
-					const row = $(`#${id}`).closest('tr'); 
+					const row = $(`#${id}`).closest('tr');
 					for (let j in related_form_errors.Rank[i]) {
 				    	const new_row = $(`<tr class="error"><td colspan=10>Rank error: ${related_form_errors.Rank[i][j]}</td></tr>`);
 				    	new_row.insertBefore(row);
 					}
 				}
-				
-			} 
+
+			}
 		}
 	}
 }
@@ -1312,12 +1265,12 @@ function add_player(select2, player_id) {
 	// Adds a player to a select Django-auto-complete-light select2 widget
 
 	// Populating the select2 widget from django-auto-complete-light is not so
-	// trivial, and taken from here: 
+	// trivial, and taken from here:
 	// 		https://select2.org/programmatic-control/add-select-clear-items#preselecting-options-in-an-remotely-sourced-ajax-select2
-	
+
 	if (Number(player_id)) {
 	    const url = player_selector_url.replace(/\d+$/, player_id)
-	    
+
 	    $.ajax({
 	        type: 'GET',
 	        url: url
@@ -1325,7 +1278,7 @@ function add_player(select2, player_id) {
 	        // create the option and append to Select2
 	        var option = new Option(data, player_id, true, true);
 	        select2.append(option).trigger('change');
-	
+
 	        // manually trigger the `select2:select` event
 	        select2.trigger({
 	            type: 'select2:select',
@@ -1338,24 +1291,24 @@ function add_player(select2, player_id) {
 }
 
 // Given a session object and a table row of specified type will force the widgets in that
-// row to conform with the session object. 
+// row to conform with the session object.
 function applySessionToRow(session, row, table_type) {
     // Select the values we'll use for those widgets
-    const rids 			= (session && "rIDs" in session) 		 ? session["rIDs"] 		   : []; 
-    const ranks 		= (session && "rRanks" in session) 		 ? session["rRanks"]	   : {}; 
-    const rplayers 		= (session && "rPlayers" in session) 	 ? session["rPlayers"] 	   : {}; 
+    const rids 			= (session && "rIDs" in session) 		 ? session["rIDs"] 		   : [];
+    const ranks 		= (session && "rRanks" in session) 		 ? session["rRanks"]	   : {};
+    const rplayers 		= (session && "rPlayers" in session) 	 ? session["rPlayers"] 	   : {};
 
-    const pids 			= (session && "pIDs" in session) 		 ? session["pIDs"] 		   : []; 
-    const weights 		= (session && "pWeights" in session) 	 ? session["pWeights"] 	   : {}; 
-    const pplayers 		= (session && "pPlayers" in session) 	 ? session["pPlayers"] 	   : {}; 
+    const pids 			= (session && "pIDs" in session) 		 ? session["pIDs"] 		   : [];
+    const weights 		= (session && "pWeights" in session) 	 ? session["pWeights"] 	   : {};
+    const pplayers 		= (session && "pPlayers" in session) 	 ? session["pPlayers"] 	   : {};
 
-    const teams 		= (session && "rTeams" in session) 		 ? session["rTeams"] 	   : {}; 
-    const teamnames 	= (session && "tTeamNames" in session) 	 ? session["tTeamNames"]   : {}; 
-    const teamplayers 	= (session && "tTeamPlayers" in session) ? session["tTeamPlayers"] : {}; 
+    const teams 		= (session && "rTeams" in session) 		 ? session["rTeams"] 	   : {};
+    const teamnames 	= (session && "tTeamNames" in session) 	 ? session["tTeamNames"]   : {};
+    const teamplayers 	= (session && "tTeamPlayers" in session) ? session["tTeamPlayers"] : {};
 
     // The row element contains an entry id that is useful for some defaults if session data is missing
     const entry_id = getEntryId(row.id);
-        
+
     switch (table_type) {
     	case TableType.Players: {
     	    const rid 			= getWidget(row, name_rid);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
@@ -1364,7 +1317,7 @@ function applySessionToRow(session, row, table_type) {
     	    const player 		= getWidget(row, name_player);     // This is the name/id of the player with that rank, a dango field for generic processing
     	    const player_copy 	= getWidget(row, name_player_copy);// This is a copy of the player we need to keep of player (see header for details)
     	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting, a dango field for generic processing
-    		
+
     	    const rank_id 	    = entry_id < rids.length ? rids[entry_id] 	: "";
 			const rank_value 	= rank_id in ranks ? ranks[rank_id] : Number(entry_id)+1;
 
@@ -1374,43 +1327,43 @@ function applySessionToRow(session, row, table_type) {
 			const weight_value  = perf_id in weights     ? weights[perf_id]  : 1;
 
 			console.assert(player_id == player_id2, "Session data seems corrupt. Performance and Rank Player IDs not in agreement.");
-    	    
+
             rid.value 	 = rank_id
             rank.value 	 = rank_value;
-            player.value = player_id;	                               
+            player.value = player_id;
             pid.value 	 = perf_id;
             weight.value = weight_value;
             player_copy.value = player_id;
-            
-			// Set the value of the select2 widget for player 
+
+			// Set the value of the select2 widget for player
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
-            
+
 //            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
 //            $("#"+player.id, row).append(newOption)
 //            $("#"+player.id, row).trigger('change');
     	}
     	break;
-    		
+
     	case TableType.Teams: {
             const rid 			= getWidget(row, name_rid);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
             const rank 			= getWidget(row, name_rank);       // This is the rank itself, a dango field for generic processing, but with a default value added when created here as well
             const tid 			= getWidget(row, name_tid);        // This is the team ID if we're editing a team session
             const teamname 		= getWidget(row, name_team_name);  // This is the name of the team. Optional in the database and it an stay a local field for specific (non-generic) processing when submitted.
-            
+
             rid.value 	 	= entry_id < rids.length ? rids[entry_id] 		: "";
             rank.value 	 	= rid.value in ranks 	 ? ranks[rid.value] 	: Number(entry_id)+1;
-            tid.value 	 	= rid.value in teams 	 ? teams[rid.value] 	: "";	                
+            tid.value 	 	= rid.value in teams 	 ? teams[rid.value] 	: "";
             teamname.value 	= tid.value in teamnames ? teamnames[tid.value] : "Team " + (Number(entry_id)+1);
 
-            const num_players = getWidget(row, name_num_team_players); 
+            const num_players = getWidget(row, name_num_team_players);
             const tID = tid.value;
-            
+
             num_players.value = (tID in teamplayers && entry_id < teamplayers[tID].length) ? teamplayers[tID].length : game_min_teams;
 			num_players.defaultValue = num_players.value;
     	}
 		break;
-			
+
     	case TableType.TeamPlayers: {
     	    const pid 			= getWidget(row, name_pid);        // This is the ID of the performance entry in the database. Needed when editing sessions (and the ranks associated with them)
     	    const player 		= getWidget(row, name_player);     // This is the name/id of the player with that rank, a dango field for generic processing
@@ -1418,44 +1371,44 @@ function applySessionToRow(session, row, table_type) {
 
     		const rownum_Team 	  	= getPart(1, entry_id);
             const rownum_TeamPlayer = getPart(2, entry_id);
-            
+
             // Find Player ID first so we can use it to find the index into the Weights and pID lists
             const rID = rownum_Team < rids.length ? rids[rownum_Team] : undefined;
             const tID = rID in teams ? teams[rID] : undefined;
-            
+
     	    const player_id 	= tID in teamplayers ? teamplayers[tID][rownum_TeamPlayer] : "";
-            
+
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
 
 			//This is what we do for a standard select widget (vs. select2)
             //player.value = tID in teamplayers 		? teamplayers[tID][rownum_TeamPlayer] : "";
-            
-            weight.value = player_id in weights ? weights[player_id] : 1;	    
+
+            weight.value = player_id in weights ? weights[player_id] : 1;
 
 			// Performance id's a a tad harder here:
 			const perf_id = Object.keys(pplayers).find(key => pplayers[key] == player_id);
-			
+
 			// Assign the performance id to the pid form element.
             pid.value 	 = perf_id != undefined ? perf_id : "";
     	}
         break;
     };
-    
+
     return row;
 }
 
-// Given a template HTML table element, will: 
-// On a first call for that template, create a 
+// Given a template HTML table element, will:
+// On a first call for that template, create a
 // new table from it adding:
-// 		a header from a template header in the template table and 
+// 		a header from a template header in the template table and
 // 		rows from a template row in the template table
 // and place the table in a provided element.
-// On subsequent calls for that template will use the table already 
+// On subsequent calls for that template will use the table already
 // created and adjust it as needed.
 //
 // This is generic as it is used for an Individual Play mode and
-// a Team play mode each with its own template. Only the 
+// a Team play mode each with its own template. Only the
 // relevant one will be visible on a given form, based on the
 // the nominated play mode (Team_pay - True or False)
 //
@@ -1468,7 +1421,7 @@ function applySessionToRow(session, row, table_type) {
 //		table: templateTeamsTable					The table of Team rankings
 //			tr: templateTeamsHeader					A header row
 //			tr: templateTeamsBody					One of these rows per team, for Ranks
-//			tr: templateTeamsDetail					One of these rows per team, contains the TeamsDetailCell 
+//			tr: templateTeamsDetail					One of these rows per team, contains the TeamsDetailCell
 //				td: templateTeamsDetailCell			the cell to contain a table of one row row per player for Performances
 //					table: templateTeamPlayersTable 	The table of team players
 //						tr: templateTeamPlayersHeader	A header row
@@ -1477,40 +1430,40 @@ function RenderTable(template, entries, placein, entry_number, session) {
     // The Number of players in a team is a special case quite distinct
     // from the number of teams or number of players in a game. Primarily
     // because it lives in particular row of the parent table there being
-    // a number of players for each team. We'll make a number of decisions 
+    // a number of players for each team. We'll make a number of decisions
     // on this basis down the track.
 	const table_type = (template.id === "templatePlayersTable") ? TableType.Players
 			         : (template.id === "templateTeamsTable")   ? TableType.Teams
 			         : (template.id === "templateTeamPlayersTable") ? TableType.TeamPlayers
 			         : 0;
 
-    // Get the ID of the table that we will render (based on the template) 
-	const idTable = template.id.replace("template", "tbl") + entry_number;	
+    // Get the ID of the table that we will render (based on the template)
+	const idTable = template.id.replace("template", "tbl") + entry_number;
 
-    // Get the ID of a hidden parallel trash table that we dump 
+    // Get the ID of a hidden parallel trash table that we dump
     // deleted rows into and restore them from.
 	const idTrash = idTable.replace("tbl", "trash");
-    
-    // Is it a new table (first call for this template) or does it already exist (subsequent calls) 
+
+    // Is it a new table (first call for this template) or does it already exist (subsequent calls)
     const is_newtable = ($$(idTable) == null);
     const is_newtrash = ($$(idTrash) == null);
 
     // Create the table if needed else use the one we have.
     const table = is_newtable ? document.createElement('table') : $$(idTable);
     const trash = is_newtrash ? document.createElement('table') : $$(idTrash);
-    
+
     // If it's a new table we need to set it up and place it where it belongs
     if (is_newtable) {
         table.id = idTable;
         table.className = template.className;
-        table.style = template.style;        
-        
+        table.style = template.style;
+
         const trash_header = document.createElement('span');
         trash_header.classList.add(template.className);
         trash_header.classList.add('trash');
         trash_header.style = template.style;
-        trash_header.innerHTML = "Trash:";                
-        
+        trash_header.innerHTML = "Trash:";
+
         trash.id = idTrash;
         trash.classList.add(template.className);
         trash.classList.add('trash');
@@ -1520,23 +1473,23 @@ function RenderTable(template, entries, placein, entry_number, session) {
         placein.appendChild(trash_header);
         placein.appendChild(trash);
     }
-   
+
     // "entries" is the number typed into the Number of Players/Teams box,
     //		for Number of players: we need 1 row per player
-    //		for Number of teams: we need 2 rows per team, 
-    //			one for the team rank, name, and number of players (in the team) 
+    //		for Number of teams: we need 2 rows per team,
+    //			one for the team rank, name, and number of players (in the team)
     //			one for the details (player list).
     // In both cases we need a header row!.
     let rowsNeeded = (table_type == TableType.Teams ? 2*entries : entries) + 1;
     let rowsPresent = table.rows.length;
-    
-    // If there are rows in the table already, and we have session data, we 
+
+    // If there are rows in the table already, and we have session data, we
     // should really check all present rows for conformance with the provided
-    // session data. This is particularly relevant when switching between modes 
+    // session data. This is particularly relevant when switching between modes
     // (individual and team play for example and back again etc, as prior to
-    // rendering the table we build session data from from the visible form 
+    // rendering the table we build session data from from the visible form
     // and pass it into this rendering routine. And the session data may
-    // have imposed changes on the data (this is especially relevant with 
+    // have imposed changes on the data (this is especially relevant with
     // ranks as a move from team play to individual play imposes ranks from
     // the teams table onto the new players table).
     //
@@ -1544,10 +1497,10 @@ function RenderTable(template, entries, placein, entry_number, session) {
     // a player every row, a teams table has a team on every second row.
     if (session) {
 	    const step = table_type == TableType.Teams ? 2 : 1;
-	        
+
 	    for (let i = 1; i < rowsPresent; i += step) {
 	    	const row = table.rows[i];
-	    	
+
 	    	applySessionToRow(session, row, table_type);
 	    }
     }
@@ -1555,23 +1508,27 @@ function RenderTable(template, entries, placein, entry_number, session) {
     // Now remove or add rows as needed
     if (rowsNeeded < rowsPresent) {
     	// Move the excess rows to the trash (whence we can fetch them again if needed)
-    	// Never remove them all though. 0 entries not supported. The trash is FILO 
-    	// queue in that we append entries as we remove them and then pull them off 
-    	// the top again when needed. 
-        if (entries > 1)
-	        for (let i = 0; i < (rowsPresent - rowsNeeded); i++) {
+    	// Never remove them all though. 0 entries not supported. The trash is FILO
+    	// queue in that we append entries as we remove them and then pull them off
+    	// the top again when needed.
+        if (entries > 1) {
+        	let chop = rowsPresent - rowsNeeded;
+        	if (table_type == TableType.Teams) chop = chop/2;
+
+	        for (let i = 0; i < chop; i++) {
 	        	const last_row = table.rows[table.rows.length - 1];
 	        	trash.appendChild(last_row);
 
 	        	if (table_type == TableType.Teams) {
 		        	const last_row = table.rows[table.rows.length - 1];
-		        	trash.appendChild(last_row);	        		
-	        	}	        	
+		        	trash.appendChild(last_row);
+	        	}
 	        }
+         }
     } else if (rowsNeeded > rowsPresent) {
     	// Add the missing rows, fetching them from trash if there else creating them
-    	
-    	// Every Table template is expected to have a Header and Body template within it 
+
+    	// Every Table template is expected to have a Header and Body template within it
         const trh = $$(template.id.replace("Table", "Header"));      // The template table header row
         const trb = $$(template.id.replace("Table", "Body"));		 // The template table body row
 
@@ -1587,7 +1544,7 @@ function RenderTable(template, entries, placein, entry_number, session) {
         }
 
 		// Now lets work out how many steps of "adding" rows we need
-        // On a teams table we add them in pairs so need half the steps (TeamsBody and TeamsDetail) 
+        // On a teams table we add them in pairs so need half the steps (TeamsBody and TeamsDetail)
         const steps = table_type == TableType.Teams ? (rowsNeeded - rowsPresent) / 2 : rowsNeeded - rowsPresent;
 
         for (let i = 0; i < steps; i++) {
@@ -1595,12 +1552,12 @@ function RenderTable(template, entries, placein, entry_number, session) {
             // either Players in Individual Play mode or Teams in Team Play mode. But for
             // Players in Team Play mode it will be a composite number of form "team.player"
         	const body_rows = rowsPresent > 0 ? rowsPresent - 1 : 0;
-        	const entry_id = (table_type == TableType.TeamPlayers ? (entry_number + '.') : 0) 
-        				   + ((table_type == TableType.Teams ? body_rows/2 : body_rows) + i);            
+        	const entry_id = (table_type == TableType.TeamPlayers ? (entry_number + '.') : 0)
+        				   + ((table_type == TableType.Teams ? body_rows/2 : body_rows) + i);
 
         	// If it's a teams we need to pop two items off trash, else only one
-        	const have_trash = trash.rows.length >= (table_type == TableType.Teams ? 2 : 1);        	
-        	
+        	const have_trash = trash.rows.length >= (table_type == TableType.Teams ? 2 : 1);
+
         	if (have_trash) {
 	        	const last_row = trash.rows[trash.rows.length - 1];
 	        	table.appendChild(last_row);
@@ -1608,14 +1565,14 @@ function RenderTable(template, entries, placein, entry_number, session) {
 	        	if (table_type == TableType.Teams) {
 		        	const last_row = trash.rows[trash.rows.length - 1];
 		        	table.appendChild(last_row);
-	        	}        		
+	        	}
         	} else {
 	        	// Copy the Body TR element from the template
 	            const TRB = trb.cloneNode(true);
 	            TRB.id = trb.id.replace("template", "tbl") + entry_id;
 	            TRB.className = trb.className;
 	            TRB.style = trb.style;
-	            
+
 	            // Now fix all the widget names (form template names to entry specific names)
 	            // Not all these widgets are expected for every table_type of course.
 	            fixWidget(TRB, name_rid, entry_id);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
@@ -1626,8 +1583,8 @@ function RenderTable(template, entries, placein, entry_number, session) {
 	            fixWidget(TRB, name_weight, entry_id);     // This is the partial play weighting, a dango field for generic processing
 	            fixWidget(TRB, name_tid, entry_id);        // This is the team ID if we're editing a team session
 	            fixWidget(TRB, name_team_name, entry_id);  // This is the name of the team. Optional in the database and it an stay a local field for specific (non-generic) processing when submitted.
-	            
-	            // And if there's a team player count widget we need to fix that too 
+
+	            // And if there's a team player count widget we need to fix that too
 	            fixWidget(TRB, name_num_team_players, entry_id);
 
 	            // Then apply the session data to the widgets in the TR element
@@ -1635,21 +1592,21 @@ function RenderTable(template, entries, placein, entry_number, session) {
 
 	        	// Then enable all the widgets (disabled in the template by default)
 	            enableChildren(TRB, true);
-	
+
 	            // And add the new TR to the displayed table
 	            table.appendChild(TRB);
-	
+
 	            // Add the second row, the (empty) Detail row if needed for added Teams
 	            // This is where we willplays  a TeamPlayers table later (in fact by calling
 	            // this very rendering routine again for the TeamPlayers table).
 	            if (table_type == TableType.Teams) {
-	                const trd = $$(template.id.replace("Table", "Detail"));  
+	                const trd = $$(template.id.replace("Table", "Detail"));
 	                const TRD = trd.cloneNode(true);
 	                TRD.id = trd.id.replace("template", "tbl") + entry_id;
-	
+
 	                const TCDid = trd.id.replace("template", "tbl") + "Cell" + entry_id;
 	                TRD.children[0].id = TCDid;
-	
+
 	                table.appendChild(TRD);
 	            }
         	}
@@ -1658,14 +1615,14 @@ function RenderTable(template, entries, placein, entry_number, session) {
 
     // Update the Django Management forms (and tabindices)
     updateManagementForms(getParent(table, 'DIV'));
-    
+
     insertErrors();
 
     // Return the table that was drawn
     return(table);
 }
 
-// Given a HTML element with a value will adjust the associated 
+// Given a HTML element with a value will adjust the associated
 // table to the number of rows specified in that value.
 //
 // Is called in three contexts:
@@ -1676,8 +1633,8 @@ function RenderTable(template, entries, placein, entry_number, session) {
 //		When the number of teams in the game is altered
 //		When the number of players in a team is altered
 //
-// We assume that the the value holding element is in a table 
-// which also holds a template that we can use to render the 
+// We assume that the the value holding element is in a table
+// which also holds a template that we can use to render the
 // table with. A map is defined from holding table to template
 // table.
 //
@@ -1689,46 +1646,46 @@ function adjustTable(element, session) {
 	// Find the table the value holding element is a member of:
     const td = getParent(element, "TD");
     const tr = getParent(td, "TR");
-    const tableControl = getParent(tr, "TABLE");    
-    
+    const tableControl = getParent(tr, "TABLE");
+
     // Determine which session data to use (if none supplied use the Global set on edits and nothing on adds)
     if (!session && Session.provided) session = Session;
-    
-    // Define a map from the holding table to the contained table 
+
+    // Define a map from the holding table to the contained table
     // that we want to adjust
     const mapTemplate = {
-    		tblIndividualPlay:	"templatePlayersTable", 
-    		tblTeamPlay:	 	"templateTeamsTable", 
+    		tblIndividualPlay:	"templatePlayersTable",
+    		tblTeamPlay:	 	"templateTeamsTable",
     		tblTeamsTable: 		"templateTeamPlayersTable"
     };
 
-    // Now fetch a template id from the map. 
+    // Now fetch a template id from the map.
     const idTemplate = mapTemplate[tableControl.id];
 
     // Fetch the the template
     const template = $$(idTemplate);
 
-    // const is_players 		= (template.id === "templatePlayersTable");      
-    const is_teams 			= (template.id === "templateTeamsTable");      
-    const is_teamplayers 	= (template.id === "templateTeamPlayersTable");      
+    // const is_players 		= (template.id === "templatePlayersTable");
+    const is_teams 			= (template.id === "templateTeamsTable");
+    const is_teamplayers 	= (template.id === "templateTeamPlayersTable");
 
 	// team_players are special in that they don't become siblings of the tmeplte
-	// they have to go in cell of the Teams table that did. 
+	// they have to go in cell of the Teams table that did.
     const placein = is_teamplayers ? $$(tr.id.replace("Body","DetailCell")): template.parentNode;
 
     // If the value is an integer (string of digits) then process it
-    if (element.value.match(/^\d+$/)) {   	
-    	// The minimum and maximum number of players  or teams are game properties (globally available) 
-        const minEntries = is_teamplayers ? game_min_players_per_team : is_teams ? game_min_teams : game_min_players;	
-        const maxEntries = is_teamplayers ? game_max_players_per_team : is_teams ? game_max_teams : game_max_players;	
-        
+    if (element.value.match(/^\d+$/)) {
+    	// The minimum and maximum number of players  or teams are game properties (globally available)
+        const minEntries = is_teamplayers ? game_min_players_per_team : is_teams ? game_min_teams : game_min_players;
+        const maxEntries = is_teamplayers ? game_max_players_per_team : is_teams ? game_max_teams : game_max_players;
+
         // The number of teams or players being requested, with a minimum and maximum enforced
         const num = Number(element.value);
-        const numEntries = num < minEntries ? minEntries : num > maxEntries ? maxEntries : num;	
+        const numEntries = num < minEntries ? minEntries : num > maxEntries ? maxEntries : num;
 
-        // If the value was changed (exceeeded bounds) change it back! 
-        if (numEntries != num) element.value = numEntries;	
-        
+        // If the value was changed (exceeded bounds) change it back!
+        if (numEntries != num) element.value = numEntries;
+
         // Render the table with the new number of entries, and place it in the nominated element
         RenderTable(template, numEntries, placein, getEntryId(tr.id), session);
 
@@ -1743,6 +1700,26 @@ function adjustTable(element, session) {
 
     // Return the table that was adjusted
     return(tableControl);
+}
+
+// Switches which div (tems or individual play mode) is displayed
+// and leaves a global flag to indicate which.
+function showDiv(which_one) {
+	if (which_one === "teams" ) {
+		id_visbl_div = id_teams_div;
+		$$(id_indiv_div).style.display = 'none';
+		$$(id_teams_div).style.display = 'block';
+
+    	enableChildren($$(id_indiv_div), false);
+    	enableChildren($$(id_teams_div), true);
+	} else if (which_one === "indiv" ) {
+		id_visbl_div = id_indiv_div;
+		$$(id_teams_div).style.display = 'none';
+		$$(id_indiv_div).style.display = 'block';
+
+    	enableChildren($$(id_teams_div), false);
+    	enableChildren($$(id_indiv_div), true);
+	}
 }
 
 // Enable or disable a control and all its children
@@ -1768,15 +1745,15 @@ function getWidget(inside, name, entry_id) {
 			return inside.querySelector("[name^='" + matches[1] + "'][name$='" + matches[2] + "']");
 		} else {
 			return findChildByName(inside, name);
-		}        		
+		}
 	} else {
 		return findChildByName(inside, name.replace(form_number, entry_id));
-	} 	
+	}
 }
 
 // Get the Django widget with a give name inside a given element, and update it with the give row id.
 function fixWidget(inside, name, entry_id, new_entry_id) {
-	const widget = new_entry_id == undefined 
+	const widget = new_entry_id == undefined
 				 ? findChildByName(inside, name)
 				 : findChildByName(inside, name.replace(form_number, entry_id));
 
@@ -1790,10 +1767,14 @@ function fixWidget(inside, name, entry_id, new_entry_id) {
 }
 
 // Find an an element with a given name which is a child of a specified element
-function findChildByName(element, name) {	
+function findChildByName(element, name) {
     if (element.name !== undefined && element.name === name) return element;
-    
-	return element.querySelector("[name='" + name + "']");
+
+	try {
+		return element.querySelector("[name='" + name + "']");
+	} catch (err) {
+		debugger;
+	}
 }
 
 // Get the parent of an element of a given type
@@ -1825,37 +1806,37 @@ function getPart(part, of) {
 
 // Get the value of an element if it is a number, else a specifed default
 function getNumberValue(element, default_value) {
-	return (element == undefined || element.value === '' || isNaN(element.value)) ? default_value : Number(element.value); 	
+	return (element == undefined || element.value === '' || isNaN(element.value)) ? default_value : Number(element.value);
 }
 
-//Given a Django widget will, check if it is for the "from" form and if so set 
+//Given a Django widget will, check if it is for the "from" form and if so set
 //its name to "to" form number, leaving the id intact
 //Used to renumber forms in the form submission.
 function renameDjangoWidget(element, from, to) {
 	 const matches = String(element.id).match(/^id_(.+?)\-(\d+)\-(.+?)$/);
 	 if (matches != null && Number(matches[2]) == from)
-	 	element.name = matches[1] + "-" + to + "-" + matches[3];    
+	 	element.name = matches[1] + "-" + to + "-" + matches[3];
 }
 
-// Map element names from one form number to another for the the Django models specified int the list 
+// Map element names from one form number to another for the the Django models specified int the list
 function mapElementNames(container, models, from, to) {
 	if (from != to)
 		for (let m=0; m<models.length; m++) {
 		    const elements = container.querySelectorAll("[id^='"+id_prefix+models[m]+"-"+from+"']");
-		    
+
 		    for (let e=0; e<elements.length; e++)
 		    	renameDjangoWidget(elements[e], from, to);
 		}
 }
 
-// Insert a node just after a reference node (Javascript has a native insertBefore, but not insertAfter) 
+// Insert a node just after a reference node (Javascript has a native insertBefore, but not insertAfter)
 function insertAfter(newNode, referenceNode) {
     referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
 }
 
 function $$(id, context) {
 //  return document.getElementById(id);
-//  but in that context or using jQuery (with an optional context for finding elements not in the document yet): 
+//  but in that context or using jQuery (with an optional context for finding elements not in the document yet):
 	if (context == undefined)
 		return $('#'+	id)[0];
 	else

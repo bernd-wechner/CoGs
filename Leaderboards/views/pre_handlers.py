@@ -425,6 +425,14 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         if settings.DEBUG:
             log.debug(f"POST-PROCESSING Session {session.pk} submission.")
 
+        # Determine the submission mode
+        if isinstance(self, CreateViewExtended):
+            submission = "create"
+        elif isinstance(self, UpdateViewExtended):
+            submission = "update"
+        else:
+            raise ValueError("Pre commit handler called from unsupported class.")
+
         team_play = session.team_play
 
         # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
@@ -445,7 +453,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>
         #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)])
 
-        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dir that holds it.
+        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dic that holds it.
         #        That way we're not duplicating form interpretation again.
 
         # manage teams properly, as we handle teams in a special way creating them
@@ -613,9 +621,9 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
-            if isinstance(self, CreateViewExtended):
+            if submission == "create":
                 trigger = RATING_REBUILD_TRIGGER.session_add
-            elif isinstance(self, UpdateViewExtended):
+            elif submission == "update":
                 trigger = RATING_REBUILD_TRIGGER.session_edit
             else:
                 raise ValueError("Pre commit handler called from unsupported class.")
@@ -626,7 +634,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             rebuild_log = None
 
         if change_log:
-            if isinstance(self, CreateViewExtended):
+            if submission == "create":
                 # The change summary will be just a JSON representation of the session we just created (saved)
                 # changes will be none.
                 # TODO: We could consider calling it  ahcnage fomrnothing, lisitng all fields in changes, and making all tuples with a None as first entry.
@@ -634,14 +642,16 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
                 change_summary = session.__json__()
 
                 # Update the ChangeLog with this change_summary it could not be
-                # saved earlier in the pre_save handler as there was no session to
-                # compare with.
+                # saved earlier in the pre_save handler as there was no session
+                # yet to save as a change_summary.
                 change_log.update(session, change_summary, rebuild_log)
-            else:
+            elif submission == "update":
                 # Update the ChangeLog (change_summary was saved in the pre_save handler.
                 # If we compare the form with the saved session now, there will be no changes
                 # to log. and we lose the record of changes already recorded.
                 change_log.update(session, rebuild_log=rebuild_log)
+            else:
+                raise ValueError("Pre commit handler called from unsupported class.")
 
             change_log.save()
 
@@ -666,7 +676,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         # If there was a change logged (and/or a rebuild triggered)
         get_params = ""
         if change_log:
-            get_params = f"?changed={change_log.pk}"
+            get_params = f"?submission={submission}&changed={change_log.pk}"
 
         self.success_url = reverse_lazy('impact', kwargs={'model': 'Session', 'pk': session.pk}) + get_params
 
