@@ -24,7 +24,6 @@ from pkg_resources import get_distribution
 # Package imports
 from .util import safetitle
 from .datetime import datetime_format_python_to_PHP
-from .forms import classify_widgets  # , get_inherit_fields
 from .options import urldefaults, odf, odm
 from .widgets import FilterWidget, OrderingWidget
 from .filterset import format_filterset
@@ -52,9 +51,6 @@ def add_model_context(view, context, plural, title=False):
 
         if len(view.request.GET) > 0:
             context["get_params"] = view.request.GET
-
-        if view.operation in ["add", "edit"] and 'form' in context:
-            classify_widgets(context['form'])
     else:
         raise ValueError("Internal Error: Views must be provided at least 'model' in kwargs and an 'operation' argument. One or the other was missing. This is a site design error relating to defined urlpatterns which failed to provide on or the other.")
 

@@ -19,6 +19,7 @@ from django_generic_view_extensions.queryset import get_SQL
 from datetime import timedelta
 
 import json
+import enum
 import trueskill
 
 from Site.logutils import log
@@ -29,7 +30,7 @@ class Game(AdminModel):
     League = apps.get_model(APP, "League", False)
 
     '''A game that Players can be Rated on and which has a Leaderboard (global and per League). Defines Game specific Trueskill settings.'''
-    BGGid = models.PositiveIntegerField('BoardGameGeek ID')  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
+    BGGid = models.PositiveIntegerField('BoardGameGeek ID', null=True)  # BGG URL is https://boardgamegeek.com/boardgame/BGGid
     name = models.CharField('Name of the Game', max_length=MAX_NAME_LENGTH)
 
     # Which play modes the game supports. This will decide the formats the session submission form supports
@@ -38,23 +39,31 @@ class Game(AdminModel):
 
     # Game scoring options
     # Game scores are not used by TrueSkill but can be used for ranking implicitly
-    NO_SCORES = 0
-    INDIVIDUAL_HIGH_SCORE_WINS = 1
-    INDIVIDUAL_LOW_SCORE_WINS = 2
-    TEAM_HIGH_SCORE_WINS = 3
-    TEAM_LOW_SCORE_WINS = 4
+    class ScoringOptions(enum.Enum):
+        NO_SCORES = 0
+        INDIVIDUAL_HIGH_SCORE_WINS = 1
+        INDIVIDUAL_LOW_SCORE_WINS = 2
+        TEAM_HIGH_SCORE_WINS = 3
+        TEAM_LOW_SCORE_WINS = 4
+        TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS = 5
+        TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS = 6
+
     ScoringChoices = (
-        (NO_SCORES, 'No scores'),
+        (ScoringOptions.NO_SCORES.value, 'No scores'),
         ('Individual Scores', (
-            (INDIVIDUAL_HIGH_SCORE_WINS, 'High Score wins'),
-            (INDIVIDUAL_LOW_SCORE_WINS, 'Low Score wins'),
+            (ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value, 'High Score wins'),
+            (ScoringOptions.INDIVIDUAL_LOW_SCORE_WINS.value, 'Low Score wins'),
         )),
         ('Team Scores', (
-            (TEAM_HIGH_SCORE_WINS, 'High score wins'),
-            (TEAM_LOW_SCORE_WINS, 'Low score wins'),
+            (ScoringOptions.TEAM_HIGH_SCORE_WINS.value, 'High score wins'),
+            (ScoringOptions.TEAM_LOW_SCORE_WINS.value, 'Low score wins'),
+        )),
+        ('Team and Individual Scores', (
+            (ScoringOptions.TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS.value, 'High score wins'),
+            (ScoringOptions.TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS.value, 'Low score wins'),
         ))
     )
-    scoring = models.PositiveSmallIntegerField(choices=ScoringChoices, default=NO_SCORES, blank=False)
+    scoring = models.PositiveSmallIntegerField(choices=ScoringChoices, default=ScoringOptions.NO_SCORES.value, blank=False)
 
     # Player counts, also inform the session logging form how to render
     min_players = models.PositiveIntegerField('Minimum number of players', default=2)

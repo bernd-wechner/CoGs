@@ -91,6 +91,11 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.flatpages',
     'django.contrib.humanize',
+    # Experiments with two different bootstrap packages
+    # Neither work satisfaction currently. And experimenting
+    # is deferred for a broader site skinning effort.
+    # 'django_bootstrap5',
+    # 'crispy_forms',
     'django_extensions',
     'reset_migrations',
     'django_generic_view_extensions',

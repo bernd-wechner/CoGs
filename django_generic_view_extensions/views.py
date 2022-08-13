@@ -46,6 +46,7 @@ from dal import autocomplete
 
 # Package imports
 from . import log
+from .forms import classify_widgets
 from .util import app_from_object, class_from_string
 from .html import list_html_output, object_html_output, object_as_html, object_as_table, object_as_ul, object_as_p, object_as_br
 from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context, add_debug_context
@@ -472,6 +473,9 @@ def get_form_generic(self):
 
         form.related_forms = related_forms
 
+    # Classify the widgets on the form
+    classify_widgets(form)
+
     return form
 
 
@@ -479,11 +483,13 @@ def post_generic(self, request, *args, **kwargs):
     '''
     Processes a form submission.
 
-    Provides three hooks:
+    Provides five hooks:
 
-        pre_transaction    called before a transaction starts, returns a dir that is unpacked as kwargs for pre_save
-        pre_save           called after form validation and cleaning, a transaction has been opened but before saving, returns a dir that is unpacked as kwargs for pre_commit
-        pre_commit         called just before committing the transaction.
+        pre_validation     called before teh first form validation, returns a dict that is unpacked as kwargs for pre_transaction
+        pre_transaction    called before a transaction starts, returns a dict that is unpacked as kwargs for pre_save
+        pre_save           called after form validation and cleaning, a transaction has been opened but before saving, returns a dict that is unpacked as kwargs for pre_commit
+        pre_commit         called just before committing the transaction. Raise IntergityError or ValidationError if needed.
+        post_save          called after the forms is saved and transaction committed.
 
     :param self: and instance of CreateView or UpdateView
 
@@ -556,7 +562,7 @@ def post_generic(self, request, *args, **kwargs):
             html += "</table>"
             return HttpResponse(html)
 
-        # Perform an inital validity check before proceeding. There isa deep GOTCHA in this though
+        # Perform an inital validity check before proceeding. There is a deep GOTCHA in this though
         # that we have to avoid. self.get_form() sets self.form.instance from self.object
         # (in django.forms.models.BaseModelForm.__init__) then during a full_clean() that is_valid()
         # performs one fo the final steps to apply the form data to self.insance
@@ -591,11 +597,23 @@ def post_generic(self, request, *args, **kwargs):
             # may have generated. The joy of trying to trick Django ...
             self.form.errors.clear()
 
+        # HOOK 1 pre_validation: Hook for pre-processing the form (before the first from validation)
+        # Ideal for injecting any form submission alterationsdata cleaning or reconiliation as needed
+        # to ensure that the is_valid() call passes or fails as desired.
+        if callable(getattr(self, 'pre_validation', None)):
+            next_kwargs = self.pre_validation()
+            if not next_kwargs: next_kwargs = {}
+            if "debug_only" in next_kwargs:
+                return HttpResponse(next_kwargs["debug_only"])
+
         log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
         if self.form.is_valid():
-            # Hook for pre-processing the form (before a database transaction is opened)
+            # HOOK 2 pre_transaction: Hook for pre-processing the form (before a database transaction is opened)
+            # The form has passed first validation and now is a chance to inject some code before we open a
+            # database transaction. Ideal for pre-transaction checks on the form data (can add form errors
+            # if neeed and the next validation will fail.
             if callable(getattr(self, 'pre_transaction', None)):
-                next_kwargs = self.pre_transaction()
+                next_kwargs = self.pre_transaction(**next_kwargs)
                 if not next_kwargs: next_kwargs = {}
                 if "debug_only" in next_kwargs:
                     return HttpResponse(next_kwargs["debug_only"])
@@ -605,7 +623,10 @@ def post_generic(self, request, *args, **kwargs):
                 try:
                     log.debug(f"Open a transaction")
                     with transaction.atomic():
-                        # Hook for pre-processing the form (before the data is saved)
+                        # HOOK 3 pre_save: Hook for pre-processing the form (before the data is saved)
+                        # The form has passed validation (twice now, before and after a database transaction
+                        # was opened) and now is a chance to do something before the form (and all its
+                        # related forms).
                         if callable(getattr(self, 'pre_save', None)):
                             next_kwargs = self.pre_save(**next_kwargs)
                             if not next_kwargs: next_kwargs = {}
@@ -641,7 +662,7 @@ def post_generic(self, request, *args, **kwargs):
                             # Having saved the root object we reinitialise related forms
                             # with that object attached. Failure to this results in the
                             # form_clean failing as the formsets don't have populated
-                            # back references (as we had not object) and it fails with
+                            # back references (as we had no object) and it fails with
                             # 'This field is required.' erros on the primary keys
                             self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
 
@@ -666,10 +687,14 @@ def post_generic(self, request, *args, **kwargs):
                         if callable(getattr(self.object, 'clean_relations', None)):
                             self.object.clean_relations()
 
-                        # Finally before committing give the view defintion a chance to so something
-                        # prior to committing the update.
+                        # HOOK 4 pre_commit: Before committing give the view defintion a chance to do something
+                        # prior to committing the update. This is ideal for any checks that rely on the form (and its
+                        # related formsets_having been saved. Code therein can access the saved objects and draw
+                        # conclusions. Raising an IntegrityError or ValidationError  will roll back the transaction.
+                        # and bounce back to display the form with form.errors shown.
                         if callable(getattr(self, 'pre_commit', None)):
-                            self.pre_commit(**next_kwargs)
+                            next_kwargs = self.pre_commit(**next_kwargs)
+                            if not next_kwargs: next_kwargs = {}
 
                         log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
@@ -687,7 +712,10 @@ def post_generic(self, request, *args, **kwargs):
                     self.form.add_error(None, message)
                     return self.form_invalid(self.form)
 
-                # Hook for post-processing data (after it's all saved)
+                # HOOK 5 post_save: Hook for post-processing data (after it's all saved)
+                # The form is valid now and returns form_valid() so post save processing
+                # is not the place to raise any exceptions or add any form errors, that
+                # is all done and dusted. It is a place for any post save bookkeeping.
                 if callable(getattr(self, 'post_save', None)):
                     self.post_save(**next_kwargs)
 
@@ -780,11 +808,11 @@ class CreateViewExtended(CreateView):
         ####################################################################
         # Inheritance support
         #
-        # Initial values can be inherites from earlier objects that were
+        # Initial values can be inherited from earlier objects that were
         # created. Specifically we honor three special model fields that
         # can communicate inheritance preferences:
         #
-        # inherit_fields: A list of fields that whoul be inherited from
+        # inherit_fields: A list of fields that would be inherited from
         #                 "latest" object of the same model, entered by
         #                 the same user.
         #
@@ -801,24 +829,25 @@ class CreateViewExtended(CreateView):
         except ObjectDoesNotExist:
             last = None
 
-        for field_name in inherit_fields(self.model):
-            field_value = getattr(last, field_name)
-            if isinstance(field_value, datetime.datetime):
-                # If there's a local date_time on offer use that!
-                if hasattr(last, field_name + "_local"):
-                    field_value = getattr(last, field_name + "_local")
+        if last:
+            for field_name in inherit_fields(self.model):
+                field_value = getattr(last, field_name)
+                if isinstance(field_value, datetime.datetime):
+                    # If there's a local date_time on offer use that!
+                    if hasattr(last, field_name + "_local"):
+                        field_value = getattr(last, field_name + "_local")
 
-                # Find a time delta if any
-                delta = getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
+                    # Find a time delta if any
+                    delta = getattr(self.model, "inherit_time_delta", datetime.timedelta(0))
 
-                # If delta is a callable, call it
-                if callable(delta):
-                    delta = delta(last)
+                    # If delta is a callable, call it
+                    if callable(delta):
+                        delta = delta(last)
 
-                if delta:
-                    initial[field_name] = field_value + delta
-            else:
-                initial[field_name] = field_value
+                    if delta:
+                        initial[field_name] = field_value + delta
+                else:
+                    initial[field_name] = field_value
 
         return initial
 

@@ -6,10 +6,9 @@
 import re
 
 from re import RegexFlag as ref
-
 from datetime import datetime
-
 from html import escape
+from copy import deepcopy
 
 from django.conf import settings
 from django.urls import reverse_lazy
@@ -20,8 +19,9 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from django_generic_view_extensions.views import CreateViewExtended, UpdateViewExtended
 from django_generic_view_extensions.datetime import time_str
+from django_generic_view_extensions.util import isPositiveInt
 
-from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER
+from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER, MISSING_VALUE
 
 from Site.logutils import log
 
@@ -53,13 +53,247 @@ def updated_user_from_form(user, request):
     user.save
 
 
-def pre_transaction_handler(self):
+def reconcile_ranks(form, session_dict, permit_missing_scores=False):
+    '''
+    We MUST have ranks to create session. Scores are optional.
+    Furthermore Rank scores are needed for determing ranks (if not explicitly provided),
+    while Performance scores are used only to calculate rank scores if they are missing.
+    Performance scores exist primarily to support the edge case of a game played in teams
+    (so one rank per team) which concludes with individual player scores (on performance
+    per player).
+
+    The reconciliation is as follows:
+
+    1. If the game.scoring is not None, then require scores and bounce.
+         a. There should be an option to override this bounce if valid rankings are provided,
+            for two reasons:
+              i. While the game is scored, someone may have recorded results without
+                 noting them, anbut has rankings and this is all that's needed for
+                 updating ratings and leaderboards so it should be accceptable and
+                 accepted.
+             ii. All legacy sessions (prior to to the introduction of scoring in the
+                 site) lack recorded scores. It should be possible if needed to edit
+                 such a seshandlersion and submit. An edge case, but a consistency issue as
+                 well.
+    2. If rank scores are provided:
+         a. using the game.scoring method (high wins or low wins) establish
+            a ranking.
+         b. if ranks were provided, reconcile them with this result, and bail
+            with a warning if they don't agree. Ranks should be provided for
+            tie breakers. That is, many games which conclude with a score,
+            have nuanced tie breaking rules and the onlyw ay to sensibly capture
+            those generically across any and all games is by submitting a ranking
+            (along with the scores).
+    3. If any rank scores were not provided but performance scores were:
+         a. Calculate a ranks core as the sum of the related performance scores
+            Ranks can map 1 to 1 to performances in most games, but in games played
+            in teams they map 1 to n, n being th enumber of team members.
+
+    Use self.form.add_error(None, f"message") to bounce if needed.
+
+    -1 is MISSING_VALUE
+
+    A sample individual play, new session submission:
+        'model': 'Session',
+        'id': -1,
+        'game': 29,
+        'time': datetime.datetime(2022, 7, 2, 3, 59, tzinfo = tzoffset(None, 36000)),
+        'league': 1,
+        'location': 9,
+        'team_play': False,
+        'ranks': [-1, -1],
+        'rankings': [1, 2],
+        'rscores': [0, 0],
+        'rankers': [1, 66],
+        'performances': [-1, -1],
+        'pscores': [-1, -1],
+        'performers': [1, 66],
+        'weights': [1.0, 1.0]
+
+    And a sample team play submission:
+
+        'model': 'Session',
+        'id': -1,
+        'game': 18,
+        'time': datetime.datetime(2022, 7, 2, 3, 59, tzinfo = tzoffset(None, 36000)),
+        'league': 1,
+        'location': 9,
+        'team_play': True,
+        'ranks': [-1, -1],
+        'rankings': [1, 2],
+        'rscores': [0, 0],
+        'rankers': [
+            [1, 66],
+            [13, 70]
+        ],
+        'performances': [-1, -1, -1, -1],
+        'pscores': [-1, -1, -1, -1],
+        'performers': [1, 13, 66, 70],
+        'weights': [1, 1, 1, 1]
+
+    :param form: The form instance, so we can add form errors if reconciliation failure demands it
+    :param session_dict:  A Session dictionary as returned by Session.dict_from_form() which is modified in place as needed
+    '''
+    game = Game.objects.get(pk=session_dict['game'])
+    scoring = Game.ScoringOptions(game.scoring).name
+    score_high = "HIGH" in scoring
+
+    if scoring == "NO_SCORES":
+        # No reconciliation to do )ranks are validated by standard form validation)
+        return
+    else:
+        players = deepcopy(session_dict['players'])
+        rankings = deepcopy(session_dict['rankings'])
+        rscores = deepcopy(session_dict['rscores'])
+        pscores = deepcopy(session_dict['pscores'])
+
+        valid_rankings = all(isPositiveInt(r) for r in rankings)
+        valid_rscores = all(isPositiveInt(s) for s in rscores)
+
+        # Validate the team_play setting
+        # The only difference really is that teams can have multiple pscores per rscore.
+        # TODO: Do we need to know team_play here at all? Can validation of this happen
+        # in form_validation if it's not needed for rank reconciliation?
+        if session_dict['team_play']:
+            if not "TEAM" in scoring:
+                form.add_error(None, "This is a game that does not score teams and so team play sessions can not be recorded. Likely a form or game configuration error.")
+                return
+        else:
+            if "TEAM" in scoring:
+                form.add_error(None, "This is a game that scores teams and so only team play sessions can be recorded. Likely a form or game configuration error.")
+                return
+
+        # Only rscores are relevant, but if a session is submitted with
+        # valid pscores and invalid rscores, use the pscores. pscores
+        # are for informative purposes only and not used for ranking,
+        # only for calculating rscores in the absence of them.
+        altered = False
+        for i, s in enumerate(rscores):
+            if not isPositiveInt(s) and isPositiveInt(pscores[i]):
+                rscores[i] = pscores[i]
+                altered = True
+        if altered:
+            session_dict['rscores'] = deepcopy(rscores)
+            valid_rscores = all(isPositiveInt(s) for s in rscores)
+
+        # First things first, we need rscores for a scoring game
+        # (unless we have valid rankings and explicitly permit missing scores)
+        if not valid_rscores:
+            if not (valid_rankings and permit_missing_scores):
+                form.add_error(None, "This is a scoring game. Please enter scores")
+                return
+
+        # But if have them, and rankings are not valid we can maybe infer rankings from the rscores
+        if valid_rscores and not valid_rankings:
+            # Deduce rankings from supplied scores
+            player_indexes = {}
+            score_rankings = [None for r in rankings]
+            score_sorted_rankings = sorted(zip(rscores, rankings, players), reverse=score_high)
+
+            # This handles ties as well and produces tie-gapped ranking
+            # as per Leaderboards.models.session.Session.clean_ranks
+            prev_s = -1
+            for i, (s, r, p) in enumerate(score_sorted_rankings):
+                score_rankings[i] = score_rankings[i - 1] if s == prev_s else i + 1
+                player_indexes[p] = i
+                prev_s = s
+
+            # Now re-order the rankings in the original player order again
+            all_new_rankings = [score_rankings[player_indexes[p]] for p in players]
+
+            # Patch them into the supplied rankings (only were we were missing rankings)
+            new_rankings = [old if isPositiveInt(old) else new for i, (old, new) in enumerate(zip(rankings, all_new_rankings))]
+            rankings = deepcopy(new_rankings)
+
+            # And update the session_dict
+            valid_rankings = all(isPositiveInt(r) for r in rankings)
+            session_dict['rankings'] = deepcopy(rankings)
+
+        # If we (now) valid rankings and valid rscores were submitted we need them to agree
+        if valid_rscores and valid_rankings:
+            ranking_sorted_scores = sorted(zip(rankings, rscores))
+            score_sorted_rankings = sorted(zip(rankings, rscores), key=lambda rs: rs[1], reverse=score_high)
+
+            # The sortings above detect agreed ordering but fail to detect
+            # when one score maps to multiple rankings (which can happen if
+            # rankings and scores are supplied). We test for that explicitly.
+            one_score_per_rank = True
+            rank_scores = {}
+            for r, s in ranking_sorted_scores:
+                if r in rank_scores:
+                    if s != rank_scores[r]:
+                        one_score_per_rank = False
+                        break
+                else:
+                    rank_scores[r] = s
+
+            if ranking_sorted_scores != score_sorted_rankings or not one_score_per_rank:
+                form.add_error(None, "Submitted rankings and scores do not agree.")
+                return
+
+        return
+
+
+def pre_validation_handler(self):
+    '''
+    When a model form is POSTed, this function is called
+        BEFORE a form validation
+
+    It should return a dict that is unpacked as kwargs passed to
+    the pre_transaction_handler, and can thus communicate with it.
+
+    When saving a Session form, the pre_transaction_handler wants
+    to see the submitted session in a dict form as per what is produced
+    by:
+        Leaderboards.models.session.Session.dict_from_form
+    That's a handy format for processing here where for Session
+    forms we reconcile rankings and scores ahead of the first form
+    validation so as to ensure it has valid rankings as best possible.
+
+    That is because the Session can be submitted with scores from
+    which ranks must be derived if needed, or with ranks an scores
+    in which case they should agree. Any changes to the session should
+    be reflect back in self.form.data which is Django validation
+    considers. The dict format is our convenience for simpler
+    reconciliation and (later pre_transaction handling - where
+    for Sessions it aims to determing any rating rebuild requirements).
+    '''
+    model = self.model._meta.model_name
+
+    if model == 'session':
+        # The new session (form form data) is VERY hard to represent as
+        # a Django model instance. We represent it as a dict instead.
+        # Essentially a translator of form_data (a QueryDict) into a more
+        # tractable form.
+        submitted_session = Session.dict_from_form(self.form.data)
+
+        # Ranking information can arrive as ranks, scores or a combination including
+        # rank scroees, or performance scores . This all needs reconiliation before
+        # we proceed. new_session is modified in place with ranks and scores
+        # reconciled and/or updates form.errors with any errors it finds, forcing
+        # validation to fail
+        reconciled_session = deepcopy(submitted_session)
+        # Reconciles the supplied session in situ
+        reconcile_ranks(self.form, reconciled_session)
+
+        # Reconciliation can change rankings and rscores
+        # and add errors to self.form. If any rankings or rscores
+        # changed we now need to reflect that in form.data so
+        # that the subsequen form validation succeeds. Unless of
+        # course we failed to reconcile in which we expect it will
+        # fail, or the reconiliation added errros itself.
+        # TODO
+
+        return {'new_session': reconciled_session}
+
+
+def pre_transaction_handler(self, new_session=None):
     '''
     When a model form is POSTed, this function is called
         BEFORE a transaction (to save data) has been opened
 
     It should return a dict that is unpacked as kwargs passed to
-    the pre_save handler, and can thus communicate with it.
+    the pre_save_handler, and can thus communicate with it.
 
     This has access to form.data and form.cleaned_data and is
     intended for making decisions based on the post before we
@@ -71,6 +305,12 @@ def pre_transaction_handler(self):
     before a transaction is opened for saving.
 
     self is an instance of CreateViewExtended or UpdateViewExtended.
+
+    :param new_session: The pre_validation handler should return a new
+                        session, i.e. the one in train of being saved,
+                        tn the dict format defined by:
+                        Leaderboards.models.session.Session.dict_from_form
+                        This handler will receive it.
     '''
     model = self.model._meta.model_name
 
@@ -94,6 +334,16 @@ def pre_transaction_handler(self):
             m = message.replace('\n', ' ')
             log.debug(m)
 
+    output(f"Session Submission Rebuild Request Determination")
+    output("\n")
+    output(f"Form data:")
+    for (key, val) in self.form.data.items():
+        output(f"\t{key}:{val}")
+
+    output("Form data as a Session dict:")
+    for (key, val) in new_session.items():
+        output(f"\t{key}:{val}")
+
     # Default args to return (irrespective of object model or form type)
     # The following code aims to populate these for feed forward to the
     # pre_save and pre_commit handlers.
@@ -105,27 +355,9 @@ def pre_transaction_handler(self):
     # to check if the submission changes any rating affecting fields and make note of that
     # so that the post processor can update the ratings with a rebuild request if needed
     if model == 'session':
-        output(f"PRE-PROCESSING Session submission.")
-        output("\n")
-        output(f"Using form data:")
-        for (key, val) in self.form.data.items():
-            output(f"\t{key}:{val}")
-
-        # The new session (form form data) is VERY hard to represent as
-        # a Django model instance. We represent it as a dict instead.
-        # Essentially a translator of form_data (a QuryDict) into a more
-        # tractable form.
-        new_session = Session.dict_from_form(self.form.data)
-
-        output("\n")
-        output("Form data as a Session dict:")
-        for (key, val) in new_session.items():
-            output(f"\t{key}:{val}")
-
         # We need the time, game and players first
         # As this is all we need to know for
         # both the Create and Update views.
-
         new_time = new_session["time"]
 
         # The time of the session cannot be in the future of course.
@@ -155,7 +387,8 @@ def pre_transaction_handler(self):
             return None
 
         # Players are identifed by PK in "performers"
-        # TOOD: does this field name work?
+        # TODO: does this field name work?
+        # TODO: Should we get this from rankers (which is a list of player IDs? or list of playerID lists in team play?
         new_players = [safe_get("performances__player", Player, pk) for pk in new_session["performers"]]
 
         # A rebuild of ratings is triggered under any of the following circumstances:
@@ -435,7 +668,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
 
         team_play = session.team_play
 
-        # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
+        # TESTING NOTES: As Django performance is not 100% clear at this level from docs.
         # Some empirical testing notes here:
         #
         # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
@@ -453,7 +686,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>
         #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)])
 
-        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dic that holds it.
+        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dict that holds it.
         #        That way we're not duplicating form interpretation again.
 
         # manage teams properly, as we handle teams in a special way creating them
@@ -553,7 +786,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
                     team = Team.objects.create()
 
                     for player_id in team_players_post:
-                        player = Player.objects.get(id=player_id)
+                        player = Player.objects.get(id=player_id)  # @UndefinedVariable
                         team.players.add(player)
 
                     # If the name changed and is not a placeholder of form "Team n" use it.

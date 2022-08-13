@@ -1279,7 +1279,7 @@ class Session(TimeZoneMixIn, AdminModel):
         '''
         assert player != None, f"Coding error: Cannot fetch the performance of 'no player'. Session pk: {self.pk}"
         performances = self.performances.filter(player=player)
-        assert len(performances) == 1, "Database error: {} Performance objects in database for session={}, player={} sql={}".format(len(performances), self.pk, player.pk, performances.query)
+        assert len(performances) == 1, f"Database error: {len(performances)} Performance objects in database for session={self.pk}, player={player.pk} sql={performances.query}"
         return performances[0]
 
     def previous_performance(self, player):
@@ -1598,92 +1598,245 @@ class Session(TimeZoneMixIn, AdminModel):
 
         Django has an internal function
             django.forms.models.model_to_dict()
-        that does similar but is far more generic retuning a dict of model fields only,
+        that does similar but is far more generic returning a dict of model fields only,
         in the case of this model: game, date_time, league, location and team_play.
 
         In support of rich objects we need to customise this dict really to include
         related information as we have here. This dict defines a Session instance for
         example where model_to_dict() fails to.
         '''
-        # Convert the session to serializable form (a dict)
+        # Get rank related lists
         ranks = [r.pk for r in self.ranks.all().order_by("rank")]
         rankings = [r.rank for r in self.ranks.all().order_by("rank")]
+        rscores = [r.score for r in self.ranks.all().order_by("rank")]
 
-        # rankers is a list of team or player Pks based on the mode
+        # Get perfroamnce related lists
+        performances = [p.pk for p in self.performances.all().order_by("player__pk")]
+        performers = [p.player.pk for p in self.performances.all().order_by("player__pk")]
+        pscores = [p.score for p in self.performances.all().order_by("player__pk")]
+        weights = [p.partial_play_weighting for p in self.performances.all().order_by("player__pk")]
+
+        # Build lists of rankers
+        # rankers is a list player IDs or a list of lists of player IDs
+        # Teams are represented a lists of player IDs
         if self.team_play:
-            rankers = [r.team.pk for r in self.ranks.all().order_by("rank")]
+            rankers = [[p.pk for p in r.team.players.all().order_by("pk")] for r in self.ranks.all().order_by("rank")]
         else:
             rankers = [r.player.pk for r in self.ranks.all().order_by("rank")]
 
-        performances = [p.pk for p in self.performances.all().order_by("player__pk")]
-        performers = [p.player.pk for p in self.performances.all().order_by("player__pk")]
-        weights = [p.partial_play_weighting for p in self.performances.all().order_by("player__pk")]
-
         # Createa serializeable form of the (rich) object
-        return { "model": self._meta.model.__name__,
-                 "id": self.pk,
-                 "game": self.game.pk,
-                 "time": self.date_time_local,
-                 "league": self.league.pk,
-                 "location": self.location.pk,
-                 "team_play": self.team_play,
-                 "ranks": ranks,
-                 "rankings": rankings,
-                 "rankers": rankers,
-                 "performances": performances,
-                 "performers": performers,
-                 "weights": weights}
+        session_dict = {"model": self._meta.model.__name__,  # the model name
+                        # Session atttributes
+                        "id": self.pk,  # a session ID
+                        "game": self.game.pk,  # a Game ID
+                        "time": self.date_time_local,  # a datetime
+                        "league": self.league.pk,  # a league ID
+                        "location": self.location.pk,  # a location ID
+                        "team_play": self.team_play,  # a booolean flag
+                        # Rank atttributes
+                        "ranks": ranks,  # a list of Rank IDs
+                        "rankings": rankings,  # a list of rankings (postive ints)
+                        "rscores": rscores,  # a list of rank scores (positive ints)
+                        "rankers": rankers,  # a list player ID or lists of player IDs (teams)
+                        # Performance atttributes
+                        "performances": performances,  # A list of performance IDs
+                        "pscores": pscores,  # A list performance scores (positive ints)
+                        "performers": performers,  # A list of performers (player IDs)
+                        "weights": weights}  # A list of weights (positive floats 0-1)
+
+        # DB object values can be None.
+        # For consistency with dict_from_form (below) we replace all instances of None
+        # with MISSING_VALUE (which is what is used there for HTML compatibility).
+        for field in session_dict:
+            if session_dict[field] is None:
+                session_dict[field] = MISSING_VALUE
+            elif isinstance(session_dict[field], list):
+                for i, val in enumerate(session_dict[field]):
+                    if val is None:
+                        session_dict[field][i] = MISSING_VALUE
+
+        return session_dict
 
     @classmethod
     def dict_from_form(cls, form_data, pk=None):
         '''
-        Returns a dictionary that represents this form data supplied.
+        Returns a dictionary that represents the form data supplied.
 
         This centralises form parsing for this model and provides a
         dict that compares with dict_from_object() above to facilitate
         change detection on form submissions.
 
+        For reference this is a sample submission of form_data:
+
+            'game': ['29'],
+            'date_time': ['2022-07-02 03:59:00 +10:00'],
+            'initial-date_time': ['2022-07-02 03:59:00'],
+            'league': ['1'],
+            'location': ['9'],
+            'Rank-TOTAL_FORMS': ['2'],
+            'Rank-INITIAL_FORMS': ['0'],
+            'Rank-MIN_NUM_FORMS': ['0'],
+            'Rank-MAX_NUM_FORMS': ['1000'],
+            'Performance-TOTAL_FORMS': ['2'],
+            'Performance-INITIAL_FORMS': ['0'],
+            'Performance-MIN_NUM_FORMS': ['0'],
+            'Performance-MAX_NUM_FORMS': ['1000'],
+            'num_players': ['2'],
+            'Rank-0-rank': ['1'],
+            'Rank-0-score': ['0'],
+            'Performance-0-player': ['1'],
+            'Rank-0-player': ['1'],
+            'Performance-0-partial_play_weighting': ['1'],
+            'Rank-1-rank': ['2'],
+            'Rank-1-score': ['0'],
+            'Performance-1-player': ['66'],
+            'Rank-1-player': ['66'],
+            'Performance-1-partial_play_weighting': ['1']
+
+        And this is a sample for team_play (a 4 playergame  in two teams of two):
+
+            'game': ['18'],
+            'date_time': ['2022-07-02 03:59:00 +10:00'],
+            'initial-date_time': ['2022-07-02 03:59:00'],
+            'league': ['1'],
+            'location': ['9'],
+            'team_play': ['on'],
+            'Rank-TOTAL_FORMS': ['2'],
+            'Rank-INITIAL_FORMS': ['0'],
+            'Rank-MIN_NUM_FORMS': ['0'],
+            'Rank-MAX_NUM_FORMS': ['1000'],
+            'Team-TOTAL_FORMS': ['2'],
+            'Team-INITIAL_FORMS': ['0'],
+            'Team-MIN_NUM_FORMS': ['0'],
+            'Team-MAX_NUM_FORMS': ['1000'],
+            'Performance-TOTAL_FORMS': ['4'],
+            'Performance-INITIAL_FORMS': ['0'],
+            'Performance-MIN_NUM_FORMS': ['0'],
+            'Performance-MAX_NUM_FORMS': ['1000'],
+            'num_teams': ['2'],
+            'Rank-0-rank': ['1'],
+            'Rank-0-score': ['0'],
+            'Team-0-num_players': ['2'],
+            'Performance-0-player': ['1'],
+            'Performance-0-team_num': ['0'],
+            'Performance-0-score': [''],
+            'Performance-0-partial_play_weighting': ['1'],
+            'Performance-1-player': ['66'],
+            'Performance-1-team_num': ['0'],
+            'Performance-1-score': [''],
+            'Performance-1-partial_play_weighting': ['1'],
+            'Rank-1-rank': ['2'],
+            'Rank-1-score': ['0'],
+            'Team-1-num_players': ['2'],
+            'Performance-2-player': ['13'],
+            'Performance-2-team_num': ['1'],
+            'Performance-2-score': [''],
+            'Performance-2-partial_play_weighting': ['1'],
+            'Performance-3-player': ['70'],
+            'Performance-3-team_num': ['1'],
+            'Performance-3-score': [''],
+            'Performance-3-partial_play_weighting': ['1']
+
         :param form_data: A Django QueryDict representing a form submission
-        :param pk: Optionally a Prinary Key to add to the dict
+        :param pk: Optionally a Primary Key to add to the dict
         '''
-        # Extract the form data we need
-        game = int(form_data.get("game", MISSING_VALUE))
-        time = make_aware(parser.parse(form_data.get("date_time", NEVER)))
-        league = int(form_data.get("league", MISSING_VALUE))
-        location = int(form_data.get("location", MISSING_VALUE))
-        team_play = 'team_play' in form_data
+
+        def int_or_MISSING(data, key):
+            try:
+                # If key is absent or data[key] is not a valid int this
+                # will raise an exception and MISSING_VALUE is returned
+                return int(data[key])
+            except:
+                return MISSING_VALUE
+
+        # Copy the form_data (if it's a Qury dict it's immutable and we want to clean it)
+        data = form_data.copy()
+
+        # Forms do not submit the object id.
+        # That's standard for Django model forms.
+        # As the ID is not an editable field, when creating
+        # an object it's not needed and when editing a object
+        # it's not mutable and generally comunicated vie the
+        # URL match
+        if not 'id' in data:
+            data['id'] = f"{pk if pk else MISSING_VALUE}"
+
+        # Extract the session attributes from the form
+        session = int(data.get("id"))
+        game = int(data.get("game", MISSING_VALUE))
+        time = make_aware(parser.parse(data.get("date_time", NEVER)))
+        league = int(data.get("league", MISSING_VALUE))
+        location = int(data.get("location", MISSING_VALUE))
+        team_play = 'team_play' in data
 
         # We expect the ranks and performances to arrive in Django formsets
-        # The forms in the formsets are not in any guranteed order so we collect
-        # data first and sort it.
-        num_ranks = int(form_data.get('Rank-TOTAL_FORMS', 0))
-        rank_data = sorted([(int(form_data.get(f'Rank-{r}-id', MISSING_VALUE)),
-                             int(form_data.get(f'Rank-{r}-rank', MISSING_VALUE)),
-                             int(form_data.get(f'Rank-{r}-team' if team_play else f'Rank-{r}-player', MISSING_VALUE))
-                             ) for r in range(num_ranks)], key=lambda e: e[1])  # Sorted by rank
+        # The forms in the formsets are not in any guaranteed order so we collect
+        # data first and then sort it. (by rank)
 
-        num_performances = int(form_data.get('Performance-TOTAL_FORMS', 0))
-        performance_data = sorted([(int(form_data.get(f'Performance-{p}-id', MISSING_VALUE)),
-                             int(form_data.get(f'Performance-{p}-player', MISSING_VALUE)),
-                             float(form_data.get(f'Performance-{p}-partial_play_weighting', MISSING_VALUE))
-                             ) for p in range(num_performances)], key=lambda e: e[1])  # Sorted by player ID
+        num_ranks = int(data.get('Rank-TOTAL_FORMS', 0))
+        num_performances = int(data.get('Performance-TOTAL_FORMS', 0))
 
-        return { "model": cls.__name__,
-                 "id": pk if pk else MISSING_VALUE,
-                 "game": game,
-                 "time": time,
-                 "league": league,
-                 "location": location,
-                 "team_play": team_play,
-                 "ranks": [r[0] for r in rank_data],
-                 "rankings": [r[1] for r in rank_data],
-                 "rankers": [r[2] for r in rank_data],
-                 "performances": [p[0] for p in performance_data],
-                 "performers": [p[1] for p in performance_data],
-                 "weights": [p[2] for p in performance_data]}
+        # We want to convert strings to ints where sensible.
+        for r in range(num_ranks):
+            for key in [f'Rank-{r}-id',
+                        f'Rank-{r}-rank',
+                        f'Rank-{r}-score',
+                        f'Rank-{r}-player']:
+                data[key] = int_or_MISSING(data, key)
+
+        for p in range(num_performances):
+            for key in [f'Performance-{p}-id',
+                        f'Performance-{p}-score',
+                        f'Performance-{p}-player',
+                        f'Performance-{p}-partial_play_weighting',
+                        f'Performance-{p}-team_num']:
+                data[key] = int_or_MISSING(data, key)
+
+        # For team_play we build a list of player IDs for each rank
+        # In individual play each rank is just one player ID
+        if team_play:
+            rank_players = {}
+            for p in range(num_performances):
+                rank = data[f'Performance-{p}-team_num']
+                player = data[f'Performance-{p}-player']
+                if rank in rank_players:
+                    rank_players[rank].append(player)
+                else:
+                    rank_players[rank] = [player]
+
+        rank_data = sorted([(data[f'Rank-{r}-id'],  # ranks
+                             data[f'Rank-{r}-rank'],  # rankings
+                             data[f'Rank-{r}-score'],  # rscores
+                             rank_players[r] if team_play else data[f'Rank-{r}-player']  # rankers
+                            ) for r in range(num_ranks)], key=lambda e: e[1])  # Sorted by int(rank)
+
+        performance_data = sorted([(data[f'Performance-{p}-id'],  # performance
+                                    data[f'Performance-{p}-score'],  # pscores
+                                    data[f'Performance-{p}-player'],  # performers
+                                    data[f'Performance-{p}-partial_play_weighting']  # weigths
+                                    ) for p in range(num_performances)], key=lambda e: e[2])  # Sorted by int(player ID)
+
+        return { "model": cls.__name__,  # the model name
+                 # Session atttributes
+                 "id": session,  # a session ID
+                 "game": game,  # a Game ID
+                 "time": time,  # a datetime
+                 "league": league,  # a league ID
+                 "location": location,  # a location ID
+                 "team_play": team_play,  # a booolean flag
+                  # Rank atttributes
+                 "ranks": [r[0] for r in rank_data],  # a list of Rank IDs
+                 "rankings": [r[1] for r in rank_data],  # a list of rankings (postive ints)
+                 "rscores": [r[2] for r in rank_data],  # a list of rank scores (positive ints)
+                 "rankers": [r[3] for r in rank_data],  # a list player ID or lists of player IDs (teams)
+                 # Performance atttributes
+                 "performances": [p[0] for p in performance_data],  # A list of performance IDs
+                 "pscores": [p[1] for p in performance_data],  # A list of performers (player IDs)
+                 "performers": [p[2] for p in performance_data],  # A list performance scores (positive ints)
+                 "weights": [p[3] for p in performance_data]}  # A list of weights (positive floats 0-1)
 
     @property_method
-    def dict_delta(self, form_data=None):
+    def dict_delta(self, form_data=None, pk=None):
         '''
         Given form data (a QueryDict) will return a dict that merges
         dict_from_object and dict_from_form respectively into one delta
@@ -1691,42 +1844,79 @@ class Session(TimeZoneMixIn, AdminModel):
 
         If no form_data is supplied just returns dict_from_object.
 
+        A note on IDs:
+            dict_from_object always contains a session ID and database
+                objects have an ID.
+            dict_from_form is not guranteed to have one, in fact it's
+                doesn't by default (one can be supplied), because when
+                editing database objects the ID is not an editable field,
+                and the model form does not include it, instead it is
+                communicated vie the URL match generally not through the
+                posted form data.
+            As such a diff, ignores an ID change if the form data is
+            missing an ID it is ignored for delta change sumaries.
+
+        Warning:
+            pk MUST be provided if a delta between an edit form and the object
+            (before edit is applied) is wanted.
+
+            If pk is not provided and form_data is supplied we assume, the
+            form data to be from an Add/Create form not from an Update/Edit
+            form.
+
+            If a caller wishes to compare an edit proposal and fails to supply
+            a PK, thechange summary may erroneoulsy report "crreated" when
+            "changed" is more appropriate to the context. Supplying a PK is
+            the way in which a claler mmakrs the form_data as a Update not an
+            Add.
+
         :param form_data: A Django QueryDict representing a form submission
+        :param pk: Optionally a Primary Key to add to the form_data_dict
         '''
         from_object = self.dict_from_object
         result = from_object.copy()
 
         # Find what changed and take note of it (replaceing the data bvalue with two-tuple and adding the key to the changed set)
-        changes = set()
+        changes = []
 
         if form_data:
             # dict_from_form is a class method so it is available when no model instance is.
-            from_form = self._meta.model.dict_from_form(form_data)
+            from_form = self._meta.model.dict_from_form(form_data, pk)
 
             def check(key):
                 if from_form[key] != from_object[key]:
                     # If the form fails to specifiy an Id we assume it refers to
-                    # this instance and don't note the absence as a change
-                    if not (key == "id" and from_form[key] == MISSING_VALUE):
-                        changes.add(key)
+                    # this instance and don't note the absence as a change, as this
+                    # is a standard situation with model forms.
+                    if not (key == 'id' and from_form[key] == MISSING_VALUE):
+                        changes.append(key)
                     result[key] = (from_object[key], from_form[key])
 
             for key in result:
                 check(key)
 
             # Record whether changes were seen in any fields
-            if changes:
-                changes.add("changed")
+            # If form_data is provided and no session ID then we assume this is a comparison
+            # with a Creation/Add form and the object is what was produced after the creation.
+            # Edit/Update forms will provide form_data. BUT form data won't include and id
+            # UNLESS it's suplied to thiosmethod via the pk arghument (dict_from_form needs one
+            # and will add it to the dict if provided). Failing that even Edit/Update form data
+            # won't have a 'id' field and "created" may be a misleading summary. We thus rely
+            # on edit change dtectors to provide a PK.
+            if changes and from_form.get('id', MISSING_VALUE) == MISSING_VALUE:
+                changes.insert(0, "created")
+            elif changes:
+                changes.insert(0, "changed")
             else:
-                changes.add("unchanged")
+                changes.insert(0, "unchanged")
 
             # Some changes are expected to have no impact on leaderboards (for example different location
             # and league - as boards are global and leagues only used for filtering views). Other changes
-            # impact the leaderboard. If any of those chnage we add a psudo_field "leaderboard" in changes.
-            cause_leaderboard_change = ["game", "team_play", "rankers", "performers", "weights"]
+            # impact the leaderboard. If any of those change we add a psudo_field "leaderboard" in changes.
+            cause_leaderboard_change = ["game", "team_play", "rankers", "rankings", "performers", "weights"]
             for change in changes:
                 if change in cause_leaderboard_change:
-                    changes.add("leaderboard")
+                    changes.insert(0, "leaderboard")
                     break
 
             # The date_time is a little trickier as it can change as long as the immediately preceding session stays
@@ -1738,7 +1928,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         # Called with no form data when the object is created. No change is expected.
         else:
-            changes.add("created")
+            changes.insert(0, "created")
 
         return result
 

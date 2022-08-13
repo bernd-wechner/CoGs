@@ -110,6 +110,13 @@ def isInt(s):
         return False
 
 
+def isPositiveInt(s):
+    try:
+        return int(s) > 0
+    except:
+        return False
+
+
 def isFloat(s):
     try:
         float(s)

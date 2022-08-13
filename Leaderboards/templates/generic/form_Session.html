@@ -3,7 +3,7 @@
 {% load tags %}
 
 {% comment %}
-	Sessions are very particular and perhaps the most complicated object we use and hence the most 
+	Sessions are very particular and perhaps the most complicated object we use and hence the most
 	complicated form we have to drive.
 
 	We include the standard form above but the Session object is pointed to by:
@@ -22,131 +22,153 @@
 <script>
 	"use strict";
 	{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
-	const operation		= "{{operation}}";
-	
+	const operation	= "{{operation}}";
+
 	function get_session_data() {
 		{#	If the form has errors, then it is bounce back from a form that was being edited #}
 		{#	form.data will have the the state of ranks and performances as they were submitted. #}
 		{#	(and bounced).#}
 		{% if form.errors %}
-			// We don't use standard Django formsets here (we build the formset in Javascript dynamically)
-			// And this is the source data for the Rank and performance Javascript formset generator. 
-			// So we need to populate it from the form.data.
-			let rIDs          = {% get_list form.data "Rank" "id" %};     {# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
-			const rRanks 		= {% get_list form.data "Rank" "rank" %};   {# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
-			const rPlayers 		= {% get_list form.data "Rank" "player" %}; {# Primary Keys of the players corresponding to the ranks in Ranking. #}
-			let tIDs  		= {% get_list form.data "Team" "id" %}; 	{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
-	
-			{# Performance Related Data - lists with one entry per performance #}
-			let pIDs          = {% get_list form.data "Performance" "id" %}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
-			const pPlayers 		= {% get_list form.data "Performance" "player" %};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
-			const pWeights 		= {% get_list form.data "Performance" "partial_play_weighting" %};	{# Partial play weighting factors corresponding to the players in Players #}
+		    {#	We dont use standard Django formsets here (we build the formset in Javascript dynamically) #}
+		    {#	And this is the source data for the Rank and performance Javascript formset generator. #}
+		    {#	So we need to populate it from the form.data. #}
+		    let rIDs          = {% get_list form.data "Rank" "id" %};     {# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+		    const rRanks 	  = {% get_list form.data "Rank" "rank" %};   {# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
+		    const rScores 	  = {% get_list form.data "Rank" "score" %};  {# List of scores for the the rankers. #}
+		    const rPlayers 	  = {% get_list form.data "Rank" "player" %}; {# Primary Keys of the players corresponding to the ranks in Ranking. #}
+		    let tIDs  		  = {% get_list form.data "Team" "id" %}; 	  {# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
 
-			{# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
-			const pPlayerTeams 	= {% get_list form.data "Performance" "team_num" %};	{# List of team numbers for each player #}
-			const rTeamNames 	= {% get_list form.data "Team" "name" %};				{# List of Team names #}
+		    {# Performance Related Data - lists with one entry per performance #}
+		    let pIDs          = {% get_list form.data "Performance" "id" %}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+		    const pPlayers 	  = {% get_list form.data "Performance" "player" %};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
+		    const pScores 	  = {% get_list form.data "Performance" "score" %};						{# Scores for the performers only needed in team play if individual scores are needed #}
+		    const pWeights 	  = {% get_list form.data "Performance" "partial_play_weighting" %};	{# Partial play weighting factors corresponding to the players in Players #}
 
-			// Build rTeamPlayers from the submitted team_nums and pPlayers
-			let rTeamPlayers 	= [];													{# List of Lists of Team Players. #}
-			
-			const num_teams = Number({{form.data.num_teams}});
-			
-			if (num_teams) {
-				// push an empty list of players for each team 
-				for (let i=0; i<Number({{form.data.num_teams}}); i++) rTeamPlayers.push([]);
-				// push the team players onto the right list
-				for (let i=0; i<pPlayers.length; i++) rTeamPlayers[pPlayerTeams[i]].push(pPlayers[i]);
-			}
-			
+		    {# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
+		    const pPlayerTeams 	= {% get_list form.data "Performance" "team_num" %};	{# List of team numbers for each player #}
+		    const rTeamNames 	= {% get_list form.data "Team" "name" %};				{# List of Team names #}
+
+		    // Build rTeamPlayers from the submitted team_nums and pPlayers
+		    let rTeamPlayers 	= [];													{# List of Lists of Team Players. #}
+
+		    const num_teams = Number({{form.data.num_teams}});
+
+		    if (num_teams) {
+		        // push an empty list of players for each team
+		        for (let i=0; i<Number({{form.data.num_teams}}); i++) rTeamPlayers.push([]);
+		        // push the team players onto the right list
+		        for (let i=0; i<pPlayers.length; i++) rTeamPlayers[pPlayerTeams[i]].push(pPlayers[i]);
+		    }
+
 		{# 	Otherwise it is a basic Create or Update form. Either way form.related_forms is where #}
 		{#	we look for Rank and Performance initialisation data #}
+		{#	Rank scores are used in individual play and team play #}
+		{#  Performance scores are used only in team play when INDIVIDUAL scores are needed #}
 		{% else %}
-			{# Rank Related Data - lists with on entry per rank #}
-			let rIDs         = {{ form.related_forms.Rank.field_data.id|json }};         		{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
-			const rRanks 	 = {{ form.related_forms.Rank.field_data.rank|json }};       		{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
-			const rPlayers 	 = {{ form.related_forms.Rank.field_data.player|json }};       	{# Primary Keys of the players corresponding to the ranks in Ranking. #}
-			let tIDs  		 = {{ form.related_forms.Rank.field_data.team|json }}; 			{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
-	
-			{# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
-			const rTeamNames 	= {{ form.related_forms.Rank.field_data.Team__name|QuoteValues|safe }};  {# List of Team names #}
-			const rTeamPlayers 	= {{ form.related_forms.Rank.field_data.Team__players|json }};     {# List of Lists of Team Players. #}
-	
-			// FIXME: these pIDs in Team mode are NOT appearing in hidden fields, bar the first one. 
-			// Something is broken. Diagnose. Javascript bug in table creation methinks.
-	
-			{# Performance Related Data - lists with one entry per performance #}
-			let pIDs          = {{ form.related_forms.Performance.field_data.id|json }}; 					{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
-			const pPlayers 		= {{ form.related_forms.Performance.field_data.player|json }};				{# Primary Keys of the players corresponding to the ranks in Performance. #}
-			const pWeights 		= {{ form.related_forms.Performance.field_data.partial_play_weighting|json }};{# Partial play weighting factors corresponding to the players in Players #}
+		    {# Rank Related Data - lists with on entry per rank #}
+		    let rIDs         = {{ form.related_forms.Rank.field_data.id|json }};         	{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
+		    const rRanks 	 = {{ form.related_forms.Rank.field_data.rank|json }};       	{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
+		    const rScores 	 = {{ form.related_forms.Rank.field_data.score|json }};         {# List of ranker scores #}
+		    const rPlayers 	 = {{ form.related_forms.Rank.field_data.player|json }};       	{# Primary Keys of the players corresponding to the ranks in Ranking. #}
+		    let tIDs  		 = {{ form.related_forms.Rank.field_data.team|json }}; 			{# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
+
+		    {# Team Related Data - lists with on entry per rank/team - there's one team per rank #}
+		    const rTeamNames 	= {{ form.related_forms.Rank.field_data.Team__name|QuoteValues|safe }};  {# List of Team names #}
+		    const rTeamPlayers 	= {{ form.related_forms.Rank.field_data.Team__players|json }};     {# List of Lists of Team Players. #}
+
+		    // FIXME: these pIDs in Team mode are NOT appearing in hidden fields, bar the first one.
+		    // Something is broken. Diagnose. Javascript bug in table creation methinks.
+
+		    {# Performance Related Data - lists with one entry per performance #}
+		    let pIDs            = {{ form.related_forms.Performance.field_data.id|json }}; 					{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
+		    const pPlayers 		= {{ form.related_forms.Performance.field_data.player|json }};				{# Primary Keys of the players corresponding to the ranks in Performance. #}
+		    const pScores 		= {{ form.related_forms.Performance.field_data.score|json }};				{# Scores - if the game supports scoring . #}
+		    const pWeights 		= {{ form.related_forms.Performance.field_data.partial_play_weighting|json }};{# Partial play weighting factors corresponding to the players in Players #}
 		{% endif %}
-		
+
 		{# Teams have optional names. Replace None with the default name of 'Team n' #}
 		for (let i = 0; i < rTeamNames.length; i++) {
-			if (rTeamNames[i] == null || rTeamNames[i] == 'undefined') rTeamNames[i] = 'Team ' + (i + 1);
+		    if (rTeamNames[i] == null || rTeamNames[i] == 'undefined') rTeamNames[i] = 'Team ' + (i + 1);
 		}
 
 		{# Store the Rank Data keyed on rank ID #}
 		const ridRanks 		= {};
+		const ridScores 	= {};
 		const ridPlayers 	= {};
 		const ridTeams 	 	= {};
 		for (let i = 0; i < rIDs.length; i++) {
-			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
-			const rid = rIDs[i] || "id_" + i;		rIDs[i] = rid;
-			ridTeams[rid] 		= tIDs[i];
-			ridRanks[rid] 		= rRanks[i];
-			ridPlayers[rid] 	= rPlayers[i];
+		    // Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+		    const rid = rIDs[i] || "id_" + i;		rIDs[i] = rid;
+		    ridTeams[rid] 		= tIDs[i];
+		    ridRanks[rid] 		= rRanks[i];
+		    ridScores[rid] 		= rScores[i];
+		    ridPlayers[rid] 	= rPlayers[i];
 		}
-		
+
 		{# Store the Team Data keyed on team ID #}
 		const tidTeamNames   = {};
 		const tidTeamPlayers = {};
 		for (let i = 0; i < rIDs.length; i++) {
-			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
-			const tid = tIDs[i] || "id_" + i;	tIDs[i] = tid;
-			tidTeamNames[tid]	= rTeamNames[i];
-			tidTeamPlayers[tid] = rTeamPlayers[i];
-		}				
-		
+		    // Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+		    const tid = tIDs[i] || "id_" + i;	tIDs[i] = tid;
+		    tidTeamNames[tid]	= rTeamNames[i];
+		    tidTeamPlayers[tid] = rTeamPlayers[i];
+		}
+
 		{# Store the Performance Data keyed on performance ID #}
 		const pidPlayers = {};
+		const pidScores = {};
 		const pidWeights = {};
 		for (let i = 0; i < pIDs.length; i++) {
-			// Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
-			const pid = pIDs[i] || "id_" + i;	pIDs[i] = pid;
-			pidPlayers[pid]		= pPlayers[i];
-			pidWeights[pid]		= pWeights[i];
+		    // Provide a default placeholder for form generation (used if a CreateForm rerenders with errors), not saved yet, no ids yet
+		    const pid = pIDs[i] || "id_" + i;	pIDs[i] = pid;
+		    pidPlayers[pid]		= pPlayers[i];
+		    pidScores[pid]		= pScores[i];
+		    pidWeights[pid]		= pWeights[i];
 		}
-		
-		{# Store all the incoming session properties in a single safe spot #}
-		{# The key is r, p or t for rank ID, performance ID or team ID #}
-		const Session = {'provided'		: rIDs.length > 0,	// A flag to tell of Session Data was provided  TODO: get a more explicit indicator. This works for now.
-						 'rIDs'			: rIDs, 			// Array of rank IDs
-						 'rRanks'		: ridRanks,			// dict of ranks keyed on rID 
-						 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID 
-						 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID
-						 'tTeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
-						 'tTeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
-						 'pIDs'			: pIDs,				// Array of performance IDs
-						 'pPlayers'		: pidPlayers, 		// dict of player IDs keyed on pID 
-						 'pWeights'		: pidWeights}		// dict of performance weights keyed on pID
-						 
-		return Session;
+
+		return session_dict(
+		     rIDs, 			// Array of rank IDs
+		     ridRanks,		// dict of ranks keyed on rID
+		     ridScores,		// dict of scores keyed on rID
+		     ridPlayers,	// dict of player IDs keyed on rID
+		     ridTeams, 		// dict of team IDs keyed on rID
+		     tidTeamNames, 	// dict of team names keyed on tID.
+		     tidTeamPlayers,// dict of team player lists keyed on tID with list of player IDs as value
+		     pIDs,			// Array of performance IDs
+		     pidPlayers, 	// dict of player IDs keyed on pID
+		     pidScores, 	// dict of performance scores keyed on pID
+		     pidWeights		// dict of performance weights keyed on pID
+		    );
 	}
-	
-	const is_team_play = ("{{session.team_play}}" == "True");										
+
+	const is_team_play = ("{{session.team_play}}" == "True");
 
 	{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
 	{# These can change if the game is changed, so they are variables not constants #}
-	var game_individual_play 		= {{game_individual_play}};
-	var game_team_play 				= {{game_team_play}};
-	var game_min_players 			= {{game_min_players}};
-	var game_max_players 			= {{game_max_players}};
-	var game_min_players_per_team 	= {{game_min_players_per_team}};
-	var game_max_players_per_team 	= {{game_max_players_per_team}};
-	
+	{#	we use var to create true globals #}
+	let game_individual_play 		=  {{game_individual_play}};
+	let game_team_play 				=  {{game_team_play}};
+	let game_scoring 				= "{{game_scoring}}";
+	let game_min_players 			=  {{game_min_players}};
+	let game_max_players 			=  {{game_max_players}};
+	let game_min_players_per_team 	=  {{game_min_players_per_team}};
+	let game_max_players_per_team 	=  {{game_max_players_per_team}};
+
+	let show_rank_scores = false;
+	let show_perf_scores = false;
+
+	if (is_team_play) {
+		show_rank_scores = game_scoring.includes("TEAM");
+		show_perf_scores = game_scoring.includes("INDIVIDUAL");
+	} else {
+		show_rank_scores = game_scoring.includes("INDIVIDUAL");
+		show_perf_scores = false;
+	}
+
 	{# The game props and player fetcher URLs needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
-	const game_props_url 			= "{% url 'get_game_props' 1 %}" 
-	const player_selector_url 		= "{% url 'get_selector' "Player" 1 %}" 
+	const game_props_url 			= "{% url 'get_game_props' 1 %}"
+	const player_selector_url 		= "{% url 'get_selector' "Player" 1 %}"
 </script>
 
 {# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}

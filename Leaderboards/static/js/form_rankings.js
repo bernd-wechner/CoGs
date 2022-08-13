@@ -2,6 +2,20 @@
 
 const debug = true;
 
+// This is taken from: https://stackoverflow.com/a/54734354/4002633
+// it doesn't work alas if inclided as a separate <script> tage in the sourcig file.
+// It's formalised here: https://github.com/colxi/required-parameters-js
+Object.defineProperty( window , 'required'  , {
+  get : ()=>{
+    let err     = new Error('');
+    let trace   = err.stack.split('\n');
+    let msg     = '';
+    for(let i=2;i<trace.length;i++)  msg+=trace[i]+'\n';
+    throw 'Error : Missing required parameter\n' + msg;
+  },
+  configurable : false
+});
+
 // Load the session data (function is defined in the loading html file because it needs
 // to use on Django template tags to get input from Django with which to populate the
 // Sessions structure.
@@ -57,7 +71,9 @@ const id_ptotal     	  = id_prefix + name_ptotal;
 const id_ttotal     	  = id_prefix + name_ttotal;
 
 // Actual model fields
-const name_rank   		  = rank_prefix + form_number + '-rank';						 	// Ranking (1st, 2nd, 3rd)
+const name_rank   		  = rank_prefix + form_number + '-rank';                            // Ranking (1st, 2nd, 3rd)
+const name_rscore 		  = rank_prefix + form_number + '-score'; 	                        // In game score (int)
+const name_pscore 		  = performance_prefix + form_number + '-score'; 	                // In game score (int)
 const name_player     	  = performance_prefix + form_number + '-player';	                // Player name/id in the Performance object (and the the selector)
 const name_player_copy    = rank_prefix + form_number + '-player';	                        // Player name/id in the Rank object in individual play mode (copied from name_player on submit)
 const name_weight 		  = performance_prefix + form_number + '-partial_play_weighting'; 	// Partial play weighting (0-1)
@@ -65,6 +81,8 @@ const name_weight 		  = performance_prefix + form_number + '-partial_play_weight
 const id_rank 		      = id_prefix + name_rank;
 const id_player 		  = id_prefix + name_player;
 const id_player_copy	  = id_prefix + name_player_copy;
+const id_rscore 		  = id_prefix + name_rscore;
+const id_pscore 		  = id_prefix + name_pscore;
 const id_weight 		  = id_prefix + name_weight;
 
 const name_team_name  	  	= team_prefix + form_number + '-name';
@@ -331,16 +349,16 @@ function OnSubmit(event) {
 	    			// It is only pids that have no value that remain defined on the second pass.
 	    			if ((pass == 0 && pid.value) || (pass == 1 && pid)) {
 		    			// Fix the widget names from our internal t.p format to Django's expected integer index
-		    			const pid 	 = fixWidget(tbl_teams, name_pid,    cfn, P);
-		    			const player = fixWidget(tbl_teams, name_player, cfn, P);
-		    			const weight = fixWidget(tbl_teams, name_weight, cfn, P);
+		    			const pid 	  = fixWidget(tbl_teams, name_pid,    cfn, P);
+		    			const player  = fixWidget(tbl_teams, name_player, cfn, P);
+		    			const pscore  = fixWidget(tbl_teams, name_pscore, cfn, P);
+		    			const weight  = fixWidget(tbl_teams, name_weight, cfn, P);
 		    			P++;
 
 		                // Add a hidden element that submits the team index number for this Performance.
 		                // It is set so that the server can later (when submitted) associate the player
 		    			// with other players on the same team. That is how we define teams, as a collection
-		    			// of players.der
-			// i.e. set tabIndex to -1, and then add a span following the select which has a
+		    			// of players.
 		                const team_num  = document.createElement("input");
 		                team_num.type 	= "hidden";
 		                team_num.value 	= t;
@@ -533,7 +551,9 @@ function OnSubmit(event) {
 		// Remove the individual play form completely before submitting
 		if ($$(id_indiv_div)) $$(id_indiv_div).remove();
 	}
-	else { // it's individual play (the team_play checkbox is not checked)
+
+	// it's individual play (the team_play checkbox is not checked)
+	else {
 		const num_players = Number($$(id_num_players).value);
 
         // On Add operations remove the rid and pid for each player from the submission as a safety.
@@ -557,7 +577,7 @@ function OnSubmit(event) {
 			// must be done server side, on client side here we can check for any deleted
 			// teams and ensure we add -DELETE requests to the submission.
 			//
-			// The server should only delete such teams of coursem if there are no references
+			// The server should only delete such teams of course if there are no references
 			// left to that team and so these -DELETE requests still need server side attention.
 			//
 			// is_team_play is true only if session.team_play of the session loaded for editing
@@ -724,6 +744,69 @@ function OnSubmit(event) {
 	}
 }
 
+// Build a Session object (dict) from supplied data.
+//
+// A Session is one sitting of players or teams of players at a table playing a game, with an outcome (ranks or scores).
+//
+// Four data sources in three contexts are currently used to build this and this function serves to centralise the
+// construction ensuring the same thing is built regardless of context or source and so the supplier knows what to
+// provide and no-one gets left behind (if the structure changes).
+//
+// The three contexts (and four data sources) are:
+//
+// 1. The Django template engine (appearing as literal definitons herein)
+// 2. The Django form data (arrriving in form.data) whe Django reloads the form after an error
+// 3. When the form herein changes its presentation mode betwee a Team play game and an Individual play game and back
+//      a. When switching to team play mode the source is an existing individual form
+//      b. When switching to individual mode the scource is an existing team form
+//      These forms take such a Session object to populate the forms they build, So when moving to the other form
+//      the contents are delivered bi the same (input) Session structure.
+//
+// By forcing required paramters using:
+//		https://github.com/colxi/required-parameters-js
+// callers failing to supply data can easily be identified when debugging (throwing console errrors)
+// (a shame standard JS doesn't support this well)
+//
+// The key is r, p or t for rank ID, performance ID or team ID
+function session_dict(
+		// Rank ID (rID) indexed items
+		rIDs           = required,  // Array of rank IDs
+		ridRanks       = required,	// dict of ranks keyed on rID
+		ridScores      = required,	// dict of scores keyed on rID
+		ridPlayers     = required,	// dict of player IDs keyed on rID
+		ridTeams       = required, 	// dict of team IDs keyed on rID
+		// Team ID (tID) indexed items
+		tidTeamNames   = required, 	// dict of team names keyed on tID.
+		tidTeamPlayers = required, 	// dict of team player lists keyed on tID with list of player IDs as value
+		// Performance ID (pID) indexed items
+		pIDs           = required,	// Array of performance IDs
+		pidPlayers     = required, 	// dict of player IDs keyed on pID
+		pidScores      = required, 	// dict of performance scores keyed on pID
+		pidWeights     = required	// dict of performance weights keyed on pID
+	) {
+
+	// The key is r, p or t for rank ID, performance ID or team ID
+	//If this changes make sure to update the function collect_session_data_from as well which produces the same structure
+	const Session = {'provided'		: rIDs.length > 0,	// A flag to tell if Session Data was provided  TODO: get a more explicit indicator. This works for now.
+					 // Rank ID (rID) keyed dicts
+					 'rIDs'			: rIDs, 			// Array of rank IDs
+					 'rRanks'		: ridRanks,			// dict of ranks keyed on rID
+					 'rScores'		: ridScores,		// dict of scores keyed on rID
+					 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID
+					 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID
+					 // Team ID (tID) keyed dicts
+					 'tTeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
+					 'tTeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
+					 // Performance ID (pID) keyed dicts
+					 'pIDs'			: pIDs,				// Array of performance IDs
+					 'pPlayers'		: pidPlayers, 		// dict of player IDs keyed on pID
+					 'pScores'		: pidScores, 		// dict of performance scores keyed on pID
+					 'pWeights'		: pidWeights}		// dict of performance weights keyed on pID
+
+	return Session;
+}
+
+
 // Re-configures the form for a new game if the game is changed (on an edit form).
 function configureGame() {
 	// If these aren't available (because the game doesn't support team play) set some sesnible defaults presuming individual mode.
@@ -752,7 +835,6 @@ function configureGame() {
 	else if (game_individual_play && !game_team_play) show_team_play = false;
 	else if (game_team_play && !game_individual_play) show_team_play = true;
 
-	// If the game supports only one mode, force that mode.
 	if (show_team_play) {
 		if (!team_switch.checked) {
 			team_switch.checked = true;
@@ -819,16 +901,30 @@ function switchGame(event) {
 
 	REQUEST.onreadystatechange = function () {
 	    if (this.readyState === 4 && this.status === 200){
+			const team_switch = $$(id_team_switch);
+			const team_play = team_switch.checked;
+
 	        // the request is complete, parse data
 	        const response = JSON.parse(this.responseText);
 
 	        // and save in the global game properties
 	        game_individual_play 	  = response.individual_play;
 			game_team_play 			  = response.team_play;
+			game_scoring 			  = response.scoring;
 			game_min_players 		  = response.min_players;
 			game_max_players 		  = response.max_players;
 			game_min_players_per_team = response.min_players_per_team;
 			game_max_players_per_team = response.max_players_per_team;
+
+			if (team_play) {
+				show_rank_scores = game_scoring.includes("TEAM");
+				show_perf_scores = game_scoring.includes("INDIVIDUAL");
+			} else {
+				show_rank_scores = game_scoring.includes("INDIVIDUAL");
+				show_perf_scores = false;
+			}
+
+			showhideRankScoreColumns();
 			configureGame();
 	    }
 	};
@@ -848,10 +944,15 @@ function switchMode(event) {
     	// Switch from individual play to team play
 		const num_teams = $$(id_num_teams);
 
-		const session = convert_session_data_from(table_players);
+		const session = collect_session_data_from(table_players);
 
 		num_teams.value = session["rIDs"].length;
 		num_teams.defaultValue = num_teams.value;
+
+		// before adjusting tables set the globals
+		// communicating score widget display preferences.
+		show_rank_scores = game_scoring.includes("TEAM");
+		show_perf_scores = game_scoring.includes("INDIVIDUAL");
 
 		const table_teams = adjustTable(num_teams, session);
 
@@ -861,6 +962,7 @@ function switchMode(event) {
 	    	const table_teams = $$(id_table);
 			const num_team_players = findChildByName(table_teams, real_name_num_team_players);
 
+			showhideRankScoreColumns();
 			adjustTable(num_team_players, session);
 		}
 
@@ -869,25 +971,72 @@ function switchMode(event) {
     	// Switch from team play to individual play
 		const num_players = $$(id_num_players);
 
-		const session = convert_session_data_from(table_teams);
+		const session = collect_session_data_from(table_teams);
 
 		num_players.value = session["rIDs"].length;
 		num_players.defaultValue = num_players.value;
 
+		// before adjusting tables set the globals
+		// communicating score widget display preferences.
+		show_rank_scores = game_scoring.includes("INDIVIDUAL");
+		show_perf_scores = false;
+
+		showhideRankScoreColumns();
 		adjustTable(num_players, session);
 
 		showDiv("indiv");
     }
 }
 
+// The table shave columns for ranks and scores. Depending on the game.scoring configuration
+// either ranks or scores are relevant for data entry. Two globals are maintained on page load
+// and impacting context switchs, namly if the game is changed, or if the team_play mode is
+// changed. They are show_rank_scores and show_perf_scores respectively, from which we can
+// infer what to do. The respective cells (th and td elements) all have class rank_column and
+// rscore_column and pscore_column to make them easy to find.
+// Note: applySessionToRow applies visibility to these columns when the table rows are created.
+//       at load time or when team/player counts change too. But this should be called before
+// 		 rows are built to catch the table headers.
+function showhideRankScoreColumns(element_id) {
+	const team_switch  = document.getElementById(id_team_switch);
+	const team_play    = team_switch.checked;
+
+	if (element_id == undefined) element_id = team_play ? id_teams_div : id_indiv_div;
+	const element = document.getElementById(element_id);
+
+	const rank_cells   = element.querySelectorAll('.rank_column');   // Can be inferred from scores if needed
+	const rscore_cells = element.querySelectorAll('.rscore_column'); // Can be used in place of ranks
+	const pscore_cells = element.querySelectorAll('.pscore_column'); // Only needed for TEAM_AND_INDIVIDUAL scoring games
+
+	if (team_play) {
+		rank_cells.forEach(cell => cell.style.display = show_rank_scores ? "none" : "block");
+		rscore_cells.forEach(cell => cell.style.display = show_rank_scores ? "block" : "none");
+		pscore_cells.forEach(cell => cell.style.display = show_perf_scores ? "block" : "none");
+	} else {
+		rank_cells.forEach(cell => cell.style.display = show_rank_scores ? "none" : "block");
+		rscore_cells.forEach(cell => cell.style.display = show_rank_scores ? "block" : "none");
+	}
+}
+
 // from_table can be one of tblIndividualPlay or tblTeamPlay from the associated template
-// Will extract from the widgets data to fill a session data dictionary
-function convert_session_data_from(from_table) {
+// Will extract from the widgets data to fill a session data dictionary specifically for
+// transition the presentation mode (indivual to team play or vice versa)
+function collect_session_data_from(from_table) {
+	// TODO: the to_table is also relevant for round tripping!
+	//       Because we have a Players table and a Teams Table in two divs
+	//       Those tables can hold information. That is we can conserve
+	//       player scores indeed and ranks etc.
+	// Consider: defining the to_table based on the provided from_table (the other one)
+	//           and fetching data form it too and comparing as we build the session.
+	//           This might make round tripping more robust even clean.
+
 	if (from_table.id == id_tbl_players) {
+		// Collecting a teams/teamplayers Session from a players table.
+		//
 		// We look for
 		//	one rank_id per player in widget name_rid
 		// 	one rank per player in the widget with name_rank
-		//	one performance id per player in widget name_pid
+		//	one performance id per player in widget name_pweightid
 		//  one player id per player in widget name name_player
 		//	one partial play weight per player in widget name_weight
 		//
@@ -899,79 +1048,140 @@ function convert_session_data_from(from_table) {
 		// as an & separated list. The last team if needed will accept the remainder.
 		const rIDs = [];
 		const ridRanks = {};
+		const ridScores = {};
 		const ridTeams = {};
 		const tidTeamNames = {};
 		const tidTeamPlayers = {};
-		const plidPerformances = {};
-		const plidWeights = {};
+		const pIDs = [];
+		const pidPlayers = {};
+		const pidScores = {};
+		const pidWeights = {};
 
 		// Get the number of teams and players respecting minima specifed by globals
 		// game_min_teams and game_min_players_per_teamn trying to divide up the specifed
 		// number players into teams and then padding out the number of players if needed
 		// to satsify the mimima specified.
+		// The teams session may thus have more players in it than were provided in the
+		// players table!
 		const np = Number($$(id_num_players).value);
 		const num_teams = Math.max(game_min_teams, Math.trunc(np / game_min_players_per_team));
 		const num_players = Math.max(np, game_min_teams * game_min_players_per_team);
 
+		// Walk all players adding to the lists declared above.
+		// A couple of accumulators for move to Rank ID keyed items in a second loop
 		const ranks = [];
+		const rscores = [];
 		for (let p=0; p<num_players; p++) {
-			const rid 		= getWidget(from_table, name_rid, p);
-			const pid 		= getWidget(from_table, name_pid, p);
-			const rank 		= getWidget(from_table, name_rank, p);
-			const player 	= getWidget(from_table, name_player, p);
-			const weight 	= getWidget(from_table, name_weight, p);
-
+			// The team this player lands in
 			const t = Math.trunc(p / game_min_players_per_team);
 			const tID = id_prefix+t;
-			tidTeamNames[tID] = "Team " + t;
+
+			// Get the widgets from the Players table. Each player has a rank (rid)
+			// But we're moving to teams where each team has a rid, so we will
+			// use a code where the rid for a team is the & separtaed list of player
+			// rids. We do this to facilitate moving back and forth between modes
+			// losslely and so that if a change is made and submitted, server side
+			// know to fix the ranks appropriately in the database.
+			// Rank ID keyed items first
+			const rid 		= getWidget(from_table, name_rid, p);
+			const rank 		= getWidget(from_table, name_rank, p);
+			const rscore 	= getWidget(from_table, name_rscore, p);
+			// Performance ID keyed items next
+			const pid 		= getWidget(from_table, name_pid, p);
+			const plid 	    = getWidget(from_table, name_player, p);
+			const pscore 	= getWidget(from_table, name_pscore, p);
+			const weight 	= getWidget(from_table, name_weight, p);
 
 			// Get values for all the fields, but store placeholder values of the form id_n
 			// where none is available because the Session object we're building wants to use
 			// id's for indexes. We'll have to make sure before we submit that any such
 			// placeholder values are removed.
 			const default_id = id_prefix+p;
+			// Rank ID keyed items first
 			const rID = getNumberValue(rid, default_id);
-			const pID = getNumberValue(pid, default_id);
-			const plID = getNumberValue(player, default_id);
 			const rVal = getNumberValue(rank, t+1);
+			const rsVal = getNumberValue(rscore, null);
+
+			// Performance ID keyed items next
+			const pID = getNumberValue(pid, default_id);
+			const plID = getNumberValue(plid, default_id);
+			const psVal = getNumberValue(pscore, null);
 			const wVal = getNumberValue(weight, 1);
 
+			tidTeamNames[tID] = "Team " + t;
+
+			// The first player in a team
 			if (rIDs.length <= t) {
 				// Then start the lists for each team
 				rIDs.push(rID);
 				tidTeamPlayers[tID] = [plID];
+
+				// Accumulators for later move Rank ID keyed lsits ridRanks and ridScores
 				ranks[t] = rVal;
+				rscores[t] = rsVal; // Accumulate (sum up) the rank scores of the players to team rank scores
 			}
+			// Subsequent players in the team
 			else {
-				// Add a player to the list
+				// Add a player to the list (folding them together as a & separted string of IDs)
 				rIDs[t] = rIDs[t] + "&" + rID;
 				tidTeamPlayers[tID].push(plID);
+
+				// Accumulators for later move Rank ID keyed lsits ridRanks and ridScores
+				rscores[t] += rsVal; // Accumulate the ranks scores of the players
 			}
 
-			plidPerformances[plID] = pID;
-			plidWeights[plID] = wVal;
+			pIDs.push(pID);
+			pidPlayers[pID] = plID;
+			pidWeights[pID] = wVal;
+
+			// Indiv mode player scores are rank scores (rank linked) and performance scores aren't used.
+			// In team mode rank scores are used and maybe performance scores. So converting from individual
+			// to team we accumulated the scrores for a tream (rank) score, and conserve the players scores
+			// pid scores. The source in each case is psVal if a value is available else rsVal.
+			pidScores[pID] = psVal == null ? rsVal : psVal;
 		}
 
+		// We have read a players table (to move to a teams  session)
+		// the rIDs now contain & delimted (string)lists of erstwhile player rank IDs
+		// the ranks of each team were taken from the rank fo the first player in that team.
+		//    This won't be reversible. Round tripping Indiv>Team>Indiv will lose Indiv ranks
+		//    The move back (below) will give all player son the team the team rank (a tie)
+		//    Accepted as a tolerable edge case.
+		// the scores for each team were taken as the sum of all player scores
+		//    This won't be reversible. Round tripping Indiv>Team>Indiv will lose Indiv scores
+		//    The move back (below) will give all players on the team one nth of the team score
+		//    to permit round tripping of a sort that works. But individual scores will be lost
+		//    int the transition to team and back.
+		//    Accepted as a tolerable edge case.
 		for (let t=0; t< rIDs.length; t++) {
 			const rID = rIDs[t];
 			const tID = id_prefix+t;
 
 			ridTeams[rID] = tID;
 			ridRanks[rID] = ranks[t];
+			ridScores[rID] = rscores[t];
 		}
 
-		const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
-		 		 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID
-		 		 		 'Players'		: {},	    		// dict of player IDs keyed on rID
-		 		 		 'Teams'		: ridTeams, 		// dict of team IDs keyed on rID
-		 		 		 'TeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
-		 		 		 'TeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
-		 		 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID
-		 		 		 'Weights'		: plidWeights}		// dict of performance weights keyed on player ID
-
-		return Session;
+		return session_dict(
+					 // Rank ID (rID) keyed dicts
+					 rIDs, 			// Array of rank IDs
+					 ridRanks,		// dict of ranks keyed on rID
+					 ridScores,		// dict of scores keyed on rID
+					 {},			// dict of player IDs keyed on rID
+					 ridTeams, 		// dict of team IDs keyed on rID
+					 // Team ID (tID) keyed dicts
+					 tidTeamNames, 	// dict of team names keyed on tID.
+					 tidTeamPlayers,// dict of team player lists keyed on tID with list of player IDs as value
+					 // Performance ID (pID) keyed dicts
+					 pIDs,			// Array of performance IDs
+					 pidPlayers, 	// dict of player IDs keyed on pID
+					 pidScores, 	// dict of performance scores keyed on pID
+					 pidWeights		// dict of performance weights keyed on pID
+				);
 	}
-	else if (from_table.id = id_tbl_teams) {
+	else if (from_table.id == id_tbl_teams) {
+		// Collecting an individual players Session from a team/teamplayers table.
+		//
 		// We look for
 		//	one rank_id per team in widget name_rid
 		// 	one rank per team in the widget with name_rank
@@ -988,73 +1198,142 @@ function convert_session_data_from(from_table) {
 		// which has form_number in it of 0, 1, 2, 3 etc for each team.
 
 		// Initialise the session data buckets
+		// Rank ID keyed
 		let rIDs = [];
 		let ridRanks = {};
+		let ridScores = {};
 		let ridPlayers = {};
-		let plidPerformances = {};
-		let plidWeights = {};
+		// As we are moving from a team table to an individual play table
+		// we don't need the Team ID indexed elements
+		// Performance ID keyed
+		let pIDs = [];
+		let pidPlayers = {};
+		let pidWeights = {}
 
 		const num_teams = $$(id_num_teams).value;
 		for (let t=0; t<num_teams; t++) {
-			// The rank widgets
+			// Rank ID keyed items (Performance ID items come from the embracing teams table)
 			const rid 		= getWidget(from_table, name_rid, t);
 			const rank 		= getWidget(from_table, name_rank, t);
+			const rscore 	= getWidget(from_table, name_rscore, t);
 			const team_name = getWidget(from_table, name_team_name, t);
+
+			const rVal = getNumberValue(rank, t);
+			const rsVal = getNumberValue(rscore, null);
 
 			// The number of players in the team at this rank
 			const real_name_num_team_players = name_num_team_players.replace(form_number,t);
 			const num_team_players = findChildByName(from_table, real_name_num_team_players).value;
 
 			// Collect the player data from all the team members
-			const rids = rid.value.split("&");    // rIDs may have been folded from a previous individual->team mode conversion (above)
-			const pids = [];
-			const players = [];
+			const rids    = rid.value.split("&");    // rIDs may have been folded from a previous individual->team mode conversion (above)
+			const pids    = []; // Performance IDs
+			const plids =   []; // Player IDs
+			const ranks   = []; // Ranks for each player in the team
+			const scores  = []; // Scores fo each player (pscore if possible else rscore)
 			const weights = [];
 			for (let p=0; p<num_team_players; p++) {
 				const form_num  = t+"."+p;
+				// Performance ID keyed items (Rank ID items come from the embracing teams table)
 				const pid 		= getWidget(from_table, name_pid, form_num);
-				const player 	= getWidget(from_table, name_player, form_num);
+				const plid 	    = getWidget(from_table, name_player, form_num);
+				const pscore 	= getWidget(from_table, name_pscore, form_num);
 				const weight 	= getWidget(from_table, name_weight, form_num);
 
-				pids.push(pid.value);
-				players.push(player.value);
-				weights.push(weight.value);
+				// Get values for all the fields, but store placeholder values of the form id_n
+				// where none is available because the Session object we're building wants to use
+				// id's for indexes. We'll have to make sure before we submit that any such
+				// placeholder values are removed.
+				const default_id = id_prefix+p;
+				const pID = getNumberValue(pid, default_id);
+				const plID = getNumberValue(plid, default_id);
+				const psVal = getNumberValue(pscore, null);
+				const wVal = getNumberValue(weight, 1);
 
-				// The first player in each team gets the teams rank ID
-				// subsequent players get a rank ID of id_prefix+form_number
-				// which is a placeholder only, and on submission we have to
-				// blank that out so that a standard Django formset save knows
-				// to generate a new rank ID for that player.
+				pids.push(pID);
+				plids.push(plID);
+				weights.push(wVal);
+
+				// Ranks and scores are special:
+				//  ranks:
+				// 	 as we build a player session each team player gets the rank of the team.
+				//   (modellinga tie among those players in the player mode)
+				//   This does not round trip perfectly. That is if the player session is edited
+				//   that has ranked players, and this is converted to a teams session, only the
+				//   one rank is conserved, and when converting back this is applied to all the
+				//   players that were in that team.
+				// scores:
+				//   There's' a score widget for each player so these can be preserved. Individual
+				//   player scores are summed when building teams, and when unpacking teams again
+				//   if the pscore is still there we can use it. Othwerise we shoudl give each
+				//   pscore on fraction of the rscore so when they are summed above they at least
+				//   approximate a round trip sensibly.
+
+				ranks.push(rVal);
+				scores.push(psVal ? psVal : Math.floor(rsVal/num_team_players));
+
+				// Rank IDs are provided by splitingt he team rank on & above.
+				// BUT, Rank IDs may or may not be available (we ar egoing one team/rank
+				// to many (one per player in the team).
 				//
-				// The rank IDs of the teams can be recycled for use by	the first
-				// player on each team.
+				// For example editing a team session and convgerting it to individual
+				// there wa sone rank per team, and new each player needs a rank. So
+				// if a rank ID is not available from rids above we add a placeholder
+				// which will support round tripping (swithcig mode back and forth and
+				// conserving data entered.
+				//
+				// Because Rank IDs are a hidden field we can pull this conserving trick
+				// which we don't have available for ranks themselves or scores (as those)
+				// fields are visible and so the conversion from player to teams summarises
+				// the data per team and can't unwind it again to original if round tripping
+				// back to individual.
 				if (p>=rids.length) rids.push(id_prefix+form_num);
 			}
 
-			// Now push all the players into the session data buckets
+			// If the sum of scores is not the same as the rscore, spread the remainder out among
+			// first players just because (to maintain the rsVal = num_team_players * psVal identity)
+			let sum_scores = scores.reduce((a, b) => a + b);
+			if (sum_scores < rsVal)
+				for (let p=0; num_team_players-(rsVal-sum_scores); p++)
+					scores[p] += 1;
+			sum_scores = scores.reduce((a, b) => a + b);
+			console.assert(sum_scores != rsVal, "Score distribution failed!")
+
+			// Now push all the collected player info into the session data buckets
 			for (let p=0; p<num_team_players; p++) {
+				// Rank ID keyed items
 				const rid = rids[p];
 				rIDs.push(rid);
 				ridRanks[rid] = rank.value;
-
-				const plid =  players[p];
+				ridScores[rid] = scores[p];
 				ridPlayers[rid] = plid;
 
-				plidPerformances[plid] = pids[p];
-				plidWeights[plid] = weights[p];
+				// Performance ID keyed items
+				// In player mode scores are Rank associated and no perfromance associated scorers are used
+				// Performance associated scores are only used if a game supports Team and Inidividual scoring.
+				const pid =  pids[p];
+				pIDs.push(pid);
+				pidPlayers[pid] = plid;
+				pidWeights[pid] = weights[p];
 			}
 		}
 
-		const Session = {'rIDs'			: rIDs, 			// Array of rank IDs
-				 		 'Ranks'		: ridRanks,			// dict of ranks keyed on rID
-				 		 'Players'		: ridPlayers,	    // dict of player IDs keyed on rID
-				 		 'Teams'		: {}, 				// dict of team IDs keyed on rID
-				 		 'TeamNames'	: {}, 				// dict of team names keyed on tID.
-				 		 'TeamPlayers'	: {}, 				// dict of team player lists keyed on tID with list of player IDs as value
-				 		 'pIDs'			: plidPerformances, // dict of performance IDs keyed on player ID
-				 		 'Weights'		: plidWeights}		// dict of performance weights keyed on player ID
-
-		return Session;
+		return session_dict(
+					 // Rank ID (rID) keyed dicts
+					 rIDs, 			// Array of rank IDs
+					 ridRanks,		// dict of ranks keyed on rID
+					 ridScores,	    // dict of scores keyed on rID
+					 ridPlayers,	// dict of player IDs keyed on rID
+					 {}, 			// dict of team IDs keyed on rID
+					 // Team ID (tID) keyed dicts
+					 {}, 			// dict of team names keyed on tID.
+					 {}, 			// dict of team player lists keyed on tID with list of player IDs as value
+					 // Performance ID (pID) keyed dicts
+					 pIDs,			// Array of performance IDs
+					 pidPlayers, 	// dict of player IDs keyed on pID
+					 {}, 			// dict of performance scores keyed on pID
+					 pidWeights		// dict of performance weights keyed on pID
+				);
 	}
 }
 
@@ -1296,11 +1575,13 @@ function applySessionToRow(session, row, table_type) {
     // Select the values we'll use for those widgets
     const rids 			= (session && "rIDs" in session) 		 ? session["rIDs"] 		   : [];
     const ranks 		= (session && "rRanks" in session) 		 ? session["rRanks"]	   : {};
+    const rscores 		= (session && "rScores" in session) 	 ? session["rScores"] 	   : {};
     const rplayers 		= (session && "rPlayers" in session) 	 ? session["rPlayers"] 	   : {};
 
     const pids 			= (session && "pIDs" in session) 		 ? session["pIDs"] 		   : [];
-    const weights 		= (session && "pWeights" in session) 	 ? session["pWeights"] 	   : {};
     const pplayers 		= (session && "pPlayers" in session) 	 ? session["pPlayers"] 	   : {};
+    const pscores 		= (session && "pScores" in session) 	 ? session["pScores"] 	   : {};
+    const weights 		= (session && "pWeights" in session) 	 ? session["pWeights"] 	   : {};
 
     const teams 		= (session && "rTeams" in session) 		 ? session["rTeams"] 	   : {};
     const teamnames 	= (session && "tTeamNames" in session) 	 ? session["tTeamNames"]   : {};
@@ -1316,7 +1597,8 @@ function applySessionToRow(session, row, table_type) {
     	    const rank 			= getWidget(row, name_rank);       // This is the rank itself, a dango field for generic processing, but with a default value added when created here as well
     	    const player 		= getWidget(row, name_player);     // This is the name/id of the player with that rank, a dango field for generic processing
     	    const player_copy 	= getWidget(row, name_player_copy);// This is a copy of the player we need to keep of player (see header for details)
-    	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting, a dango field for generic processing
+    	    const rscore 		= getWidget(row, name_rscore);     // In Individual mode each rank has a score, performances need no score
+    	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting
 
     	    const rank_id 	    = entry_id < rids.length ? rids[entry_id] 	: "";
 			const rank_value 	= rank_id in ranks ? ranks[rank_id] : Number(entry_id)+1;
@@ -1324,6 +1606,7 @@ function applySessionToRow(session, row, table_type) {
     	    const perf_id 	    = entry_id < pids.length ? pids[entry_id] 	 : "";
     	    const player_id 	= perf_id in pplayers 	 ? pplayers[perf_id] : "";
     	    const player_id2 	= rank_id in rplayers 	 ? rplayers[rank_id] : "";
+			const rscore_value  = rank_id in rscores     ? rscores[rank_id]  : "";
 			const weight_value  = perf_id in weights     ? weights[perf_id]  : 1;
 
 			console.assert(player_id == player_id2, "Session data seems corrupt. Performance and Rank Player IDs not in agreement.");
@@ -1332,12 +1615,17 @@ function applySessionToRow(session, row, table_type) {
             rank.value 	 = rank_value;
             player.value = player_id;
             pid.value 	 = perf_id;
+            rscore.value = rscore_value;
             weight.value = weight_value;
             player_copy.value = player_id;
 
 			// Set the value of the select2 widget for player
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
+
+            // Set the Rank score visitbility as requested (global set by game and team_play options)
+            getParent(rank, 'TD').style.display   = (show_rank_scores ? "none" : "block");
+            getParent(rscore, 'TD').style.display = (show_rank_scores ? "block" : "none");
 
 //            var newOption = new Option("Test String",rid.value in players ? players[rid.value] : "", true, true);
 //            $("#"+player.id, row).append(newOption)
@@ -1348,11 +1636,13 @@ function applySessionToRow(session, row, table_type) {
     	case TableType.Teams: {
             const rid 			= getWidget(row, name_rid);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
             const rank 			= getWidget(row, name_rank);       // This is the rank itself, a dango field for generic processing, but with a default value added when created here as well
+            const rscore 		= getWidget(row, name_rscore);     // This is the score for that rank if supported
             const tid 			= getWidget(row, name_tid);        // This is the team ID if we're editing a team session
             const teamname 		= getWidget(row, name_team_name);  // This is the name of the team. Optional in the database and it an stay a local field for specific (non-generic) processing when submitted.
 
             rid.value 	 	= entry_id < rids.length ? rids[entry_id] 		: "";
             rank.value 	 	= rid.value in ranks 	 ? ranks[rid.value] 	: Number(entry_id)+1;
+            rscore.value 	= rid.value in rscores 	 ? rscores[rid.value] 	: "";
             tid.value 	 	= rid.value in teams 	 ? teams[rid.value] 	: "";
             teamname.value 	= tid.value in teamnames ? teamnames[tid.value] : "Team " + (Number(entry_id)+1);
 
@@ -1361,12 +1651,17 @@ function applySessionToRow(session, row, table_type) {
 
             num_players.value = (tID in teamplayers && entry_id < teamplayers[tID].length) ? teamplayers[tID].length : game_min_teams;
 			num_players.defaultValue = num_players.value;
+
+            // Set the Rank score visitbility as requested (global set by game and team_play options)
+            getParent(rank, 'TD').style.display   = (show_rank_scores ? "none" : "block");
+            getParent(rscore, 'TD').style.display = (show_rank_scores ? "block" : "none");
     	}
 		break;
 
     	case TableType.TeamPlayers: {
     	    const pid 			= getWidget(row, name_pid);        // This is the ID of the performance entry in the database. Needed when editing sessions (and the ranks associated with them)
     	    const player 		= getWidget(row, name_player);     // This is the name/id of the player with that rank, a dango field for generic processing
+    	    const pscore 		= getWidget(row, name_pscore);     // This is the performance score, only needed if Individual scores a requested in Team mode
     	    const weight 		= getWidget(row, name_weight);     // This is the partial play weighting, a dango field for generic processing
 
     		const rownum_Team 	  	= getPart(1, entry_id);
@@ -1378,19 +1673,25 @@ function applySessionToRow(session, row, table_type) {
 
     	    const player_id 	= tID in teamplayers ? teamplayers[tID][rownum_TeamPlayer] : "";
 
+			// Performance id's a a tad harder here:
+			const pID = Object.keys(pplayers).find(key => pplayers[key] == player_id);
+
+			// Assign the performance id to the pid form element.
+            pid.value 	 = pID != undefined ? pID : "";
+
+			// Add the player to the player selector widget
             const select2_player = $("#"+$.escapeSelector(player.id), row)
             add_player(select2_player, player_id)
 
 			//This is what we do for a standard select widget (vs. select2)
             //player.value = tID in teamplayers 		? teamplayers[tID][rownum_TeamPlayer] : "";
 
+			// Add the performance score and partial playweighting
+            pscore.value = pID in pscores ? pscores[pID] : "";
             weight.value = player_id in weights ? weights[player_id] : 1;
 
-			// Performance id's a a tad harder here:
-			const perf_id = Object.keys(pplayers).find(key => pplayers[key] == player_id);
-
-			// Assign the performance id to the pid form element.
-            pid.value 	 = perf_id != undefined ? perf_id : "";
+            // Set the Performance score visitbility as requested (global set by game and team_play options)
+            getParent(pscore, 'TD').style.display = (show_perf_scores ? "block" : "none");
     	}
         break;
     };
@@ -1544,7 +1845,9 @@ function RenderTable(template, entries, placein, entry_number, session) {
         }
 
 		// Now lets work out how many steps of "adding" rows we need
-        // On a teams table we add them in pairs so need half the steps (TeamsBody and TeamsDetail)
+        // On a teams table we add them in pairs so need half the steps
+        // (TeamsBody and TeamsDetail) - rowsNeeded was set to twice the
+        // number of new entries above when it's a teams table.
         const steps = table_type == TableType.Teams ? (rowsNeeded - rowsPresent) / 2 : rowsNeeded - rowsPresent;
 
         for (let i = 0; i < steps; i++) {
@@ -1575,11 +1878,14 @@ function RenderTable(template, entries, placein, entry_number, session) {
 
 	            // Now fix all the widget names (form template names to entry specific names)
 	            // Not all these widgets are expected for every table_type of course.
+	            // Those not present are just ignored. This us a superset of both table types.
 	            fixWidget(TRB, name_rid, entry_id);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
 	            fixWidget(TRB, name_pid, entry_id);        // This is the ID of the performance entry in the database. Needed when editing sessions (and the ranks associated with them)
 	            fixWidget(TRB, name_rank, entry_id);       // This is the rank itself, a dango field for generic processing, but with a default value added when created here as well
 	            fixWidget(TRB, name_player, entry_id);     // This is the name/id of the player with that rank, a dango field for generic processing
 	            fixWidget(TRB, name_player_copy, entry_id);// This is a copy of the player we need to keep of player (see header for details)
+	            fixWidget(TRB, name_rscore, entry_id);     // This is the rank score if needed
+	            fixWidget(TRB, name_pscore, entry_id);     // This is the performance score if needed
 	            fixWidget(TRB, name_weight, entry_id);     // This is the partial play weighting, a dango field for generic processing
 	            fixWidget(TRB, name_tid, entry_id);        // This is the team ID if we're editing a team session
 	            fixWidget(TRB, name_team_name, entry_id);  // This is the name of the team. Optional in the database and it an stay a local field for specific (non-generic) processing when submitted.
@@ -1635,8 +1941,8 @@ function RenderTable(template, entries, placein, entry_number, session) {
 //
 // We assume that the the value holding element is in a table
 // which also holds a template that we can use to render the
-// table with. A map is defined from holding table to template
-// table.
+// table with. A map is defined from the holding-table to
+// template-table.
 //
 // element should be one of:
 // 		NumPlayers
@@ -1707,6 +2013,8 @@ function adjustTable(element, session) {
 function showDiv(which_one) {
 	if (which_one === "teams" ) {
 		id_visbl_div = id_teams_div;
+		showhideRankScoreColumns(id_visbl_div);
+
 		$$(id_indiv_div).style.display = 'none';
 		$$(id_teams_div).style.display = 'block';
 
@@ -1714,6 +2022,8 @@ function showDiv(which_one) {
     	enableChildren($$(id_teams_div), true);
 	} else if (which_one === "indiv" ) {
 		id_visbl_div = id_indiv_div;
+		showhideRankScoreColumns(id_visbl_div);
+
 		$$(id_teams_div).style.display = 'none';
 		$$(id_indiv_div).style.display = 'block';
 

@@ -81,6 +81,7 @@ def ajax_Game_Properties(request, pk):
 
     props = {'individual_play': game.individual_play,
              'team_play': game.team_play,
+             'scoring': Game.ScoringOptions(game.scoring).name,
              'min_players': game.min_players,
              'max_players': game.max_players,
              'min_players_per_team': game.min_players_per_team,

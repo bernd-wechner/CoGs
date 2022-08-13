@@ -77,6 +77,7 @@ def extra_context_provider(self, context={}):
         if game:
             context['game_individual_play'] = json.dumps(game.individual_play)  # Python True/False, JS true/false
             context['game_team_play'] = json.dumps(game.team_play)
+            context['game_scoring'] = Game.ScoringOptions(game.scoring).name
             context['game_min_players'] = game.min_players
             context['game_max_players'] = game.max_players
             context['game_min_players_per_team'] = game.min_players_per_team

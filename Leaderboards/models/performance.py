@@ -40,7 +40,14 @@ class Performance(AdminModel):
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
 
-    score = models.IntegerField('Score', default=None, null=True, blank=True)  # What this player scored if the game has scores.
+    # What this player scored if the game has scores.
+    # These scores are rarely if ever used and not used for ranking bar very indirectly
+    # Typically ranks carry a score. But for the particular case of team based play, where
+    # there's one rank per team, but the game has inbdividual scores, then we can record them
+    # here. If scores are ever needed, rank scores are checked and if absent and performance
+    # scores exists a rank score is calculated as the sum of the performance scores at that rank.
+    # And so these are fall back, primarily informatic scores in some edge cases only.
+    score = models.IntegerField('Score', default=None, null=True, blank=True)
 
     play_number = models.PositiveIntegerField('The number of this play (for this player at this game)', default=1, editable=False)
     victory_count = models.PositiveIntegerField('The count of victories after this session (for this player at this game)', default=0, editable=False)

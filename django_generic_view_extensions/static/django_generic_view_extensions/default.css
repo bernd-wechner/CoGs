@@ -1,0 +1,29 @@
+ /*
+ If form controls all have the class form_control we can style them here.
+
+ That class is set here:
+ 	django_generic_view_extensions.forms.classify_widget
+ 	django_generic_view_extensions.views.get_form_generic
+
+ The reason for this is that django_generic_view_extensions makes use of
+ Django Autocomplete Light select widgets and they are bootstrap themed.
+ These styles are copied from the styling of those widgets to ensure that
+ standard Django widgets have a comparable look and feel to these.
+
+ Not an ideal approach but a quick hack to get a consistent look and feel.
+*/
+
+ .form_control {
+	height: 28px;
+	box-sizing: border-box;
+	display: block;
+	background-color: #fff;
+	border: 1px solid #ccc;
+	border-radius: 4px;
+	border-top-left-radius: 4px;
+	border-top-right-radius: 4px;
+	border-bottom-right-radius: 4px;
+	border-bottom-left-radius: 4px;
+	line-height: 1.42857143;
+	padding: 6px 6px 6px 6px;
+ }

@@ -32,3 +32,10 @@ def post_delete_handler(self, pk=None, game=None, players=None, victors=None, re
                 r.reset()
                 r.save()
 
+
+def post_save_handler(self):
+    '''
+    Nothing implemented for post form save handling. Placeholder should we need anything.
+
+    :param self:
+    '''

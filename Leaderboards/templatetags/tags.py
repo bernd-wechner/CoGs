@@ -43,7 +43,7 @@ def list_format(context, obj):
 @register.simple_tag()
 def get_list(form_data, model, attribute):
     '''
-    Given a form.data dictionary whichcontains formset data extract and return a list of the
+    Given a form.data dictionary which contains formset data extract and return a list of the
     values of the attributes in the named model from the forms in that formset. This is used
     when a form with related_forms fails validation and bounces back, we need to pump the formset
     data back into the form, and if the formsets are constructed in Javascript they may like

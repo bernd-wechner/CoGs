@@ -46,7 +46,7 @@ urlpatterns = [
     path('list/<model>', views.view_List.as_view(), name='list'),
 
     path('view/<model>/<pk>', views.view_Detail.as_view(), name='view'),
-    path('add/<model>', views.view_Add.as_view(), name='add'),
+    path('add/<model>/', views.view_Add.as_view(), name='add'),
     path('edit/<model>/<pk>', views.view_Edit.as_view(), name='edit'),
     path('delete/<model>/<pk>', views.view_Delete.as_view(), name='delete'),
 

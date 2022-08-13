@@ -4,22 +4,22 @@ cached-property>=1.5.2
 certifi>=2020.12.5
 chardet>=4.0.0
 Django>=4.0
-django_cache_memoized
 django-cte @ https://github.com/bernd-wechner/django-cte/archive/refs/heads/master.zip
+django-bitfield @ https://github.com/bernd-wechner/django-bitfield/archive/refs/heads/master.zip
+django-currentuser @ https://github.com/asucrews/django-currentuser/archive/refs/heads/master.zip
+django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
+django_cache_memoized
 django-model-admin-fields
 django-model-privacy-mixin
 django-stats-middleware>=0.2
 django_lighttpd_middleware
 django-autocomplete-light>=3.8.2
-django-bitfield @ https://github.com/bernd-wechner/django-bitfield/archive/refs/heads/master.zip
-django-currentuser
 django-debug-toolbar>=3.2.1
 django-extensions>=3.1.1
 django-mapbox-location-field>=2
 django-relativefilepathfield>=1.0.3
 django-reset-migrations>=0.4.0
 django-timezone-field>=4.1.1
-django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
 enum-compat>=0.0.3
 idna>=2.10
 JSON-Datetime>=0.0.6
