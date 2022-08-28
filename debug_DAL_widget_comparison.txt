@@ -1,0 +1,99 @@
+<p>Working DAL from demo site:</p>
+
+<div class="related-widget-wrapper" data-select2-id="10">
+    <select
+    name="test"
+    id="id_test"
+    data-autocomplete-light-language="en"
+    data-autocomplete-light-url="/linked_data/linked_data/"
+    data-autocomplete-light-function="select2"
+    data-select2-id="id_test"
+    tabindex="-1"
+    class="select2-hidden-accessible"
+    aria-hidden="true">
+        <option value="" selected="" data-select2-id="2">---------</option>
+    </select>
+    <span
+    class="select2 select2-container select2-container--default select2-container--below select2-container--focus"
+    dir="ltr"
+    data-select2-id="1"
+    style="width: 65.7955px;">
+        <span class="selection">
+            <span
+            class="select2-selection select2-selection--single"
+            role="combobox"
+            aria-haspopup="true"
+            aria-expanded="false"
+            tabindex="0"
+            aria-disabled="false"
+            aria-labelledby="select2-id_test-container">
+                <span
+                class="select2-selection__rendered"
+                id="select2-id_test-container"
+                role="textbox"
+                aria-readonly="true">
+                    <span
+                    class="select2-selection__placeholder">
+                    </span>
+                </span>
+                <span
+                class="select2-selection__arrow"
+                role="presentation">
+                    <b role="presentation"></b>
+                </span>
+            </span>
+        </span>
+        <span class="dropdown-wrapper" aria-hidden="true">
+        </span>
+    </span>
+    <div style="display:none" class="dal-forward-conf" id="dal-forward-conf-for_id_test">
+        <script type="text/dal-forward-conf">[{"type": "field", "src": "owner"}]</script>
+    </div>
+</div>
+
+<p>Broken DAL from my test page:</p>
+
+<p data-select2-id="3">
+    <select
+    name="League"
+    class="selector select2-hidden-accessible"
+    id="id_league"
+    data-placeholder="Global"
+    data-theme="bootstrap"
+    data-autocomplete-light-language="en"
+    data-autocomplete-light-url="/autocomplete/League/name/all"
+    data-autocomplete-light-function="select2"
+    data-select2-id="id_league"
+    tabindex="-1"
+    aria-hidden="true">
+    </select>
+    <span
+    class="select2 select2-container select2-container--bootstrap select2-container--below select2-container--focus"
+    dir="ltr"
+    data-select2-id="1"
+    style="width: 21.0795px;">
+        <span class="selection">
+            <span
+            class="select2-selection select2-selection--single selector"
+            role="combobox"
+            aria-haspopup="true"
+            aria-expanded="false"
+            tabindex="0"
+            aria-disabled="false"
+            aria-labelledby="select2-id_league-container">
+                <span
+                class="select2-selection__rendered"
+                id="select2-id_league-container"
+                role="textbox"
+                aria-readonly="true">
+                    <span class="select2-selection__placeholder">Global
+                    </span>
+                </span>
+                <span class="select2-selection__arrow" role="presentation"><b role="presentation"></b>
+                </span>
+            </span>
+        </span>
+        <span class="dropdown-wrapper" aria-hidden="true">
+        </span>
+    </span>
+</p>

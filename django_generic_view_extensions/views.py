@@ -485,7 +485,7 @@ def post_generic(self, request, *args, **kwargs):
 
     Provides five hooks:
 
-        pre_validation     called before teh first form validation, returns a dict that is unpacked as kwargs for pre_transaction
+        pre_validation     called before the first form validation, returns a dict that is unpacked as kwargs for pre_transaction
         pre_transaction    called before a transaction starts, returns a dict that is unpacked as kwargs for pre_save
         pre_save           called after form validation and cleaning, a transaction has been opened but before saving, returns a dict that is unpacked as kwargs for pre_commit
         pre_commit         called just before committing the transaction. Raise IntergityError or ValidationError if needed.
@@ -530,7 +530,8 @@ def post_generic(self, request, *args, **kwargs):
                 return HttpResponse(next_kwargs["debug_only"])
 
         with transaction.atomic():
-            log.debug(f"Deleting: {self.object._meta.object_name} {self.object.pk}.")
+            if settings.DEBUG:
+                log.debug(f"Deleting: {self.object._meta.object_name} {self.object.pk}.")
 
             # For deletes we won't concern ourselves with related forms.
             # Generally the on_delete property of ForeignKey relations will hanld cascading
@@ -606,7 +607,8 @@ def post_generic(self, request, *args, **kwargs):
             if "debug_only" in next_kwargs:
                 return HttpResponse(next_kwargs["debug_only"])
 
-        log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
+        if settings.DEBUG:
+            log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
         if self.form.is_valid():
             # HOOK 2 pre_transaction: Hook for pre-processing the form (before a database transaction is opened)
             # The form has passed first validation and now is a chance to inject some code before we open a
@@ -621,7 +623,8 @@ def post_generic(self, request, *args, **kwargs):
             # The pre-transaction handler can add form errors
             if self.form.is_valid():
                 try:
-                    log.debug(f"Open a transaction")
+                    if settings.DEBUG:
+                        log.debug(f"Open a transaction")
                     with transaction.atomic():
                         # HOOK 3 pre_save: Hook for pre-processing the form (before the data is saved)
                         # The form has passed validation (twice now, before and after a database transaction
@@ -631,11 +634,12 @@ def post_generic(self, request, *args, **kwargs):
                             next_kwargs = self.pre_save(**next_kwargs)
                             if not next_kwargs: next_kwargs = {}
 
-                        log.debug("Saving form from POST request containing:")
-                        for (key, val) in sorted(self.request.POST.items()):
-                            # See: https://code.djangoproject.com/ticket/1130
-                            # list items are hard to identify it seems in a generic manner
-                            log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
+                        if settings.DEBUG:
+                            log.debug("Saving form from POST request containing:")
+                            for (key, val) in sorted(self.request.POST.items()):
+                                # See: https://code.djangoproject.com/ticket/1130
+                                # list items are hard to identify it seems in a generic manner
+                                log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
 
                         if self.object:  # unprotect it from the full_clean augmentation once more
                             # Uncloak self.form.instance. From here on in we can proceed as normal.
@@ -649,7 +653,9 @@ def post_generic(self, request, *args, **kwargs):
                                 raise ValidationError('Some errors were detected in your submission.')
 
                         self.object = self.form.save()
-                        log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
+
+                        if settings.DEBUG:
+                            log.debug(f"Saved object: {self.object._meta.object_name} {self.object.pk}.")
 
                         kwargs = self.kwargs
                         kwargs['pk'] = self.object.pk
@@ -667,12 +673,16 @@ def post_generic(self, request, *args, **kwargs):
                             self.form.related_forms = RelatedForms(self.model, self.form.data, self.object)
 
                         if hasattr(self.form, 'related_forms') and isinstance(self.form.related_forms, RelatedForms):
-                            log.debug(f"Saving the related forms.")
-                            if self.form.related_forms.are_valid():
+                            if settings.DEBUG:
+                                log.debug(f"Saving the related forms.")
+
+                            if self.form.related_forms.are_valid(self.model.__name__):
                                 self.form.related_forms.save()
-                                log.debug(f"Saved the related forms.")
+                                if settings.DEBUG:
+                                    log.debug(f"Saved the related forms.")
                             else:
-                                log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
+                                if settings.DEBUG:
+                                    log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
                                 # Attach the newly annotated (with errros) related forms to the
                                 # form so that theyt reach the response template.
                                 # self.form.related_forms = related_forms
@@ -696,7 +706,8 @@ def post_generic(self, request, *args, **kwargs):
                             next_kwargs = self.pre_commit(**next_kwargs)
                             if not next_kwargs: next_kwargs = {}
 
-                        log.debug(f"Cleaned the relations.")
+                        if settings.DEBUG:
+                            log.debug(f"Cleaned the relations.")
                 except (IntegrityError, ValidationError) as e:
                     # Validation errors arrive with a message.
                     # Integrity errors tend to arise when the Models don't reflect the Database schema
@@ -883,7 +894,8 @@ class UpdateViewExtended(UpdateView):
 
     def get_object(self, *args, **kwargs):
         '''Fetches the object to edit and augments the standard queryset by passing the model to the view so it can make model based decisions and access model attributes.'''
-        log.debug("Getting initial data from an existing object.")
+        if settings.DEBUG:
+            log.debug("Getting initial data from an existing object.")
 
         self.pk = self.kwargs['pk']
         self.model = class_from_string(self, self.kwargs['model'])

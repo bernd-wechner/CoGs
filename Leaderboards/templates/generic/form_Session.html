@@ -155,8 +155,10 @@
 	let game_min_players_per_team 	=  {{game_min_players_per_team}};
 	let game_max_players_per_team 	=  {{game_max_players_per_team}};
 
-	let show_rank_scores = false;
-	let show_perf_scores = false;
+	// a call to showhideRankScoreColumns() acts on these globals.
+	let show_rank_scores = false;	// The rank scores column
+	let show_perf_scores = false;	// The performance scores column
+	let show_tiebreakers = false;	//  Show the rank column to break rank score ties
 
 	if (is_team_play) {
 		show_rank_scores = game_scoring.includes("TEAM");

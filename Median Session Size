@@ -1,0 +1,81 @@
+from django.db.models import Model, CharField, DateField, ForeignKey
+from django.db.models.functions import Extract, Greatest
+from django.db.models import Count, Min, Max, Case, When
+
+class Scientist(Model): player
+    name = CharField()
+
+class Journal(Model): game
+    name = CharField()
+
+class Paper(Model): session
+    date = DateField()
+    title = CharField()
+    journal = ForeignKey(Journal, related_name="papers")
+
+class Publication(Model): performance
+    paper = ForeignKey(Paper, related_name="publications")
+    author = ForeignKey(Scientist, related_name="publications")
+
+
+authors = Scientist.objects.all()
+
+# Annotate with some publication stats
+authors = authors.annotate(
+            papers=Count('publications'),
+            first_paper_date=Min('publications__paper__date'),
+            latest_paper_date=Max('publications__paper__date')
+          )
+
+# Find the first and latest journal published in
+publications = Publication.objects.filter(author=OuterRef('pk'))
+
+first_publication = Publication.order_by('paper__date')[:1]
+latest_publication = Publication.order_by('-paper__date')[:1]
+
+first_journal = Subquery(first_publication.values('paper__journal__name'))
+latest_journal = Subquery(latest_publication.values('paper__journal__name'))
+
+authors = authors.annotate(
+            first_paper_journal=first_journal,
+            latest_paper_journal=latest_journal
+         )
+
+# Find the favourite journal (one most published in - most recent in case of tie)
+journals = Journal.objects.filter(papers__publications__author=OuterRef('pk'))
+journals = journals.annotate(journal_count=Count('pk'), last_journal=Max('papers__date'))
+favourite_journal = journals.order_by('-journal_count', '-last_journal')[:1]
+
+authors = authors.annotate(favourite_journal=Subquery(favourite_journal.values('name')))
+
+# Find the publication career length (tenure, in days)
+# with a minimum of 1 day for authors with only one publication.
+tenure = Greatest(Extract((Max('publications__paper__date') - Min('publications__paper__date')), 'days') , 1)
+
+authors = authors.annotate(publication_career_length=tenure)
+
+
+# Find the publication rate (papers per month)
+# Minimum of 1 month used in calculation (for authors who have very few publications else rate looks huge)
+ppm = ExpressionWrapper(
+        Count('publications') / tenure * Case(When(tenure__gt=30, then=30), default=1),
+        output_field=FloatField()
+      )
+
+authors = authors.annotate(publication_rate_ppm=ppm)
+
+# Find the smallest and largest team size (collaboration of authors on papers)
+paper_pks = Paper.objects.filter(publications__author=OuterRef(OuterRef('pk'))).values('pk')
+papers = Paper.objects.filter(pk__in=paper_pks).annotate(num_authors=Count('publications'))
+smallest_team = papers.order_by('num_authors')[:1]
+largest_team = papers.order_by('-num_athors')[:1]
+
+authors = authors.annotate(
+                smallest_team=smallest_team,
+                largest_team=largest_team
+            )
+
+
+
+
+# Find the median team size

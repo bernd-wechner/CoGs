@@ -253,7 +253,7 @@ class Session(TimeZoneMixIn, AdminModel):
     @property_method
     def str_ranked_players(self, link=flt.internal) -> str:
         '''
-        Returns a list of players (as a CSV string) in rank order (with team members and tied annotated)
+        Returns a list of players (as a CSV string) in rank order (with team members and ties annotated)
         '''
         return self._ranked_players(True, link)
 
@@ -496,24 +496,30 @@ class Session(TimeZoneMixIn, AdminModel):
     def link_internal(self) -> str:
         return reverse('view', kwargs={"model":self._meta.model.__name__, "pk": self.pk})
 
-    @property
-    def actual_ranking(self) -> tuple:
+    @property_method
+    def actual_ranking(self, as_ranks=False) -> tuple:
         '''
-        Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the actual
-        recorded order as the first element in a tuple.
+        Returns a 2-tuple of:
 
-        The second is the probability associated with that observation based on skills of
+        The first entry: either:
+            a tuple of rankers (Players, Teams, or tuple of same for ties)
+            a tuple of ranks (Ranks)
+        in the actual recorded order as the first element.
+
+        The second entry: the probability associated with that observation based on skills of
         players in the session.
+
+        :param as_ranks: return Ranks, else Players/Teams
         '''
         g = self.game
         ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
-        return ts.Actual_ranking(self)
+        return ts.Actual_ranking(self, as_ranks=as_ranks)
 
     @property
     def predicted_ranking(self) -> tuple:
         '''
         Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the predicted
-        order (based on skills enterig the session) as the first element in a tuple.
+        order (based on skills entering the session) as the first element in a tuple.
 
         The second is the probability associated with that prediction based on skills of
         players in the session.
@@ -609,7 +615,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
             return rank_dict
 
-        actual_rank = dictify(self.actual_ranking[0])
+        actual_rank = dictify(self.actual_ranking()[0])
         predicted_rank = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
         total = 0
         right = 0
@@ -953,18 +959,31 @@ class Session(TimeZoneMixIn, AdminModel):
 
         return deltas
 
-    def _html_rankers_ol(self, ordered_rankers, use_rank, expected_performance, name_style, ol_style="margin-left: 8ch;"):
+    def _html_rankers_ol(self, ordered_rankers, expected_performance, name_style, ol_style="margin-left: 8ch;"):
         '''
         Internal OL factory for list of rankers on a session.
 
-        :param ordered_ranks:           Rank objects in order we'd like them listed.
-        :param use_rank:                Use Rank.rank to permit ties, else use the row number
+        # TODO: Fix this. It looks like once I passed in rank objects, and now no longer.
+        #       Rank objects make the ranker (player or team) available AND the rscore if there is one.
+        #       Look back in git history to see how this changed. Because at some point rank objects
+        #       are no longer passed in, but player or team objects are and this broke the tooltip as well!
+        #
+        # I broke it in this commit:
+        #     5d7e5f0bf59846e9d6cba64b4d65fb7d8b2d4d13
+        # dated 6/5/2021
+
+        :param ordered_rankers:         An ordered list of Player/Team objects (or lists of them for ties)
+                                        or Ranks objects (or lists of them for ties).
         :param expected_performance:    Name of Rank property that supplies a Predicted Performance summary
         :param name_style:              The style in which to render names
         :param ol_style:                A style to apply to the OL if any
         '''
         Player = apps.get_model(APP, "Player")
         Team = apps.get_model(APP, "Team")
+        Rank = apps.get_model(APP, "Rank")
+        Game = apps.get_model(APP, "Game")
+
+        scoring = Game.ScoringOptions(self.game.scoring).name
 
         data = []  # A list of (PK, BGGname) tuples as data for a template view to build links to BGG if desired.
         if ol_style:
@@ -980,10 +999,16 @@ class Session(TimeZoneMixIn, AdminModel):
                 tied_rankers = [ranker]
 
             tied_rankers_html = []
-            for r in tied_rankers:
+            for R in tied_rankers:
+                r = R.ranker if isinstance(R, Rank) else R
+
                 if isinstance(r, Team):
                     # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
                     ranker = field_render(r, flt.template, osf.verbose)
+
+                    if "TEAM" in scoring and isinstance(R, Rank) and not R.score is None:
+                        ranker += f" ({R.score})"
+
                     data.append((r.pk, None))  # No BGGname for a team
                 elif isinstance(r, Player):
                     # Render the field first as a template which has:
@@ -994,12 +1019,15 @@ class Session(TimeZoneMixIn, AdminModel):
                     # Replace the player name template item with the formatted name of the player
                     ranker = re.sub(fr'{{Player\.{r.pk}}}', r.name(name_style), ranker)
 
+                    if "INDIVIDUAL" in scoring and isinstance(R, Rank) and not R.score is None:
+                        ranker += f" ({R.score})"
+
                     # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
                     PK = r.pk
                     BGG = None if (r.BGGname is None or len(r.BGGname) == 0 or r.BGGname.isspace()) else r.BGGname
                     data.append((PK, BGG))
 
-                # Add expected performance to the ranker string if requested
+                # Add expected TrueSkill performance (mu, sigma) to the ranker string if requested
                 eperf = ""
                 if not expected_performance is None:
                     perf = getattr(r, expected_performance, None)  # (mu, sigma)
@@ -1034,16 +1062,16 @@ class Session(TimeZoneMixIn, AdminModel):
 
         This permits a leaderboard view to render the template altering how
         the template is rendered.  The ancillary data is for now just the
-        pk and BGG name of the ranker in that session which allows the
+        pk and BGG name of the rankers in that session which allows the
         template to link names to this site or to BGG as it desires.
 
         :param name_style: Must be supplied
         '''
-        (ordered_rankers, probability) = self.actual_ranking
+        (ordered_ranks, probability) = self.actual_ranking(as_ranks=True)
 
         detail = f"<b>Results after: <a href='{link_target_url(self)}' class='{FIELD_LINK_CLASS}'>{time_str(self.date_time)}</a></b><br><br>"
 
-        (ol, data) = self._html_rankers_ol(ordered_rankers, True, None, name_style)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, None, name_style)
 
         detail += ol
 
@@ -1080,7 +1108,7 @@ class Session(TimeZoneMixIn, AdminModel):
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
         detail = f"Predicted ranking <b>before</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_rankers, False, "performance", name_style)
+        (ol, data) = self._html_rankers_ol(ordered_rankers, "performance", name_style)
 
         detail += ol
 
@@ -1115,7 +1143,7 @@ class Session(TimeZoneMixIn, AdminModel):
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
         detail = f"Predicted ranking <b>after</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_rankers, False, "performance_after", name_style)
+        (ol, data) = self._html_rankers_ol(ordered_rankers, "performance_after", name_style)
         detail += ol
 
         return (mark_safe(detail), data)
@@ -1141,9 +1169,9 @@ class Session(TimeZoneMixIn, AdminModel):
         # The list is sorted in descending date_time order, so that the first entry is the current sessions.
         sfilter = Q(date_time__lte=time_limit) & Q(game=self.game)
         if player:
-            sfilter = sfilter & (Q(ranks__player=player) | Q(ranks__team__players=player))
+            sfilter = sfilter & Q(performances__player=player)
 
-        prev_sessions = Session.objects.filter(sfilter).order_by('-date_time')
+        prev_sessions = Session.objects.filter(sfilter).distinct().order_by('-date_time')
 
         return prev_sessions
 
@@ -1164,6 +1192,9 @@ class Session(TimeZoneMixIn, AdminModel):
             prev_session = prev_sessions[1]
 
             if not prev_sessions[0].id == self.id: breakpoint()
+
+            if not prev_session.date_time < self.date_time:
+                breakpoint()
 
             assert prev_sessions[0].id == self.id, f"Query error: current session is not at start of previous sessions list for session={self.pk}, first previous session={prev_sessions[0].id}, player={player.pk}"
             assert prev_session.date_time < self.date_time, f"Database error: Two sessions with identical time, session={self.pk}, previous session={prev_session.pk}, player={player.pk}"
@@ -1258,17 +1289,25 @@ class Session(TimeZoneMixIn, AdminModel):
 
         return prev_sessions
 
-    def rank(self, player):
+    def rank(self, ranker):
         '''
-        Returns the Rank object for the nominated player in this session
+        Returns the Rank object for the nominated ranker in this session
+
+        :param ranker: Is a Player or Team object.
         '''
-        if self.team_play:
-            ranks = self.ranks.filter(team__players=player)
-        else:
-            ranks = self.ranks.filter(player=player)
+        Player = apps.get_model(APP, "Player")
+        Team = apps.get_model(APP, "Team")
+
+        if isinstance(ranker, Player):
+            if self.team_play:
+                ranks = self.ranks.filter(team__players=ranker)
+            else:
+                ranks = self.ranks.filter(player=ranker)
+        elif isinstance(ranker, Team):
+            ranks = self.ranks.filter(team=ranker)
 
         # 2 or more ranks for this player is a database integrity failure. Something serious got broken.
-        assert len(ranks) < 2, "Database error: {} Ranks objects in database for session={}, player={}".format(len(ranks), self.pk, player.pk)
+        assert len(ranks) < 2, "Database error: {} Ranks objects in database for session={}, ranker={}".format(len(ranks), self.pk, ranker.pk)
 
         # Could be called before rank objects for a session submission were saved, In which case nicely indicate so with None.
         return ranks[0] if len(ranks) == 1 else None
@@ -1749,6 +1788,14 @@ class Session(TimeZoneMixIn, AdminModel):
             except:
                 return MISSING_VALUE
 
+        def float_or_MISSING(data, key):
+            try:
+                # If key is absent or data[key] is not a valid int this
+                # will raise an exception and MISSING_VALUE is returned
+                return float(data[key])
+            except:
+                return MISSING_VALUE
+
         # Copy the form_data (if it's a Qury dict it's immutable and we want to clean it)
         data = form_data.copy()
 
@@ -1788,9 +1835,10 @@ class Session(TimeZoneMixIn, AdminModel):
             for key in [f'Performance-{p}-id',
                         f'Performance-{p}-score',
                         f'Performance-{p}-player',
-                        f'Performance-{p}-partial_play_weighting',
                         f'Performance-{p}-team_num']:
                 data[key] = int_or_MISSING(data, key)
+            for key in [f'Performance-{p}-partial_play_weighting']:
+                data[key] = float_or_MISSING(data, key)
 
         # For team_play we build a list of player IDs for each rank
         # In individual play each rank is just one player ID
@@ -1813,7 +1861,7 @@ class Session(TimeZoneMixIn, AdminModel):
         performance_data = sorted([(data[f'Performance-{p}-id'],  # performance
                                     data[f'Performance-{p}-score'],  # pscores
                                     data[f'Performance-{p}-player'],  # performers
-                                    data[f'Performance-{p}-partial_play_weighting']  # weigths
+                                    data[f'Performance-{p}-partial_play_weighting']  # weights
                                     ) for p in range(num_performances)], key=lambda e: e[2])  # Sorted by int(player ID)
 
         return { "model": cls.__name__,  # the model name
@@ -1834,6 +1882,88 @@ class Session(TimeZoneMixIn, AdminModel):
                  "pscores": [p[1] for p in performance_data],  # A list of performers (player IDs)
                  "performers": [p[2] for p in performance_data],  # A list performance scores (positive ints)
                  "weights": [p[3] for p in performance_data]}  # A list of weights (positive floats 0-1)
+
+    @classmethod
+    def dict_to_form(cls, session_dict, form_data):
+        '''
+        The reverse for dict from form. Put here once more to centralise the
+        Form intelligence avoid it's being implemented elsewhere. We want to take
+        a session_dict as created by dict_from_form and update the supplied form.
+
+        This is mostly needed to pre_validation form processing which might
+        need to change the form to pass validation.
+
+        The known use case to date, is in rank/score reconciliation, in which
+        A form can submit scores without ranks and based on the games scoring
+        rule can generate ranks. This reconciliation is performed on session_dicts
+        and if it's update rankings it wants to reflect that back in the form.
+
+        But the reconciliation method does not want to know about the form field
+        names and rules. It is dict only. So it calls this method to update the
+        form
+
+        :param session_dict: A session dict as produced by dict_form_form above
+        :param form_data: Form data (which is altered to conform to session_dict
+        '''
+        data = form_data.copy()  # ensure we have mutable data
+
+        team_play = session_dict['team_play']
+
+        # Session attributes
+        data['game'] = str(session_dict['game'])
+        data['date_time'] = str(session_dict['time'])
+        data['league'] = str(session_dict['league'])
+        data['location'] = str(session_dict['location'])
+        if team_play: data['team_play'] = 'on'
+
+        # Rank attributes
+        ranks = session_dict['ranks']
+        rankings = session_dict['rankings']
+        rscores = session_dict['rscores']
+        rankers = session_dict['rankers']
+        if team_play:
+            data['num_teams'] = str(len(ranks))
+        else:
+            data['num_players'] = str(len(ranks))
+
+        for i, r in enumerate(ranks):
+            # Any of these can be missing
+            if not r in (None, MISSING_VALUE): data[f'Rank-{i}-id'] = str(r)
+            if not rankings[i] in (None, MISSING_VALUE): data[f'Rank-{i}-rank'] = str(rankings[i])
+            if not rscores[i] in (None, MISSING_VALUE): data[f'Rank-{i}-score'] = str(rscores[i])
+
+        # None of these can be missing
+        if team_play:
+            k = 0
+            for i, t in enumerate(rankers):
+                for j, p in enumerate(t):  # @UnusedVariable
+                    data[f'Rank-{k}-player'] = str(p)
+                    data[f'Rank-{k}-team_num'] = str(t)
+                    k += 1
+        else:
+            for i, p in enumerate(rankers):
+                data[f'Rank-{i}-player'] = str(p)
+
+        data[f'Rank-TOTAL_FORMS'] = str(len(rankers))
+
+        # Performance attributes
+        performances = session_dict['performances']
+        pscores = session_dict['pscores']
+        performers = session_dict['performers']
+        weights = session_dict['weights']
+
+        for i, p in enumerate(performances):
+            # Optional fields
+            if not p in (None, MISSING_VALUE): data[f'Performance-{i}-id'] = str(p)
+            if not pscores[i] in (None, MISSING_VALUE): data[f'Performance-{i}-score'] = str(pscores[i])
+            # Required fields
+            data[f'Performance-{i}-player'] = str(performers[i])
+            data[f'Performance-{i}-partial_play_weighting'] = str(weights[i])
+
+        data[f'Performance-TOTAL_FORMS'] = str(len(performers))
+
+        # Pass the modified form data back
+        return data
 
     @property_method
     def dict_delta(self, form_data=None, pk=None):

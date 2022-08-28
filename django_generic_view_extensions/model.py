@@ -162,7 +162,8 @@ def Add_Related(model, field):
             if not can_save_related_formsets(model, field.remote_field.model):
                 m = model._meta.object_name
                 rm = field.remote_field.model._meta.object_name
-                log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
+                if settings.WARNINGS:
+                    log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
             return True
         # FIXME (ASAP): double check this and what it's about
         # Check my models for . syntax add related and try the form

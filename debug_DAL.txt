@@ -1,0 +1,390 @@
+DEBUGGING DAL:
+
+Here is where Select 2 opens. The .open) is what draws the drop down.
+
+Select2.prototype.toggleDropdown = function () {
+  if (this.isDisabled()) {
+    return;
+  }
+
+  if (this.isOpen()) {
+    this.close();
+  } else {
+    this.open();
+  }
+};
+
+It fires this:
+
+Select2.prototype.open = function () {
+  if (this.isOpen()) {
+    return;
+  }
+
+  if (this.isDisabled()) {
+    return;
+  }
+
+  this.trigger('query', {});
+};
+
+Which lands here:
+
+Select2.prototype.trigger = function (name, args) {
+  var actualTrigger = Select2.__super__.trigger;
+  var preTriggerMap = {
+    'open': 'opening',
+    'close': 'closing',
+    'select': 'selecting',
+    'unselect': 'unselecting',
+    'clear': 'clearing'
+  };
+
+  if (args === undefined) {
+    args = {};
+  }
+
+  if (name in preTriggerMap) {
+    var preTriggerName = preTriggerMap[name];
+    var preTriggerArgs = {
+      prevented: false,
+      name: name,
+      args: args
+    };
+
+    actualTrigger.call(this, preTriggerName, preTriggerArgs);
+
+    if (preTriggerArgs.prevented) {
+      args.prevented = true;
+
+      return;
+    }
+  }
+
+  actualTrigger.call(this, name, args);
+};
+
+Which lands here:
+
+actualTrigger.call(this, name, args);
+
+Observable.prototype.trigger = function (event) {
+  var slice = Array.prototype.slice;
+  var params = slice.call(arguments, 1);
+
+  this.listeners = this.listeners || {};
+
+  // Params should always come in as an array
+  if (params == null) {
+    params = [];
+  }
+
+  // If there are no arguments to the event, use a temporary object
+  if (params.length === 0) {
+    params.push({});
+  }
+
+  // Set the `_type` of the first object to the event
+  params[0]._type = event;
+
+  if (event in this.listeners) {
+    this.invoke(this.listeners[event], slice.call(arguments, 1));
+  }
+
+  if ('*' in this.listeners) {
+    this.invoke(this.listeners['*'], arguments);
+  }
+};
+
+Which hits this:
+
+this.invoke(this.listeners[event], slice.call(arguments, 1));
+
+three times it seems, thre listeners on the query event.
+
+Can't see names for them, just locations:
+
+query: Array(3)
+0: ƒ (params)
+arguments: null
+caller: null
+length: 1
+name: ""
+prototype: {constructor: ƒ}
+__proto__: ƒ ()
+[[FunctionLocation]]: select2.full.js:1114
+[[Scopes]]: Scopes[6]
+1: ƒ (params)
+arguments: null
+caller: null
+length: 1
+name: ""
+prototype: {constructor: ƒ}
+__proto__: ƒ ()
+[[FunctionLocation]]: select2.full.js:4261
+[[Scopes]]: Scopes[6]
+2: ƒ (params)
+arguments: null
+caller: null
+length: 1
+name: ""
+prototype: {constructor: ƒ}
+__proto__: ƒ ()
+[[FunctionLocation]]: select2.full.js:5664
+[[Scopes]]: Scopes[6]
+length: 3
+__proto__: Array(0)
+
+
+The first one is:
+
+container.on('query', function (params) {
+  self.hideMessages();
+  self.showLoading(params);
+});
+
+The second one is:
+
+container.on('query', function (params) {
+  self.lastParams = params;
+  self.loading = true;
+});
+
+The third one is:
+
+this.on('query', function (params) {
+  if (!self.isOpen()) {
+    self.trigger('open', {});
+  }
+
+  this.dataAdapter.query(params, function (data) {
+    self.trigger('results:all', {
+      data: data,
+      query: params
+    });
+  });
+});
+
+
+And it is self.trigger('open', {}); that opens the drop down.
+
+That ends up back in Select2.prototype.trigger and then Observable.prototype.trigger but this time round there's only one listener and we land in:
+
+container.on('*', function (name, params) {
+  // Ignore events that should not be relayed
+  if ($.inArray(name, relayEvents) === -1) {
+    return;
+  }
+
+  // The parameters should always be an object
+  params = params || {};
+
+  // Generate the jQuery event for the Select2 event
+  var evt = $.Event('select2:' + name, {
+    params: params
+  });
+
+  self.$element.trigger(evt);
+
+  // Only handle preventable events if it was one
+  if ($.inArray(name, preventableEvents) === -1) {
+    return;
+  }
+
+But this doesn't display the drop down yet and we cycle back to Observable.prototype.trigger with hte open event and ther are 5 listeners to that:
+
+The first:
+
+    container.on('open', function () {
+      // When the dropdown is open, aria-expanded="true"
+      self.$selection.attr('aria-expanded', 'true');
+      self.$selection.attr('aria-owns', resultsId);
+
+      self._attachCloseHandler(container);
+    });
+
+The second:
+
+    container.on('open', function () {
+      self.$search.attr('tabindex', 0);
+      self.$search.attr('aria-controls', resultsId);
+
+      self.$search.trigger('focus');
+
+      window.setTimeout(function () {
+        self.$search.trigger('focus');
+      }, 0);
+    });
+
+The third:
+
+    container.on('open', function () {
+      self._showDropdown();
+      self._attachPositioningHandler(container);
+
+      // Must bind after the results handlers to ensure correct sizing
+      self._bindContainerResultHandlers(container);
+    });
+
+The fourth:
+
+    container.on('open', function () {
+      // When the dropdown is open, aria-expended="true"
+      self.$results.attr('aria-expanded', 'true');
+      self.$results.attr('aria-hidden', 'false');
+
+      self.setClasses();
+      self.ensureHighlightVisible();
+    });
+
+
+And the 5th:
+
+    this.on('open', function () {
+      self.$container.addClass('select2-container--open');
+    });
+
+
+It is the 3rd that looks interesting, especially:
+
+self._showDropdown();
+self._attachPositioningHandler(container);
+
+And indeed:
+
+self._showDropdown();
+
+displays the dropdown. Drilling into it we find:
+
+    AttachBody.prototype._showDropdown = function (decorated) {
+      this.$dropdownContainer.appendTo(this.$dropdownParent);
+
+      this._positionDropdown();
+      this._resizeDropdown();
+    };
+
+does the work. The first line draws the dropdown.
+
+this.$dropdownContainer seems already built here, and has:
+
+style="position: absolute; top: 350.469px; left: 172.628px;"
+
+Which positions it, wrongly now below the host.
+
+On the multi select below it it is preapred as:
+
+style="position: absolute; top: 391.903px; left: 172.628px;"
+
+But this time with the edit box over the original. So higher one row.
+
+Which is line 4574 in https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.js
+
+
+This be where it (this.$dropdownContainer) is set:
+
+    AttachBody.prototype.render = function (decorated) {
+      var $container = $('<span></span>');
+
+      var $dropdown = decorated.call(this);
+      $container.append($dropdown);
+
+      this.$dropdownContainer = $container;
+
+      return $container;
+    };
+
+and this be where the CSS is set:
+
+    AttachBody.prototype._positionDropdown = function () {
+      var $window = $(window);
+
+      var isCurrentlyAbove = this.$dropdown.hasClass('select2-dropdown--above');
+      var isCurrentlyBelow = this.$dropdown.hasClass('select2-dropdown--below');
+
+      var newDirection = null;
+
+      var offset = this.$container.offset();
+
+      offset.bottom = offset.top + this.$container.outerHeight(false);
+
+      var container = {
+        height: this.$container.outerHeight(false)
+      };
+
+      container.top = offset.top;
+      container.bottom = offset.top + container.height;
+
+      var dropdown = {
+        height: this.$dropdown.outerHeight(false)
+      };
+
+      var viewport = {
+        top: $window.scrollTop(),
+        bottom: $window.scrollTop() + $window.height()
+      };
+
+      var enoughRoomAbove = viewport.top < (offset.top - dropdown.height);
+      var enoughRoomBelow = viewport.bottom > (offset.bottom + dropdown.height);
+
+      var css = {
+        left: offset.left,
+        top: container.bottom
+      };
+
+      // Determine what the parent element is to use for calculating the offset
+      var $offsetParent = this.$dropdownParent;
+
+      // For statically positioned elements, we need to get the element
+      // that is determining the offset
+      if ($offsetParent.css('position') === 'static') {
+        $offsetParent = $offsetParent.offsetParent();
+      }
+
+      var parentOffset = {
+        top: 0,
+        left: 0
+      };
+
+      if (
+        $.contains(document.body, $offsetParent[0]) ||
+        $offsetParent[0].isConnected
+        ) {
+        parentOffset = $offsetParent.offset();
+      }
+
+      css.top -= parentOffset.top;
+      css.left -= parentOffset.left;
+
+      if (!isCurrentlyAbove && !isCurrentlyBelow) {
+        newDirection = 'below';
+      }
+
+      if (!enoughRoomBelow && enoughRoomAbove && !isCurrentlyAbove) {
+        newDirection = 'above';
+      } else if (!enoughRoomAbove && enoughRoomBelow && isCurrentlyAbove) {
+        newDirection = 'below';
+      }
+
+      if (newDirection == 'above' ||
+        (isCurrentlyAbove && newDirection !== 'below')) {
+        css.top = container.top - parentOffset.top - dropdown.height;
+      }
+
+      if (newDirection != null) {
+        this.$dropdown
+          .removeClass('select2-dropdown--below select2-dropdown--above')
+          .addClass('select2-dropdown--' + newDirection);
+        this.$container
+          .removeClass('select2-container--below select2-container--above')
+          .addClass('select2-container--' + newDirection);
+      }
+
+      this.$dropdownContainer.css(css);
+    };
+
+This last spot is where it's positioned. css contains:
+
+{left: 172.62783813476562, top: 341.5483169433594}
+
+AttachBody.prototype.render is called on page load and
+AttachBody.prototype._positionDropdown is called on click (when the drop down is required)

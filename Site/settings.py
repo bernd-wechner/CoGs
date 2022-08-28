@@ -41,15 +41,20 @@ SANDBOX = "arachne"
 
 SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
+TESTING = sys.argv[1] == 'test'
+
 if HOSTNAME == PRODUCTION:
     SITE_TITLE = "CoGs Leaderboard Space"
     DEBUG = False
+    WARNINGS = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
     DEBUG = True
+    WARNINGS = True
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
     DEBUG = True
+    WARNINGS = not TESTING
 
 
 # Make sure the SITE_TITLE is visible in context
@@ -75,6 +80,9 @@ if SITE_IS_LIVE:
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
     from Site.settings_development import *
+
+# Don't debug when running tests (unless --debug-mode is used to override this.
+DEBUG = DEBUG and not TESTING
 
 # Application definition
 INSTALLED_APPS = (
@@ -147,16 +155,17 @@ TEMPLATES = [
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
-
+database = "CoGs"
+# database = "CoGs_test"
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'CoGs',
+        'NAME': database,
         'USER': 'CoGs',
         'PASSWORD': 'ManyTeeth',
         'HOST': '127.0.0.1',
         'PORT': '5432',
-    }
+    },
 }
 
 # Caching
@@ -302,6 +311,8 @@ if DEBUG:
     log.debug(f"Process Info: {pinfo()}")
     log.debug(f"Static root: {STATIC_ROOT}")
     log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+    log.debug(f"Database: {DATABASES['default']}")
+    log.debug(f"Testing: {TESTING}")
     log.debug(f"Debug: {DEBUG}")
 
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())

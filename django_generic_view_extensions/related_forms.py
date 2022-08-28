@@ -34,7 +34,10 @@ from .model import add_related, Add_Related, can_save_related_formsets
 
 # A local DEBUG flag because the debugging of related form creation is rather verbose
 # and distracting if debugging some other part of the process.
-DEBUG = False
+DEBUG = True
+
+# Only debug if global debugging is on
+DEBUG = DEBUG and settings.DEBUG
 
 
 class RelatedForms(dict):
@@ -337,7 +340,7 @@ class RelatedForms(dict):
             management_form = getattr(related_formset, 'management_form', None)
 
             if DEBUG:
-                log.debug(f"{self.dp}\tSTEP 2: {'' if management_form else 'CANNOT '}Build field_data from management form: {management_form}")
+                log.debug(f"{self.dp}STEP 2: {'' if management_form else 'CANNOT '}Build field_data from management form: {management_form}")
 
             field_data = {}
             if management_form:
@@ -401,7 +404,7 @@ class RelatedForms(dict):
                 generic_form.field_data = field_data
 
             if DEBUG:
-                log.debug(f"{self.dp}\tSTEP 3: Add instance forms for {len(related_objects)} instances.")
+                log.debug(f"{self.dp}STEP 3: Add instance forms for {len(related_objects)} instances.")
 
             pk_attr = relation.related_model._meta.pk.attname
 
@@ -458,14 +461,22 @@ class RelatedForms(dict):
         self.__model_history.pop()
         return related_forms
 
-    def are_valid(self):
+    def are_valid(self, model_name=None):
         '''
         Equivalent of Django's formset.is_valid() function, but asks the question
         of all the related forms and formsets in a RelatedForms object.
 
         This is only useful (or relevant for that matter) if the RelateForms object was
         instantiated with form_data. No form data and it's not useful.
+
+        :param model_name: Optionally a name of the model that the Related Forms belong to
         '''
+        # Before the recrusive walk fo related forms, start with clean
+        # history. These are populated duing the walk.
+        self.__model_history = [model_name] if model_name else []
+        self.__are_valid = True
+        self.__form_errors = {}
+
         if DEBUG:
             if self.__form_data:
                 log.debug(f"{self.dp} Form data:")
@@ -473,14 +484,8 @@ class RelatedForms(dict):
                 for k, v in self.__form_data.items():
                     log.debug(f"{self.dp}\t{k} = {v}")
 
-        # Before the recrusive walk fo related forms, start with clean
-        # history. These are populated duing the walk.
-        self.__model_history = []
-        self.__are_valid = True
-        self.__form_errors = {}
-
         # Start the recursive walk down related forms.
-        return self._are_valid()
+        return self._are_valid(model_name)
 
     def _are_valid(self, model_name=None, related_forms=None):
         '''
@@ -497,7 +502,7 @@ class RelatedForms(dict):
             related_forms = self.__related_forms
 
         if DEBUG:
-            log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms")
+            log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms: {[k for k in related_forms.keys()]}")
 
         for name, form in related_forms.items():
             related_model = form.model  # The related model
@@ -512,9 +517,8 @@ class RelatedForms(dict):
                 fs_key = ".".join(self.__model_history + [rmon])
                 assert not fs_key in self.__form_errors, f"Key generation error. Formset keys must be unique. {fs_key} tried a second time."
 
-                mn_pfx = f"{model_name} has " if model_name else ""
-
                 if DEBUG:
+                    mn_pfx = f"{model_name} has " if model_name else ""
                     log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key is {fs_key}")
 
                 # Django returns a fairly liberal errors list for formsets
@@ -537,10 +541,12 @@ class RelatedForms(dict):
                 # Recurse downwards
                 self._are_valid(name, form.related_forms)
             else:
-                mn_pfx = f"{model_name} has " if model_name else ""
-
                 if DEBUG:
-                    log.debug(f"{self.dp} {mn_pfx} no forms.")
+                    mn_pfx = f"{model_name} has " if model_name else ""
+                    log.debug(f"{self.dp} {mn_pfx}no forms for {name}.")
+
+        if DEBUG:
+            log.debug(f"{self.dp} Done {self.__class__.__name__}.are_valid(), concluding {self.__are_valid} for {model_name}")
 
         if self.__model_history: self.__model_history.pop()
 
@@ -675,9 +681,11 @@ class RelatedForms(dict):
                 # example if you want to have the form available for display but don't want
                 # to save it. It has to be an editable relation to include the form. But when
                 # saving of course, we can't.
-                log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (as {relation.field.name} is not an editable field)")
+                if settings.WARNINGS:
+                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (as {relation.field.name} is not an editable field)")
             else:
-                log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (for lack of a Foreign Key back to {mon})")
+                if settings.WARNINGS:
+                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (for lack of a Foreign Key back to {mon})")
 
         self.__model_history.pop()
 

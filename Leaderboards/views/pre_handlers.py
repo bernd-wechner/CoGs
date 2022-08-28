@@ -131,18 +131,20 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         'performers': [1, 13, 66, 70],
         'weights': [1, 1, 1, 1]
 
-    :param form: The form instance, so we can add form errors if reconciliation failure demands it
+    :param form: The form instance, so we can add form errors if reconciliation failure demands it or add data to secure validation
     :param session_dict:  A Session dictionary as returned by Session.dict_from_form() which is modified in place as needed
     '''
     game = Game.objects.get(pk=session_dict['game'])
     scoring = Game.ScoringOptions(game.scoring).name
     score_high = "HIGH" in scoring
+    team_play = session_dict['team_play']
 
     if scoring == "NO_SCORES":
         # No reconciliation to do )ranks are validated by standard form validation)
         return
     else:
-        players = deepcopy(session_dict['players'])
+        players = deepcopy(session_dict['performers'])
+        rankers = deepcopy(session_dict.get('rankers', session_dict['performers']))
         rankings = deepcopy(session_dict['rankings'])
         rscores = deepcopy(session_dict['rscores'])
         pscores = deepcopy(session_dict['pscores'])
@@ -154,7 +156,7 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         # The only difference really is that teams can have multiple pscores per rscore.
         # TODO: Do we need to know team_play here at all? Can validation of this happen
         # in form_validation if it's not needed for rank reconciliation?
-        if session_dict['team_play']:
+        if team_play:
             if not "TEAM" in scoring:
                 form.add_error(None, "This is a game that does not score teams and so team play sessions can not be recorded. Likely a form or game configuration error.")
                 return
@@ -169,9 +171,24 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         # only for calculating rscores in the absence of them.
         altered = False
         for i, s in enumerate(rscores):
-            if not isPositiveInt(s) and isPositiveInt(pscores[i]):
-                rscores[i] = pscores[i]
-                altered = True
+            # rscores and pscores map 1 to n (where n is 1 or more)
+            # Build a pscore dict in preparation
+            performer_score = {p: s for p, s in zip(players, pscores)}
+
+            # Make the team definitions immutable so they can be used as dict keys
+            trankers = [tuple(r) if isinstance(r, list) else (r,) for r in rankers]
+
+            # Now infer any missing rscores from sum of any available pscores
+            for i, (ranker, rscore) in enumerate(zip(trankers, rscores)):
+                if rscore in (None, MISSING_VALUE):
+                    score = 0
+                    for player in tuple(ranker):
+                        if not performer_score[player] in (None, MISSING_VALUE):
+                            score += performer_score[player]
+                    if score > 0:
+                        rscores[i] = score
+                        altered = True
+
         if altered:
             session_dict['rscores'] = deepcopy(rscores)
             valid_rscores = all(isPositiveInt(s) for s in rscores)
@@ -186,20 +203,20 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         # But if have them, and rankings are not valid we can maybe infer rankings from the rscores
         if valid_rscores and not valid_rankings:
             # Deduce rankings from supplied scores
-            player_indexes = {}
+            ranker_indexes = {}
             score_rankings = [None for r in rankings]
-            score_sorted_rankings = sorted(zip(rscores, rankings, players), reverse=score_high)
+            score_sorted_rankers = sorted(zip(rscores, rankers), reverse=score_high)
 
             # This handles ties as well and produces tie-gapped ranking
             # as per Leaderboards.models.session.Session.clean_ranks
             prev_s = -1
-            for i, (s, r, p) in enumerate(score_sorted_rankings):
+            for i, (s, r) in enumerate(score_sorted_rankers):
                 score_rankings[i] = score_rankings[i - 1] if s == prev_s else i + 1
-                player_indexes[p] = i
+                ranker_indexes[tuple(r) if isinstance(r, list) else r] = i
                 prev_s = s
 
             # Now re-order the rankings in the original player order again
-            all_new_rankings = [score_rankings[player_indexes[p]] for p in players]
+            all_new_rankings = [score_rankings[ranker_indexes[tuple(r) if isinstance(r, list) else r]] for r in rankers]
 
             # Patch them into the supplied rankings (only were we were missing rankings)
             new_rankings = [old if isPositiveInt(old) else new for i, (old, new) in enumerate(zip(rankings, all_new_rankings))]
@@ -208,6 +225,8 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
             # And update the session_dict
             valid_rankings = all(isPositiveInt(r) for r in rankings)
             session_dict['rankings'] = deepcopy(rankings)
+            if hasattr(form, 'data'):
+                form.data = Session.dict_to_form(session_dict, form.data)
 
         # If we (now) valid rankings and valid rscores were submitted we need them to agree
         if valid_rscores and valid_rankings:
@@ -274,16 +293,28 @@ def pre_validation_handler(self):
         # validation to fail
         reconciled_session = deepcopy(submitted_session)
         # Reconciles the supplied session in situ
+
+        if settings.DEBUG:
+            log.debug(f"RANK RECONCILIATION, form provided:")
+            for key, value in self.form.data.items():
+                log.debug(f"\t{key}: {value}")
+
+            log.debug(f"RANK RECONCILIATION, session derived from it:")
+            for key, value in submitted_session.items():
+                log.debug(f"\t{key}: {value}")
+
         reconcile_ranks(self.form, reconciled_session)
 
-        # Reconciliation can change rankings and rscores
-        # and add errors to self.form. If any rankings or rscores
-        # changed we now need to reflect that in form.data so
-        # that the subsequen form validation succeeds. Unless of
-        # course we failed to reconcile in which we expect it will
-        # fail, or the reconiliation added errros itself.
-        # TODO
+        if settings.DEBUG:
+            log.debug(f"RANK RECONCILIATION, reconciled session :")
+            for key, value in reconciled_session.items():
+                log.debug(f"\t{key}: {value}")
 
+            log.debug(f"RANK RECONCILIATION, reconciled form:")
+            for key, value in self.form.data.items():
+                log.debug(f"\t{key}: {value}")
+
+        # Find what the reconciler changed:
         return {'new_session': reconciled_session}
 
 
@@ -334,16 +365,6 @@ def pre_transaction_handler(self, new_session=None):
             m = message.replace('\n', ' ')
             log.debug(m)
 
-    output(f"Session Submission Rebuild Request Determination")
-    output("\n")
-    output(f"Form data:")
-    for (key, val) in self.form.data.items():
-        output(f"\t{key}:{val}")
-
-    output("Form data as a Session dict:")
-    for (key, val) in new_session.items():
-        output(f"\t{key}:{val}")
-
     # Default args to return (irrespective of object model or form type)
     # The following code aims to populate these for feed forward to the
     # pre_save and pre_commit handlers.
@@ -355,6 +376,16 @@ def pre_transaction_handler(self, new_session=None):
     # to check if the submission changes any rating affecting fields and make note of that
     # so that the post processor can update the ratings with a rebuild request if needed
     if model == 'session':
+        output(f"Session Submission Rebuild Request Determination")
+        output("\n")
+        output(f"Form data:")
+        for (key, val) in self.form.data.items():
+            output(f"\t{key}:{val}")
+
+        output("Form data as a Session dict:")
+        for (key, val) in new_session.items():
+            output(f"\t{key}:{val}")
+
         # We need the time, game and players first
         # As this is all we need to know for
         # both the Create and Update views.
@@ -592,14 +623,17 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
         BEFORE the form is saved.
 
     This intended primarily to make decisions based on the the pre_transaction
-    handler's conclusions (and the post and existing database object if needed)
-    that involve a database save of any sort. That is becauyse this, unlike
-    pre_transaction runs inside an opened transaction and so whatever we save
-    herein can commit or rollback along with the rest of the save.
+    handler's conclusions (and the post and existing database object - pre any
+    alterations to it on the basis of the post, if needed) that involve a database
+    save of any sort.
+
+    That is because this, unlike pre_transaction this runs inside an opened
+    transaction and so whatever is saved herein can commit or rollback along with
+    the rest of the save.
 
     self is an instance of CreateViewExtended or UpdateViewExtended.
 
-    If it returns a dict that will be used as a kwargs dict into the
+    It returns a dict that will be used as a kwargs dict into the
     the configured post processor (pre_commit_handler below).
     '''
     model = self.model._meta.model_name
@@ -686,9 +720,6 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>
         #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)])
 
-        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dict that holds it.
-        #        That way we're not duplicating form interpretation again.
-
         # manage teams properly, as we handle teams in a special way creating them
         # on the fly as needed and reusing where player sets match.
         # This applies to Create and Update submissions
@@ -702,128 +733,54 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             #    As a safety ignore inadvertently submittted "Team n" names.
 
             # Work out the total number of players and initialise a TeamPlayers list (with one list per team)
-            num_teams = int(self.request.POST["num_teams"])
+            num_teams = int(self.form.data["num_teams"])
             num_players = 0
             TeamPlayers = []
             for t in range(num_teams):
-                num_team_players = int(self.request.POST[f"Team-{t:d}-num_players"])
+                num_team_players = int(self.form.data[f"Team-{t:d}-num_players"])
                 num_players += num_team_players
                 TeamPlayers.append([])
 
-            # Populate the TeamPlayers record for each team (i.e. work out which players are on the same team)
+            # Now populate the (thus far, empty) TeamPlayers list for each team
+            # (i.e. work out which players are on the same team)
             player_pool = set()
             for p in range(num_players):
-                player = int(self.request.POST[f"Performance-{p:d}-player"])
+                player = int(self.form.data[f"Performance-{p:d}-player"])
 
                 assert not player in player_pool, "Error: Players in session must be unique"
                 player_pool.add(player)
 
-                team_num = int(self.request.POST[f"Performance-{p:d}-team_num"])
+                team_num = int(self.form.data[f"Performance-{p:d}-team_num"])
                 TeamPlayers[team_num].append(player)
 
             # For each team now, find it, create it , fix it as needed
             # and associate it with the appropriate Rank just created
             for t in range(num_teams):
+                # Get Team players that we already extracted from the POST
+                team_players_posted = TeamPlayers[t]
+
                 # Get the submitted Team ID if any and if it is supplied
                 # fetch the team so we can provisionally use that (renaming it
                 # if a new name is specified).
-                team_id = self.request.POST.get(f"Team-{t:d}-id", None)
-                team = None
+                team_id = self.form.data.get(f"Team-{t:d}-id", None)
 
-                # Get Team players that we already extracted from the POST
-                team_players_post = TeamPlayers[t]
-
-                # Get the team players according to the database (if we have a team_id!
-                team_players_db = []
-                if (team_id):
-                    try:
-                        team = Team.objects.get(pk=team_id)
-                        team_players_db = team.players.all().values_list('id', flat=True)
-                    # If team_id arrives as non-int or the nominated team does not exist,
-                    # either way we have no team and team_id should have been None.
-                    except (Team.DoesNotExist or ValueError):
-                        team_id = None
-
-                # Check that they are the same, if not, we'll have to create find or
-                # create a new team, i.e. ignore the submitted team (it could have no
-                # refrences left if that happens but we won't delete them simply because
-                # of that (an admin tool for finding and deleting unreferenced objects
-                # is a better approach, be they teams or other objects).
-                force_new_team = len(team_players_db) > 0 and set(team_players_post) != set(team_players_db)
+                # The name submitted for this team if any
+                team_name = self.form.data.get(f"Team-{t:d}-name", None)
 
                 # Get the appropriate rank object for this team
-                rank_id = self.request.POST.get(f"Rank-{t:d}-id", None)
-                rank_rank = self.request.POST.get(f"Rank-{t:d}-rank", None)
-                rank = session.ranks.get(rank=rank_rank)
+                rank_rank = self.form.data.get(f"Rank-{t:d}-rank", None)
+                rank_id = self.form.data.get(f"Rank-{t:d}-id", None)
+                if not rank_id:
+                    if session.ranks.filter(rank=rank_rank).exists():
+                        rank_id = session.ranks.get(rank=rank_rank).id
+                    elif submission == "create":
+                        breakpoint()
+                        # Prior version cays the rank must exist to have landed here.
+                        # What went wrong? Diagnose. Set DEBUG in relate_for save and check.
+                        print("debug here")
 
-                # A rank must have been saved before we got here, either with the POST
-                # specified rank_id (for edit forms) or a new ID (for add forms)
-                assert rank, f"Save error: No Rank was saved with the rank {rank_rank}"
-
-                # If a rank_id is specified in the POST it must match that saved
-                # before we got here using that POST specified ID.
-                if (not rank_id is None):
-                    assert int(rank_id) == rank.pk, f"Save error: Saved Rank has different ID to submitted form Rank ID! Rank ID {int(rank_id)} was submitted and Rank ID {rank.pk} has the same rank as submitted: {rank_rank}."
-
-                # The name submitted for this team
-                new_name = self.request.POST.get(f"Team-{t:d}-name", None)
-
-                # Find the team object that has these specific players.
-                # Filter by count first and filter by players one by one.
-                # recall: these filters are lazy, we construct them here
-                # but they do not do anything, are just recorded, and when
-                # needed the SQL is executed.
-                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players_post))
-                for player in team_players_post:
-                    teams = teams.filter(players=player)
-
-                if settings.DEBUG:
-                    log.debug(f"Team Check: {len(teams)} teams that have these players: {team_players_post}.")
-
-                # If not found, then create a team object with those players and
-                # link it to the rank object and save that.
-                if len(teams) == 0 or force_new_team:
-                    team = Team.objects.create()
-
-                    for player_id in team_players_post:
-                        player = Player.objects.get(id=player_id)  # @UndefinedVariable
-                        team.players.add(player)
-
-                    # If the name changed and is not a placeholder of form "Team n" use it.
-                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
-                        team.name = new_name
-
-                    team.save()
-                    rank.team = team
-                    rank.save()
-
-                    if settings.DEBUG:
-                        log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
-
-                # If one is found, then link it to the approriate rank object and
-                # check its name against the submission (updating if need be)
-                elif len(teams) == 1:
-                    team = teams[0]
-
-                    # If the name changed and is not a placeholder of form "Team n" save it.
-                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name:
-                        if settings.DEBUG:
-                            log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
-
-                        team.name = new_name
-                        team.save()
-
-                    # If the team is not linked to the rigth rank, fix the rank and save it.
-                    if (rank.team != team):
-                        rank.team = team
-                        rank.save()
-
-                        if settings.DEBUG:
-                            log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
-
-                # Weirdness, we can't legally have more than one team with the same set of players in the database
-                else:
-                    raise ValueError("Database error: More than one team with same players in database.")
+                # Submit the edit (to the database)
+                Team.get_create_or_edit(team_players_posted, team_name, edit=(team_id, rank_id, session.id))
 
         # Individual play
         else:

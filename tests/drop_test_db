@@ -1,0 +1,3 @@
+#!/bin/bash
+psql postgres --host=localhost --username=postgres -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = 'test_CoGs';"
+psql postgres --host=localhost --username=postgres -qc "DROP DATABASE \"test_CoGs\";"
