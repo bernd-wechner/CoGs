@@ -49,20 +49,38 @@ def get_list(form_data, model, attribute):
     data back into the form, and if the formsets are constructed in Javascript they may like
     lists of values such as produced here.
 
-    :param form_data:
-    :param model:
-    :param attribute:
+    :param form_data: a form data dictionary
+    :param model: a model name (string) that has a formset available
+    :param attribute: the attribute of (field in) that model we want to collect a list of
     '''
-    count = int(form_data.get(f"{model}-TOTAL_FORMS", 0))
-
     attr_list = []
-    for i in range(count):
-        key = f"{model}-{i}-{attribute}"
-        val = form_data.get(key, None)
-        val = numeric_if_possible(val)
-        attr_list.append(val)
 
-        # if not attr_list: breakpoint()
+    # If we have a management form, use that as a count
+    if f"{model}-TOTAL_FORMS" in form_data:
+        count = int(form_data[f"{model}-TOTAL_FORMS"])
+        for i in range(count):
+            key = f"{model}-{i}-{attribute}"
+            val = form_data.get(key, None)
+            val = numeric_if_possible(val)
+            attr_list.append(val)
+
+    # if not, get the list that we can
+    else:
+        # Starting at 0 scoop them up till we run out.
+        # This doesn't rely on the management form but
+        # premises a contiguous list of form numbers
+        # from 0 up.
+        i = 0
+        while True:
+            key = f"{model}-{i}-{attribute}"
+            if key in form_data:
+                val = form_data[key]
+                val = numeric_if_possible(val)
+                attr_list.append(val)
+                i += 1
+            else:
+                break
+
     return json.dumps(attr_list)
 
 

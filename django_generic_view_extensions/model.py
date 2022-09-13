@@ -123,11 +123,11 @@ def can_save_related_formsets(model, related_model):
 
     Specifying such a relation in add_related can provide model forms
     but they cannot be saved as formsets. it's a good idea to flag a
-    warning to the mdoel designer in that case, and to avoid crashing
+    warning to the model designer in that case, and to avoid crashing
     when trying to save the a formset.
 
     This is a consistent way code using add_related, to check if a
-    field specified thuslyc an be saved as a formset.
+    field specified thusly can be saved as a formset.
 
     :param model: A Django model
     :param related_model: A Django model that has a relation to the first one.
@@ -163,7 +163,7 @@ def Add_Related(model, field):
                 m = model._meta.object_name
                 rm = field.remote_field.model._meta.object_name
                 if settings.WARNINGS:
-                    log.warning(f"Possible configuration error: {field.name} was specified in {m} in the add_related property, but {rm} cannot be saved in inline formsets (for lack of a Foreign Key back to {m})")
+                    log.warning(f"Warning: A {rm} model form is provided for {m}.{field.name} BUT formsets of {rm} for {m}.{field.name} cannot be saved (because {rm} has no ForeignKey back to {m} - which is a prerequisite for Django Formsets).")
             return True
         # FIXME (ASAP): double check this and what it's about
         # Check my models for . syntax add related and try the form

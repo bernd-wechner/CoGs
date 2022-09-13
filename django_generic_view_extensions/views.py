@@ -21,7 +21,7 @@ These Extensions aim at providing primarily two things:
 In the process it also supports Field Privacy and Admin fields though these were spun out as independent packages.
 '''
 # Python imports
-import os, datetime  # , dal, sys, traceback
+import os, datetime
 
 # Django imports
 from django.views.generic import TemplateView, ListView, DetailView, CreateView, UpdateView, DeleteView
@@ -55,6 +55,8 @@ from .neighbours import get_neighbour_pks
 from .model import collect_rich_object_fields, inherit_fields, add_related
 from .related_forms import RelatedForms
 from .filterset import format_filterset, is_filter_field
+
+if settings.DEBUG: import sys, traceback
 
 # import sys, os
 # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
@@ -401,6 +403,17 @@ def get_context_data_generic(self, *args, **kwargs):
     if callable(getattr(self, 'extra_context_provider', None)):
         context.update(self.extra_context_provider(context))
 
+    if settings.DEBUG:
+        log.debug("Prepared this context data.")
+        for k, v in context.items():
+            # For the form we want to list the form.data really. The rest is unnecessary.
+            if k == "form":
+                log.debug(f"\tform.data:")
+                for field, value in sorted(v.data.items()):
+                    log.debug(f"\t\t{field}: {value}")
+            else:
+                log.debug(f"\t{k}: {v}")
+
     return context
 
 
@@ -594,7 +607,7 @@ def post_generic(self, request, *args, **kwargs):
             # Setting the instance to a newly instantiated instance seesm to trigger a form clean which
             # Can generate errors based on a a the CreateView context (like unique value constarints)
             # which have no bearing on the UpdateView which has an object attached. As we validate the
-            # form below in the proper context, we clear any form errros that this (dummy) context
+            # form below in the proper context, we clear any form errors that this (dummy) context
             # may have generated. The joy of trying to trick Django ...
             self.form.errors.clear()
 
@@ -609,6 +622,7 @@ def post_generic(self, request, *args, **kwargs):
 
         if settings.DEBUG:
             log.debug(f"Is_valid? {self.form.is_valid()}: {self.form.data}")
+
         if self.form.is_valid():
             # HOOK 2 pre_transaction: Hook for pre-processing the form (before a database transaction is opened)
             # The form has passed first validation and now is a chance to inject some code before we open a
@@ -635,11 +649,11 @@ def post_generic(self, request, *args, **kwargs):
                             if not next_kwargs: next_kwargs = {}
 
                         if settings.DEBUG:
-                            log.debug("Saving form from POST request containing:")
-                            for (key, val) in sorted(self.request.POST.items()):
+                            log.debug("Saving form with this submitted for data:")
+                            for (key, val) in sorted(self.form.data.items()):
                                 # See: https://code.djangoproject.com/ticket/1130
                                 # list items are hard to identify it seems in a generic manner
-                                log.debug(f"\t{key}: {val} & {self.request.POST.getlist(key)}")
+                                log.debug(f"\t{key}: {val} & {self.form.data.getlist(key)}")
 
                         if self.object:  # unprotect it from the full_clean augmentation once more
                             # Uncloak self.form.instance. From here on in we can proceed as normal.
@@ -650,7 +664,7 @@ def post_generic(self, request, *args, **kwargs):
                             self.form.full_clean()
                             # Or maybe not, so check for errors and raise one if found:
                             if self.form.errors:
-                                raise ValidationError('Some errors were detected in your submission.')
+                                raise ValidationError(f'Some errors were detected in your submission. Errors: {self.form.errors}')
 
                         self.object = self.form.save()
 
@@ -676,19 +690,29 @@ def post_generic(self, request, *args, **kwargs):
                             if settings.DEBUG:
                                 log.debug(f"Saving the related forms.")
 
+                            # Either of the pre_transaction or pre_save handlers might have replace self.form.data with
+                            # something cleaned up. self.form.related_forms was initialised before these were alled and
+                            # noted the contents of self.form.data. We need to inform it of any change.
+                            self.form.related_forms.set_data(self.form.data)
+
                             if self.form.related_forms.are_valid(self.model.__name__):
+                                peak = self.form.related_forms.errors
                                 self.form.related_forms.save()
                                 if settings.DEBUG:
                                     log.debug(f"Saved the related forms.")
                             else:
                                 if settings.DEBUG:
                                     log.debug(f"Invalid related forms. Errors: {self.form.related_forms.errors}")
-                                # Attach the newly annotated (with errros) related forms to the
+                                # Attach the newly annotated (with errors) related forms to the
                                 # form so that theyt reach the response template.
                                 # self.form.related_forms = related_forms
                                 # We raise an exception to break out of the
                                 # atomic transaction triggering a rollback.
-                                raise ValidationError(f"Related forms ({', '.join(list(self.form.related_forms.errors.keys()))}) are invalid.")
+                                for rm, errors in self.form.related_forms.errors.items():
+                                    for error in errors:
+                                        self.form.add_error(None, f"{rm}: {error.as_text()}")
+
+                                raise ValidationError(f"Please fix these and resubmit.")
 
                         # Give the object a chance to cleanup relations before we commit.
                         # Really a chance for the model to set some standards on relations
@@ -713,14 +737,19 @@ def post_generic(self, request, *args, **kwargs):
                     # Integrity errors tend to arise when the Models don't reflect the Database schema
                     #    that is migrations should be made and applied. The don't have a message but
                     #    a message can be found in the first argument.
+                    if settings.DEBUG:
+                        # Some tracback generation for debugging if needed
+                        exc_type, exc_obj, exc_tb = sys.exc_info()
+                        fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+                        log.debug(f"{exc_type.__name__} in {fname} at line {exc_tb.tb_lineno}")
+                        log.debug(traceback.format_exc())
 
-                    # Some tracback generation for debugging if needed
-                    # exc_type, exc_obj, exc_tb = sys.exc_info()
-                    # fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-                    # print(exc_type, fname, exc_tb.tb_lineno)
-                    # print(traceback.format_exc())
                     message = getattr(e, 'message', e.args[0])
-                    self.form.add_error(None, message)
+                    if e.__class__.__name__ == "IntegrityError":
+                        category = "Database integrity error"
+                    else:
+                        category = "Form validation error"
+                    self.form.add_error(None, f"{category}: {message}")
                     return self.form_invalid(self.form)
 
                 # HOOK 5 post_save: Hook for post-processing data (after it's all saved)
@@ -767,8 +796,24 @@ def form_invalid_generic(self, form):
     implementation which renders the simple form directly to response
     without aboy related form data.
     '''
-    # return self.render_to_response(self.get_context_data(form=form))
-    return TemplateResponse(self.request, self.template_name, self.get_context_data(form=form))
+    context = self.get_context_data(form=form)
+    response = TemplateResponse(self.request, self.template_name, context, headers={"Cache-Control": "no-store"})
+    response.render()
+
+    if settings.DEBUG:
+        log.debug("Form errors:")
+        log.debug(f"\t{response.context_data['form'].errors}")
+        log.debug("Form context:")
+        for k, v in context.items():
+            # For the form we want to list the form.data really. The rest is unnecessary.
+            if k == "form":
+                log.debug(f"\tform.data:")
+                for field, value in sorted(v.data.items()):
+                    log.debug(f"\t\t{field}: {value}")
+            else:
+                log.debug(f"\t{k}: {v}")
+
+    return response
 
 
 class CreateViewExtended(CreateView):

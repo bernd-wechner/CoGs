@@ -312,9 +312,9 @@ class Performance(AdminModel):
     @classmethod
     def form_order(cls, performances) -> QuerySet:
         '''
-        Form field ordering support for Django Generic Form Extenions RelatedFormsets
+        Form field ordering support for Django Generic View Extensions RelatedFormsets
 
-        if this class method exists, DGFE will call it to order objects when building related forms.
+        if this class method exists, DGVE will call it to order objects when building related forms.
 
         This returns the performances in order of the players ranking. Must return a QuerySet.
 

@@ -155,8 +155,9 @@ TEMPLATES = [
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
-database = "CoGs"
-# database = "CoGs_test"
+# database = "CoGs"
+database = "CoGs_test"
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',

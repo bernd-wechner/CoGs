@@ -152,7 +152,18 @@ class Team(AdminModel):
                 edit_rank = Rank.objects.get(pk=edit_rank_id)
 
                 if edit_team_id:
-                    assert edit_rank.team == edit_team, "If a team and Rank ID are supplied then they must be related."
+                    # When submitting team_play session forms and resubmitting, the edit_team is known
+                    # but we have lost edit_rank.team, the ranks will have been saved without teams and
+                    # the job of finding a team matching the submitted players and managing teams deleegated
+                    # to this method here. It is wholly ordinary then for edit_rank.team to be None in that
+                    # circumstance but we can assume it was just edit_team for now (we'll be checking players
+                    # and deciding what to do below).
+                    if edit_rank.team is None:
+                        edit_rank.team = edit_team
+                        edit_rank.save()
+                    # If for any reason edit_rank.team exists, it shoudl really match edit_team.
+                    else:
+                        assert edit_rank.team == edit_team, "If a Team and Rank ID are supplied then they must be related."
                 else:
                     edit_team = edit_rank.team
 
@@ -172,12 +183,15 @@ class Team(AdminModel):
 
             # Determine if we can kill the edit_team_id (not if we should, only if we can, which is
             # essentially if it has no session references, or if a session
-            referencing_sessions = Session.objects.filter(ranks__team=edit_team)
+            if edit_team:
+                referencing_sessions = Session.objects.filter(ranks__team=edit_team)
 
-            if edit_rank_id or edit_session_id:
-                can_kill_edit_team = len(referencing_sessions) == 1 and referencing_sessions[0].pk == edit_session_id
+                if edit_rank_id or edit_session_id:
+                    can_kill_edit_team = len(referencing_sessions) == 1 and referencing_sessions[0].pk == edit_session_id
+                else:
+                    can_kill_edit_team = len(referencing_sessions) == 0
             else:
-                can_kill_edit_team = len(referencing_sessions) == 0
+                can_kill_edit_team = False
 
         # Look for an existing team with the supplied players
         # We expect 0 or 1, multiple is an error (shoudl never happen)
@@ -200,6 +214,13 @@ class Team(AdminModel):
             if name: team.name = name
             team.save()
 
+            # If we are editing a rank add the team to it!
+            # That's why we created it after all
+            if edit_rank:
+                edit_rank.team = team
+                edit_rank.player = None
+                edit_rank.save()
+
         elif len(teams) == 1:
             # We have a unique match (team with the specified players)
             existing_team = teams[0]
@@ -213,6 +234,7 @@ class Team(AdminModel):
                 # The edit_rank should now point to the existing team.
                 if edit_rank:
                     edit_rank.team = existing_team
+                    edit_rank.player = None
                     edit_rank.save()
 
                 # The edit_team should be killed if it can be (has no other references)

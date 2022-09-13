@@ -133,6 +133,8 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
 
     :param form: The form instance, so we can add form errors if reconciliation failure demands it or add data to secure validation
     :param session_dict:  A Session dictionary as returned by Session.dict_from_form() which is modified in place as needed
+    :param pk: Provides a session PK if known
+    :param permit_missing_scores: Suprss adding a form error on missing scores
     '''
     game = Game.objects.get(pk=session_dict['game'])
     scoring = Game.ScoringOptions(game.scoring).name
@@ -156,12 +158,18 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         # The only difference really is that teams can have multiple pscores per rscore.
         # TODO: Do we need to know team_play here at all? Can validation of this happen
         # in form_validation if it's not needed for rank reconciliation?
+        # scoring can include:
+        #     TEAM
+        #     INDIVIDUAL
+        #     TEAM_AND_INDIVIDUAL
         if team_play:
+            # If TEAM scoring is not supported
             if not "TEAM" in scoring:
                 form.add_error(None, "This is a game that does not score teams and so team play sessions can not be recorded. Likely a form or game configuration error.")
                 return
         else:
-            if "TEAM" in scoring:
+            # If INDIVIDUAL scoring is not supported
+            if "TEAM" in scoring and not "INDIVIDUAL" in scoring:
                 form.add_error(None, "This is a game that scores teams and so only team play sessions can be recorded. Likely a form or game configuration error.")
                 return
 
@@ -283,8 +291,9 @@ def pre_validation_handler(self):
         # The new session (form form data) is VERY hard to represent as
         # a Django model instance. We represent it as a dict instead.
         # Essentially a translator of form_data (a QueryDict) into a more
-        # tractable form.
-        submitted_session = Session.dict_from_form(self.form.data)
+        # tractable form. If it's an Edit form we have  apk if it's an Add
+        # form we won't, so passa session pk, only if it's available.
+        submitted_session = Session.dict_from_form(self.form.data, getattr(self, "pk", None))
 
         # Ranking information can arrive as ranks, scores or a combination including
         # rank scroees, or performance scores . This all needs reconiliation before
@@ -296,22 +305,22 @@ def pre_validation_handler(self):
 
         if settings.DEBUG:
             log.debug(f"RANK RECONCILIATION, form provided:")
-            for key, value in self.form.data.items():
+            for key, value in sorted(self.form.data.items()):
                 log.debug(f"\t{key}: {value}")
 
             log.debug(f"RANK RECONCILIATION, session derived from it:")
-            for key, value in submitted_session.items():
+            for key, value in sorted(submitted_session.items()):
                 log.debug(f"\t{key}: {value}")
 
         reconcile_ranks(self.form, reconciled_session)
 
         if settings.DEBUG:
             log.debug(f"RANK RECONCILIATION, reconciled session :")
-            for key, value in reconciled_session.items():
+            for key, value in sorted(reconciled_session.items()):
                 log.debug(f"\t{key}: {value}")
 
             log.debug(f"RANK RECONCILIATION, reconciled form:")
-            for key, value in self.form.data.items():
+            for key, value in sorted(self.form.data.items()):
                 log.debug(f"\t{key}: {value}")
 
         # Find what the reconciler changed:
@@ -658,6 +667,15 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
     # Return the kwargs for the next handler
     return {'change_log': change_log, 'rebuild': rebuild, 'reason': reason}
 
+# TODO: When
+#    <input type="checkbox" value="on" id="id_Team-0-DELETE" name="Team-0-DELETE" style="display: none;">
+# is received. Test that Teams are deleted only if they have no other session references, elklse not deleted
+# I suspect standard Django form handling will not be smart enough here and we need to do something
+# pre-save or pre-commit or...
+#
+# 1, Check what the -DELETE currently does (test)
+# 2. Fix if necessary
+
 
 def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
     '''
@@ -708,7 +726,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
         #    This must have have happened when we saved the related forms by passing in an instance to the formset.save
         #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day.
-        #    Empirclaly seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #    Empirically seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
         #    For example:
         #
         #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>]>

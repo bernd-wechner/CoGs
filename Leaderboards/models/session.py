@@ -1823,6 +1823,16 @@ class Session(TimeZoneMixIn, AdminModel):
         num_ranks = int(data.get('Rank-TOTAL_FORMS', 0))
         num_performances = int(data.get('Performance-TOTAL_FORMS', 0))
 
+        # These may include -DELETE requests. For the purposes
+        # of dict generation we want to ignore those.
+        for r in range(num_ranks):
+            if f"Rank-{r}-DELETE" in data:
+                num_ranks -= 1
+
+        for p in range(num_performances):
+            if f"Performance-{p}-DELETE" in data:
+                num_performances -= 1
+
         # We want to convert strings to ints where sensible.
         for r in range(num_ranks):
             for key in [f'Rank-{r}-id',

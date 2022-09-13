@@ -43,8 +43,16 @@
 
 		{% if debug and model_name == 'Session' %}
 			<tr>
+				<th>Debugging options:</th>
+				<td></td>
+			</tr>
+			<tr>
 				<th>Show trash:</th>
 				<td><input type="checkbox" onchange="showhideTrash(event)"></td>
+			</tr>
+			<tr>
+				<th>Show Ranks and Scores:</th>
+				<td><input type="checkbox" onchange="showhideRankScoreDebugging(event)"></td>
 			</tr>
 		{% endif %}
 	</table>
@@ -76,5 +84,15 @@
 
 		// Catch related form errors that come in (in order to report them)
 		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};
+	</script>
+{% endblock %}
+
+{% block endscript %}
+	<script>
+		// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form
+		// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
+		// what's going on if something isn't working.
+		const prepare_submission = document.getElementById("prepare_submission");
+		if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit)
 	</script>
 {% endblock %}

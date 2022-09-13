@@ -15,8 +15,8 @@
 			which must be submitted with a formset for Django to properly processs the forms.
 			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
 		{% endcomment %}
-		{{ form.related_forms.Rank.management_form }}
-		{{ form.related_forms.Performance.management_form }}
+		<div name="Rank-Management-Form">{{ form.related_forms.Rank.management_form }}</div>
+		<div name="Perf-Management-Form">{{ form.related_forms.Performance.management_form }}</div>
 		<table id="tblIndividualPlay">
 			<colgroup span="2"></colgroup>
 			<tr>
@@ -79,9 +79,9 @@
 			which must be submitted with a formset for Django to properly processs the forms.
 			If we add forms to the formset (i.e. add players for example) in javascript we must keep these updated too.
 		{% endcomment %}
-		{{ form.related_forms.Rank.management_form }}
-		{{ form.related_forms.Rank.related_forms.Team.management_form }}
-		{{ form.related_forms.Performance.management_form }}
+		<div name="Rank-Management-Form">{{ form.related_forms.Rank.management_form }}</div>
+		<div name="Team-Management-Form">{{ form.related_forms.Rank.related_forms.Team.management_form }}</div>
+		<div name="Perf-Management-Form">{{ form.related_forms.Performance.management_form }}</div>
 		<table id="tblTeamPlay">
 			<colgroup span="2"></colgroup>
 		    <tr>

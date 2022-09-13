@@ -23,24 +23,38 @@
 	"use strict";
 	{# Inititial values for  form fields. Only needed if the operation is edit (not add) and used in form_rankings.js #}
 	const operation	= "{{operation}}";
+	const global_has_errors = {% if form.errors %}true{% else %}false{% endif %};
+	const global_has_non_field_errors = {% if form.non_field_errors %}true{% else %}false{% endif %};
 
 	function get_session_data() {
 		{#	If the form has errors, then it is bounce back from a form that was being edited #}
 		{#	form.data will have the the state of ranks and performances as they were submitted. #}
 		{#	(and bounced).#}
+
+		{#	Just a little insight (primarily for when looking at code in the browser debugger) as to how these tests pan out #}
+		const has_errors = {% if form.errors %}true{% else %}false{% endif %};
+		const has_non_field_errors = {% if form.non_field_errors %}true{% else %}false{% endif %};
+
 		{% if form.errors %}
+			const team_play = ("{{form.data.team_play}}" == "on");
+
+			// We need to make sure we get all the TIDS and alld the DELETE requests back here on a bounce. The state of the form
+			// must be restored.
+
 		    {#	We dont use standard Django formsets here (we build the formset in Javascript dynamically) #}
 		    {#	And this is the source data for the Rank and performance Javascript formset generator. #}
 		    {#	So we need to populate it from the form.data. #}
+
+			{#	Rank data lists are ordered by rank #}
 		    let rIDs          = {% get_list form.data "Rank" "id" %};     {# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
 		    const rRanks 	  = {% get_list form.data "Rank" "rank" %};   {# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
 		    const rScores 	  = {% get_list form.data "Rank" "score" %};  {# List of scores for the the rankers. #}
 		    const rPlayers 	  = {% get_list form.data "Rank" "player" %}; {# Primary Keys of the players corresponding to the ranks in Ranking. #}
 		    let tIDs  		  = {% get_list form.data "Team" "id" %}; 	  {# Primary Keys teams corresponding to the ranks in Ranking - one per rank, can be empty string for nameless teams #}
 
-		    {# Performance Related Data - lists with one entry per performance #}
+		    {# Performance Datalists are ordered by player ID #}
 		    let pIDs          = {% get_list form.data "Performance" "id" %}; 						{# Primary Keys of the Performance objects being edited. Can be absent for creation forms, needed for edit forms. #}
-		    const pPlayers 	  = {% get_list form.data "Performance" "player" %};					{# Primary Keys of the players corresponding to the ranks in Performance. #}
+		    const pPlayers 	  = {% get_list form.data "Performance" "player" %};					{# Primary Keys of the players corresponding to the IDs in Performance. #}
 		    const pScores 	  = {% get_list form.data "Performance" "score" %};						{# Scores for the performers only needed in team play if individual scores are needed #}
 		    const pWeights 	  = {% get_list form.data "Performance" "partial_play_weighting" %};	{# Partial play weighting factors corresponding to the players in Players #}
 
@@ -65,6 +79,9 @@
 		{#	Rank scores are used in individual play and team play #}
 		{#  Performance scores are used only in team play when INDIVIDUAL scores are needed #}
 		{% else %}
+			const team_play = ("{{session.team_play}}" == "True");
+
+
 		    {# Rank Related Data - lists with on entry per rank #}
 		    let rIDs         = {{ form.related_forms.Rank.field_data.id|json }};         	{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
 		    const rRanks 	 = {{ form.related_forms.Rank.field_data.rank|json }};       	{# List of ranks, 1, 2, 3 etc. And probably just that sequence really. #}
@@ -128,6 +145,7 @@
 		}
 
 		return session_dict(
+			 team_play,	    // boolean
 		     rIDs, 			// Array of rank IDs
 		     ridRanks,		// dict of ranks keyed on rID
 		     ridScores,		// dict of scores keyed on rID
@@ -142,8 +160,6 @@
 		    );
 	}
 
-	const is_team_play = ("{{session.team_play}}" == "True");
-
 	{# If editing a session we will receive some simple game properties to help set up and constrain the form #}
 	{# These can change if the game is changed, so they are variables not constants #}
 	{#	we use var to create true globals #}
@@ -154,19 +170,6 @@
 	let game_max_players 			=  {{game_max_players}};
 	let game_min_players_per_team 	=  {{game_min_players_per_team}};
 	let game_max_players_per_team 	=  {{game_max_players_per_team}};
-
-	// a call to showhideRankScoreColumns() acts on these globals.
-	let show_rank_scores = false;	// The rank scores column
-	let show_perf_scores = false;	// The performance scores column
-	let show_tiebreakers = false;	//  Show the rank column to break rank score ties
-
-	if (is_team_play) {
-		show_rank_scores = game_scoring.includes("TEAM");
-		show_perf_scores = game_scoring.includes("INDIVIDUAL");
-	} else {
-		show_rank_scores = game_scoring.includes("INDIVIDUAL");
-		show_perf_scores = false;
-	}
 
 	{# The game props and player fetcher URLs needs a PK as argument, must be digit string, will replace /\d_$/ when using. #}
 	const game_props_url 			= "{% url 'get_game_props' 1 %}"

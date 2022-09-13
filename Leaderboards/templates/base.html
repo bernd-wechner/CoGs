@@ -28,19 +28,19 @@
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/{{version_Underscore}}/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
 
 	{# JQuery #}
-`	{% if DEBUG_JQuery %}
+	{% if DEBUG_JQuery %}
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.js" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.js" crossorigin="anonymous"></script>
 	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.js" crossorigin="anonymous"></script>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-`	{% else %}
+	{% else %}
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.min.js" crossorigin="anonymous"></script>
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.min.js" crossorigin="anonymous"></script>
 	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
 	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.min.js" crossorigin="anonymous"></script>
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-`	{% endif %}
+	{% endif %}
 
 	{# Bootstrap - Experimental #}
 	{# Changes appearance of whole site rather radically - and not satisfactorily without tuning (and understanding why it does what it does #}

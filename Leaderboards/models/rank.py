@@ -117,6 +117,18 @@ class Rank(AdminModel):
     def link_internal(self) -> str:
         return reverse('view', kwargs={"model":self._meta.model.__name__, "pk": self.pk})
 
+    def clean(self):
+        '''
+        Called by Rank.full_clean() as well.
+        https://docs.djangoproject.com/en/dev/ref/models/instances/#django.db.models.Model.clean
+        '''
+        team_play = self.session.team_play
+
+        if team_play:
+            self.player = None
+        else:
+            self.team = None
+
     # @property_method
     def check_integrity(self, passthru=True):
         '''

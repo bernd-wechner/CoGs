@@ -60,7 +60,7 @@ class RelatedForms(dict):
     __model = None
     __form_data = None
     __db_object = None
-    __related_forms = None
+    __related_forms = None  # An OrderedDict
     __are_valid = None
     __form_errors = None
 
@@ -72,7 +72,7 @@ class RelatedForms(dict):
         return str(self.__model_history) + " "
         # return '\t' * len(self.__model_history)
 
-    def __init__(self, model, form_data=None, db_object=None):
+    def __init__(self, model, form_data=None, db_object=None, history=None):
         '''
         Generates a list of related forms (in self.related_forms) given
         a model and either a dictionary of form data (as delivered by a
@@ -84,9 +84,10 @@ class RelatedForms(dict):
         :param model:        The model for which we want the related forms
         :param form_data:    form data to augment the related forms with, if available
         :param db_object:    an instance of model to augment related forms with, if available
+        :param history:      A list of model names for tracing recursion and detecting issues
         '''
         super().__init__()
-        self.__model_history = []
+        self.__model_history = history if history else []
         self.__model = model
         self.__form_data = form_data
         self.__db_object = db_object
@@ -95,6 +96,64 @@ class RelatedForms(dict):
         # As RelatedForms is derived from OrderedDict (derived from dict)
         # we update self with the related forms.
         self.update(self.__related_forms)
+
+    def set_data(self, form_data):
+        '''
+        The various handlers in form processing might update form_data for reasons of their own.
+
+        if they do they should call this on existing any existing iinstance of RelatedForms
+        to update its __form_data.
+
+        :param form_data: a form.data dictionary
+        '''
+        self.__form_data = form_data
+        # The form data is also in each of the related forms and the formset and the formset forms!
+        # Where and when Django validators consult it is not clear but it exists in all those places
+        # and missing any can lead to validation errors!
+        for name, form in self.__related_forms.items():
+            if not form.data == form_data:
+                form._errors = []
+                form.data = form_data
+            if not form.formset.data == form_data:
+                form.formset._errors = []
+                form.formset.data = form_data
+            for subform in form.formset:
+                if not subform.data == form_data:
+                    subform._errors = []
+                    subform.data = form_data
+                    # A full clean is needed to update subform.cleaned_data which the SQL
+                    # will be built from. A full clean is how we ensure the new form_data
+                    # is applied.
+                    subform.full_clean()
+
+            # Recurse if needed
+            if hasattr(form, 'related_forms'):
+                form.related_forms.set_data(form_data)
+
+    def _errors(self, affix=""):
+        '''
+        Returns a dict of the form and related form errors, keyted on the model name
+        '''
+        errors = {}
+        for name, form in self.__related_forms.items():
+            errors[f"{affix}{name}"] = form.errors.copy()
+            for i, subform in enumerate(form.formset):
+                errors[f"{affix}{name}.{i}"] = subform.errors.copy()
+
+            # Recurse if needed
+            if hasattr(form, 'related_forms'):
+                related_errors = form.related_forms._errors(f"{name}-")
+                errors.update(related_errors)
+
+        return errors
+
+    @property
+    def errors(self):
+        return self._errors()
+
+    # @property
+    # def errors(self):
+    #     return self.__form_errors
 
     def get(self, model=None, form_data=None, db_object=None):
         '''
@@ -185,14 +244,14 @@ class RelatedForms(dict):
         # (an attribute of the related_forms we return that contains data for populating
         # empty form with or instance_forms if we have database instances of related objects)
         if DEBUG:
-            if not form_data is None:
-                log.debug(f"{self.dp}Got form_data:")
-                for (key, val) in form_data.items():
-                    log.debug(f"{self.dp}\t{key}:{val}")
-                log.debug("\n")
-
             if not db_object is None:
                 log.debug(f"{self.dp}Got db_object: {db_object._meta.object_name} {db_object.pk}")
+
+            if not form_data is None:
+                log.debug(f"{self.dp}Got form_data:")
+                for (key, val) in sorted(form_data.items()):
+                    log.debug(f"{self.dp}\t{key}:{val}")
+                log.debug("\n")
 
             log.debug(f"{self.dp}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
 
@@ -283,10 +342,17 @@ class RelatedForms(dict):
             if form_data:
                 if db_object and inline:
                     related_formset = Related_Formset(prefix=related_model_name, data=form_data, instance=db_object)
-                else:
+                    source = "form_data and db_object"
+                elif inline:
                     related_formset = Related_Formset(prefix=related_model_name, data=form_data)
+                    source = "form_data"
+                else:
+                    # By default a basic model formset uses a queryset of .all().
+                    related_formset = Related_Formset(prefix=related_model_name, queryset=relation.related_model.objects.none())
+                    source = "model"
 
                 if DEBUG:
+                    log.debug(f"{self.dp}\t\tBuilt {related_model_name} formset with {len(related_formset.forms)} forms using {source}")
                     log.debug(f"{self.dp}\t\tUsing form data to populate field_data.")
 
                 related_objects = []
@@ -297,7 +363,9 @@ class RelatedForms(dict):
                     log.debug(f"{self.dp}\t\tUsing a database object to populate field_data.")
                     log.debug(f"{self.dp}\t\t{relation.name=}")
                     log.debug(f"{self.dp}\t\t{related_field=}")
-                    log.debug(f"{self.dp}\t\t{getattr(related_field, 'all', None)=}")
+                    log.debug(f"{self.dp}\t\t{list(getattr(related_field, 'all', lambda: [])())=}")
+                    log.debug(f"{self.dp}\t\t{relation.one_to_many=}\t{relation.many_to_many=}")
+                    log.debug(f"{self.dp}\t\t{relation.many_to_one=}\t{relation.one_to_one=}")
 
                 if relation.one_to_many or relation.many_to_many:
                     if callable(getattr(related_field, 'all', None)):
@@ -318,13 +386,17 @@ class RelatedForms(dict):
                     related_objects = relation.related_model.objects.none()
 
                 if DEBUG:
-                    log.debug(f"{self.dp}\t\tGot these related objects: {related_objects}.")
-                related_formset = Related_Formset(prefix=related_model_name, queryset=related_objects, data=form_data)
+                    log.debug(f"{self.dp}\t\tGot these related objects: {list(related_objects)}.")
+
+                related_formset = Related_Formset(prefix=related_model_name, queryset=related_objects)
+
+                if DEBUG:
+                    log.debug(f"{self.dp}\t\tBuilt {related_model_name} formset with {len(related_formset.forms)} forms using {len(related_objects)} objects.")
             else:
                 related_objects = relation.related_model.objects.none()
                 related_formset = Related_Formset(prefix=related_model_name, queryset=related_objects)
                 if DEBUG:
-                    log.debug(f"{self.dp}\tfield_data cannot be populated.")
+                    log.debug(f"{self.dp}\tfield_data cannot be populated (no form data and no database object supplied).")
 
             # Build the generic_related_form for this relation and save it
             # This is an empty form (fields unpopulated)
@@ -452,7 +524,10 @@ class RelatedForms(dict):
             # ====================================================================================
             # STEP 6: Whether there is an instance or not we want a related_forms attribute
             #         with empty forms, just so that we can provide the widgets to a Django context.
-            generic_form.related_forms = self.get(relation.related_model)
+
+            # TRIAL: Using a RelatedForms instance rather than a dict.
+            # generic_form.related_forms = self.get(relation.related_model)
+            generic_form.related_forms = RelatedForms(relation.related_model, form_data, history=self.__model_history)
 
         if DEBUG:
             log.debug(f"{self.dp}Found {len(related_forms)} related forms: {[f[0] for f in related_forms.items()]}.")
@@ -473,19 +548,22 @@ class RelatedForms(dict):
         '''
         # Before the recrusive walk fo related forms, start with clean
         # history. These are populated duing the walk.
-        self.__model_history = [model_name] if model_name else []
-        self.__are_valid = True
-        self.__form_errors = {}
 
         if DEBUG:
+            # We start model_history got a clean self.dp (which uses it)
+            self.__model_history = [model_name] if model_name else []
             if self.__form_data:
                 log.debug(f"{self.dp} Form data:")
 
-                for k, v in self.__form_data.items():
+                for k, v in sorted(self.__form_data.items()):
                     log.debug(f"{self.dp}\t{k} = {v}")
 
+        self.__model_history = []
+        self.__are_valid = True
+        self.__form_errors = {}
+
         # Start the recursive walk down related forms.
-        return self._are_valid(model_name)
+        return self._are_valid(model_name=model_name)
 
     def _are_valid(self, model_name=None, related_forms=None):
         '''
@@ -502,7 +580,7 @@ class RelatedForms(dict):
             related_forms = self.__related_forms
 
         if DEBUG:
-            log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() with {len(related_forms)} related forms: {[k for k in related_forms.keys()]}")
+            log.debug(f"{self.dp} Starting {self.__class__.__name__}.are_valid() on {model_name} with {len(related_forms)} related forms: {[k for k in related_forms.keys()]}")
 
         for name, form in related_forms.items():
             related_model = form.model  # The related model
@@ -512,6 +590,9 @@ class RelatedForms(dict):
             if form.formset.forms:
                 form.formset.full_clean()
 
+                if DEBUG:
+                    log.debug(f"{self.dp} Checking validity of {len(form.formset.forms)} {rmon} forms.")
+
                 is_valid = form.formset.is_valid()
 
                 fs_key = ".".join(self.__model_history + [rmon])
@@ -519,7 +600,7 @@ class RelatedForms(dict):
 
                 if DEBUG:
                     mn_pfx = f"{model_name} has " if model_name else ""
-                    log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key is {fs_key}")
+                    log.debug(f"{self.dp} {mn_pfx}{len(form.formset.forms)} {rmon}s in form_data that {'ARE'if is_valid else 'ARE NOT'} valid. Their key for error collection is {fs_key}")
 
                 # Django returns a fairly liberal errors list for formsets
                 # Basically formset.errors is a list of dicts one per form in
@@ -551,10 +632,6 @@ class RelatedForms(dict):
         if self.__model_history: self.__model_history.pop()
 
         return self.__are_valid
-
-    @property
-    def errors(self):
-        return self.__form_errors
 
     def save(self):
         '''
@@ -628,7 +705,7 @@ class RelatedForms(dict):
                     rfn = relation.field.name  # Related model field name
 
                     if DEBUG:
-                        log.debug(f"{self.dp}\tFormset submission is valid. Saving it ...")
+                        log.debug(f"{self.dp}\t{rmon} Formset submission is valid. Saving it ...")
 
                     if DEBUG:
                         robjs_before = len(getattr(db_object, ran).all())
