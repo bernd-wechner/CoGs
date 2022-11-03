@@ -95,17 +95,17 @@ def ajax_BGG_Game_Properties(request, pk):
     '''
     A view that returns basic game properties from BGG.
 
-    This is neded because BGG don't support CORS. That means modern browsers cannot
-    fetch data from their API in Javascript. And BGG don't seem to care or want tof ix that.:
+    This is needed because BGG don't support CORS. That means modern browsers cannot
+    fetch data from their API in Javascript. And BGG don't seem to care or want to fix that:
 
     https://boardgamegeek.com/thread/2268761/cors-security-issue-using-xmlapi
     https://boardgamegeek.com/thread/1304818/cross-origin-resource-sharing-cors
 
-    So we have to fech the data from the CoGS server and supply it to the browser from
-    the same origin. Givcen our API is using JSON not XML, we provide it in JSON to the
+    So we have to fetch the data from the CoGS server and supply it to the browser from
+    the same origin. Given our API is using JSON not XML, we provide it in JSON to the
     browser.
 
-    The main use casehere is thatthe browser can request BGG data to poopulate form
+    The main use case here is that the browser can request BGG data to poopulate form
     fields when submitting a new game. Use case:
 
     1. User enters a BGG ID

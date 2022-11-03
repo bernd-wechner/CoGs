@@ -216,9 +216,11 @@ if [ "$copy_site" = true ]; then
 
 		# If we are copying the site to a web server (not localhost, the development machine) then we need to run collectstatic on
 		# the target. A Django requirment. TO be honest when stable this is not needed. But if static files are added, removed or
-		# altered they won't be available to a webserver until collectstatic is run.
+		# altered they won't be available to a webserver until collectstatic is run. We NEED to remove the static folder first to
+		# force this as Django's collectstatic has no --force option and the timestamps (that it uses) are not useful because of
+		# the recent copy to server.
 		echo "Collecting static files on $target_host"
-		${prefix}ssh $target_user@$target_host "$prepare_then python manage.py collectstatic --noinput"
+		${prefix}ssh $target_user@$target_host "$prepare_then rm -rf static; python manage.py collectstatic --noinput"
 
 	fi
 fi

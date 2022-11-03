@@ -24,7 +24,6 @@ enum-compat>=0.0.3
 idna>=2.10
 JSON-Datetime>=0.0.6
 numpy>=1.21.0
-pkg-resources>=0.0.0
 psutil>=5.8.0
 psycopg2>=2.8.6
 pymemcache>=3.5.1

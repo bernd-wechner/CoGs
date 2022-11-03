@@ -93,6 +93,11 @@
 		// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
 		// what's going on if something isn't working.
 		const prepare_submission = document.getElementById("prepare_submission");
-		if (prepare_submission) prepare_submission.addEventListener('click', OnSubmit)
+		if (prepare_submission) {
+			if (typeof OnSubmit === "undefined")
+			 	prepare_submission.hidden = true;
+			else
+				prepare_submission.addEventListener('click', OnSubmit)
+		}
 	</script>
 {% endblock %}

@@ -160,6 +160,20 @@ class Player(PrivacyMixIn, AdminModel):
                 sessions[game] = self.last_win(game)
         return sessions
 
+    @property_method
+    def sessions_played(self, game=None) -> object:
+        '''
+        For a given game returns all the sessions this player played that game.
+        '''
+        Session = apps.get_model(APP, "Session")
+        sFilter = (Q(ranks__player=self) | Q(ranks__team__players=self))
+        if game:
+            sFilter &= Q(game=game)
+
+        plays = Session.objects.filter(sFilter).order_by('-date_time')
+
+        return None if (plays is None or plays.count() == 0) else plays
+
     @cached_property
     def leaderboard_positions(self) -> list:
         '''
@@ -202,13 +216,13 @@ class Player(PrivacyMixIn, AdminModel):
         if multiple_leagues:
             result[ALL_LEAGUES] = []
             for game in played:
-                if self.is_at_top_of_leaderbard(game):
+                if self.is_at_top_of_leaderboard(game):
                     result[ALL_LEAGUES].append(game)
 
         for league in self.leagues.all():
             result[league] = []
             for game in played:
-                if self.is_at_top_of_leaderbard(game, league):
+                if self.is_at_top_of_leaderboard(game, league):
                     result[league].append(game)
 
         return result
@@ -261,7 +275,7 @@ class Player(PrivacyMixIn, AdminModel):
             if entry[0] == self.pk:
                 return pos + 1  # pos is 0 based, leaderboard positions are 1 based
 
-    def is_at_top_of_leaderbard(self, game, leagues=[]):
+    def is_at_top_of_leaderboard(self, game, leagues=[]):
         return self.leaderboard_position(game, leagues) == 1
 
     @classmethod

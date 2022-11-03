@@ -1,5 +1,5 @@
 #===============================================================================
-# Received fro POSTed information. Part of the AJAX inoterface, these are how
+# Receive POSTed information. Part of the AJAX interface, these are how
 # the client side JavaScript submits information about the client and user
 # using it.
 #===============================================================================

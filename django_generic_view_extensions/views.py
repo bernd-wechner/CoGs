@@ -774,6 +774,7 @@ def form_valid_generic(self, form):
     If the form is valid, redirect to the supplied URL.
 
     :param self: and instance of CreateView or UpdateView
+    :param form: and instance of ModelForm
 
     This is code shared by the two views so peeled out into a generic.
 
@@ -789,6 +790,7 @@ def form_invalid_generic(self, form):
     If the form is invalid, reload the form with the rich context
 
     :param self: and instance of CreateView or UpdateView
+    :param form: and instance of ModelForm
 
     This is code shared by the two views so peeled out into a generic.
 
@@ -848,6 +850,7 @@ class CreateViewExtended(CreateView):
     get_context_data = get_context_data_generic
     get_form = get_form_generic
     post = post_generic
+    form_init = None
     form_valid = form_valid_generic
     form_invalid = form_invalid_generic
 
@@ -904,6 +907,10 @@ class CreateViewExtended(CreateView):
                         initial[field_name] = field_value + delta
                 else:
                     initial[field_name] = field_value
+
+        # Hook for aurgmenting the initial form data
+        if callable(self.form_init):
+            initial = self.form_init(initial)
 
         return initial
 

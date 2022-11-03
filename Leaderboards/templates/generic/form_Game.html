@@ -1,5 +1,19 @@
 {# Add a BGG fetch button 	#}
 <script>
+	Number.prototype.toHHMMSS = function () {
+	    let seconds = Math.floor(this)
+	    let hours = Math.floor(seconds / 3600);
+	    seconds -= hours*3600;
+	    let minutes = Math.floor(seconds / 60);
+	    seconds -= minutes*60;
+
+	    if (hours   < 10) {hours   = "0"+hours;}
+	    if (minutes < 10) {minutes = "0"+minutes;}
+	    if (seconds < 10) {seconds = "0"+seconds;}
+	    return hours+':'+minutes+':'+seconds;
+	}
+
+
 	const id = $('#id_BGGid')
 	const id_td = id.closest('td');
 	const id_tr = id.closest('tr');
@@ -15,69 +29,68 @@
 
 	function BGG_fetch(event) {
 		const game_id = id.val();
-	
+
 		const REQUEST = new XMLHttpRequest();
-		
+
 		REQUEST.onreadystatechange = function () {
 		    if (this.readyState === 4 && this.status === 200){
-		        // the request is complete, parse data 
+		        // the request is complete, parse data
 		        const response = JSON.parse(this.responseText);
-		        
+
 				// BGG stoes many names for a game
 				// only one is primary
 				const names = response.name;
 				const name = names == undefined
-						   ? undefined 
-						   : names.length 
-						   ? names.find(element => element['@primary']) 
+						   ? undefined
+						   : names.length
+						   ? names.find(element => element['@primary'])
 						   : names;
 				const game_name = (name != undefined) ? name['#text'] : undefined;
 				$('#id_name').val(game_name);
-				
+
 				// BGG encodes team play as a board game mechanic
 				const mechanics = response.boardgamemechanic;
-				const mech = mechanics == undefined 
+				const mech = mechanics == undefined
 						   ? undefined
-						   : mechanics.length 
+						   : mechanics.length
 						   ? mechanics.find(element => element['@objectid'] == 2019)
 						   : mechanics['@objectid'] == 2019
 						   ? mechanics
 						   : undefined;
-				teamplay = mech != undefined;  
-				
+				teamplay = mech != undefined;
+
 				$('#id_team_play').prop('checked', teamplay);
 				$('#id_individual_play').prop('checked', !teamplay);
 
 		        $('#id_min_players').val(response.minplayers);
 		        $('#id_max_players').val(response.maxplayers);
-		        
+
 		        // BGG doens't store information regarding min and maximum team size
 		        // so we can't set id_min_players_per_team and id_max_players_per_team
 		        // sensibly from BGG data.
-		        
-		        // TODO: playing time is something we should add to the form and game 
-		        // 		 props as it allows us to better provide default times for 
-		        //		session submissions.
-				// response.playingtime;
-				
+
+				const secs_expected_playing_time = Number(response.playingtime) * 60;
+				const expected_playing_time = secs_expected_playing_time.toHHMMSS();
+				$('#id_expected_play_time').val(expected_playing_time);
+
 				// To indicate success we grab the thumbnail and display it
 				const thumbnailURL = response.thumbnail;
 				const thumbnailIMG = $('#BGGthumbnail');
 				const thumbnailA = $('#BGGthumbnailLink');
 				const gameURL = `https://boardgamegeek.com/boardgame/${game_id}`;
-				
+
 				if (thumbnailIMG.length) {
 					thumbnailIMG.prop('src', thumbnailURL);
 					thumbnailA.prop('href', gameURL);
 				} else {
-					id_tr.append(`<td rowspan=7><a href='${gameURL}' id='BGGthumbnailLink'><img src='${thumbnailURL}' id='BGGthumbnail'></a></td>`);
+					id_tr.append(`<td rowspan=7 style='vertical-align: top;'><a href='${gameURL}' id='BGGthumbnailLink'><img src='${thumbnailURL}' id='BGGthumbnail'></a></td>`);
 				}
 		    }
 		};
-	
+
 		if (game_id) {
 			const BGG_API_URL = '{% url 'get_bgg_game_props' 1 %}'.replace(/\d+$/, game_id);
-			
+
 			REQUEST.open("GET", BGG_API_URL, true);
 			REQUEST.send(null);
 		}

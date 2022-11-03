@@ -14,9 +14,7 @@
 */
 
  .form_control {
-	height: 28px;
 	box-sizing: border-box;
-	display: block;
 	background-color: #fff;
 	border: 1px solid #ccc;
 	border-radius: 4px;
@@ -26,4 +24,9 @@
 	border-bottom-left-radius: 4px;
 	line-height: 1.42857143;
 	padding: 6px 6px 6px 6px;
+ }
+
+ .form_control:not(.BitFormField) {
+	height: 28px;
+	display: inline-block;
  }

@@ -41,18 +41,23 @@ SANDBOX = "arachne"
 
 SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
-TESTING = sys.argv[1] == 'test'
+TESTING = len(sys.argv) >= 2 and sys.argv[1] == 'test'
 
 if HOSTNAME == PRODUCTION:
     SITE_TITLE = "CoGs Leaderboard Space"
+    database = "CoGs"
     DEBUG = False
     WARNINGS = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
+    # database = "CoGs"
+    database = "CoGs_test"
     DEBUG = True
     WARNINGS = True
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
+    database = "CoGs"
+    # database = "CoGs_test"
     DEBUG = True
     WARNINGS = not TESTING
 
@@ -155,8 +160,6 @@ TEMPLATES = [
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
-# database = "CoGs"
-database = "CoGs_test"
 
 DATABASES = {
     'default': {

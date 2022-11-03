@@ -61,6 +61,7 @@ import html, collections, inspect
 # Django imports
 from django.db import models
 from django.utils.safestring import mark_safe
+from django.utils.functional import cached_property
 from django.utils.timezone import get_current_timezone
 from django.forms.models import inlineformset_factory
 from django.core.exceptions import ObjectDoesNotExist
@@ -381,7 +382,10 @@ def collect_rich_object_fields(view):
         return hasattr(field, 'is_relation') and field.is_relation and (field.one_to_many or field.many_to_many)
 
     def is_property(name):
-        return isinstance(getattr(view.model, name), property)
+        return isinstance(getattr(view.model, name), (property, cached_property))
+
+    def is_cached(name):
+        return isinstance(getattr(view.model, name), cached_property)
 
     def is_bitfield(field):
         return type(field).__name__ == "BitField"
@@ -415,13 +419,13 @@ def collect_rich_object_fields(view):
                 # Use the annotations provided on model properties to classify properties and include
                 # them based on the classification. The classification is for list and flat respecting
                 # the object_display_flags selected. That is all we need here.
-                if hasattr(getattr(view.model, name).fget, "__annotations__"):
-                    annotations = getattr(view.model, name).fget.__annotations__
-                    if "return" in annotations:
-                        return_type = annotations["return"]
-                        if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
-                            properties.append(name)
-                    else:
+                prop = getattr(view.model, name)
+                func = prop.real_func if is_cached(name) else prop.fget
+                annotations = getattr(func, "__annotations", {})
+
+                if "return" in annotations:
+                    return_type = annotations["return"]
+                    if (isListType(return_type) and ODF & odf.list) or (not isListType(return_type) and ODF & odf.flat):
                         properties.append(name)
                 else:
                     properties.append(name)

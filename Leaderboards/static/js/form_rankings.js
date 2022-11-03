@@ -33,7 +33,7 @@ const sortObject = (obj, descending) => {
 // Sessions structure).
 const Session = get_session_data();
 
-// Globalk flags for managing rank and score columns
+// Global flags for managing rank and score columns
 // a call to showhideRankScoreColumns() acts on these globals.
 let show_rank_scores = false;	// The rank scores column
 let show_perf_scores = false;	// The performance scores column

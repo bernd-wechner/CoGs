@@ -1,7 +1,7 @@
 #===============================================================================
 # Handlers called AFTER certain conditions in the generic views.
 #
-# These are the COGS specific handlers thatthe generic views call.
+# These are the COGS specific handlers that the generic views call.
 #===============================================================================
 from ..models import Rating, RATING_REBUILD_TRIGGER
 

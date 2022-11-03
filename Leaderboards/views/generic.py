@@ -6,6 +6,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django_generic_view_extensions.views import DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 
+from .form_initialisers import form_init
 from .pre_handlers import pre_validation_handler, pre_transaction_handler, pre_save_handler, pre_commit_handler, pre_delete_handler
 from .post_handlers import post_delete_handler, post_save_handler
 from .context import extra_context_provider
@@ -16,6 +17,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     operation = 'add'
     # fields = '__all__'
     extra_context_provider = extra_context_provider
+    form_init = form_init
     pre_validation = pre_validation_handler
     pre_transaction = pre_transaction_handler
     pre_save = pre_save_handler
