@@ -13,7 +13,7 @@ from django.views.static import serve as serve_static
 # from django.views.generic.base import RedirectView
 # from functools import reduce
 
-from django_generic_view_extensions.views import ajax_Autocomplete, ajax_Selector
+from django_generic_view_extensions.ajax import ajax_Autocomplete, ajax_Selector
 
 from Leaderboards import views
 from Leaderboards import importers

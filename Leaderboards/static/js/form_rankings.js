@@ -1811,6 +1811,23 @@ function OnPlayerChange(event) {
 	}
 }
 
+// A DAL forward handler that returns the player PKs to exclude
+function excludePlayers() {
+	const pplayers = $$(id_tbl_visbl).querySelectorAll(qs_pplayers);
+	let selected_players = [];
+	for (player of pplayers)
+		if (player.value)
+			selected_players.push(player.value)
+	const exclude = selected_players.join(",");
+	//for (player of pplayers)
+	//	player.attributes["data-autocomplete-light-url"].value = player.attributes["data-autocomplete-light-url"].value.split("?")[0] + "?exclude=" + exclude;
+	return exclude;
+}
+
+// We have to register the DAL forward handler and can only do it after the DAL library has initialised
+// which it does in a handler attached to "load". We atach ours after theirs and so yl is defined.
+function registerForwarder() { yl.registerForwardHandler("excludePlayers", excludePlayers); }
+window.addEventListener("load", registerForwarder);
 
 // Event hook if a score changes.
 // OnSubmit handles removing hidden scores or ranks form
@@ -2321,6 +2338,11 @@ function applySessionToRow(session, row, table_type) {
 //					table: templateTeamPlayersTable 	The table of team players
 //						tr: templateTeamPlayersHeader	A header row
 //						tr: templateTeamPlayersBody		One of these rows per player in the team
+
+//TODO: When adding new rows, and when we fix the widgets of pplayers we need also to find
+//the dive of class dal-forward-conf that is in the same cell and fix it as it has an id of:
+// dal-forward-conf-for_id_Performance-__prefix__-player
+// where __prefix__ needs to take the value of th eid 0, 1 2 etc.
 function RenderTable(template, entries, placein, entry_number, session) {
     // The Number of players in a team is a special case quite distinct
     // from the number of teams or number of players in a game. Primarily
@@ -2476,7 +2498,7 @@ function RenderTable(template, entries, placein, entry_number, session) {
 	            fixWidget(TRB, name_rid, entry_id);        // This is the ID of the rank entry in the database. Needed when editing sessions (and the ranks associated with them)
 	            fixWidget(TRB, name_pid, entry_id);        // This is the ID of the performance entry in the database. Needed when editing sessions (and the ranks associated with them)
 	            fixWidget(TRB, name_rank, entry_id);       // This is the rank itself, a dango field for generic processing, but with a default value added when created here as well
-	            fixWidget(TRB, name_player, entry_id);     // This is the name/id of the player with that rank, a dango field for generic processing
+	            fixWidget(TRB, name_player, entry_id);     // This is the name/id of the player with that rank, a django field for generic processing
 	            fixWidget(TRB, name_player_copy, entry_id);// This is a copy of the player we need to keep of player (see header for details)
 	            fixWidget(TRB, name_rscore, entry_id);     // This is the rank score if needed
 	            fixWidget(TRB, name_pscore, entry_id);     // This is the performance score if needed
@@ -2509,6 +2531,15 @@ function RenderTable(template, entries, placein, entry_number, session) {
 
 	                table.appendChild(TRD);
 	            }
+
+	            // And finally, once the row is in the DOM, the DAL widgets used for players can have a
+	            // forward configuration and if so it's in a sibling div of class dal-forward-conf and needs
+	            // fixing too.
+	            // See: https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html#customizing-forwarding-logic
+	            const player_id = id_player.replace(form_number, entry_id);
+	            const forward_conf = $(`#${player_id} ~ div.dal-forward-conf`);
+	            const id_template = forward_conf.attr('id');
+	            forward_conf.attr('id', id_template.replace(form_number, entry_id));
         	}
         }
     }

@@ -42,7 +42,7 @@ from django.core.exceptions import ObjectDoesNotExist, ValidationError
 # 3rd Party package imports (dependencies)
 from url_filter.filtersets import ModelFilterSet
 from url_filter.constants import StrictMode
-from dal import autocomplete
+from dal import autocomplete, forward
 
 # Package imports
 from . import log
@@ -447,10 +447,13 @@ def get_form_generic(self):
             selector = getattr(field_model, "selector_field", None)
             if not selector is None:
                 url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                forward_parameter = 'exclude'
+                forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
                 if isinstance(field, ModelMultipleChoiceField):
-                    field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                    field.widget = autocomplete.ModelSelect2Multiple(url=url, forward=forward_declaration)
                 else:
-                    field.widget = autocomplete.ModelSelect2(url=url)
+                    field.widget = autocomplete.ModelSelect2(url=url, forward=forward_declaration)
 
                 field.widget.choices = field.choices
 
@@ -477,10 +480,13 @@ def get_form_generic(self):
                     selector = getattr(field_model, "selector_field", None)
                     if not selector is None:
                         url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
+                        forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                        forward_parameter = 'exclude'
+                        forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
                         if isinstance(field, ModelMultipleChoiceField):
-                            field.widget = autocomplete.ModelSelect2Multiple(url=url)
+                            field.widget = autocomplete.ModelSelect2Multiple(url=url, forward=forward_declaration)
                         else:
-                            field.widget = autocomplete.ModelSelect2(url=url)
+                            field.widget = autocomplete.ModelSelect2(url=url, forward=forward_declaration)
 
                         field.widget.choices = field.choices
 
