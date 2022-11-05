@@ -440,16 +440,22 @@ def get_form_generic(self):
     else:
         raise NotImplementedError("Generic get_form only for use by CreateView or UpdateView derivatives.")
 
+    unique_model_choice = getattr(self, 'unique_model_choice', [])
+
     # Attach DAL (Django Autocomplete Light) Select2 widgets to all the model selectors
-    for field in form.fields.values():
+    for field_name, field in form.fields.items():
         if isinstance(field, ModelChoiceField):
             field_model = field.queryset.model
             selector = getattr(field_model, "selector_field", None)
             if not selector is None:
                 url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                forward_function = f'exclude{field_model._meta.verbose_name_plural}'
-                forward_parameter = 'exclude'
-                forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
+                if field_name in unique_model_choice:
+                    forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                    forward_parameter = 'exclude'
+                    forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
+                else:
+                    forward_declaration = None
+
                 if isinstance(field, ModelMultipleChoiceField):
                     field.widget = autocomplete.ModelSelect2Multiple(url=url, forward=forward_declaration)
                 else:
@@ -473,16 +479,20 @@ def get_form_generic(self):
         # related_forms = get_related_forms(model, form_data, db_object)
         related_forms = RelatedForms(model, form_data, db_object)
 
-        for related_form in related_forms.values():
-            for field in related_form.fields.values():
+        for related_model_name, related_form in related_forms.items():
+            for field_name, field in related_form.fields.items():
                 if isinstance(field, ModelChoiceField):
                     field_model = field.queryset.model
                     selector = getattr(field_model, "selector_field", None)
                     if not selector is None:
                         url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                        forward_function = f'exclude{field_model._meta.verbose_name_plural}'
-                        forward_parameter = 'exclude'
-                        forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
+                        if f"{related_model_name}.{field_name}" in unique_model_choice:
+                            forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                            forward_parameter = 'exclude'
+                            forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
+                        else:
+                            forward_declaration = None
+
                         if isinstance(field, ModelMultipleChoiceField):
                             field.widget = autocomplete.ModelSelect2Multiple(url=url, forward=forward_declaration)
                         else:
@@ -859,6 +869,14 @@ class CreateViewExtended(CreateView):
     form_init = None
     form_valid = form_valid_generic
     form_invalid = form_invalid_generic
+
+    # Fields identified in this list will, if (and only if) they are a ModelChoiceField and a DAL widget is
+    # attached tot he field, have a forward configured that calls a forwardHandler as per:
+    # https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html#customizing-forwarding-logic
+    #
+    # A ForwardHandler must be regiustered in the client side Javascript with the name excludeModel or the DAL
+    # widget will fail because of an unregistered handler.
+    unique_model_choice = ['Performance.player']
 
     def get_initial(self):
         '''
