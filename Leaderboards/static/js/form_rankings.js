@@ -1826,7 +1826,7 @@ function excludePlayers() {
 
 // We have to register the DAL forward handler and can only do it after the DAL library has initialised
 // which it does in a handler attached to "load". We atach ours after theirs and so yl is defined.
-function registerForwarder() { yl.registerForwardHandler("excludePlayers", excludePlayers); }
+function registerForwarder() { yl.registerForwardHandler("Performance.player", excludePlayers); }
 window.addEventListener("load", registerForwarder);
 
 // Event hook if a score changes.

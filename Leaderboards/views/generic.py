@@ -7,7 +7,7 @@ from django_generic_view_extensions.views import DetailViewExtended, DeleteViewE
 from django_generic_view_extensions.options import  list_display_format, object_display_format
 
 from .form_initialisers import form_init
-from .pre_handlers import pre_validation_handler, pre_transaction_handler, pre_save_handler, pre_commit_handler, pre_delete_handler
+from .pre_handlers import pre_dispatch_handler, pre_validation_handler, pre_transaction_handler, pre_save_handler, pre_commit_handler, pre_delete_handler
 from .post_handlers import post_delete_handler, post_save_handler
 from .context import extra_context_provider
 
@@ -16,6 +16,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
     template_name = 'generic/form.html'
     operation = 'add'
     # fields = '__all__'
+    pre_dispatch = pre_dispatch_handler
     extra_context_provider = extra_context_provider
     form_init = form_init
     pre_validation = pre_validation_handler
@@ -28,6 +29,7 @@ class view_Add(LoginRequiredMixin, CreateViewExtended):
 class view_Edit(LoginRequiredMixin, UpdateViewExtended):
     template_name = 'generic/form.html'
     operation = 'edit'
+    pre_dispatch = pre_dispatch_handler
     extra_context_provider = extra_context_provider
     pre_validation = pre_validation_handler
     pre_transaction = pre_transaction_handler

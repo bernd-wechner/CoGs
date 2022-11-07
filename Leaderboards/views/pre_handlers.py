@@ -261,6 +261,35 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         return
 
 
+def pre_dispatch_handler(self):
+    '''
+    This is a simple injection point before the form is built but after which the request kwargs have been
+    translated to self.kargs, self.args, and self.app and self.model are available. it is at this pint we
+    inject self.unique_model_choice, and optional attribute which can identify fields that will have a DAL
+    forward request configured to call a handler of same name on the client side. On the client side this
+    code must be used to register the forward handler or DAL will not function as expected.
+
+        function registerForwarder() { yl.registerForwardHandler("MQFN", forward_handler); }
+        window.addEventListener("load", registerForwarder);
+
+    where
+        MQFN is thhe Model Qualified Field Name (below)
+        forward_handler is a JS function that will be called and must return a string (that will
+                          be submitted in the GET param `forward`) which for unique model choice
+                          support should contain a Comma Separated list of PKs already selcted in
+                          the formset. The default ajax_Autocomplete handler for rich models will
+                          then respect that adding a filter to query it uses. That support is built
+                          into the django_generic_view_extensions.
+
+    We need this only because:
+
+        https://github.com/yourlabs/django-autocomplete-light/issues/1312
+    '''
+    # This line of code will return the MFQNS that this form supports for syntax diagnosis
+    # mqfns = self.get_form(return_mqfns=True)
+    self.unique_model_choice = ['Performance.player'] if self.model._meta.object_name == "Session" else []
+
+
 def pre_validation_handler(self):
     '''
     When a model form is POSTed, this function is called

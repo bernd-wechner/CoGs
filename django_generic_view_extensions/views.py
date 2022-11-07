@@ -366,6 +366,32 @@ class DetailViewExtended(DetailView):
 # be available on production menues, only for the admin for drilling down and debugging.
 
 
+def dispatch_generic(self, request, *args, **kwargs):
+    '''
+    Adds attributes to the view describing the app and model a
+    and provides a pre_dispatch hook for setting view properties
+    in derived classes.
+
+    :param self: and instance of CreateView or UpdateView
+    '''
+    if isinstance(self, (CreateView, UpdateView)):
+        self.app = app_from_object(self)
+        self.model = class_from_string(self, self.kwargs['model'])
+
+        if not hasattr(self, 'fields') or self.fields == None:
+            self.fields = '__all__'
+
+        if callable(getattr(self, 'pre_dispatch', None)):
+            self.pre_dispatch()
+
+        if isinstance(self, CreateView):
+            return super(CreateView, self).dispatch(request, *args, **kwargs)
+        elif isinstance(self, UpdateView):
+            return super(UpdateView, self).dispatch(request, *args, **kwargs)
+    else:
+        raise NotImplementedError("Generic dispatch only for use by CreateView or UpdateView derivatives.")
+
+
 def get_context_data_generic(self, *args, **kwargs):
     '''
     Augments the standard context with model and related model information
@@ -378,12 +404,6 @@ def get_context_data_generic(self, *args, **kwargs):
     '''
     if settings.DEBUG:
         log.debug("Preparing context data.")
-
-    # We need to set self.model here
-    self.app = app_from_object(self)
-    self.model = class_from_string(self, self.kwargs['model'])
-    if not hasattr(self, 'fields') or self.fields == None:
-        self.fields = '__all__'
 
     if isinstance(self, CreateView):
         # Note that the super.get_context_data initialises the form with get_initial
@@ -417,11 +437,27 @@ def get_context_data_generic(self, *args, **kwargs):
     return context
 
 
-def get_form_generic(self):
+def get_form_generic(self, return_mqfns=False):
     '''
     Augments the standard form with related model forms
-    so that the template in well informed - and can do
+    so that the template is well informed - and can do
     Javascript wizardry based on this information
+
+    Also replaces the widget for all ModelChoiceField instances
+    with a django-autocomplete-light (DAL) widget. And for formsets
+    that contain a model selector provides a convenient hook for
+    configuring DAL to sensibly provide unique selections across
+    the formset.
+
+    A view attribute `unique_model_choice` is consulted. It should be
+    a list of model qualified dield names, which will receive a custom
+    DAL forward declaration. There MUST be a Javascript Forward handler
+    registered with that field's name for this to work on client side.
+
+    :param return_mqfns: If True, does not return a form, but instead
+                         a list of Model Qualified Field Names that are
+                         candidates for the unique_model_choice attribute
+                         if it is specified.
 
     :param self: and instance of CreateView or UpdateView
 
@@ -443,14 +479,17 @@ def get_form_generic(self):
     unique_model_choice = getattr(self, 'unique_model_choice', [])
 
     # Attach DAL (Django Autocomplete Light) Select2 widgets to all the model selectors
+    mqfns = []
     for field_name, field in form.fields.items():
         if isinstance(field, ModelChoiceField):
             field_model = field.queryset.model
             selector = getattr(field_model, "selector_field", None)
             if not selector is None:
                 url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                if field_name in unique_model_choice:
-                    forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                qualified_field_name = f"{form._meta.model.__name__}.{field_name}"
+                mqfns.append(qualified_field_name)
+                if qualified_field_name in unique_model_choice:
+                    forward_function = qualified_field_name
                     forward_parameter = 'exclude'
                     forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
                 else:
@@ -486,8 +525,10 @@ def get_form_generic(self):
                     selector = getattr(field_model, "selector_field", None)
                     if not selector is None:
                         url = reverse_lazy('autocomplete', kwargs={"model": field_model.__name__, "field_name": selector})
-                        if f"{related_model_name}.{field_name}" in unique_model_choice:
-                            forward_function = f'exclude{field_model._meta.verbose_name_plural}'
+                        qualified_field_name = f"{related_model_name}.{field_name}"
+                        mqfns.append(qualified_field_name)
+                        if qualified_field_name in unique_model_choice:
+                            forward_function = qualified_field_name
                             forward_parameter = 'exclude'
                             forward_declaration = (forward.JavaScript(forward_function, forward_parameter),)
                         else:
@@ -505,7 +546,7 @@ def get_form_generic(self):
     # Classify the widgets on the form
     classify_widgets(form)
 
-    return form
+    return mqfns if return_mqfns else form
 
 
 def post_generic(self, request, *args, **kwargs):
@@ -862,7 +903,7 @@ class CreateViewExtended(CreateView):
     happens that by that point self.instance already has a PK thanks to the save here in post() but
     it is an unnecessary repeat save all the same.
     '''
-
+    dispatch = dispatch_generic
     get_context_data = get_context_data_generic
     get_form = get_form_generic
     post = post_generic
@@ -876,7 +917,12 @@ class CreateViewExtended(CreateView):
     #
     # A ForwardHandler must be regiustered in the client side Javascript with the name excludeModel or the DAL
     # widget will fail because of an unregistered handler.
-    unique_model_choice = ['Performance.player']
+    unique_model_choice = []
+
+    # Fields in unique_model_choice are identfied by the model qualified field name, in form <model>.field_name>.
+    # The qualified names that are DAL widgets are saved in this form property for reference to see what qualified
+    # field names have DAL widgets. This is  a dict keyed on the qualified field name with the widget as a value
+    dal_widgets = {}
 
     def get_initial(self):
         '''
@@ -962,6 +1008,7 @@ class UpdateViewExtended(UpdateView):
           get_object() for GET requests and post() for POST requests.
     '''
 
+    dispatch = dispatch_generic
     get_context_data = get_context_data_generic
     get_form = get_form_generic
     post = post_generic
@@ -1031,92 +1078,3 @@ class DeleteViewExtended(DeleteView):
         add_debug_context(self, context)
         if callable(getattr(self, 'extra_context_provider', None)): context.update(self.extra_context_provider())
         return context
-
-#===============================================================================
-# An Autocomplete view
-#
-# Can of course be tuned and refined. Here's a tutorial:
-#
-# https://django-autocomplete-light.readthedocs.io/en/master/tutorial.html
-#===============================================================================
-
-
-class ajax_Autocomplete(autocomplete.Select2QuerySetView):
-    '''
-    Support AJAX fetching of option lists for the django-autocomplte-light widgets.
-    They provide a query string in self.q.
-
-    urls.py can route a URL to here such that this:
-
-    reverse_lazy('autocomplete', kwargs={"model": name_of_model, "field_name": name_of_field})
-
-    lands here. Which in Django 2.1 should look like:
-
-    path('autocomplete/<model>/<field_name>', ajax_autocomplete.as_view(), {'app': 'name_of_app_model_is_in'}, name='autocomplete'),
-
-    it returns a queryset and will use a model provided list or a default one.
-    '''
-
-    def get_queryset(self):
-        self.model = class_from_string(self.kwargs['app'], self.kwargs['model'])
-        self.field_name = self.kwargs.get('field_name', None)
-        self.field_operation = self.kwargs.get('field_operation', "istartswith")
-        self.selector_field = getattr(self.model, "selector_field", None)
-        self.selector_queryset = getattr(self.model, "selector_queryset", None)
-
-        if self.field_operation == "in":
-            self.field_value = self.q.split(",")
-        else:
-            self.field_value = self.q
-
-        # If this is false then self.selector_queryset is permitted to do default pre-filtering
-        # (which could be based on any other criteria, like session stored filters for example)
-        # If it is true it is denied this permission. It is up to the model's selector_queryset
-        # method to honor this request, and how it is honored.
-        self.select_from_all = self.kwargs.get('all', False)
-
-        # use the model's provided selector_queryset if available
-        if self.field_name and self.field_name == self.selector_field and callable(self.selector_queryset):
-            qs = self.selector_queryset(self.field_value, self.request.session, self.select_from_all)
-        else:
-            qs = self.model.objects.all()
-
-            if self.q:
-                qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
-
-        # DAL applies pagination by default. When prepopulating controls we don't want that, we want
-        # all the results, not one page in a paginated result set. We offer this with an optional
-        # GET parameter "all" This is very different to the kwark "all" above which request a select
-        # from all objects. This one requests all the requested objects to be returned, not a page of
-        # them.
-        if 'all' in self.request.GET:
-            self.paginate_by = 0  # Disables pagination
-
-        return qs
-
-
-def ajax_Selector(request, app, model, pk):
-    '''
-    Support AJAX fetching of a select box text for a given pk.
-
-    Specificially in support of a django-autocomplte-light select2 widget that
-    we may need to provide with initial data in javascript that builds formsets
-    dynamically from supplied data.
-
-    Expects models to provide a selector_field attribute.
-    '''
-    Model = class_from_string(app, model)
-
-    selector = ""
-    if getattr(Model, "selector_field", None):
-        try:
-            Object = Model.objects.get(pk=pk)
-            selector_field = getattr(Object, "selector_field", "")
-            # Use the selector_field if possible, fall back on a basic
-            # string representation of Object.
-            selector = getattr(Object, selector_field, str(Object))
-        except:
-            # If we fail to find an Object, fail silently.
-            pass
-
-    return HttpResponse(selector)
