@@ -282,8 +282,8 @@ from Site.logutils import log
 from logging import DEBUG as loglevel_DEBUG
 import logging.config
 
-import django_rich_views
-django_rich_views.log = log
+import django_rich_views.logs
+django_rich_views.logs.logger = log
 
 # Include local query extensions (register them with Django)
 import Site.query
