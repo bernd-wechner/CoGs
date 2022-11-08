@@ -36,10 +36,11 @@
 		const has_non_field_errors = {% if form.non_field_errors %}true{% else %}false{% endif %};
 
 		{% if form.errors %}
+			const session_provided = true; // An attempted submission failed and the submitted session is provided in form.data
 			const team_play = ("{{form.data.team_play}}" == "on");
 
-			// We need to make sure we get all the TIDS and alld the DELETE requests back here on a bounce. The state of the form
-			// must be restored.
+			// We need to make sure we get all the TIDS and all the DELETE requests back here on a bounce.
+			// The state of the form must be restored.
 
 		    {#	We dont use standard Django formsets here (we build the formset in Javascript dynamically) #}
 		    {#	And this is the source data for the Rank and performance Javascript formset generator. #}
@@ -79,8 +80,8 @@
 		{#	Rank scores are used in individual play and team play #}
 		{#  Performance scores are used only in team play when INDIVIDUAL scores are needed #}
 		{% else %}
+			const session_provided = "{{session}}" != "";
 			const team_play = ("{{session.team_play}}" == "True");
-
 
 		    {# Rank Related Data - lists with on entry per rank #}
 		    let rIDs         = {{ form.related_forms.Rank.field_data.id|json }};         	{# Primary Keys of the Rank objects being edited. Can be absent for creation forms, needed for edit forms. #}
@@ -144,7 +145,7 @@
 		    pidWeights[pid]		= pWeights[i];
 		}
 
-		return session_dict(
+		const session = session_dict(
 			 team_play,	    // boolean
 		     rIDs, 			// Array of rank IDs
 		     ridRanks,		// dict of ranks keyed on rID
@@ -158,6 +159,9 @@
 		     pidScores, 	// dict of performance scores keyed on pID
 		     pidWeights		// dict of performance weights keyed on pID
 		    );
+
+		session.provided = session_provided;
+		return session
 	}
 
 	{# If editing a session we will receive some simple game properties to help set up and constrain the form #}

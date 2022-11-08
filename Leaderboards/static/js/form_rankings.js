@@ -33,6 +33,95 @@ const sortObject = (obj, descending) => {
 // Sessions structure).
 const Session = get_session_data();
 
+// Build a Session object (dict) from supplied data.
+//
+// A Session is one sitting of players or teams of players at a table playing a game, with an outcome (ranks or scores).
+//
+// Four data sources in three contexts are currently used to build this and this function serves to centralise the
+// construction ensuring the same thing is built regardless of context or source and so the supplier knows what to
+// provide and no-one gets left behind (if the structure changes).
+//
+// The three contexts (and four data sources) are:
+//
+// 1. The Django template engine (appearing as literal definitons herein)
+// 2. The Django form data (arrriving in form.data) whe Django reloads the form after an error
+// 3. When the form herein changes its presentation mode betwee a Team play game and an Individual play game and back
+//      a. When switching to team play mode the source is an existing individual form
+//      b. When switching to individual mode the scource is an existing team form
+//      These forms take such a Session object to populate the forms they build, So when moving to the other form
+//      the contents are delivered bi the same (input) Session structure.
+//
+// By forcing required paramters using:
+//		https://github.com/colxi/required-parameters-js
+// callers failing to supply data can easily be identified when debugging (throwing console errrors)
+// (a shame standard JS doesn't support this well)
+//
+// The key is r, p or t for rank ID, performance ID or team ID
+function session_dict(
+		team_play	   = requires,  // Boolean flagging the play mode
+		// Rank ID (rID) indexed items
+		rIDs           = required,  // Array of rank IDs
+		ridRanks       = required,	// dict of ranks keyed on rID
+		ridScores      = required,	// dict of scores keyed on rID
+		ridPlayers     = required,	// dict of player IDs keyed on rID
+		ridTeams       = required, 	// dict of team IDs keyed on rID
+		// Team ID (tID) indexed items
+		tidTeamNames   = required, 	// dict of team names keyed on tID.
+		tidTeamPlayers = required, 	// dict of team player lists keyed on tID with list of player IDs as value
+		// Performance ID (pID) indexed items
+		pIDs           = required,	// Array of performance IDs
+		pidPlayers     = required, 	// dict of player IDs keyed on pID
+		pidScores      = required, 	// dict of performance scores keyed on pID
+		pidWeights     = required	// dict of performance weights keyed on pID
+	) {
+
+	// The rid and pid arrays are not premised to align
+	// in matter of fact the server may supply session data with rids sorted by rank and pids sorted by player say
+	// To wit, we want and extra dict that maps pid to rid.
+	// In that direction as it is 1 to 1 in individual mode an n to 1 in team mode (pid to rid)
+	let pidRIDs = {};
+
+	if (team_play) {
+		for (let pid of pIDs) {
+			const player = pidPlayers[pid];
+			const tid = Object.keys(tidTeamPlayers).find(tid => tidTeamPlayers[tid].includes(player));
+			const rid = Object.keys(ridTeams).find(rid => ridTeams[rid] === tid);
+			pidRIDs[pid] = rid;
+		}
+	} else {
+		for (let pid of pIDs) {
+			const player = pidPlayers[pid];
+			const rid = Object.keys(ridPlayers).find(rid => ridPlayers[rid] === player);
+			pidRIDs[pid] = rid;
+		}
+	}
+
+	// The key is r, p or t for rank ID, performance ID or team ID
+	// If this changes make sure to update the function collect_session_data_from as well which produces the same structure
+	// The "provided" flag indicates that this session was provided because this is an edit form or an add form that was submitted and bounced with errors
+	// It serves to indicate that we have session data (ranks, scores, players) and not placeholders which are used at times.
+	const Session = {'provided'		: false,	        // A flag to tell if Session Data was provided (set by the provider/caller defaults false)
+					 'team_play'    : team_play,	    // boolean indicating play mode
+					 // Rank ID (rID) keyed dicts
+					 'rIDs'			: rIDs, 			// Array of rank IDs
+					 'rRanks'		: ridRanks,			// dict of ranks keyed on rID
+					 'rScores'		: ridScores,		// dict of scores keyed on rID
+					 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID
+					 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID
+					 // Team ID (tID) keyed dicts
+					 'tTeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
+					 'tTeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
+					 // Performance ID (pID) keyed dicts
+					 'pIDs'			: pIDs,				// Array of performance IDs
+					 'pPlayers'		: pidPlayers, 		// dict of player IDs keyed on pID
+					 'pScores'		: pidScores, 		// dict of performance scores keyed on pID
+					 'pWeights'		: pidWeights,		// dict of performance weights keyed on pID
+					 // A connector between rid and pid lists
+					 'pRIDs'		: pidRIDs};
+
+	return Session;
+}
+
 // Global flags for managing rank and score columns
 // a call to showhideRankScoreColumns() acts on these globals.
 let show_rank_scores = false;	// The rank scores column
@@ -185,7 +274,6 @@ function OnLoad(event) {
 	//				    </button>`;
 	//	game_selector.after(button);
 
-	//if (operation === "edit") {
 	// We have Session data if it's an edit operation or if it's an add operation that is being rerendered (with feedback).
 	if (Session.provided) {
 		if (Session.team_play) {
@@ -933,94 +1021,6 @@ function OnSubmit(event) {
 
 	}
 }
-
-// Build a Session object (dict) from supplied data.
-//
-// A Session is one sitting of players or teams of players at a table playing a game, with an outcome (ranks or scores).
-//
-// Four data sources in three contexts are currently used to build this and this function serves to centralise the
-// construction ensuring the same thing is built regardless of context or source and so the supplier knows what to
-// provide and no-one gets left behind (if the structure changes).
-//
-// The three contexts (and four data sources) are:
-//
-// 1. The Django template engine (appearing as literal definitons herein)
-// 2. The Django form data (arrriving in form.data) whe Django reloads the form after an error
-// 3. When the form herein changes its presentation mode betwee a Team play game and an Individual play game and back
-//      a. When switching to team play mode the source is an existing individual form
-//      b. When switching to individual mode the scource is an existing team form
-//      These forms take such a Session object to populate the forms they build, So when moving to the other form
-//      the contents are delivered bi the same (input) Session structure.
-//
-// By forcing required paramters using:
-//		https://github.com/colxi/required-parameters-js
-// callers failing to supply data can easily be identified when debugging (throwing console errrors)
-// (a shame standard JS doesn't support this well)
-//
-// The key is r, p or t for rank ID, performance ID or team ID
-function session_dict(
-		team_play	   = requires,  // Boolean flagging the play mode
-		// Rank ID (rID) indexed items
-		rIDs           = required,  // Array of rank IDs
-		ridRanks       = required,	// dict of ranks keyed on rID
-		ridScores      = required,	// dict of scores keyed on rID
-		ridPlayers     = required,	// dict of player IDs keyed on rID
-		ridTeams       = required, 	// dict of team IDs keyed on rID
-		// Team ID (tID) indexed items
-		tidTeamNames   = required, 	// dict of team names keyed on tID.
-		tidTeamPlayers = required, 	// dict of team player lists keyed on tID with list of player IDs as value
-		// Performance ID (pID) indexed items
-		pIDs           = required,	// Array of performance IDs
-		pidPlayers     = required, 	// dict of player IDs keyed on pID
-		pidScores      = required, 	// dict of performance scores keyed on pID
-		pidWeights     = required	// dict of performance weights keyed on pID
-	) {
-
-	// The rid and pid arrays are not premised to align
-	// in matter of fact the server may supply session data with rids sorted by rank and pids sorted by player say
-	// To wit, we want and extra dict that maps pid to rid.
-	// In that direction as it is 1 to 1 in individual mode an n to 1 in team mode (pid to rid)
-	let pidRIDs = {};
-
-	if (team_play) {
-		for (let pid of pIDs) {
-			const player = pidPlayers[pid];
-			const tid = Object.keys(tidTeamPlayers).find(tid => tidTeamPlayers[tid].includes(player));
-			const rid = Object.keys(ridTeams).find(rid => ridTeams[rid] === tid);
-			pidRIDs[pid] = rid;
-		}
-	} else {
-		for (let pid of pIDs) {
-			const player = pidPlayers[pid];
-			const rid = Object.keys(ridPlayers).find(rid => ridPlayers[rid] === player);
-			pidRIDs[pid] = rid;
-		}
-	}
-
-	// The key is r, p or t for rank ID, performance ID or team ID
-	//If this changes make sure to update the function collect_session_data_from as well which produces the same structure
-	const Session = {'provided'		: rIDs.length > 0,	// A flag to tell if Session Data was provided  TODO: get a more explicit indicator. This works for now.
-					 'team_play'    : team_play,	    // boolean indicating play mode
-					 // Rank ID (rID) keyed dicts
-					 'rIDs'			: rIDs, 			// Array of rank IDs
-					 'rRanks'		: ridRanks,			// dict of ranks keyed on rID
-					 'rScores'		: ridScores,		// dict of scores keyed on rID
-					 'rPlayers'		: ridPlayers,	    // dict of player IDs keyed on rID
-					 'rTeams'		: ridTeams, 		// dict of team IDs keyed on rID
-					 // Team ID (tID) keyed dicts
-					 'tTeamNames'	: tidTeamNames, 	// dict of team names keyed on tID.
-					 'tTeamPlayers'	: tidTeamPlayers, 	// dict of team player lists keyed on tID with list of player IDs as value
-					 // Performance ID (pID) keyed dicts
-					 'pIDs'			: pIDs,				// Array of performance IDs
-					 'pPlayers'		: pidPlayers, 		// dict of player IDs keyed on pID
-					 'pScores'		: pidScores, 		// dict of performance scores keyed on pID
-					 'pWeights'		: pidWeights,		// dict of performance weights keyed on pID
-					 // A connector between rid and pid lists
-					 'pRIDs'		: pidRIDs};
-
-	return Session;
-}
-
 
 // Re-configures the form for a new game if the game is changed (on an edit form).
 function configureGame() {
@@ -1910,31 +1910,39 @@ function reconcile_ranks(session) {
 		session = collect_session_data()
 	}
 
-	// Produce a tie-gapped ranking from the scores
-	// game_scoring will include either HIGH_SOCRE_WINS or LOW_SCORE_WINS
-	// We should never be asked to reconcile ranks for a NO_SCORES game
-	const rscores = session["rScores"]
-	const score_sorted_rids = sortObject(rscores, !game_scoring.includes("LOW_SCORE_WINS"))
-	let i = 1;
-	let prev_rank = 1
-	let prev_score = -11
-	console.log("Reconciling ranks:");
-	for (let rid of score_sorted_rids) {
-		const score = rscores[rid];
-		const rank = (score === prev_score) ? prev_rank : i;
-		console.log(`	${rid}	${score} => ${rank}`);
-		session["rRanks"][rid] = rank;
-		i++;
-		prev_rank = rank;
-		prev_score = score;
-	}
+	// If a session is provided (it's an update/edit form, then ranks were already reconciled)
+	// and any tie breakers were added in the ranks if needed for scoring games. We don't want to
+	// do it again and lose those manually entered tie breakers. This will be noted in the global
+	// Session as Sessioni.provided. Quite distinct from the local session (which may have been
+	// colected from the form elements and hence have tied scores which the reconsiler below will
+	// give the same rank overwriting any ranks already enetered)
+	if (!Session.provided) {
+		// Produce a tie-gapped ranking from the scores
+		// game_scoring will include either HIGH_SCORE_WINS or LOW_SCORE_WINS
+		// We should never be asked to reconcile ranks for a NO_SCORES game
+		const rscores = session["rScores"]
+		const score_sorted_rids = sortObject(rscores, !game_scoring.includes("LOW_SCORE_WINS"))
+		let i = 1;
+		let prev_rank = 1
+		let prev_score = -11
+		console.log("Reconciling ranks:");
+		for (let rid of score_sorted_rids) {
+			const score = rscores[rid];
+			const rank = (score === prev_score) ? prev_rank : i;
+			console.log(`	${rid}	${score} => ${rank}`);
+			session["rRanks"][rid] = rank;
+			i++;
+			prev_rank = rank;
+			prev_score = score;
+		}
 
-	if (display_result) {
-		const team_switch = $$(id_team_switch);
-		const num_players = $$(id_num_players);
-		const num_teams = $$(id_num_teams);
+		if (display_result) {
+			const team_switch = $$(id_team_switch);
+			const num_players = $$(id_num_players);
+			const num_teams = $$(id_num_teams);
 
-		adjustTable(team_switch.checked ? num_teams : num_players, session);
+			adjustTable(team_switch.checked ? num_teams : num_players, session);
+		}
 	}
 
 	return session;
@@ -2339,10 +2347,6 @@ function applySessionToRow(session, row, table_type) {
 //						tr: templateTeamPlayersHeader	A header row
 //						tr: templateTeamPlayersBody		One of these rows per player in the team
 
-//TODO: When adding new rows, and when we fix the widgets of pplayers we need also to find
-//the dive of class dal-forward-conf that is in the same cell and fix it as it has an id of:
-// dal-forward-conf-for_id_Performance-__prefix__-player
-// where __prefix__ needs to take the value of th eid 0, 1 2 etc.
 function RenderTable(template, entries, placein, entry_number, session) {
     // The Number of players in a team is a special case quite distinct
     // from the number of teams or number of players in a game. Primarily

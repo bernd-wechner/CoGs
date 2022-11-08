@@ -3,16 +3,12 @@
 #
 # These are the COGS specific handlers thatthe generic views call.
 #===============================================================================
-import re
-
-from re import RegexFlag as ref
 from datetime import datetime
 from html import escape
 from copy import deepcopy
 
 from django.conf import settings
 from django.urls import reverse_lazy
-from django.db.models import Count
 from django.contrib.auth.models import Group
 from django.utils.timezone import make_naive, localtime
 from django.core.exceptions import ObjectDoesNotExist

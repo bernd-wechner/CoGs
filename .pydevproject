@@ -138,7 +138,6 @@
     
     <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
         <path>/home/bernd/workspace/Django/django-cte</path>
-        <path>/home/bernd/workspace/Django/django-rich-views</path>
     </pydev_pathproperty>
             
 
