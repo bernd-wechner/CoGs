@@ -7,19 +7,19 @@ One aim with these Extensions is to help concentrate model specific configuratio
 
 Of particular note, we add support for a number of attributes that can be used in models to achieve certain outcomes.
 
-add_related, is a way of listing relations without which this model makes no sense.
+intrinsic_relations, is a way of listing relations without which this model makes no sense.
 
     for example: if you have a models Team and Member, the Team model may have:
-        add_related = 'members'
+        intrinsic_relations = 'members'
     assuming Team has a ManyToMany relationship with Member and an attribute "members".
 
-    This would request of the CreateViewExtended and UpdateViewExtended that they provide enough form
-    info to easily build rich forms (say a Team form, with a list of Member forms under it).
+    This would request of the RichCreateView and RichUpdateView that they provide enough form
+    context to easily build rich forms (say a Team form, with a list of Member forms under it).
 
-    Similarly the DetailViewExtended wants a rich object to display, as defined by the newteork of
-    add_related links.
+    Similarly the RichDetailView wants a rich object in its context, to display, as defined by
+    the network of intrinsic_relations.
 
-sort_by, is like the Django Meta option "ordering" only it can include properties of the model.
+sort_by, is like the Django Meta option "ordering" only it can include properties of the model as well, and is honoured by RichListView
 
 link_internal and link_external, are two attributes (or properties) that can supply a URL (internal or external respectively)
 
@@ -29,11 +29,22 @@ link_internal and link_external, are two attributes (or properties) that can sup
     external link may point to their profile on Facebook or LinkedIn or wherever. We support only one external
     link conveniently for now.
 
+inherit_fields, which is a string that names
+
+    1) a field in this model, or
+    2) a field in another model in the format model.field
+
+    or a list of such strings, then we take this as an instruction to inherit
+    the values of those fields form form to form during one login session.
+
+    This is useful when eterig a strig fo similar objects. Each successive instance of the RichCreateForm
+    will seek to initialise the fields of a new one using the rules suppled here.
+
 __verbose_str_,
 __rich_str__,
 __detail_str__,    are properties like __str__ that permit a model to supply different degrees of detail.
 
-    This is intended to support the .options and levels of detail in views.
+    This is intended to support the .options and levels of detail in the RichListView, RichDetailView and RichDeleteView.
 
     A convention is assumed in which:
 
@@ -85,12 +96,12 @@ def safe_get(model, pk):
         return None
 
 
-def add_related(model):
+def intrinsic_relations(model):
     '''
-    Provides a safe way of testing a given model's add_related attribute by ensuring always
+    Provides a safe way of testing a given model's intrinsic_relations attribute by ensuring always
     a list is provided.
 
-    If a model has an attribute named add_related and it is a string that names
+    If a model has an attribute named intrinsic_relations and it is a string that names
 
     1) a field in this model, or
     2) a field in another model in the format model.field
@@ -100,17 +111,17 @@ def add_related(model):
 
     The attribute may be missing, None, or invalid as well, and so to make testing
     easier throughout the generic form processors this function always returns a list,
-    empty if no valid add_related is found.
+    empty if no valid intrinsic_relations is found.
     '''
 
-    if not hasattr(model, "add_related"):
+    if not hasattr(model, "intrinsic_relations"):
         return []
 
-    if isinstance(model.add_related, str):
-        return [model.add_related]
+    if isinstance(model.intrinsic_relations, str):
+        return [model.intrinsic_relations]
 
-    if isinstance(model.add_related, list):
-        return model.add_related
+    if isinstance(model.intrinsic_relations, list):
+        return model.intrinsic_relations
 
     return []
 
@@ -122,12 +133,12 @@ def can_save_related_formsets(model, related_model):
     without a way to relate the forms in the formset back to a specific
     parent object.
 
-    Specifying such a relation in add_related can provide model forms
+    Specifying such a relation in intrinsic_relations can provide model forms
     but they cannot be saved as formsets. it's a good idea to flag a
     warning to the model designer in that case, and to avoid crashing
     when trying to save the a formset.
 
-    This is a consistent way code using add_related, to check if a
+    This is a consistent way code using intrinsic_relations, to check if a
     field specified thusly can be saved as a formset.
 
     :param model: A Django model
@@ -147,19 +158,19 @@ def can_save_related_formsets(model, related_model):
         return False
 
 
-def Add_Related(model, field):
+def is_intrinsic_relation(model, field):
     '''
     Return true if the supplied field is a relation and in the
-    add_related property of the model the field belongs to.
+    intrinsic_relations property of the model the field belongs to.
 
-    Defines the syntax that the add_related property supports,
+    Defines the syntax that the intrinsic_relations property supports,
     which is basically the field name itself, a field of a field.
 
     :param model: A Django model
     :param field: A field in model
     '''
     if field.is_relation:
-        if field.name in add_related(model):
+        if field.name in intrinsic_relations(model):
             if not can_save_related_formsets(model, field.remote_field.model):
                 m = model._meta.object_name
                 rm = field.remote_field.model._meta.object_name
@@ -170,7 +181,7 @@ def Add_Related(model, field):
         # Check my models for . syntax add related and try the form
         elif hasattr(field, "field"):
             field_name = field.field.model.__name__ + "." + field.field.name
-            if field_name in add_related(model):
+            if field_name in intrinsic_relations(model):
                 return True
             else:
                 return False
@@ -195,7 +206,7 @@ def inherit_fields(model):
 
     The attribute may be missing, None, or invalid as well, and so to make testing
     easier throughout the generic form processors this function always returns a list,
-    empty if no valid add_related is found.
+    empty if no valid intrinsic_relations is found.
     '''
 
     if not hasattr(model, "inherit_fields"):

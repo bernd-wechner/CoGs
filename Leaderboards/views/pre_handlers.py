@@ -17,7 +17,7 @@ from django.contrib.auth.models import Group
 from django.utils.timezone import make_naive, localtime
 from django.core.exceptions import ObjectDoesNotExist
 
-from django_rich_views.views import CreateViewExtended, UpdateViewExtended
+from django_rich_views.views import RichCreateView, RichUpdateView
 from django_rich_views.datetime import time_str
 from django_rich_views.util import isPositiveInt
 
@@ -373,7 +373,7 @@ def pre_transaction_handler(self, new_session=None):
     This is a vector for sending debug information to the client
     before a transaction is opened for saving.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    self is an instance of RichCreateView or RichUpdateView.
 
     :param new_session: The pre_validation handler should return a new
                         session, i.e. the one in train of being saved,
@@ -469,7 +469,7 @@ def pre_transaction_handler(self, new_session=None):
 
         # 1. It's a new_session session and any of the players involved have future sessions
         #    recorded already.
-        if isinstance(self, CreateViewExtended):
+        if isinstance(self, RichCreateView):
             output("\n")
             output(f"New Session")
 
@@ -505,7 +505,7 @@ def pre_transaction_handler(self, new_session=None):
         # 6. If the date time is changed such that the prior or next session
         #    for any player changes (i.e. the order of sessions for any player
         #    is changed)
-        elif isinstance(self, UpdateViewExtended):
+        elif isinstance(self, RichUpdateView):
             old_session = self.object
 
             output("\n")
@@ -669,7 +669,7 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
     transaction and so whatever is saved herein can commit or rollback along with
     the rest of the save.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    self is an instance of RichCreateView or RichUpdateView.
 
     It returns a dict that will be used as a kwargs dict into the
     the configured post processor (pre_commit_handler below).
@@ -678,13 +678,13 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
 
     change_log = None
     if model == 'session':
-        if isinstance(self, CreateViewExtended):
+        if isinstance(self, RichCreateView):
             # Create a change log, but we don't have a session yet
             # and also no change summary. We provide themw ith the
             # update in the pre_commit handler once the session is
             # saved.
             change_log = ChangeLog.create()
-        elif isinstance(self, UpdateViewExtended):
+        elif isinstance(self, RichUpdateView):
             old_session = self.object
             # Create a ChangeLog with the session now (pre_save status)
             # This captures the leaderboard_impact of the session as it
@@ -710,7 +710,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
     '''
     When a model form is POSTed, this function is called AFTER the form is saved.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    self is an instance of RichCreateView or RichUpdateView.
 
     It will be running inside a transaction and can bail with an IntegrityError if something goes wrong
     achieving a rollback.
@@ -740,9 +740,9 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             log.debug(f"POST-PROCESSING Session {session.pk} submission.")
 
         # Determine the submission mode
-        if isinstance(self, CreateViewExtended):
+        if isinstance(self, RichCreateView):
             submission = "create"
-        elif isinstance(self, UpdateViewExtended):
+        elif isinstance(self, RichUpdateView):
             submission = "update"
         else:
             raise ValueError("Pre commit handler called from unsupported class.")

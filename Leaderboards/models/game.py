@@ -633,7 +633,7 @@ class Game(AdminModel):
 
         return qs
 
-    add_related = None
+    intrinsic_relations = None
 
     def __unicode__(self): return getattr(self, self.selector_field)
 

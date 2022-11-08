@@ -5,11 +5,11 @@ The Views themselves
 
 Provides:
 
-    ListViewExtended
-    DetailViewExtended
-    DeleteViewExtended
-    CreateViewExtended
-    UpdateViewExtended
+    RichListView
+    RichDetailView
+    RichDeleteView
+    RichCreateView
+    RichUpdateView
 
 which all derive from the class of the same name less Extended (i.e. the standard Djago Generic Views).
 
@@ -52,7 +52,7 @@ from .html import list_html_output, object_html_output, object_as_html, object_a
 from .context import add_model_context, add_timezone_context, add_format_context, add_filter_context, add_ordering_context, add_debug_context
 from .options import get_list_display_format, get_object_display_format
 from .neighbours import get_neighbour_pks
-from .model import collect_rich_object_fields, inherit_fields, add_related
+from .model import collect_rich_object_fields, inherit_fields, intrinsic_relations
 from .related_forms import RelatedForms
 from .filterset import format_filterset, is_filter_field
 
@@ -176,7 +176,11 @@ def get_ordering(self):
         return getattr(self.model._meta, 'ordering', None)
 
 
-class LoginViewExtended(LoginView):
+class RichLoginView(LoginView):
+    '''
+    An extension to the LoginView that adds timezone context and a hook for providing more context
+    to the basic Django LoginView (in a manner compatible with other Rich Views)
+    '''
 
     def get_context_data(self, *args, **kwargs):
         context = super().get_context_data(*args, **kwargs)
@@ -190,10 +194,10 @@ class LoginViewExtended(LoginView):
         return response
 
 
-class TemplateViewExtended(TemplateView):
+class RichTemplateView(TemplateView):
     '''
     An extension of the basic TemplateView for a home page on the site say (not related to any model)
-    which provides some extra context if desired in a manner compatible with the other Extended Views
+    which provides some extra context if desired in a manner compatible with the other Rich Views
     '''
 
     def get_context_data(self, *args, **kwargs):
@@ -203,7 +207,7 @@ class TemplateViewExtended(TemplateView):
         return context
 
 
-class ListViewExtended(ListView):
+class RichListView(ListView):
     # HTML formattters stolen straight form the Django ModelForm class basically.
     # Allowing us to present lists basically with the same flexibility as pre-formattted
     # HTML objects.
@@ -275,7 +279,7 @@ class ListViewExtended(ListView):
         return context
 
 
-class DetailViewExtended(DetailView):
+class RichDetailView(DetailView):
     '''
     An enhanced DetailView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does (defined in BaseForm).
     '''
@@ -357,7 +361,7 @@ class DetailViewExtended(DetailView):
 # 2. On update, some fields are editable, others not (like the name of a team can be changed, but not its members)
 #    We currently list only editable fields. We should list uneditable ones as well in the manner of a DetailView.
 #
-# For Teams: edit Name, list players (which is the add_related for the session form)
+# For Teams: edit Name, list players (which is the intrinsic_relations for the session form)
 # For Ranks: No edits at all, all edited via Sessions
 # For Performances: edit Partial Play Weighting only and display Session and Player (no edit).
 #
@@ -502,7 +506,7 @@ def get_form_generic(self, return_mqfns=False):
 
                 field.widget.choices = field.choices
 
-    if len(add_related(model)) > 0:
+    if len(intrinsic_relations(model)) > 0:
         if len(getattr(self.request, 'POST', [])) > 0:
             form_data = self.request.POST
         elif len(getattr(self.request, 'GET', [])) > 0:
@@ -875,7 +879,7 @@ def form_invalid_generic(self, form):
     return response
 
 
-class CreateViewExtended(CreateView):
+class RichCreateView(CreateView):
     '''
     A CreateView which makes the model and the related_objects it defines available
     to the View so it can render form elements for the related_objects if desired.
@@ -994,11 +998,11 @@ class CreateViewExtended(CreateView):
 #         return response
 
 
-class UpdateViewExtended(UpdateView):
+class RichUpdateView(UpdateView):
     '''
     An UpdateView which makes the model and the related_objects it defines available to the View so it can render form elements for the related_objects if desired.
 
-    Note: This is almost identical to the CreateViewExtended class above bar one line, where we set self.object!
+    Note: This is almost identical to the RichCreateView class above bar one line, where we set self.object!
           Which is precisely how Django differentiates a Create from an Update!
 
           Aside from that though we define get_object() in place of get_initial().
@@ -1035,7 +1039,7 @@ class UpdateViewExtended(UpdateView):
         return self.obj
 
 
-class DeleteViewExtended(DeleteView):
+class RichDeleteView(DeleteView):
     '''An enhanced DeleteView which provides the HTML output methods as_table, as_ul and as_p just like the ModelForm does.'''
     # HTML formatters stolen straight form the Django ModelForm class
     _html_output = object_html_output

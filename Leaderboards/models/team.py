@@ -268,7 +268,7 @@ class Team(AdminModel):
     def link_internal(self) -> str:
         return reverse('view', kwargs={"model":self._meta.model.__name__, "pk": self.pk})
 
-    add_related = ["players"]
+    intrinsic_relations = ["players"]
 
     def __unicode__(self):
         if self.name:

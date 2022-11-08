@@ -56,7 +56,7 @@ def ajax_Detail(request, model, pk):
 
     response = {'view_URL':view_url, 'json_URL':json_url, 'HTML':html}
 
-    # Add object browser details if available. Should be added by DetailViewExtended
+    # Add object browser details if available. Should be added by RichDetailView
     if hasattr(view, 'object_browser'):
         response['object_browser'] = view.object_browser
 

@@ -31,7 +31,7 @@ class Rank(AdminModel):
     player = models.ForeignKey('Player', verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # If the player is deleted keep this rank
     team = models.ForeignKey('Team', verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # if the team is deleted keep this rank
 
-    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
+    intrinsic_relations = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
     @property
     def performance(self):

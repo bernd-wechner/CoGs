@@ -303,7 +303,7 @@ class Performance(AdminModel):
         # The trueskill after settings for the performance will be calculated there.
         pass
 
-    add_related = None
+    intrinsic_relations = None
     sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname']  # Need player to sort ties and team members.
 
     # It is crucial that Performances for a session are ordered the same as Ranks when a rich form is constructed

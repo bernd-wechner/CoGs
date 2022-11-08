@@ -6,7 +6,7 @@ Related Form extensions
 Specifically the routines used to support rich forms by creating a related_forms
 data structure to attach to any given form.
 
-The primary means of defining a rich object form is with a model attribute "add_related"
+The primary means of defining a rich object form is with a model attribute "intrinsic_relations"
 which is a way of flagging in one model that if an instance (object) is added to the
 database (using a CreateView) what other models would also be added. In short, if
 this model makes no sense isolated from other models, and belong together as one
@@ -17,7 +17,7 @@ There are two primary use cases, viewing forms and processing fsubmitted forms.
 Each of these in the case of a CreateView and an UpdateView which dictate what
 data is available for display primarily.
 
-See .model for a definition of add_related.
+See .model for a definition of intrinsic_relations.
 '''
 
 # import sys, os, traceback
@@ -30,7 +30,7 @@ from django.forms.models import modelformset_factory, inlineformset_factory, fie
 from django.core.exceptions import ValidationError
 
 from . import log
-from .model import add_related, Add_Related, can_save_related_formsets
+from .model import intrinsic_relations, is_intrinsic_relation, can_save_related_formsets
 
 # A local DEBUG flag because the debugging of related form creation is rather verbose
 # and distracting if debugging some other part of the process.
@@ -159,7 +159,7 @@ class RelatedForms(dict):
         '''
         Given a model and optionally a data source from a form or object
         will return all the related forms for that model, tracing relations
-        specified in the models add_related property.
+        specified in the models intrinsic_relations property.
 
         if form_data and/or a db_object are specified will in that order of
         precedence use them to populate field_data (see below) so that a
@@ -228,7 +228,7 @@ class RelatedForms(dict):
         # This funcion is recursive, and searches for related forms in related forms in related forms ...
         # So we track the depth of the recursion here and keep a history so as to try and avoid endless loops.
         model_name = model._meta.object_name
-        assert not model_name in self.__model_history, f"Model Error: You have defined a recursive set of model relations with the model.add_related attribute. {model_name} already in {self.__model_history}."
+        assert not model_name in self.__model_history, f"Model Error: You have defined a recursive set of model relations with the model.intrinsic_relations attribute. {model_name} already in {self.__model_history}."
 
         self.__model_history.append(model_name)
 
@@ -253,10 +253,10 @@ class RelatedForms(dict):
                     log.debug(f"{self.dp}\t{key}:{val}")
                 log.debug("\n")
 
-            log.debug(f"{self.dp}Looking for {len(add_related(model))} related forms: {add_related(model)}.")
+            log.debug(f"{self.dp}Looking for {len(intrinsic_relations(model))} related forms: {intrinsic_relations(model)}.")
 
         # Collect a list of the relations this model has (i.e. the candidate related models
-        # We wil only add forms for those that the models add_related attribute requests of
+        # We wil only add forms for those that the models intrinsic_relations attribute requests of
         # course, but of those specified, they must be relations to otehr models.
         #
         # These can be to_one or to_many relations.
@@ -265,7 +265,7 @@ class RelatedForms(dict):
         # Build a list of the relations_to_add that we want to add.
         relations_to_add = []
         for relation in relations:
-            if Add_Related(model, relation):
+            if is_intrinsic_relation(model, relation):
                 relations_to_add.append(relation)
 
         if DEBUG:
@@ -608,7 +608,7 @@ class RelatedForms(dict):
                 # a field: message entry for forms that have errors. If the
                 # formset has no forms in it this list is empty.  We don't
                 # add such empty lists to our collected form_errors. Empty
-                # formsets validly arise when an add_related model member
+                # formsets validly arise when an intrinsic_relations model member
                 # includes a field that cannot be save (points to a model
                 # that has no freignkiy back to htis one) for the purpose
                 # of making the basic form available to a rich template.
@@ -675,7 +675,7 @@ class RelatedForms(dict):
 
         # Keep a list of models, to avoid a recursion loop, and to help debugging.
         model_name = model._meta.object_name
-        assert not model_name in self.__model_history, f"Model Error: You have defined a recursive set of model relations with the model.add_related attribute. {model_name} already in {self.__model_history}."
+        assert not model_name in self.__model_history, f"Model Error: You have defined a recursive set of model relations with the model.intrinsic_relations attribute. {model_name} already in {self.__model_history}."
 
         self.__model_history.append(model_name)
 
@@ -759,10 +759,10 @@ class RelatedForms(dict):
                 # to save it. It has to be an editable relation to include the form. But when
                 # saving of course, we can't.
                 if settings.WARNINGS:
-                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (as {relation.field.name} is not an editable field)")
+                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the intrinsic_relations property, but {rmon} cannot be saved in inline formsets (as {relation.field.name} is not an editable field)")
             else:
                 if settings.WARNINGS:
-                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the add_related property, but {rmon} cannot be saved in inline formsets (for lack of a Foreign Key back to {mon})")
+                    log.warning(f"Could not save related formset: {relation.field.name} was specified in {mon} in the intrinsic_relations property, but {rmon} cannot be saved in inline formsets (for lack of a Foreign Key back to {mon})")
 
         self.__model_history.pop()
 
@@ -773,22 +773,22 @@ class RelatedForms(dict):
         The dictionary is in keyed on the field name with the field as a value.
 
         This is the standard Django fields_for_model but forces inclusion
-        of any fields specfied in the add_related attribute of a model and
+        of any fields specfied in the intrinsic_relations attribute of a model and
         it's PK
         '''
         # Now collect the fields we want to find the values of (fields_for_model does not return the pk field)
         fields = fields_for_model(model)
 
         # fields_for_model doesn't return uneditable fields ...
-        # if this model has an add_related attribute and it specifies any uneditable fields then
+        # if this model has an intrinsic_relations attribute and it specifies any uneditable fields then
         # override this objection and add them to the fields list, else they won't be added to the
         # related_forms. You may want for example, to explicitly to add uneditable fields to related_forms
         # so as to be able to edit them. The reasoning is as follows: editable=False means the field won't
-        # appear on the standard form editor for that model, whereas add_related means that the field
+        # appear on the standard form editor for that model, whereas intrinsic_relations means that the field
         # is offered when it's related to a model so that we can build a custom form editor for that
         # field through its relation if we want. In short we have suppressed its appearance on standard
         # model forms but made it available on related custom built model forms.
-        for f in add_related(model):
+        for f in intrinsic_relations(model):
             if hasattr(model, f) and not f in fields:
                 fields[f] = getattr(model, f)
 

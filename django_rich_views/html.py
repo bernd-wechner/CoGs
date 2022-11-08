@@ -197,14 +197,15 @@ def odm_str(obj, fmt, safe=False):
 
 
 def list_html_output(self, LDF=None):
-    ''' Helper function for outputting HTML lists of objects (intended for ListViews).
+    '''
+     Helper function for outputting HTML lists of objects (intended for ListViews).
 
         Used by as_table(), as_ul(), as_p(), as_br().
 
         an object display mode (ODM) can be specified to override the one in self.format if desired
         as this is what as_table etc do (providing compatible entry points with the Django Generic Forms).
 
-        self is an instance of ListViewExtended (or any view that wants HTML rendering of a list of objects).
+        self is an instance of RichListView (or any view that wants HTML rendering of a list of objects).
 
         Relies on:
             odm_str:  which displays an object respecting the object_summary_format specified in self.format
@@ -214,6 +215,9 @@ def list_html_output(self, LDF=None):
             self.queryset:    Which must be initialised by the calling form, defining the list of objects to format in HTML
 
             self.format:      Which should be of type list_display_format
+
+    :param self: An instance of RichListView
+    :param LDF: A List Display Format (list_display_format)
     '''
 
     if LDF is None:
@@ -314,7 +318,7 @@ def object_html_output(self, ODM=None):
         an object display mode (ODM) can be specified to override the one in self.format if desired
         as this is what as_table etc do (providing compatible entry points with the Django Generic Forms).
 
-        self is an instance of DetailViewExtended or DeleteViewExtended (or any view that wants HTML
+        self is an instance of RichDetailView or RichDeleteView (or any view that wants HTML
         rendering of an object.
 
         Relies on:
@@ -329,6 +333,9 @@ def object_html_output(self, ODM=None):
         we try to render in HTML here. We rely on privacy constraints having already been applied
         by collect_rich_object_fields and that values affected by provacy are suitably masked
         (overwritten).
+
+    :param self: An instance of RichDetailsView or RichDeleteView
+    :param ODM: An Object Display Mode (from object_display_modes)
     '''
     # TODO: This should really support CSS classes like BaseForm._html_output, so that a class can be specified
 

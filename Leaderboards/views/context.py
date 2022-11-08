@@ -44,7 +44,7 @@ def extra_context_provider(self, context={}):
     See ajax_Game_Properties below for that.
 
     Note: self.initial has been populated by the fields specfied in the models inherit_fields
-    attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
+    attribute by this stage, in the generic_form_extensions RichCreateView.get_initial()
     '''
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""

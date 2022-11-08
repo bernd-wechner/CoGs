@@ -97,8 +97,8 @@ class Session(TimeZoneMixIn, AdminModel):
 
     # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
     # Am testing the new simpler way now leaving it in place for a while to see if any issues arise.
-    # add_related = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
-    add_related = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
+    # intrinsic_relations = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
+    intrinsic_relations = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
 
     # Specify which fields to inherit from entry to entry when creating a string of objects
     inherit_fields = ["date_time", "league", "location", "game"]
