@@ -4,7 +4,7 @@ from django import template
 from django.utils.safestring import mark_safe
 from django.template.defaultfilters import pluralize
 
-from django_generic_view_extensions.util import DjangoObjectJSONEncoder
+from django_rich_views.util import DjangoObjectJSONEncoder
 
 register = template.Library()
 

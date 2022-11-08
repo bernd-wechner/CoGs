@@ -9,7 +9,7 @@ from dateutil import parser
 from django.test import TestCase
 from django.core import management
 from django.contrib.auth import get_user_model
-from django_generic_view_extensions.datetime import make_aware
+from django_rich_views.datetime import make_aware
 
 from Leaderboards.models import Session, Game, Player, Team, Rank, Performance, League, Location, Tourney, MISSING_VALUE as MV
 from Leaderboards.views.pre_handlers import reconcile_ranks

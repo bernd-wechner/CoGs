@@ -7,8 +7,8 @@ from django.core.exceptions import ValidationError
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import AssertLog
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.util import AssertLog
+from django_rich_views.model import field_render, link_target_url
 
 from ..trueskill_helpers import TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
 

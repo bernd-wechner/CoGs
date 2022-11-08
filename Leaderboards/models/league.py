@@ -9,8 +9,9 @@ from django.core.validators import RegexValidator
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.model import field_render
-from django_generic_view_extensions.decorators import property_method
+from django_rich_views.model import field_render
+from django_rich_views.decorators import property_method
+
 
 class League(AdminModel):
     '''
@@ -114,5 +115,4 @@ class League(AdminModel):
 
         ordering = ['name']
         constraints = [ models.UniqueConstraint(fields=['name'], name='unique_league_name') ]
-        
 

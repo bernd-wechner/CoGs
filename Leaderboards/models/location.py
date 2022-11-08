@@ -7,13 +7,14 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.model import field_render
+from django_rich_views.model import field_render
 
 from timezone_field import TimeZoneField
 
 from mapbox_location_field.models import LocationField
 
-League  = apps.get_model(APP, "League", require_ready=False)
+League = apps.get_model(APP, "League", require_ready=False)
+
 
 class Location(AdminModel):
     '''

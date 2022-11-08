@@ -9,9 +9,9 @@ from django.core.serializers.json import DjangoJSONEncoder
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import pythonify
-from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.model import safe_get
+from django_rich_views.util import pythonify
+from django_rich_views.decorators import property_method
+from django_rich_views.model import safe_get
 
 from relativefilepathfield.fields import RelativeFilePathField
 

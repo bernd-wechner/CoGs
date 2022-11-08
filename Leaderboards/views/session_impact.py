@@ -7,8 +7,8 @@ from django.shortcuts import render
 from django.core.exceptions import ObjectDoesNotExist
 from django.http.response import HttpResponseRedirect
 
-from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import time_str
+from django_rich_views.util import class_from_string
+from django_rich_views.datetime import time_str
 
 from ..models import ChangeLog, RebuildLog, RATING_REBUILD_TRIGGER
 from ..leaderboards import restyle_leaderboard, augment_with_deltas, leaderboard_changed, pk_keys, LB_PLAYER_LIST_STYLE, LB_STRUCTURE

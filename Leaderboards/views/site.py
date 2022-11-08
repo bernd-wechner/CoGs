@@ -3,7 +3,7 @@
 #===============================================================================
 from django.contrib.auth.models import User
 
-from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended
+from django_rich_views.views import LoginViewExtended, TemplateViewExtended
 
 from .context import extra_context_provider
 

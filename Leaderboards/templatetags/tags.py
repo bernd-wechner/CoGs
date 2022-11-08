@@ -6,8 +6,8 @@ from django.core.cache import cache
 from django.utils.safestring import mark_safe
 # from django.template.loader_tags import do_include
 
-from django_generic_view_extensions.model import object_in_list_format, field_render
-from django_generic_view_extensions.util import numeric_if_possible
+from django_rich_views.model import object_in_list_format, field_render
+from django_rich_views.util import numeric_if_possible
 
 from django_cache_memoized import memoized
 

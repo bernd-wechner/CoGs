@@ -111,7 +111,7 @@ INSTALLED_APPS = (
     # 'crispy_forms',
     'django_extensions',
     'reset_migrations',
-    'django_generic_view_extensions',
+    'django_rich_views',
     'Leaderboards'
 )
 
@@ -124,7 +124,7 @@ MIDDLEWARE = (
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'django_generic_view_extensions.middleware.TimezoneMiddleware',
+    'django_rich_views.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
     'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
@@ -277,13 +277,13 @@ else:
 
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
-# Pass our logger to Django Generic View Extensions
+# Pass our logger to Django Rich Views
 from Site.logutils import log
 from logging import DEBUG as loglevel_DEBUG
 import logging.config
 
-import django_generic_view_extensions
-django_generic_view_extensions.log = log
+import django_rich_views
+django_rich_views.log = log
 
 # Include local query extensions (register them with Django)
 import Site.query

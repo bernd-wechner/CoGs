@@ -15,8 +15,8 @@ from django.shortcuts import render
 from django.http.response import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
-from django_generic_view_extensions.context import add_timezone_context, add_debug_context
-from django_generic_view_extensions.datetime import datetime_format_python_to_PHP
+from django_rich_views.context import add_timezone_context, add_debug_context
+from django_rich_views.datetime import datetime_format_python_to_PHP
 
 from .widgets import html_selector
 

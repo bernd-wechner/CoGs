@@ -14,10 +14,10 @@ from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned, 
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import AssertLog
-from django_generic_view_extensions.html import NEVER
-from django_generic_view_extensions.model import TimeZoneMixIn, field_render
-from django_generic_view_extensions.datetime import safe_tz
+from django_rich_views.util import AssertLog
+from django_rich_views.html import NEVER
+from django_rich_views.model import TimeZoneMixIn, field_render
+from django_rich_views.datetime import safe_tz
 
 from math import isclose
 from datetime import timedelta, datetime

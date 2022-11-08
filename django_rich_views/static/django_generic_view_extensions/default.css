@@ -2,10 +2,10 @@
  If form controls all have the class form_control we can style them here.
 
  That class is set here:
- 	django_generic_view_extensions.forms.classify_widget
- 	django_generic_view_extensions.views.get_form_generic
+ 	django_rich_views.forms.classify_widget
+ 	django_rich_views.views.get_form_generic
 
- The reason for this is that django_generic_view_extensions makes use of
+ The reason for this is that django_rich_views makes use of
  Django Autocomplete Light select widgets and they are bootstrap themed.
  These styles are copied from the styling of those widgets to ensure that
  standard Django widgets have a comparable look and feel to these.

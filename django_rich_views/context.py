@@ -1,5 +1,5 @@
 '''
-Django Generic View Extensions
+Django Rich Views
 
 Context Updaters
 

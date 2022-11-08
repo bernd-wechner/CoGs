@@ -1,5 +1,5 @@
 '''
-Django Generic View Extensions
+Django Rich Views
 
 Ajax service providers.
 
@@ -10,7 +10,7 @@ from django.http.response import HttpResponse
 
 from dal import autocomplete
 
-from django_generic_view_extensions.util import class_from_string
+from django_rich_views.util import class_from_string
 
 
 #===============================================================================
@@ -63,7 +63,7 @@ class ajax_Autocomplete(autocomplete.Select2QuerySetView):
             if self.q:
                 qs = qs.filter(**{f'{self.field_name}__{self.field_operation}': self.field_value})
 
-        # In django_generic_view_extensions.views.get_form_generic
+        # In django_rich_views.views.get_form_generic
         # the DAL widgets are configured to call Javascript functions
         # to deliver forward information. We receive it here as a forward GET param:
         forward = self.request.GET.get("forward", None)

@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url
 
 import html
 

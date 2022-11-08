@@ -22,9 +22,9 @@ from django_model_admin_fields import AdminModel
 
 from django_model_privacy_mixin import PrivacyMixIn
 
-from django_generic_view_extensions.options import flt
-from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.options import flt
+from django_rich_views.decorators import property_method
+from django_rich_views.model import field_render, link_target_url
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
@@ -260,6 +260,7 @@ class Player(PrivacyMixIn, AdminModel):
         '''
         Returns the Trueskill rating for this player at the specified game
         '''
+        from django_rich_views.queryset import print_SQL
         Rating = apps.get_model(APP, "Rating")
         try:
             r = Rating.objects.get(player=self, game=game)
@@ -312,7 +313,7 @@ class Player(PrivacyMixIn, AdminModel):
         if not leagues == ALL_LEAGUES:
             qs = qs.filter(leagues__in=leagues)
 
-        from django_generic_view_extensions.queryset import print_SQL
+        # from django_rich_views.queryset import print_SQL
 
         # Get first and last game
         performances = Performance.objects.filter(player=OuterRef('pk'))
@@ -397,7 +398,7 @@ class Player(PrivacyMixIn, AdminModel):
                     # 'events'
                     ).order_by('-session_count')
 
-        print_SQL(qs)
+        # print_SQL(qs)
         return qs
 
     selector_field = "name_nickname"

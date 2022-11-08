@@ -9,8 +9,8 @@ import cProfile, pstats, io
 from datetime import datetime, date, timedelta
 from html import escape
 
-from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import decodeDateTime
+from django_rich_views.util import class_from_string
+from django_rich_views.datetime import decodeDateTime
 
 from ..models import Game, Session, Rank, Performance, Rating, RATING_REBUILD_TRIGGER
 

@@ -11,8 +11,8 @@ from django_cte import CTEManager
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import AssertLog
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.util import AssertLog
+from django_rich_views.model import field_render, link_target_url
 
 import trueskill
 
@@ -312,7 +312,7 @@ class Performance(AdminModel):
     @classmethod
     def form_order(cls, performances) -> QuerySet:
         '''
-        Form field ordering support for Django Generic View Extensions RelatedFormsets
+        Form field ordering support for Django Rich Views RelatedFormsets
 
         if this class method exists, DGVE will call it to order objects when building related forms.
 

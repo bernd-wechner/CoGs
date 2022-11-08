@@ -17,9 +17,9 @@ from django.contrib.auth.models import Group
 from django.utils.timezone import make_naive, localtime
 from django.core.exceptions import ObjectDoesNotExist
 
-from django_generic_view_extensions.views import CreateViewExtended, UpdateViewExtended
-from django_generic_view_extensions.datetime import time_str
-from django_generic_view_extensions.util import isPositiveInt
+from django_rich_views.views import CreateViewExtended, UpdateViewExtended
+from django_rich_views.datetime import time_str
+from django_rich_views.util import isPositiveInt
 
 from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER, MISSING_VALUE
 
@@ -279,7 +279,7 @@ def pre_dispatch_handler(self):
                           support should contain a Comma Separated list of PKs already selcted in
                           the formset. The default ajax_Autocomplete handler for rich models will
                           then respect that adding a filter to query it uses. That support is built
-                          into the django_generic_view_extensions.
+                          into the django_rich_views.
 
     We need this only because:
 
@@ -646,7 +646,7 @@ def pre_transaction_handler(self, new_session=None):
         html += "</pre>\n</section>\n"
         # When "debug_only" is returned then all other args are ignored and the value
         # of the debug_only field is returned as an HTML response by the caller,
-        # the django_generic_view_extensions.views.post_generic handler.
+        # the django_rich_views.views.post_generic handler.
         return {'debug_only': html}
 
     else:
@@ -755,7 +755,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
         #    This must have have happened when we saved the related forms by passing in an instance to the formset.save
         #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day.
-        #    Empirically seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #    Empirically seems fine. It is in django_rich_views.forms.save_related_forms that this is done.
         #    For example:
         #
         #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>]>

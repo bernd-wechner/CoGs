@@ -13,13 +13,12 @@ from django.db.models.functions import Extract
 from django.db.models.expressions import Window, F, ExpressionWrapper
 from django.db.models.functions.window import Lag
 
-from django_generic_view_extensions.util import isInt
-
-from django_cte import With
-
-from django_generic_view_extensions.queryset import get_SQL, print_SQL
+from django_rich_views.util import isInt
+from django_rich_views.queryset import get_SQL, print_SQL
 
 from django_model_admin_fields import AdminModel
+
+from django_cte import With
 
 from .session import Session
 from .performance import Performance

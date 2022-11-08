@@ -19,9 +19,9 @@ if settings.DEBUG:
     from django.db import connection
 
 # Django generic view extension imports
-from django_generic_view_extensions.datetime import fix_time_zone, UTC
-from django_generic_view_extensions.queryset import top, get_SQL
-from django_generic_view_extensions.datetime import decodeDateTime
+from django_rich_views.datetime import fix_time_zone, UTC
+from django_rich_views.queryset import top, get_SQL
+from django_rich_views.datetime import decodeDateTime
 
 # Local imports
 # models imports from this module. To avoid a circular import error we need to import models into its own namespace.

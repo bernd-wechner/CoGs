@@ -3,8 +3,8 @@
 #===============================================================================
 from django.contrib.auth.mixins import LoginRequiredMixin
 
-from django_generic_view_extensions.views import DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
-from django_generic_view_extensions.options import  list_display_format, object_display_format
+from django_rich_views.views import DetailViewExtended, DeleteViewExtended, CreateViewExtended, UpdateViewExtended, ListViewExtended
+from django_rich_views.options import  list_display_format, object_display_format
 
 from .form_initialisers import form_init
 from .pre_handlers import pre_dispatch_handler, pre_validation_handler, pre_transaction_handler, pre_save_handler, pre_commit_handler, pre_delete_handler

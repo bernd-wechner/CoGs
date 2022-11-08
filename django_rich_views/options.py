@@ -1,9 +1,9 @@
 '''
-Django Generic View Extensions
+Django Rich Views
 
 Options Support
 
-The view extensions support a rich suite of options through which the views can be tweaked.
+The DRV view extensions support a rich suite of options through which the views can be tweaked.
 
 Herein we define a number of classes that act as enums and containers for options, and functions
 for extracting them from a provided request object (for URL provision if desired).
