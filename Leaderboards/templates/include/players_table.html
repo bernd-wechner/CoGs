@@ -1,0 +1,44 @@
+{% load filters %}
+{% load tags %}
+{% load humanize %}
+
+<table class="players" id="players">
+	<thead>
+		<tr>
+			<th data-type="number">Nickname</th>
+			<th data-type="number">Results</th>
+			<th data-type="number">Leaderboards</th>
+			<th data-type="date">First Result</th>
+			<th data-type="string">First Game</th>
+			<th data-type="date">Last Result</th>
+			<th data-type="string">Last Game</th>
+			<th data-type="duration">Tenure (days)</th>
+			<th data-type="number">Results/Month</th>
+			<th data-type="string">Most Played</th>
+			<th data-type="number">Results</th>
+			<th data-type="number">Smallest game</th>
+			<th data-type="number">Median game</th>
+			<th data-type="number">Largest game</th>
+		</tr>
+	</thead>
+	<tbody>
+	{% for player in players %}
+		<tr>
+			<td><a href="{% url 'view' 'Player' player.pk %}">{{ player.name_nickname }}</a></td>
+			<td>{{ player.session_count }}</td>
+			<td>{{ player.game_count }}</td>
+			<td>{{ player.first_session_time | naturaltime }}</td>
+			<td>{{ player.first_game }}</td>
+			<td>{{ player.last_session_time | naturaltime }}</td>
+			<td>{{ player.last_game }}</td>
+			<td>{{ player.tenure | duration:"phrase,days" }}</td>
+			<td>{{ player.results_per_month | floatformat }}</td>
+			<td>{{ player.most_played }}</td>
+			<td>{{ player.most_played_count }}</td>
+			<td>{{ player.smallest_session }}</td>
+			<td>{{ player.median_session }}</td>
+			<td>{{ player.largest_session }}</td>
+		</tr>
+	{% endfor %}
+	<tbody>
+</table>

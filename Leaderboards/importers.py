@@ -4,7 +4,7 @@ from dateutil import parser
 from datetime import datetime
 from django.http import HttpResponse
 from django.db import transaction
-from django_generic_view_extensions.html import fmt_str
+from django_rich_views.html import fmt_str
 
 from Site.logutils import log
 from .models import Team, Player, Game, League, Location, Session, Rank, Performance, Rating

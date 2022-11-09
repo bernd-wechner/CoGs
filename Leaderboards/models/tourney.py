@@ -7,11 +7,12 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url
 
 DEFAULT_TOURNEY_MIN_PLAYS = 2
 DEFAULT_TOURNEY_WEIGHT = 1
 DEFAULT_TOURNEY_ALLOWED_IMBALANCE = 0.5
+
 
 class TourneyRules(AdminModel):
     '''

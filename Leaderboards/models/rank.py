@@ -7,8 +7,8 @@ from django.core.exceptions import ValidationError
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import AssertLog
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.util import AssertLog
+from django_rich_views.model import field_render, link_target_url
 
 from ..trueskill_helpers import TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
 
@@ -31,7 +31,7 @@ class Rank(AdminModel):
     player = models.ForeignKey('Player', verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # If the player is deleted keep this rank
     team = models.ForeignKey('Team', verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # if the team is deleted keep this rank
 
-    add_related = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
+    intrinsic_relations = ["player", "team"]  # When adding a Rank, add the related Players or Teams (if needed, or not if already in database)
 
     @property
     def performance(self):
@@ -116,6 +116,18 @@ class Rank(AdminModel):
     @property
     def link_internal(self) -> str:
         return reverse('view', kwargs={"model":self._meta.model.__name__, "pk": self.pk})
+
+    def clean(self):
+        '''
+        Called by Rank.full_clean() as well.
+        https://docs.djangoproject.com/en/dev/ref/models/instances/#django.db.models.Model.clean
+        '''
+        team_play = self.session.team_play
+
+        if team_play:
+            self.player = None
+        else:
+            self.team = None
 
     # @property_method
     def check_integrity(self, passthru=True):

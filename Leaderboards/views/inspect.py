@@ -2,7 +2,7 @@
 # An object inspector
 #===============================================================================
 from django.shortcuts import render
-from django_generic_view_extensions.util import class_from_string
+from django_rich_views.util import class_from_string
 
 
 def view_Inspect(request, model, pk):

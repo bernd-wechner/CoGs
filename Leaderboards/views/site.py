@@ -3,7 +3,7 @@
 #===============================================================================
 from django.contrib.auth.models import User
 
-from django_generic_view_extensions.views import LoginViewExtended, TemplateViewExtended
+from django_rich_views.views import RichLoginView, RichTemplateView
 
 from .context import extra_context_provider
 
@@ -13,7 +13,7 @@ def save_league_filters(session, league):
     Saves league filtering settings to the user session.
 
     Used by the generic_biew_extensions, specifically
-    ListViewExtended and DetailViewExtended which check
+    RichListView and RichDetailView which check
     the session store for filter configurations.
 
     We record in the suer session the league we want to filter
@@ -65,12 +65,12 @@ def save_league_filters(session, league):
     session.save()
 
 
-class view_Home(TemplateViewExtended):
+class view_Home(RichTemplateView):
     template_name = 'views/home.html'
     extra_context_provider = extra_context_provider
 
 
-class view_Login(LoginViewExtended):
+class view_Login(RichLoginView):
 
     # On Login add a filter to the session for the preferred league
     def form_valid(self, form):

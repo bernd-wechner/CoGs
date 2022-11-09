@@ -1,7 +1,7 @@
 #===============================================================================
 # Handlers called AFTER certain conditions in the generic views.
 #
-# These are the COGS specific handlers thatthe generic views call.
+# These are the COGS specific handlers that the generic views call.
 #===============================================================================
 from ..models import Rating, RATING_REBUILD_TRIGGER
 
@@ -32,3 +32,10 @@ def post_delete_handler(self, pk=None, game=None, players=None, victors=None, re
                 r.reset()
                 r.save()
 
+
+def post_save_handler(self):
+    '''
+    Nothing implemented for post form save handling. Placeholder should we need anything.
+
+    :param self:
+    '''

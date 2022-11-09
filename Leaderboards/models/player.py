@@ -2,21 +2,29 @@ from . import APP, MAX_NAME_LENGTH, ALL_LEAGUES
 
 from ..leaderboards import LB_PLAYER_LIST_STYLE
 
+from tailslide import Median
+
 from django.db import models
-from django.db.models import Q, Count
+from django.db.models import Q, F, Count, Min, Max, Value, FilteredRelation, Case, When
 from django.apps import apps
 from django.urls import reverse
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.utils.functional import cached_property
+from django.db.models import IntegerField, TextField, ForeignKey, FloatField, DecimalField
+from django.db.models.functions import Extract, Greatest
+from django.db.models.expressions import Subquery, OuterRef, ExpressionWrapper
+from django.contrib.postgres.aggregates import ArrayAgg
+
+from django_cte import CTEManager, With
 
 from django_model_admin_fields import AdminModel
 
 from django_model_privacy_mixin import PrivacyMixIn
 
-from django_generic_view_extensions.options import flt
-from django_generic_view_extensions.decorators import property_method
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.options import flt
+from django_rich_views.decorators import property_method
+from django_rich_views.model import field_render, link_target_url
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
@@ -28,6 +36,8 @@ class Player(PrivacyMixIn, AdminModel):
 
     Players can be Registrars, meaning they are permitted to record session results, or Staff meaning they can access the admin site.
     '''
+    objects = CTEManager()
+
     Team = apps.get_model(APP, "Team", False)
     League = apps.get_model(APP, "League", False)
 
@@ -150,6 +160,20 @@ class Player(PrivacyMixIn, AdminModel):
                 sessions[game] = self.last_win(game)
         return sessions
 
+    @property_method
+    def sessions_played(self, game=None) -> object:
+        '''
+        For a given game returns all the sessions this player played that game.
+        '''
+        Session = apps.get_model(APP, "Session")
+        sFilter = (Q(ranks__player=self) | Q(ranks__team__players=self))
+        if game:
+            sFilter &= Q(game=game)
+
+        plays = Session.objects.filter(sFilter).order_by('-date_time')
+
+        return None if (plays is None or plays.count() == 0) else plays
+
     @cached_property
     def leaderboard_positions(self) -> list:
         '''
@@ -192,13 +216,13 @@ class Player(PrivacyMixIn, AdminModel):
         if multiple_leagues:
             result[ALL_LEAGUES] = []
             for game in played:
-                if self.is_at_top_of_leaderbard(game):
+                if self.is_at_top_of_leaderboard(game):
                     result[ALL_LEAGUES].append(game)
 
         for league in self.leagues.all():
             result[league] = []
             for game in played:
-                if self.is_at_top_of_leaderbard(game, league):
+                if self.is_at_top_of_leaderboard(game, league):
                     result[league].append(game)
 
         return result
@@ -236,6 +260,7 @@ class Player(PrivacyMixIn, AdminModel):
         '''
         Returns the Trueskill rating for this player at the specified game
         '''
+        from django_rich_views.queryset import print_SQL
         Rating = apps.get_model(APP, "Rating")
         try:
             r = Rating.objects.get(player=self, game=game)
@@ -251,8 +276,130 @@ class Player(PrivacyMixIn, AdminModel):
             if entry[0] == self.pk:
                 return pos + 1  # pos is 0 based, leaderboard positions are 1 based
 
-    def is_at_top_of_leaderbard(self, game, leagues=[]):
+    def is_at_top_of_leaderboard(self, game, leagues=[]):
         return self.leaderboard_position(game, leagues) == 1
+
+    @classmethod
+    def stats(cls, leagues=ALL_LEAGUES):
+        '''
+        Prepare a QuerySet containing the stats needed by the players view.
+
+        !    NickName
+        Number of (implicit) events they have attended
+        !    Number of game leaderboards they are on
+        Number of boards they are topping
+        Number of boards they are in the top N
+        !    Number of game sessions they have recorded
+        !    First recorded session time
+        !    Last recorded session time
+        !    Session/unit_time (how often they played)
+        !    First game they played
+        !    Last game they played
+        !    Game they've played most of (most recent as tie breaker)
+        !    Mean sessions per game (repeat play measure)
+        !    Largest game played (player count)
+        !    Smallest game played (player count)
+        Median session size (player count)
+
+        :param cls: Our class (so we can build a queryset on it to return)
+        '''
+        Player = cls
+        Session = apps.get_model(APP, "Session")
+        Performance = apps.get_model(APP, "Performance")
+        Game = apps.get_model(APP, "Game")
+        Event = apps.get_model(APP, "Event")
+
+        qs = Player.objects.all()
+        if not leagues == ALL_LEAGUES:
+            qs = qs.filter(leagues__in=leagues)
+
+        # from django_rich_views.queryset import print_SQL
+
+        # Get first and last game
+        performances = Performance.objects.filter(player=OuterRef('pk'))
+        first_performance = performances.order_by('session__date_time')[:1]
+        last_performance = performances.order_by('-session__date_time')[:1]
+
+        first_game_pk = Subquery(first_performance.values('session__game__pk'))
+        first_game = Subquery(first_performance.values('session__game__name'))
+
+        last_game_pk = Subquery(last_performance.values('session__game__pk'))
+        last_game = Subquery(last_performance.values('session__game__name'))
+
+        # Get most played game
+        game_count = Count('performances__session__game', distinct=True)
+        game_list = ArrayAgg('performances__session__game', distinct=True)
+
+        games = Game.objects.filter(sessions__performances__player__pk=OuterRef('pk'))
+        games = games.annotate(play_count=Count('pk'), last_play=Max('sessions__date_time'))
+        most_played = games.order_by('-play_count', '-last_play')[:1]
+
+        most_played_pk = Subquery(most_played.values('pk'))
+        most_played_name = Subquery(most_played.values('name'))
+        most_played_count = Subquery(most_played.values('play_count'))
+
+        # Get the length of the play history (tenure)
+        tenure = Greatest(Extract((Max('performances__session__date_time') - Min('performances__session__date_time')), 'days') , 1)
+        rpm = ExpressionWrapper(Count('performances') / tenure * Case(When(tenure__gt=30, then=30), default=1), output_field=FloatField())
+
+        # Double up on OuterRef so that we get the player pk not the session pk in the sessions resolution
+        session_pks = Session.objects.filter(performances__player=OuterRef(OuterRef('pk'))).values('pk')
+        sessions = Session.objects.filter(pk__in=session_pks).annotate(num_players=Count('performances'))
+        smallest_session = sessions.values('num_players').order_by('num_players')[:1]
+        largest_session = sessions.values('num_players').order_by('-num_players')[:1]
+
+        # Median will need a CTE Alas I think. Median cannot act on an aggregate or subquery etc. It can act ona  column on a SEelct FROM as an aggregate.
+        # mqs = qs.alias(session=Subquery(sessions)).annotate(median=Median('session__num_players'))
+        # print_SQL(mqs)
+
+        # This accepts filters and these msut be taken from the request
+        # events = Event.implicit()
+        # player_events = events.filter(players__in=OuterRef('pk'))
+
+        qs = qs.annotate(
+                session_count=Count('performances'),
+                first_session_time=Min('performances__session__date_time'),
+                last_session_time=Max('performances__session__date_time'),
+                first_game_pk=first_game_pk,
+                first_game=first_game,
+                last_game_pk=last_game_pk,
+                last_game=last_game,
+                game_count=game_count,
+                game_list=game_list,
+                most_played_pk=most_played_pk,
+                most_played=most_played_name,
+                most_played_count=most_played_count,
+                tenure=tenure,
+                results_per_month=rpm,
+                smallest_session=smallest_session,
+                largest_session=largest_session,
+                # median_session=median_session
+                # events=Subquery(player_events.values('event').annotate(Count('event')), output_field=IntegerField())
+                ).values(
+                    'pk',
+                    'name_nickname',
+                    'session_count',
+                    'game_count',
+                    'game_list',
+                    'first_session_time',
+                    'last_session_time',
+                    'first_game_pk',
+                    'first_game',
+                    'last_game_pk',
+                    'last_game',
+                    'most_played_pk',
+                    'most_played',
+                    'most_played_count',
+                    'tenure',
+                    'results_per_month',
+                    'smallest_session',
+                    'largest_session',
+                    # 'median_session'
+                    # 'events'
+                    ).order_by('-session_count')
+
+        # print_SQL(qs)
+        return qs
 
     selector_field = "name_nickname"
 
@@ -275,13 +422,13 @@ class Player(PrivacyMixIn, AdminModel):
                 qs = qs.filter(leagues=league)
 
         if query:
-            qs = qs.filter(**{f'{cls.selector_field}__istartswith': query})
+            qs = qs.filter(**{f'{cls.selector_field}__icontains': query})
 
         qs = qs.annotate(play_count=Count('performances')).order_by("-play_count")
 
         return qs
 
-    add_related = None
+    intrinsic_relations = None
 
     def __unicode__(self): return getattr(self, self.selector_field)
 

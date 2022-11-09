@@ -44,16 +44,15 @@ def extra_context_provider(self, context={}):
     See ajax_Game_Properties below for that.
 
     Note: self.initial has been populated by the fields specfied in the models inherit_fields
-    attribute by this stage, in the generic_form_extensions CreateViewExtended.get_initial()
+    attribute by this stage, in the generic_form_extensions RichCreateView.get_initial()
     '''
     model = getattr(self, "model", None)
     model_name = model._meta.model_name if model else ""
 
-    context['league_options'] = html_league_options(self.request.session)
-    context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)
-
-    # Make  DAL media available to templates
-    context['dal_media'] = str(autocomplete.Select2().media)
+    # Widgets
+    context['dal_media'] = autocomplete.Select2().media
+    context['league_options'] = html_league_options(self.request.session)  # For a standard select element
+    context['league_widget'] = html_selector(League, "id_leagues_view", 0, ALL_LEAGUES)  # For a DAL element
 
     if model_name == 'session':
         # if an object is provided in self.object use that
@@ -78,6 +77,7 @@ def extra_context_provider(self, context={}):
         if game:
             context['game_individual_play'] = json.dumps(game.individual_play)  # Python True/False, JS true/false
             context['game_team_play'] = json.dumps(game.team_play)
+            context['game_scoring'] = Game.ScoringOptions(game.scoring).name
             context['game_min_players'] = game.min_players
             context['game_max_players'] = game.max_players
             context['game_min_players_per_team'] = game.min_players_per_team

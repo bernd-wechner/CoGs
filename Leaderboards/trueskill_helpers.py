@@ -629,7 +629,7 @@ class TrueSkillHelpers:
 
     def Rank_performance(self, rank, after=False):
         '''
-        A Rank can describe a single player or a team. Returns the approriate TrueSkill performance
+        A Rank can describe a single player or a team. Returns the appropriate TrueSkill performance
         using the helpers herein.
 
         We need to prepare a single performance tuple (mu sigma2, w) to return describing
@@ -665,17 +665,28 @@ class TrueSkillHelpers:
                             p.partial_play_weighting
                         )
 
-    def Actual_ranking(self, session, after=False):
+    def Actual_ranking(self, session, as_ranks=False, after=False):
         '''
-        Like Predicted_ranking but retusn the Actual ranking as a tuple of performers/rankers
-        The probability of a recorded ranking (before or after the ranking was used to adjust player skills),
-        using Leaderboards app Rank objects in an ordered list or tuple.
+        Like Predicted_ranking but returns the Actual ranking as a tuple of rankers and
+        the probability of a recorded ranking (before or after the ranking was used to
+        adjust player skills), using Leaderboards app Rank objects in an ordered list or
+        tuple.
 
-        We need to build a list ranked performance lists (mu, sigma2, w triplets) to pass to the internal helpers.
+        We need to build a list ranked performance lists (mu, sigma2, w triplets) to pass
+        to the internal helpers.
 
         These are derived from Django ORM Rank objects, imported in the header.
 
+        For conformance with Predicted_ranking, a tuple of rankers (player or Team objects)
+        is returned by default. But there is possible scoring information attached to the
+        Rank objects which provide these rankers, and if a caller wishes to dislay rankers
+        and scores they may wish to receive Rank objects which provides both.
+
+        Predicted_ranking does not need this option as the prediction is based soley upon
+        player ratings and scores are not predicted, only a ranking is.
+
         :param session: an instance of the leaderboards model Session
+        :param as_ranks: If true, for each ranker their Rank object is returned else the ranker object is (Player or Team)
         :param after: if true, gets and uses skills "after" rather than "before" the present ranks (recorded play session).
                       The ranks submitted influenced player skill ratings, so there's
                       a before-start context (the probability of this ranking given the skill ratings before play, and
@@ -685,25 +696,27 @@ class TrueSkillHelpers:
                       doing it's work if P_ranking(after) is higher than P_ranking(after) for a given set of ranks,
         '''
 
-        # One dict to hold the performers and another to hold the performances
-        performers = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
-        performances = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
+        # One dict to hold the rankers
+        rankers = SortedDict()  # Keyed and sorted on trueskill_mu of the ranker
+        # And another to hold the TrueSkill performances (i.e not Performance objects, but (mu, sigma, w) tuples)
+        performances = SortedDict()  # Keyed and sorted on trueskill_mu of the ranker
 
+        # Ordered by rank.rank by default
         for rank in session.ranks.all():
-            if not rank.rank in performers:
-                performers[rank.rank] = []
-            performers[rank.rank].append(rank.ranker)
+            if not rank.rank in rankers:
+                rankers[rank.rank] = []
+            rankers[rank.rank].append(rank if as_ranks else rank.ranker)
 
             if not rank.rank in performances:
                 performances[rank.rank] = []
             performances[rank.rank].append(self.Rank_performance(rank, after))
 
         # Freeze and flatten
-        for rank, tied_performers in performers.items():
+        for rank, tied_performers in rankers.items():
             if len(tied_performers) == 1:
-                performers[rank] = tied_performers[0]  # Remove the list
+                rankers[rank] = tied_performers[0]  # Remove the list
             else:
-                performers[rank] = tuple(tied_performers)  # Freeze the list
+                rankers[rank] = tuple(tied_performers)  # Freeze the list
 
         for rank, tied_performances in performances.items():
             if len(tied_performances) == 1:
@@ -714,5 +727,5 @@ class TrueSkillHelpers:
         prob = self.P_ranking_performers(tuple(performances.values()))
 
         # Return the ranking probability of those performances
-        return (tuple(performers.values()), prob)
+        return (tuple(rankers.values()), prob)
 

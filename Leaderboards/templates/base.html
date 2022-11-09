@@ -2,23 +2,52 @@
 <html>
 <head>
 	{% load static %}
+	{% load tags %}
 	<title>{% block title %}{% endblock %}</title>
 
 	<link rel="stylesheet" type="text/css" href="{% static 'css/default.css' %}" />
+	<link rel="stylesheet" type="text/css" href="{% static 'django-rich-views/default.css' %}" />
 	<link rel="icon" href="{% static 'img/favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
 
 	{% block styles %}{% endblock %}
 
-	{#  VERY SENSITIVE - If we load jquery, and dal_media, alas dal_media reloads jquery #}
-	{#  and this breaks the eventhandlers we bind to select2 change events. It is a DAL bug #}
-	{#  and discussed here: https://github.com/yourlabs/django-autocomplete-light/issues/1079 #}
-	{#  DAL should not reload either of these two libraries if we have loaded them already! #}
-	{#  NEWS: As of my move to a venv and redownload of DAL it doesn't! #}
+	{# Centralised version management in the template #}
+	{% setvar "3.5.1" as version_JQuery %}  {# Note DAL breaks if we use 3.6.0 See: https://github.com/yourlabs/django-autocomplete-light/issues/1283#issuecomment-1063931256 #}
+	{% setvar "4.0.13" as version_Select2 %}
+	{% setvar "1.12.1" as version_JQueryUI %}
+	{% setvar "1.12.0" as version_Underscore %}
+	{% setvar "4.6.10" as version_Flatpickr %}
+	{% setvar "2.3.0" as version_Luxon %}
 
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.full.min.js" crossorigin="anonymous"></script>
+	{# Website tracking and analysis (Umami) #}
+	<script async defer data-website-id="64ca24e9-5cf9-47c0-ae5f-3a5782e8af18" src="https://webstat.thumbs.place/umami.js"></script>
+
+	{# Underscore library of useful functions #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/{{version_Underscore}}/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
+
+	{# JQuery #}
+	{% if DEBUG_JQuery %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.js" crossorigin="anonymous"></script>
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+	{% else %}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.min.js" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.min.js" crossorigin="anonymous"></script>
+	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.min.js" crossorigin="anonymous"></script>
+	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+	{% endif %}
+
+	{# Bootstrap - Experimental #}
+	{# Changes appearance of whole site rather radically - and not satisfactorily without tuning (and understanding why it does what it does #}
+{#    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">#}
+{#    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>#}
+
+	{# Django Autocomplete Light (DAL) #}
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
 		<!-- START DAL media -->
 		{{ dal_media }}
@@ -29,22 +58,17 @@
 	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
 	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
 
-	{# Underscore library of useful functions #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.12.0/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
-
-	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.js" crossorigin="anonymous"></script>
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-
 	{# Configure DateTime inputs #}
 	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/2.3.0/luxon.min.js"></script>
-	<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/{{version_Luxon}}/luxon.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/{{version_Flatpickr}}/flatpickr.min.js"></script>
 
 	<script>
 		const datetime_format = "{{default_datetime_input_format}}";
 	</script>
 
+{#  An experiment to see if this fix helps me wioth setting tabindex on select widgets - ALas it didn't #}
+{#	<script src="{% static 'js/select2-tab-fix.min.js' %}"></script>#}
 	<script src="{% static 'js/jstz.min.js' %}"></script>
 	<script src="{% static 'js/datetime_functions.js' %}"></script>
 
@@ -165,11 +189,12 @@
 							<select name="league_view" class="ModelChoiceField" required="" id="id_league_view" onchange="setting_changed(event)">
 								{{league_options|safe}}
 							</select>
-		{#					{{league_widget|safe}}#}
-				        </div>
+{#							{{league_widget|safe}}#}
+						</div>
 				        <div id="login"">
 							{% if user.is_authenticated %}
-					        	[ Logged in as: {{ user.player }} | <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> |
+					        	[ Logged in as: {% if user.player %}{{ user.player }}{% else %}{{ user }}{% endif%}
+					        	| <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> |
 							{% else %}
 					        	[ <a href="{% url 'login' %}?next={{request.path}}">Login</a> |
 							{% endif %}
@@ -290,7 +315,7 @@
 	    if (hours   < 10) hours   = "0"+hours;
 	    if (minutes < 10) minutes = "0"+minutes;
 
-	    // If this is for a datetme field, Django accepts expected
+	    // If this is for a datetime field, Django accepts expected
 	    // formats for form cleaning in the setting DATETIME_INPUT_FORMATS
 	    //    See: https://docs.djangoproject.com/en/4.0/ref/settings/#std:setting-DATETIME_INPUT_FORMATS
 	    // And these lean only on Python strptime format codes:
@@ -339,17 +364,25 @@
 			    showMonths: 1,
 			    allowInput: true,
 			    parseDate(dateString, format) {
+			    	// format is this.dateFormat above. Configured here with ZZ (a timezone UTC offset)
+
 			    	// JS Dates suck. They are always in local time zone (client) or UTC.
 			    	// 		See: https://stackoverflow.com/a/15171030/4002633
 			    	// They provide no way to express a TZ preference. So we have to keep
-			    	// note of an expressed preference when parsing and rememeber it.
+			    	// note of an expressed preference when parsing and remember it.
 			    	// We are only interested in TZ offsets here not in timezones.
 			    	// 		See: https://spin.atomicobject.com/2016/07/06/time-zones-offsets
 			    	// timezones are way-complicate things and a TZ offset is all that is
-			    	// need to create an unambiguous time for database storage. We simply
-			    	// permit
+			    	// need to create an unambiguous time for database storage.
 			    	const ustzo =  DateTime.fromFormatExplain(dateString, format)["zone"];
 			    	this.user_specified_offset = ustzo ? ustzo.fixed : undefined;
+
+			    	// If a datetime is provided with no timezone info, we use the offset
+			    	// provided by the user session and add that TZ to the string.
+			    	if (this.user_specified_offset === undefined) {
+			    		this.user_specified_offset = SESSION_utcoffset;
+			    		dateString = dateString.trim() + " " + SESSION_utcoffset.mins2offset();
+			    	}
 
 					// Try parsing the default dateFormat first
 			    	console.log("Parsing: ",dateString, format)

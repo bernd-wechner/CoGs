@@ -13,13 +13,12 @@ from django.db.models.functions import Extract
 from django.db.models.expressions import Window, F, ExpressionWrapper
 from django.db.models.functions.window import Lag
 
-from django_generic_view_extensions.util import isInt
-
-from django_cte import With
-
-from django_generic_view_extensions.queryset import get_SQL, print_SQL
+from django_rich_views.util import isInt
+from django_rich_views.queryset import get_SQL, print_SQL
 
 from django_model_admin_fields import AdminModel
+
+from django_cte import With
 
 from .session import Session
 from .performance import Performance
@@ -235,10 +234,10 @@ class Event(AdminModel):
             #    https://www.postgresql.org/message-id/19495.1059687790%40sss.pgh.pa.us
             # Django does not document 'epoch' alas but it works:
             #    https://docs.djangoproject.com/en/4.0/ref/models/database-functions/#extract
-            # We need a Django ExpressionWrapper to cast the uration field to DurationField as
+            # We need a Django ExpressionWrapper to cast the Duration field to DurationField as
             # for some reason even though it's a PostgreSQL interval, Django still thinks of it
             # as a DateTimeField (from the difference of two DateTimeFields I guess and a bug/feature)
-            # that fails tor ecast a difference of DateTimeFiled's as DurationField.
+            # that fails to recast a difference of DateTimeField's as DurationField.
             epoch_duration = Extract(ExpressionWrapper(F('duration'), output_field=DurationField()), lookup_name='epoch')
             epoch_gap = Extract(ExpressionWrapper(F('gap_time'), output_field=DurationField()), lookup_name='epoch')
 

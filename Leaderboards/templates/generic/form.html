@@ -2,7 +2,9 @@
 {% load static %}
 {% load filters %}
 {% load tags %}
-{% load generic_view_extensions %}
+{#{% load django_bootstrap5 %}#}
+{#{% load crispy_forms_tags %}#}
+{% load django-rich-views %}
 {% block title %}{{ title }}{% endblock %}
 
 {% block styles %}
@@ -25,20 +27,41 @@
 	{% csrf_token %}
 	<table>
 	    {{ form.as_table }}
-	    
+
+	 	{% comment %}
+	    Experiments with crispy forms and with django_bootstrap5
+	    Two different ways of getting bootstrap themed forms.
+	    Neither worked well for me, as in bot work, but neither
+	    deliver satisfactory replacements for the simple as_table.
+	    For now I have simply ensure all form controls have the
+	    form_control class and styled them all with CSS to match
+	    the DAL widgets. So getting eithe rof these two to work
+	    is low priority.
+	 	{% endcomment %}
+{#	    {% crispy form %}#}
+{#	    {% bootstrap_form form  %}#}
+
 		{% if debug and model_name == 'Session' %}
+			<tr>
+				<th>Debugging options:</th>
+				<td></td>
+			</tr>
 			<tr>
 				<th>Show trash:</th>
 				<td><input type="checkbox" onchange="showhideTrash(event)"></td>
-			</tr>	
-		{% endif %}		    
+			</tr>
+			<tr>
+				<th>Show Ranks and Scores:</th>
+				<td><input type="checkbox" onchange="showhideRankScoreDebugging(event)"></td>
+			</tr>
+		{% endif %}
 	</table>
 
 	{% include_variant model_name %}
-	
+
 	<input type="submit" value="Submit" style="margin-top:20px;"/>
 	{% if debug %}
-		<br>	
+		<br>
 		<br><input type="checkbox" id="debug_post_data" name="debug_post_data" value="on"> Display POST data only (do not process submission)
 		<br><input type="checkbox" id="debug_form_data" name="debug_form_data" value="on"> Display form data only (do not process submission)
 		<br><input type="checkbox" id="debug_rebuild_request" name="debug_rebuild_request" value="on"> Display rebuild request log only (do not save anything to database)
@@ -47,7 +70,7 @@
 			<input type="button" value="Prepare Submission" id="prepare_submission"/>
 			<span class='tooltiptext' style='width: 300%;'>Runs the OnSubmit event handler without submitting. So the page can be inspected in its state just prior to submission.</span>
 		</div>
-	{% endif %}	
+	{% endif %}
 </form>
 {% endblock %}
 
@@ -60,6 +83,21 @@
 		const reload_icon = "{% static 'img/reload.png' %}";
 
 		// Catch related form errors that come in (in order to report them)
-		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};  
+		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};
+	</script>
+{% endblock %}
+
+{% block endscript %}
+	<script>
+		// Add a listener to the submisssion prepare button if it exists (for debugging, this simply prepares the form
+		// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
+		// what's going on if something isn't working.
+		const prepare_submission = document.getElementById("prepare_submission");
+		if (prepare_submission) {
+			if (typeof OnSubmit === "undefined")
+			 	prepare_submission.hidden = true;
+			else
+				prepare_submission.addEventListener('click', OnSubmit)
+		}
 	</script>
 {% endblock %}

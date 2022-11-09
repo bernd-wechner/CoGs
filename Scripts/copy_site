@@ -106,6 +106,8 @@ localdomain="lan"
 
 site_name="CoGs"
 
+site_media_dir="media"
+
 backup_timestamp=`date +"%s"`
 
 # Webserver configis
@@ -179,6 +181,7 @@ else
 fi
 
 site_files_copied=false
+media_files_copied=false
 code_files_copied=false
 
 # Copy the site if configured to
@@ -189,7 +192,7 @@ if [ "$copy_site" = true ]; then
 
 	echo "Copying $site_name website from $source_hostname to $target_hostname"
 
-	exclude="--exclude 'media' --exclude '__pycache__'  --exclude '*.pyc'"
+	exclude="--exclude '$site_media_dir' --exclude '__pycache__'  --exclude '*.pyc'"
 	if [ $source_host = "localhost" ]; then
 		# push to server
 		${prefix}rsync $opts $exclude "$dev_site_dir/" "$target_user@$target_host:$server_site_dir"
@@ -209,13 +212,15 @@ if [ "$copy_site" = true ]; then
 		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
 		# This has to happen before we collect static (next step) as missing packages will cause manage.py to fail.
 		echo "Collecting Python packages on $target_host"
-		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade -r requirements.txt"
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade -qqr requirements.txt"
 
 		# If we are copying the site to a web server (not localhost, the development machine) then we need to run collectstatic on
 		# the target. A Django requirment. TO be honest when stable this is not needed. But if static files are added, removed or
-		# altered they won't be available to a webserver until collectstatic is run.
+		# altered they won't be available to a webserver until collectstatic is run. We NEED to remove the static folder first to
+		# force this as Django's collectstatic has no --force option and the timestamps (that it uses) are not useful because of
+		# the recent copy to server.
 		echo "Collecting static files on $target_host"
-		${prefix}ssh $target_user@$target_host "$prepare_then python manage.py collectstatic --noinput"
+		${prefix}ssh $target_user@$target_host "$prepare_then rm -rf static; python manage.py collectstatic --noinput"
 
 	fi
 fi
@@ -224,19 +229,21 @@ fi
 if [ "$copy_media" = true ]; then
 	echo "Copying $site_name website media from $source_hostname to $target_hostname"
 
+	# Not all sites have a media folder so just ignore missing folders quietly
+	mopts="--ignore-missing-args"
+
 	if [ $source_host = "localhost" ]; then
 		# push to server
-		${prefix}rsync $opts "$dev_site_dir/media/" "$target_user@$target_host:$server_site_dir/media"
+		${prefix}rsync $opts $mopts "$dev_site_dir/$site_media_dir/" "$target_user@$target_host:$server_site_dir/$site_media_dir"
 	elif [ $target_host = "localhost" ]; then
 		# pull from server
-		${prefix}rsync $opts "$source_user@$source_host:$server_site_dir/media/" "$dev_site_dir/media"
+		${prefix}rsync $opts $mopts "$source_user@$source_host:$server_site_dir/$site_media_dir/" "$dev_site_dir/$site_media_dir"
 	else
 		# run on target and pull to server
-		${prefix}ssh $target_user@$target_host "rsync $opts \"$source_user@$source_host:$server_site_dir/media/\" \"$server_site_dir/media\""
+		${prefix}ssh $target_user@$target_host "rsync $opts $mopts \"$source_user@$source_host:$server_site_dir/$site_media_dir/\" \"$server_site_dir/$site_media_dir\""
 	fi
 
-	site_files_copied=true
-	code_files_copied=true
+	media_files_copied=true
 fi
 
 # Copy site database if asked to
@@ -271,16 +278,17 @@ fi
 
 # The rsync copies are often with odd owners we want to coerce ownership of the site proper
 if [ "$target_hostname" != "localhost" ]; then
-	if [ "$site_files_copied" = true ];then
+	if [ "$site_files_copied" = true ] || [ "$media_files_copied" = true ]; then
 		echo "Ensuring files readable by www-data "
 		${prefix}ssh root@$target_host "chown -R :www-data $server_site_dir"
+		${prefix}ssh root@$target_host "chmod -R g+w  $server_site_dir/*"
 	fi
 fi
 
 # Assume we're running on a development machine and all other targets are
 # ssh reachable and webservers where UWSGI has database connections open
 if [ "$target_hostname" != "localhost" ];then
-	if [ "$site_files_copied" = true ]; then
+	if [ "$site_files_copied" = true ] || [ "$code_files_copied" = true ]; then
 		# Reload UWSGI configs on the target site
 		echo "Reloading the UWSGI configurations on $target_hostname"
 		${prefix}ssh root@$target_host "service uwsgi reload"

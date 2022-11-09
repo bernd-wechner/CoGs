@@ -1,0 +1,4549 @@
+[
+{
+    "model": "contenttypes.contenttype",
+    "pk": 1,
+    "fields": {
+        "app_label": "admin",
+        "model": "logentry"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 2,
+    "fields": {
+        "app_label": "auth",
+        "model": "permission"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 3,
+    "fields": {
+        "app_label": "auth",
+        "model": "group"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 4,
+    "fields": {
+        "app_label": "auth",
+        "model": "user"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 5,
+    "fields": {
+        "app_label": "contenttypes",
+        "model": "contenttype"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 6,
+    "fields": {
+        "app_label": "sessions",
+        "model": "session"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 7,
+    "fields": {
+        "app_label": "sites",
+        "model": "site"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 8,
+    "fields": {
+        "app_label": "flatpages",
+        "model": "flatpage"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 9,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "game"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 10,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "league"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 11,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "location"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 12,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "player"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 13,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "tourney"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 14,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "trueskillsettings"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 15,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "tourneyrules"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 16,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "team"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 17,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "session"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 18,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "rebuildlog"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 19,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "rating"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 20,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "rank"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 21,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "performance"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 22,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "event"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 23,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "changelog"
+    }
+},
+{
+    "model": "contenttypes.contenttype",
+    "pk": 24,
+    "fields": {
+        "app_label": "Leaderboards",
+        "model": "backuprating"
+    }
+},
+{
+    "model": "sites.site",
+    "pk": 1,
+    "fields": {
+        "domain": "example.com",
+        "name": "example.com"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 1,
+    "fields": {
+        "name": "Can add log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "add_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 2,
+    "fields": {
+        "name": "Can change log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "change_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 3,
+    "fields": {
+        "name": "Can delete log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "delete_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 4,
+    "fields": {
+        "name": "Can view log entry",
+        "content_type": [
+            "admin",
+            "logentry"
+        ],
+        "codename": "view_logentry"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 5,
+    "fields": {
+        "name": "Can add permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "add_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 6,
+    "fields": {
+        "name": "Can change permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "change_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 7,
+    "fields": {
+        "name": "Can delete permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "delete_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 8,
+    "fields": {
+        "name": "Can view permission",
+        "content_type": [
+            "auth",
+            "permission"
+        ],
+        "codename": "view_permission"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 9,
+    "fields": {
+        "name": "Can add group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "add_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 10,
+    "fields": {
+        "name": "Can change group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "change_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 11,
+    "fields": {
+        "name": "Can delete group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "delete_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 12,
+    "fields": {
+        "name": "Can view group",
+        "content_type": [
+            "auth",
+            "group"
+        ],
+        "codename": "view_group"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 13,
+    "fields": {
+        "name": "Can add user",
+        "content_type": [
+            "auth",
+            "user"
+        ],
+        "codename": "add_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 14,
+    "fields": {
+        "name": "Can change user",
+        "content_type": [
+            "auth",
+            "user"
+        ],
+        "codename": "change_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 15,
+    "fields": {
+        "name": "Can delete user",
+        "content_type": [
+            "auth",
+            "user"
+        ],
+        "codename": "delete_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 16,
+    "fields": {
+        "name": "Can view user",
+        "content_type": [
+            "auth",
+            "user"
+        ],
+        "codename": "view_user"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 17,
+    "fields": {
+        "name": "Can add content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "add_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 18,
+    "fields": {
+        "name": "Can change content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "change_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 19,
+    "fields": {
+        "name": "Can delete content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "delete_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 20,
+    "fields": {
+        "name": "Can view content type",
+        "content_type": [
+            "contenttypes",
+            "contenttype"
+        ],
+        "codename": "view_contenttype"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 21,
+    "fields": {
+        "name": "Can add session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "add_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 22,
+    "fields": {
+        "name": "Can change session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "change_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 23,
+    "fields": {
+        "name": "Can delete session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "delete_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 24,
+    "fields": {
+        "name": "Can view session",
+        "content_type": [
+            "sessions",
+            "session"
+        ],
+        "codename": "view_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 25,
+    "fields": {
+        "name": "Can add site",
+        "content_type": [
+            "sites",
+            "site"
+        ],
+        "codename": "add_site"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 26,
+    "fields": {
+        "name": "Can change site",
+        "content_type": [
+            "sites",
+            "site"
+        ],
+        "codename": "change_site"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 27,
+    "fields": {
+        "name": "Can delete site",
+        "content_type": [
+            "sites",
+            "site"
+        ],
+        "codename": "delete_site"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 28,
+    "fields": {
+        "name": "Can view site",
+        "content_type": [
+            "sites",
+            "site"
+        ],
+        "codename": "view_site"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 29,
+    "fields": {
+        "name": "Can add flat page",
+        "content_type": [
+            "flatpages",
+            "flatpage"
+        ],
+        "codename": "add_flatpage"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 30,
+    "fields": {
+        "name": "Can change flat page",
+        "content_type": [
+            "flatpages",
+            "flatpage"
+        ],
+        "codename": "change_flatpage"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 31,
+    "fields": {
+        "name": "Can delete flat page",
+        "content_type": [
+            "flatpages",
+            "flatpage"
+        ],
+        "codename": "delete_flatpage"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 32,
+    "fields": {
+        "name": "Can view flat page",
+        "content_type": [
+            "flatpages",
+            "flatpage"
+        ],
+        "codename": "view_flatpage"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 33,
+    "fields": {
+        "name": "Can add Game",
+        "content_type": [
+            "Leaderboards",
+            "game"
+        ],
+        "codename": "add_game"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 34,
+    "fields": {
+        "name": "Can change Game",
+        "content_type": [
+            "Leaderboards",
+            "game"
+        ],
+        "codename": "change_game"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 35,
+    "fields": {
+        "name": "Can delete Game",
+        "content_type": [
+            "Leaderboards",
+            "game"
+        ],
+        "codename": "delete_game"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 36,
+    "fields": {
+        "name": "Can view Game",
+        "content_type": [
+            "Leaderboards",
+            "game"
+        ],
+        "codename": "view_game"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 37,
+    "fields": {
+        "name": "Can add League",
+        "content_type": [
+            "Leaderboards",
+            "league"
+        ],
+        "codename": "add_league"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 38,
+    "fields": {
+        "name": "Can change League",
+        "content_type": [
+            "Leaderboards",
+            "league"
+        ],
+        "codename": "change_league"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 39,
+    "fields": {
+        "name": "Can delete League",
+        "content_type": [
+            "Leaderboards",
+            "league"
+        ],
+        "codename": "delete_league"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 40,
+    "fields": {
+        "name": "Can view League",
+        "content_type": [
+            "Leaderboards",
+            "league"
+        ],
+        "codename": "view_league"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 41,
+    "fields": {
+        "name": "Can add Location",
+        "content_type": [
+            "Leaderboards",
+            "location"
+        ],
+        "codename": "add_location"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 42,
+    "fields": {
+        "name": "Can change Location",
+        "content_type": [
+            "Leaderboards",
+            "location"
+        ],
+        "codename": "change_location"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 43,
+    "fields": {
+        "name": "Can delete Location",
+        "content_type": [
+            "Leaderboards",
+            "location"
+        ],
+        "codename": "delete_location"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 44,
+    "fields": {
+        "name": "Can view Location",
+        "content_type": [
+            "Leaderboards",
+            "location"
+        ],
+        "codename": "view_location"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 45,
+    "fields": {
+        "name": "Can add Player",
+        "content_type": [
+            "Leaderboards",
+            "player"
+        ],
+        "codename": "add_player"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 46,
+    "fields": {
+        "name": "Can change Player",
+        "content_type": [
+            "Leaderboards",
+            "player"
+        ],
+        "codename": "change_player"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 47,
+    "fields": {
+        "name": "Can delete Player",
+        "content_type": [
+            "Leaderboards",
+            "player"
+        ],
+        "codename": "delete_player"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 48,
+    "fields": {
+        "name": "Can view Player",
+        "content_type": [
+            "Leaderboards",
+            "player"
+        ],
+        "codename": "view_player"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 49,
+    "fields": {
+        "name": "Can add Tourney",
+        "content_type": [
+            "Leaderboards",
+            "tourney"
+        ],
+        "codename": "add_tourney"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 50,
+    "fields": {
+        "name": "Can change Tourney",
+        "content_type": [
+            "Leaderboards",
+            "tourney"
+        ],
+        "codename": "change_tourney"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 51,
+    "fields": {
+        "name": "Can delete Tourney",
+        "content_type": [
+            "Leaderboards",
+            "tourney"
+        ],
+        "codename": "delete_tourney"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 52,
+    "fields": {
+        "name": "Can view Tourney",
+        "content_type": [
+            "Leaderboards",
+            "tourney"
+        ],
+        "codename": "view_tourney"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 53,
+    "fields": {
+        "name": "Can add Trueskill settings",
+        "content_type": [
+            "Leaderboards",
+            "trueskillsettings"
+        ],
+        "codename": "add_trueskillsettings"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 54,
+    "fields": {
+        "name": "Can change Trueskill settings",
+        "content_type": [
+            "Leaderboards",
+            "trueskillsettings"
+        ],
+        "codename": "change_trueskillsettings"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 55,
+    "fields": {
+        "name": "Can delete Trueskill settings",
+        "content_type": [
+            "Leaderboards",
+            "trueskillsettings"
+        ],
+        "codename": "delete_trueskillsettings"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 56,
+    "fields": {
+        "name": "Can view Trueskill settings",
+        "content_type": [
+            "Leaderboards",
+            "trueskillsettings"
+        ],
+        "codename": "view_trueskillsettings"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 57,
+    "fields": {
+        "name": "Can add Rule",
+        "content_type": [
+            "Leaderboards",
+            "tourneyrules"
+        ],
+        "codename": "add_tourneyrules"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 58,
+    "fields": {
+        "name": "Can change Rule",
+        "content_type": [
+            "Leaderboards",
+            "tourneyrules"
+        ],
+        "codename": "change_tourneyrules"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 59,
+    "fields": {
+        "name": "Can delete Rule",
+        "content_type": [
+            "Leaderboards",
+            "tourneyrules"
+        ],
+        "codename": "delete_tourneyrules"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 60,
+    "fields": {
+        "name": "Can view Rule",
+        "content_type": [
+            "Leaderboards",
+            "tourneyrules"
+        ],
+        "codename": "view_tourneyrules"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 61,
+    "fields": {
+        "name": "Can add Team",
+        "content_type": [
+            "Leaderboards",
+            "team"
+        ],
+        "codename": "add_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 62,
+    "fields": {
+        "name": "Can change Team",
+        "content_type": [
+            "Leaderboards",
+            "team"
+        ],
+        "codename": "change_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 63,
+    "fields": {
+        "name": "Can delete Team",
+        "content_type": [
+            "Leaderboards",
+            "team"
+        ],
+        "codename": "delete_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 64,
+    "fields": {
+        "name": "Can view Team",
+        "content_type": [
+            "Leaderboards",
+            "team"
+        ],
+        "codename": "view_team"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 65,
+    "fields": {
+        "name": "Can add Session",
+        "content_type": [
+            "Leaderboards",
+            "session"
+        ],
+        "codename": "add_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 66,
+    "fields": {
+        "name": "Can change Session",
+        "content_type": [
+            "Leaderboards",
+            "session"
+        ],
+        "codename": "change_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 67,
+    "fields": {
+        "name": "Can delete Session",
+        "content_type": [
+            "Leaderboards",
+            "session"
+        ],
+        "codename": "delete_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 68,
+    "fields": {
+        "name": "Can view Session",
+        "content_type": [
+            "Leaderboards",
+            "session"
+        ],
+        "codename": "view_session"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 69,
+    "fields": {
+        "name": "Can add Rebuild Log",
+        "content_type": [
+            "Leaderboards",
+            "rebuildlog"
+        ],
+        "codename": "add_rebuildlog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 70,
+    "fields": {
+        "name": "Can change Rebuild Log",
+        "content_type": [
+            "Leaderboards",
+            "rebuildlog"
+        ],
+        "codename": "change_rebuildlog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 71,
+    "fields": {
+        "name": "Can delete Rebuild Log",
+        "content_type": [
+            "Leaderboards",
+            "rebuildlog"
+        ],
+        "codename": "delete_rebuildlog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 72,
+    "fields": {
+        "name": "Can view Rebuild Log",
+        "content_type": [
+            "Leaderboards",
+            "rebuildlog"
+        ],
+        "codename": "view_rebuildlog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 73,
+    "fields": {
+        "name": "Can add Rating",
+        "content_type": [
+            "Leaderboards",
+            "rating"
+        ],
+        "codename": "add_rating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 74,
+    "fields": {
+        "name": "Can change Rating",
+        "content_type": [
+            "Leaderboards",
+            "rating"
+        ],
+        "codename": "change_rating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 75,
+    "fields": {
+        "name": "Can delete Rating",
+        "content_type": [
+            "Leaderboards",
+            "rating"
+        ],
+        "codename": "delete_rating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 76,
+    "fields": {
+        "name": "Can view Rating",
+        "content_type": [
+            "Leaderboards",
+            "rating"
+        ],
+        "codename": "view_rating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 77,
+    "fields": {
+        "name": "Can add Rank",
+        "content_type": [
+            "Leaderboards",
+            "rank"
+        ],
+        "codename": "add_rank"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 78,
+    "fields": {
+        "name": "Can change Rank",
+        "content_type": [
+            "Leaderboards",
+            "rank"
+        ],
+        "codename": "change_rank"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 79,
+    "fields": {
+        "name": "Can delete Rank",
+        "content_type": [
+            "Leaderboards",
+            "rank"
+        ],
+        "codename": "delete_rank"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 80,
+    "fields": {
+        "name": "Can view Rank",
+        "content_type": [
+            "Leaderboards",
+            "rank"
+        ],
+        "codename": "view_rank"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 81,
+    "fields": {
+        "name": "Can add Performance",
+        "content_type": [
+            "Leaderboards",
+            "performance"
+        ],
+        "codename": "add_performance"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 82,
+    "fields": {
+        "name": "Can change Performance",
+        "content_type": [
+            "Leaderboards",
+            "performance"
+        ],
+        "codename": "change_performance"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 83,
+    "fields": {
+        "name": "Can delete Performance",
+        "content_type": [
+            "Leaderboards",
+            "performance"
+        ],
+        "codename": "delete_performance"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 84,
+    "fields": {
+        "name": "Can view Performance",
+        "content_type": [
+            "Leaderboards",
+            "performance"
+        ],
+        "codename": "view_performance"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 85,
+    "fields": {
+        "name": "Can add Event",
+        "content_type": [
+            "Leaderboards",
+            "event"
+        ],
+        "codename": "add_event"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 86,
+    "fields": {
+        "name": "Can change Event",
+        "content_type": [
+            "Leaderboards",
+            "event"
+        ],
+        "codename": "change_event"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 87,
+    "fields": {
+        "name": "Can delete Event",
+        "content_type": [
+            "Leaderboards",
+            "event"
+        ],
+        "codename": "delete_event"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 88,
+    "fields": {
+        "name": "Can view Event",
+        "content_type": [
+            "Leaderboards",
+            "event"
+        ],
+        "codename": "view_event"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 89,
+    "fields": {
+        "name": "Can add Change Log",
+        "content_type": [
+            "Leaderboards",
+            "changelog"
+        ],
+        "codename": "add_changelog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 90,
+    "fields": {
+        "name": "Can change Change Log",
+        "content_type": [
+            "Leaderboards",
+            "changelog"
+        ],
+        "codename": "change_changelog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 91,
+    "fields": {
+        "name": "Can delete Change Log",
+        "content_type": [
+            "Leaderboards",
+            "changelog"
+        ],
+        "codename": "delete_changelog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 92,
+    "fields": {
+        "name": "Can view Change Log",
+        "content_type": [
+            "Leaderboards",
+            "changelog"
+        ],
+        "codename": "view_changelog"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 93,
+    "fields": {
+        "name": "Can add backup rating",
+        "content_type": [
+            "Leaderboards",
+            "backuprating"
+        ],
+        "codename": "add_backuprating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 94,
+    "fields": {
+        "name": "Can change backup rating",
+        "content_type": [
+            "Leaderboards",
+            "backuprating"
+        ],
+        "codename": "change_backuprating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 95,
+    "fields": {
+        "name": "Can delete backup rating",
+        "content_type": [
+            "Leaderboards",
+            "backuprating"
+        ],
+        "codename": "delete_backuprating"
+    }
+},
+{
+    "model": "auth.permission",
+    "pk": 96,
+    "fields": {
+        "name": "Can view backup rating",
+        "content_type": [
+            "Leaderboards",
+            "backuprating"
+        ],
+        "codename": "view_backuprating"
+    }
+},
+{
+    "model": "auth.user",
+    "pk": 1,
+    "fields": {
+        "password": "pbkdf2_sha256$320000$kAVtUwp5QoPe8xoNyZzibM$JOyNdOoModCRpTU+72wseB8lxY43c96GD8bg7fnqTz0=",
+        "last_login": null,
+        "is_superuser": false,
+        "username": "admin",
+        "first_name": "",
+        "last_name": "",
+        "email": "noone@gmail.com",
+        "is_staff": false,
+        "is_active": true,
+        "date_joined": "2022-09-11T07:42:46.202Z",
+        "groups": [],
+        "user_permissions": []
+    }
+},
+{
+    "model": "Leaderboards.league",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.399Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.399Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "League1",
+        "manager": 1,
+        "locations": [
+            1,
+            2
+        ],
+        "players": [
+            1,
+            2,
+            3,
+            4,
+            5,
+            6
+        ],
+        "games": [
+            2,
+            3,
+            1,
+            6,
+            7,
+            4,
+            5
+        ]
+    }
+},
+{
+    "model": "Leaderboards.league",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.408Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.408Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "League2",
+        "manager": 8,
+        "locations": [
+            1,
+            2
+        ],
+        "players": [
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+        ],
+        "games": [
+            2,
+            3,
+            1,
+            6,
+            7,
+            4,
+            5
+        ]
+    }
+},
+{
+    "model": "Leaderboards.team",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.087Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.090Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": null,
+        "players": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.team",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.117Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.119Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": null,
+        "players": [
+            3,
+            4
+        ]
+    }
+},
+{
+    "model": "Leaderboards.team",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.638Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.640Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": null,
+        "players": [
+            1,
+            2,
+            3
+        ]
+    }
+},
+{
+    "model": "Leaderboards.team",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.673Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.676Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": null,
+        "players": [
+            4,
+            5,
+            6
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.388Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.388Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player1",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            1,
+            3
+        ],
+        "leagues": [
+            1
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.389Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.389Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player2",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            1,
+            3
+        ],
+        "leagues": [
+            1
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.390Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.390Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player3",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            2,
+            3
+        ],
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.391Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.391Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player4",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            2,
+            4
+        ],
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.393Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.393Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player5",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            4
+        ],
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.394Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.394Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player6",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [
+            4
+        ],
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.395Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.395Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player7",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [],
+        "leagues": [
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.player",
+    "pk": 8,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.396Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.396Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name_nickname": "Player8",
+        "name_personal": "Player",
+        "name_family": "<Hidden>",
+        "email_address": "<Hidden>",
+        "BGGname": "",
+        "is_registrar": false,
+        "is_staff": false,
+        "league": null,
+        "user": null,
+        "visibility_name_nickname": "1",
+        "visibility_name_personal": "1",
+        "visibility_name_family": "2",
+        "visibility_email_address": "6",
+        "visibility_BGGname": "6",
+        "teams": [],
+        "leagues": [
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.location",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.397Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.397Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "Location1",
+        "timezone": "Australia/Hobart",
+        "location": "0.0,0.0",
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.location",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.398Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.398Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "Location2",
+        "timezone": "Australia/Hobart",
+        "location": "0.0,0.0",
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 1,
+        "game": 1,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 1,
+        "game": 2,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 1,
+        "game": 3,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 2,
+        "game": 4,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 2,
+        "game": 5,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 2,
+        "game": 6,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourneyrules",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": null,
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": null,
+        "last_edited_on_tz": "Australia/Hobart",
+        "tourney": 2,
+        "game": 7,
+        "min_plays": 2,
+        "weight": 1.0
+    }
+},
+{
+    "model": "Leaderboards.tourney",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.378Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.378Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "tourney1",
+        "allowed_imbalance": 0.5
+    }
+},
+{
+    "model": "Leaderboards.tourney",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.383Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.383Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "name": "tourney2",
+        "allowed_imbalance": 0.5
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.369Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.369Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "NO_SCORES",
+        "individual_play": true,
+        "team_play": false,
+        "scoring": 0,
+        "min_players": 2,
+        "max_players": 4,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.371Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.371Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "INDIVIDUAL_HIGH_SCORE_WINS",
+        "individual_play": true,
+        "team_play": false,
+        "scoring": 1,
+        "min_players": 2,
+        "max_players": 4,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.372Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.372Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "INDIVIDUAL_LOW_SCORE_WINS",
+        "individual_play": true,
+        "team_play": false,
+        "scoring": 2,
+        "min_players": 2,
+        "max_players": 4,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.372Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.372Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "TEAM_HIGH_SCORE_WINS",
+        "individual_play": false,
+        "team_play": true,
+        "scoring": 3,
+        "min_players": 2,
+        "max_players": 4,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.373Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.373Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "TEAM_LOW_SCORE_WINS",
+        "individual_play": false,
+        "team_play": true,
+        "scoring": 4,
+        "min_players": 2,
+        "max_players": 4,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.376Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.376Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS",
+        "individual_play": true,
+        "team_play": true,
+        "scoring": 5,
+        "min_players": 2,
+        "max_players": 10,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.game",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.377Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.377Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "BGGid": null,
+        "name": "TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS",
+        "individual_play": true,
+        "team_play": true,
+        "scoring": 6,
+        "min_players": 2,
+        "max_players": 10,
+        "min_players_per_team": 2,
+        "max_players_per_team": 4,
+        "expected_play_time": "01:30:00",
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1,
+        "leagues": [
+            1,
+            2
+        ]
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.421Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.422Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.426Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.426Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "rank": 2,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.429Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.430Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "rank": 3,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.433Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.433Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "rank": 4,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.638Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.639Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.643Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.643Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "rank": 2,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.647Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.647Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "rank": 3,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 8,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.650Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.651Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "rank": 4,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 9,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.860Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.860Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 10,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.864Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.864Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "rank": 2,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 11,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.867Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.868Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "rank": 3,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 12,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.870Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.871Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "rank": 4,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 13,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.107Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.108Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "rank": 1,
+        "score": null,
+        "player": null,
+        "team": 1
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 14,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.136Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.137Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "rank": 2,
+        "score": null,
+        "player": null,
+        "team": 2
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 15,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.363Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.363Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "rank": 1,
+        "score": null,
+        "player": null,
+        "team": 1
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 16,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.401Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.402Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "rank": 2,
+        "score": null,
+        "player": null,
+        "team": 2
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 17,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.662Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.663Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "rank": 1,
+        "score": null,
+        "player": null,
+        "team": 3
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 18,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.698Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.699Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "rank": 2,
+        "score": null,
+        "player": null,
+        "team": 4
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 19,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.029Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.030Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 20,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.033Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.034Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "rank": 2,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 21,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.036Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.037Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "rank": 3,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 22,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.040Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.041Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "rank": 4,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 23,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.262Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.263Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "rank": 1,
+        "score": null,
+        "player": null,
+        "team": 1
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 24,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.287Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.288Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "rank": 2,
+        "score": null,
+        "player": null,
+        "team": 2
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 25,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.490Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.490Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "rank": 4,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 26,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.493Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.494Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "rank": 3,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 27,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.497Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.497Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "rank": 2,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 28,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.500Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.501Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "rank": 1,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 29,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.707Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.708Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "rank": 2,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 30,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.711Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.711Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "rank": 3,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 31,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.715Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.715Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "rank": 1,
+        "score": null,
+        "player": 5,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 32,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.718Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.719Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "rank": 4,
+        "score": null,
+        "player": 6,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 33,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.933Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.934Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 34,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.937Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.938Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "rank": 3,
+        "score": null,
+        "player": 2,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 35,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.942Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.942Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "rank": 4,
+        "score": null,
+        "player": 5,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 36,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.945Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.946Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "rank": 2,
+        "score": null,
+        "player": 6,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 37,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.164Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.165Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "rank": 1,
+        "score": null,
+        "player": 1,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 38,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.167Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.168Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "rank": 2,
+        "score": null,
+        "player": 4,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 39,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.171Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.171Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "rank": 3,
+        "score": null,
+        "player": 5,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.rank",
+    "pk": 40,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.174Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.175Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "rank": 4,
+        "score": null,
+        "player": 3,
+        "team": null
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.423Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.533Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 33.20668096563102,
+        "trueskill_sigma_after": 6.348109169807742,
+        "trueskill_eta_after": 14.162353456207796,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.427Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.543Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 27.40145469384325,
+        "trueskill_sigma_after": 5.7871629348447815,
+        "trueskill_eta_after": 10.039965889308903,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.431Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.552Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.598545306188456,
+        "trueskill_sigma_after": 5.78716293484137,
+        "trueskill_eta_after": 5.237056501664345,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.434Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.562Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 1,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 16.7933190343615,
+        "trueskill_sigma_after": 6.348109169814532,
+        "trueskill_eta_after": -2.2510084750820987,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.640Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.750Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 33.20668096563102,
+        "trueskill_sigma_after": 6.348109169807742,
+        "trueskill_eta_after": 14.162353456207796,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.644Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.761Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 27.40145469384325,
+        "trueskill_sigma_after": 5.7871629348447815,
+        "trueskill_eta_after": 10.039965889308903,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.648Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.772Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.598545306188456,
+        "trueskill_sigma_after": 5.78716293484137,
+        "trueskill_eta_after": 5.237056501664345,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 8,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.652Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.783Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 2,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 16.7933190343615,
+        "trueskill_sigma_after": 6.348109169814532,
+        "trueskill_eta_after": -2.2510084750820987,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 9,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.861Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.972Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 33.20668096563102,
+        "trueskill_sigma_after": 6.348109169807742,
+        "trueskill_eta_after": 14.162353456207796,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 10,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.865Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.983Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 27.40145469384325,
+        "trueskill_sigma_after": 5.7871629348447815,
+        "trueskill_eta_after": 10.039965889308903,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 11,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.869Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.993Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.598545306188456,
+        "trueskill_sigma_after": 5.78716293484137,
+        "trueskill_eta_after": 5.237056501664345,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 12,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.872Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.003Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 3,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 16.7933190343615,
+        "trueskill_sigma_after": 6.348109169814532,
+        "trueskill_eta_after": -2.2510084750820987,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 13,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.109Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.238Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 14,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.111Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.247Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 15,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.138Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.256Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 16,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.140Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.266Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 4,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 17,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.364Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.527Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 18,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.366Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.537Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 19,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.403Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.547Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 20,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.406Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.557Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 5,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 21,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.664Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.856Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 2,
+        "trueskill_mu_before": 28.108322630298364,
+        "trueskill_sigma_before": 7.7743633497703355,
+        "trueskill_eta_before": 4.785232580987358,
+        "trueskill_mu_after": 29.922665642400915,
+        "trueskill_sigma_after": 7.4859707074353015,
+        "trueskill_eta_after": 7.464753520095009,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 22,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.666Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.866Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 2,
+        "trueskill_mu_before": 28.108322630298364,
+        "trueskill_sigma_before": 7.7743633497703355,
+        "trueskill_eta_before": 4.785232580987358,
+        "trueskill_mu_after": 29.922665642400915,
+        "trueskill_sigma_after": 7.4859707074353015,
+        "trueskill_eta_after": 7.464753520095009,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 23,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.668Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.877Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 1,
+        "trueskill_mu_before": 21.891677369701625,
+        "trueskill_sigma_before": 7.7743633497703355,
+        "trueskill_eta_before": -1.4314126796093802,
+        "trueskill_mu_after": 23.706020381804176,
+        "trueskill_sigma_after": 7.4859707074353015,
+        "trueskill_eta_after": 1.2481082594982702,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 24,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.700Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.888Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 0,
+        "trueskill_mu_before": 21.891677369701625,
+        "trueskill_sigma_before": 7.7743633497703355,
+        "trueskill_eta_before": -1.4314126796093802,
+        "trueskill_mu_after": 20.07733435759908,
+        "trueskill_sigma_after": 7.4859707074353015,
+        "trueskill_eta_after": -2.3805777647068247,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 25,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.702Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.898Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 5,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.915409440278435,
+        "trueskill_sigma_after": 7.9770018424911004,
+        "trueskill_eta_after": -1.0155960871948686,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 26,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.704Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.909Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 6,
+        "player": 6,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.915409440278435,
+        "trueskill_sigma_after": 7.9770018424911004,
+        "trueskill_eta_after": -1.0155960871948686,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 27,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.031Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.136Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 33.20668096563102,
+        "trueskill_sigma_after": 6.348109169807742,
+        "trueskill_eta_after": 14.162353456207796,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 28,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.035Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.145Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 27.40145469384325,
+        "trueskill_sigma_after": 5.7871629348447815,
+        "trueskill_eta_after": 10.039965889308903,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 29,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.038Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.155Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 22.598545306188456,
+        "trueskill_sigma_after": 5.78716293484137,
+        "trueskill_eta_after": 5.237056501664345,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 30,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.041Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.167Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 7,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 16.7933190343615,
+        "trueskill_sigma_after": 6.348109169814532,
+        "trueskill_eta_after": -2.2510084750820987,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 31,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.263Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.384Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 32,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.265Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.394Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 28.108322630298364,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": 4.785232580987358,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 33,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.289Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.403Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 34,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.291Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.413Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 8,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 21.891677369701625,
+        "trueskill_sigma_after": 7.7743633497703355,
+        "trueskill_eta_after": -1.4314126796093802,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 35,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.491Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.631Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 1,
+        "trueskill_mu_before": 33.20668096563102,
+        "trueskill_sigma_before": 6.348109169807742,
+        "trueskill_eta_before": 14.162353456207796,
+        "trueskill_mu_after": 23.268260365824062,
+        "trueskill_sigma_after": 4.725067158746204,
+        "trueskill_eta_after": 9.09305888958545,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 36,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.495Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.622Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 0,
+        "trueskill_mu_before": 27.40145469384325,
+        "trueskill_sigma_before": 5.7871629348447815,
+        "trueskill_eta_before": 10.039965889308903,
+        "trueskill_mu_after": 24.677565267903038,
+        "trueskill_sigma_after": 4.297020895366501,
+        "trueskill_eta_after": 11.786502581803536,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 37,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.498Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.612Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 0,
+        "trueskill_mu_before": 22.598545306188456,
+        "trueskill_sigma_before": 5.78716293484137,
+        "trueskill_eta_before": 5.237056501664345,
+        "trueskill_mu_after": 25.322434732034807,
+        "trueskill_sigma_after": 4.297020895355867,
+        "trueskill_eta_after": 12.431372045967208,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 38,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.501Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.602Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 9,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 1,
+        "trueskill_mu_before": 16.7933190343615,
+        "trueskill_sigma_before": 6.348109169814532,
+        "trueskill_eta_before": -2.2510084750820987,
+        "trueskill_mu_after": 26.731739634216925,
+        "trueskill_sigma_after": 4.72506715877634,
+        "trueskill_eta_after": 12.556538157887907,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 39,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.709Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.829Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 3,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.322434732034807,
+        "trueskill_sigma_before": 4.297020895355867,
+        "trueskill_eta_before": 12.431372045967208,
+        "trueskill_mu_after": 26.744735242647437,
+        "trueskill_sigma_after": 3.677407135902894,
+        "trueskill_eta_after": 15.712513834938754,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 40,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.712Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.839Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 3,
+        "victory_count": 1,
+        "trueskill_mu_before": 26.731739634216925,
+        "trueskill_sigma_before": 4.72506715877634,
+        "trueskill_eta_before": 12.556538157887907,
+        "trueskill_mu_after": 24.775182186650582,
+        "trueskill_sigma_after": 3.921965534369613,
+        "trueskill_eta_after": 13.009285583541743,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 41,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.716Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.818Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "player": 5,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 1,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 33.14940164364609,
+        "trueskill_sigma_after": 5.977473957344951,
+        "trueskill_eta_after": 15.216979771611236,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 42,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.720Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.849Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 10,
+        "player": 6,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 1,
+        "victory_count": 0,
+        "trueskill_mu_before": 25.0,
+        "trueskill_sigma_before": 8.333333333333334,
+        "trueskill_eta_before": 0.0,
+        "trueskill_mu_after": 17.587278327429107,
+        "trueskill_sigma_after": 6.079060966557376,
+        "trueskill_eta_after": -0.6499045722430203,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 43,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.935Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.054Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 3,
+        "victory_count": 2,
+        "trueskill_mu_before": 23.268260365824062,
+        "trueskill_sigma_before": 4.725067158746204,
+        "trueskill_eta_before": 9.09305888958545,
+        "trueskill_mu_after": 27.46266265758546,
+        "trueskill_sigma_after": 3.9542525895812846,
+        "trueskill_eta_after": 15.599904888841607,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 44,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.939Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.075Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "player": 2,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 3,
+        "victory_count": 0,
+        "trueskill_mu_before": 24.677565267903038,
+        "trueskill_sigma_before": 4.297020895366501,
+        "trueskill_eta_before": 11.786502581803536,
+        "trueskill_mu_after": 23.51821358442484,
+        "trueskill_sigma_after": 3.5449223224789232,
+        "trueskill_eta_after": 12.883446616988069,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 45,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.943Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.085Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "player": 5,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 1,
+        "trueskill_mu_before": 33.14940164364609,
+        "trueskill_sigma_before": 5.977473957344951,
+        "trueskill_eta_before": 15.216979771611236,
+        "trueskill_mu_after": 23.285117744613856,
+        "trueskill_sigma_after": 4.445239003801618,
+        "trueskill_eta_after": 9.949400733209004,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 46,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.947Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.065Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 11,
+        "player": 6,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 2,
+        "victory_count": 0,
+        "trueskill_mu_before": 17.587278327429107,
+        "trueskill_sigma_before": 6.079060966557376,
+        "trueskill_eta_before": -0.6499045722430203,
+        "trueskill_mu_after": 23.16771955582657,
+        "trueskill_sigma_after": 4.2845572673122385,
+        "trueskill_eta_after": 10.314047753889852,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 47,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.166Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.291Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "player": 1,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 4,
+        "victory_count": 3,
+        "trueskill_mu_before": 27.46266265758546,
+        "trueskill_sigma_before": 3.9542525895812846,
+        "trueskill_eta_before": 15.599904888841607,
+        "trueskill_mu_after": 29.954702399842766,
+        "trueskill_sigma_after": 3.462612472840191,
+        "trueskill_eta_after": 19.566864981322194,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 48,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.169Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.302Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "player": 4,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 4,
+        "victory_count": 1,
+        "trueskill_mu_before": 24.775182186650582,
+        "trueskill_sigma_before": 3.921965534369613,
+        "trueskill_eta_before": 13.009285583541743,
+        "trueskill_mu_after": 26.02391036640404,
+        "trueskill_sigma_after": 3.2848425156533683,
+        "trueskill_eta_after": 16.169382819443932,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 49,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.172Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.313Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "player": 5,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 3,
+        "victory_count": 1,
+        "trueskill_mu_before": 23.285117744613856,
+        "trueskill_sigma_before": 4.445239003801618,
+        "trueskill_eta_before": 9.949400733209004,
+        "trueskill_mu_after": 23.329921579900496,
+        "trueskill_sigma_after": 3.5490225319673327,
+        "trueskill_eta_after": 12.682853983998498,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.performance",
+    "pk": 50,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.176Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.323Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "session": 12,
+        "player": 3,
+        "partial_play_weighting": 1.0,
+        "score": null,
+        "play_number": 4,
+        "victory_count": 0,
+        "trueskill_mu_before": 26.744735242647437,
+        "trueskill_sigma_before": 3.677407135902894,
+        "trueskill_eta_before": 15.712513834938754,
+        "trueskill_mu_after": 23.460688975286374,
+        "trueskill_sigma_after": 3.2194390720922135,
+        "trueskill_eta_after": 13.802371759009734,
+        "trueskill_mu0": 25.0,
+        "trueskill_sigma0": 8.333333333333334,
+        "trueskill_delta": 0.0001,
+        "trueskill_beta": 4.166666666666667,
+        "trueskill_tau": 0.08333333333333334,
+        "trueskill_p": 0.1
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 1,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.419Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.419Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 1,
+        "date_time": "2021-12-31T14:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 2,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.637Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.637Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 2,
+        "date_time": "2021-12-31T15:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 3,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:46.859Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:46.859Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 3,
+        "date_time": "2021-12-31T16:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 4,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.081Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.081Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 4,
+        "date_time": "2021-12-31T17:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": true
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 5,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.341Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.341Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 5,
+        "date_time": "2021-12-31T18:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": true
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 6,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:47.633Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:47.633Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 4,
+        "date_time": "2021-12-31T19:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": true
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 7,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.029Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.029Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 6,
+        "date_time": "2021-12-31T20:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 8,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.242Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.242Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 7,
+        "date_time": "2021-12-31T21:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": true
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 9,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.489Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.489Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 1,
+        "date_time": "2021-12-31T22:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 10,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.706Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.706Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 1,
+        "date_time": "2021-12-31T23:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 11,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:48.932Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:48.932Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 1,
+        "date_time": "2022-01-01T00:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+},
+{
+    "model": "Leaderboards.session",
+    "pk": 12,
+    "fields": {
+        "created_by": null,
+        "created_on": "2022-09-11T07:42:49.163Z",
+        "created_on_tz": "Australia/Hobart",
+        "last_edited_by": null,
+        "last_edited_on": "2022-09-11T07:42:49.163Z",
+        "last_edited_on_tz": "Australia/Hobart",
+        "game": 1,
+        "date_time": "2022-01-01T01:00:00Z",
+        "date_time_tz": "Australia/Hobart",
+        "league": 1,
+        "location": 1,
+        "team_play": false
+    }
+}
+]

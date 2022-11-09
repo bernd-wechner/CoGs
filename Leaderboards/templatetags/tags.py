@@ -6,14 +6,28 @@ from django.core.cache import cache
 from django.utils.safestring import mark_safe
 # from django.template.loader_tags import do_include
 
-from django_generic_view_extensions.model import object_in_list_format, field_render
-from django_generic_view_extensions.util import numeric_if_possible
+from django_rich_views.model import object_in_list_format, field_render
+from django_rich_views.util import numeric_if_possible
 
 from django_cache_memoized import memoized
 
 from ..models import APP
 
 register = template.Library()
+
+
+@register.simple_tag
+def setvar(val=None):
+    '''
+    Used as follows:
+
+    {% setvar "value" as variable_name %}
+
+    and then applied with {{variable_name}}.
+
+    :param val: a value to set the variable to.
+    '''
+    return val
 
 
 @register.simple_tag(takes_context=True)
@@ -29,26 +43,44 @@ def list_format(context, obj):
 @register.simple_tag()
 def get_list(form_data, model, attribute):
     '''
-    Given a form.data dictionary whichcontains formset data extract and return a list of the
+    Given a form.data dictionary which contains formset data extract and return a list of the
     values of the attributes in the named model from the forms in that formset. This is used
     when a form with related_forms fails validation and bounces back, we need to pump the formset
     data back into the form, and if the formsets are constructed in Javascript they may like
     lists of values such as produced here.
 
-    :param form_data:
-    :param model:
-    :param attribute:
+    :param form_data: a form data dictionary
+    :param model: a model name (string) that has a formset available
+    :param attribute: the attribute of (field in) that model we want to collect a list of
     '''
-    count = int(form_data.get(f"{model}-TOTAL_FORMS", 0))
-
     attr_list = []
-    for i in range(count):
-        key = f"{model}-{i}-{attribute}"
-        val = form_data.get(key, None)
-        val = numeric_if_possible(val)
-        attr_list.append(val)
 
-        # if not attr_list: breakpoint()
+    # If we have a management form, use that as a count
+    if f"{model}-TOTAL_FORMS" in form_data:
+        count = int(form_data[f"{model}-TOTAL_FORMS"])
+        for i in range(count):
+            key = f"{model}-{i}-{attribute}"
+            val = form_data.get(key, None)
+            val = numeric_if_possible(val)
+            attr_list.append(val)
+
+    # if not, get the list that we can
+    else:
+        # Starting at 0 scoop them up till we run out.
+        # This doesn't rely on the management form but
+        # premises a contiguous list of form numbers
+        # from 0 up.
+        i = 0
+        while True:
+            key = f"{model}-{i}-{attribute}"
+            if key in form_data:
+                val = form_data[key]
+                val = numeric_if_possible(val)
+                attr_list.append(val)
+                i += 1
+            else:
+                break
+
     return json.dumps(attr_list)
 
 

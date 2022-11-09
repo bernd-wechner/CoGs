@@ -11,8 +11,8 @@ from django_cte import CTEManager
 
 from django_model_admin_fields import AdminModel
 
-from django_generic_view_extensions.util import AssertLog
-from django_generic_view_extensions.model import field_render, link_target_url
+from django_rich_views.util import AssertLog
+from django_rich_views.model import field_render, link_target_url
 
 import trueskill
 
@@ -40,7 +40,14 @@ class Performance(AdminModel):
 
     partial_play_weighting = models.FloatField('Partial Play Weighting (ω)', default=1)
 
-    score = models.IntegerField('Score', default=None, null=True, blank=True)  # What this player scored if the game has scores.
+    # What this player scored if the game has scores.
+    # These scores are rarely if ever used and not used for ranking bar very indirectly
+    # Typically ranks carry a score. But for the particular case of team based play, where
+    # there's one rank per team, but the game has inbdividual scores, then we can record them
+    # here. If scores are ever needed, rank scores are checked and if absent and performance
+    # scores exists a rank score is calculated as the sum of the performance scores at that rank.
+    # And so these are fall back, primarily informatic scores in some edge cases only.
+    score = models.IntegerField('Score', default=None, null=True, blank=True)
 
     play_number = models.PositiveIntegerField('The number of this play (for this player at this game)', default=1, editable=False)
     victory_count = models.PositiveIntegerField('The count of victories after this session (for this player at this game)', default=0, editable=False)
@@ -296,7 +303,7 @@ class Performance(AdminModel):
         # The trueskill after settings for the performance will be calculated there.
         pass
 
-    add_related = None
+    intrinsic_relations = None
     sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname']  # Need player to sort ties and team members.
 
     # It is crucial that Performances for a session are ordered the same as Ranks when a rich form is constructed
@@ -305,9 +312,9 @@ class Performance(AdminModel):
     @classmethod
     def form_order(cls, performances) -> QuerySet:
         '''
-        Form field ordering support for Django Generic Form Extenions RelatedFormsets
+        Form field ordering support for Django Rich Views RelatedFormsets
 
-        if this class method exists, DGFE will call it to order objects when building related forms.
+        if this class method exists, DGVE will call it to order objects when building related forms.
 
         This returns the performances in order of the players ranking. Must return a QuerySet.
 

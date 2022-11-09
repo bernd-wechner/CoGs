@@ -17,7 +17,7 @@ class TrueskillSettings(models.Model):
     sigma0 = models.FloatField('TrueSkill Initial Standard Deviation (σ0)', default=trueskill.SIGMA)
     delta = models.FloatField('TrueSkill Delta (δ)', default=trueskill.DELTA)
 
-    add_related = None
+    intrinsic_relations = None
 
     def __unicode__(self): return u'µ0={} σ0={} δ={}'.format(self.mu0, self.sigma0, self.delta)
 

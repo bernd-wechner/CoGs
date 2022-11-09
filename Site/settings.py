@@ -41,12 +41,25 @@ SANDBOX = "arachne"
 
 SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
+TESTING = len(sys.argv) >= 2 and sys.argv[1] == 'test'
+
 if HOSTNAME == PRODUCTION:
     SITE_TITLE = "CoGs Leaderboard Space"
+    database = "CoGs"
+    DEBUG = False
+    WARNINGS = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
+    # database = "CoGs"
+    database = "CoGs_test"
+    DEBUG = True
+    WARNINGS = True
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
+    database = "CoGs"
+    # database = "CoGs_test"
+    DEBUG = True
+    WARNINGS = not TESTING
 
 
 # Make sure the SITE_TITLE is visible in context
@@ -69,10 +82,12 @@ if SITE_IS_LIVE:
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
     X_FRAME_OPTIONS = 'DENY'
-    DEBUG = False
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
     from Site.settings_development import *
+
+# Don't debug when running tests (unless --debug-mode is used to override this.
+DEBUG = DEBUG and not TESTING
 
 # Application definition
 INSTALLED_APPS = (
@@ -89,9 +104,14 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.flatpages',
     'django.contrib.humanize',
+    # Experiments with two different bootstrap packages
+    # Neither work satisfaction currently. And experimenting
+    # is deferred for a broader site skinning effort.
+    # 'django_bootstrap5',
+    # 'crispy_forms',
     'django_extensions',
     'reset_migrations',
-    'django_generic_view_extensions',
+    'django_rich_views',
     'Leaderboards'
 )
 
@@ -104,7 +124,7 @@ MIDDLEWARE = (
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'django_generic_view_extensions.middleware.TimezoneMiddleware',
+    'django_rich_views.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
     'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
@@ -144,12 +164,12 @@ TEMPLATES = [
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': 'CoGs',
+        'NAME': database,
         'USER': 'CoGs',
         'PASSWORD': 'ManyTeeth',
         'HOST': '127.0.0.1',
         'PORT': '5432',
-    }
+    },
 }
 
 # Caching
@@ -185,6 +205,8 @@ USE_TZ = True
 # via the login form.
 TIME_ZONE = str(get_localzone())
 
+# In the flatpickr format:
+# https://flatpickr.js.org/formatting/
 DATETIME_FORMAT = 'D, j M Y H:i'
 
 DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S %z'] + global_settings.DATETIME_INPUT_FORMATS
@@ -255,13 +277,13 @@ else:
 
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
-# Pass our logger to Django Generic View Extensions
+# Pass our logger to Django Rich Views
 from Site.logutils import log
 from logging import DEBUG as loglevel_DEBUG
 import logging.config
 
-import django_generic_view_extensions
-django_generic_view_extensions.log = log
+import django_rich_views.logs
+django_rich_views.logs.logger = log
 
 # Include local query extensions (register them with Django)
 import Site.query
@@ -293,6 +315,8 @@ if DEBUG:
     log.debug(f"Process Info: {pinfo()}")
     log.debug(f"Static root: {STATIC_ROOT}")
     log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+    log.debug(f"Database: {DATABASES['default']}")
+    log.debug(f"Testing: {TESTING}")
     log.debug(f"Debug: {DEBUG}")
 
 #     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())

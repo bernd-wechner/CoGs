@@ -3,25 +3,21 @@
 #
 # These are the COGS specific handlers thatthe generic views call.
 #===============================================================================
-import re
-
-from re import RegexFlag as ref
-
 from datetime import datetime
-
 from html import escape
+from copy import deepcopy
 
 from django.conf import settings
 from django.urls import reverse_lazy
-from django.db.models import Count
 from django.contrib.auth.models import Group
 from django.utils.timezone import make_naive, localtime
 from django.core.exceptions import ObjectDoesNotExist
 
-from django_generic_view_extensions.views import CreateViewExtended, UpdateViewExtended
-from django_generic_view_extensions.datetime import time_str
+from django_rich_views.views import RichCreateView, RichUpdateView
+from django_rich_views.datetime import time_str
+from django_rich_views.util import isPositiveInt
 
-from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER
+from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER, MISSING_VALUE
 
 from Site.logutils import log
 
@@ -53,13 +49,316 @@ def updated_user_from_form(user, request):
     user.save
 
 
-def pre_transaction_handler(self):
+def reconcile_ranks(form, session_dict, permit_missing_scores=False):
+    '''
+    We MUST have ranks to create session. Scores are optional.
+    Furthermore Rank scores are needed for determing ranks (if not explicitly provided),
+    while Performance scores are used only to calculate rank scores if they are missing.
+    Performance scores exist primarily to support the edge case of a game played in teams
+    (so one rank per team) which concludes with individual player scores (on performance
+    per player).
+
+    The reconciliation is as follows:
+
+    1. If the game.scoring is not None, then require scores and bounce.
+         a. There should be an option to override this bounce if valid rankings are provided,
+            for two reasons:
+              i. While the game is scored, someone may have recorded results without
+                 noting them, anbut has rankings and this is all that's needed for
+                 updating ratings and leaderboards so it should be accceptable and
+                 accepted.
+             ii. All legacy sessions (prior to to the introduction of scoring in the
+                 site) lack recorded scores. It should be possible if needed to edit
+                 such a seshandlersion and submit. An edge case, but a consistency issue as
+                 well.
+    2. If rank scores are provided:
+         a. using the game.scoring method (high wins or low wins) establish
+            a ranking.
+         b. if ranks were provided, reconcile them with this result, and bail
+            with a warning if they don't agree. Ranks should be provided for
+            tie breakers. That is, many games which conclude with a score,
+            have nuanced tie breaking rules and the onlyw ay to sensibly capture
+            those generically across any and all games is by submitting a ranking
+            (along with the scores).
+    3. If any rank scores were not provided but performance scores were:
+         a. Calculate a ranks core as the sum of the related performance scores
+            Ranks can map 1 to 1 to performances in most games, but in games played
+            in teams they map 1 to n, n being th enumber of team members.
+
+    Use self.form.add_error(None, f"message") to bounce if needed.
+
+    -1 is MISSING_VALUE
+
+    A sample individual play, new session submission:
+        'model': 'Session',
+        'id': -1,
+        'game': 29,
+        'time': datetime.datetime(2022, 7, 2, 3, 59, tzinfo = tzoffset(None, 36000)),
+        'league': 1,
+        'location': 9,
+        'team_play': False,
+        'ranks': [-1, -1],
+        'rankings': [1, 2],
+        'rscores': [0, 0],
+        'rankers': [1, 66],
+        'performances': [-1, -1],
+        'pscores': [-1, -1],
+        'performers': [1, 66],
+        'weights': [1.0, 1.0]
+
+    And a sample team play submission:
+
+        'model': 'Session',
+        'id': -1,
+        'game': 18,
+        'time': datetime.datetime(2022, 7, 2, 3, 59, tzinfo = tzoffset(None, 36000)),
+        'league': 1,
+        'location': 9,
+        'team_play': True,
+        'ranks': [-1, -1],
+        'rankings': [1, 2],
+        'rscores': [0, 0],
+        'rankers': [
+            [1, 66],
+            [13, 70]
+        ],
+        'performances': [-1, -1, -1, -1],
+        'pscores': [-1, -1, -1, -1],
+        'performers': [1, 13, 66, 70],
+        'weights': [1, 1, 1, 1]
+
+    :param form: The form instance, so we can add form errors if reconciliation failure demands it or add data to secure validation
+    :param session_dict:  A Session dictionary as returned by Session.dict_from_form() which is modified in place as needed
+    :param pk: Provides a session PK if known
+    :param permit_missing_scores: Suprss adding a form error on missing scores
+    '''
+    game = Game.objects.get(pk=session_dict['game'])
+    scoring = Game.ScoringOptions(game.scoring).name
+    score_high = "HIGH" in scoring
+    team_play = session_dict['team_play']
+
+    if scoring == "NO_SCORES":
+        # No reconciliation to do )ranks are validated by standard form validation)
+        return
+    else:
+        players = deepcopy(session_dict['performers'])
+        rankers = deepcopy(session_dict.get('rankers', session_dict['performers']))
+        rankings = deepcopy(session_dict['rankings'])
+        rscores = deepcopy(session_dict['rscores'])
+        pscores = deepcopy(session_dict['pscores'])
+
+        valid_rankings = all(isPositiveInt(r) for r in rankings)
+        valid_rscores = all(isPositiveInt(s) for s in rscores)
+
+        # Validate the team_play setting
+        # The only difference really is that teams can have multiple pscores per rscore.
+        # TODO: Do we need to know team_play here at all? Can validation of this happen
+        # in form_validation if it's not needed for rank reconciliation?
+        # scoring can include:
+        #     TEAM
+        #     INDIVIDUAL
+        #     TEAM_AND_INDIVIDUAL
+        if team_play:
+            # If TEAM scoring is not supported
+            if not "TEAM" in scoring:
+                form.add_error(None, "This is a game that does not score teams and so team play sessions can not be recorded. Likely a form or game configuration error.")
+                return
+        else:
+            # If INDIVIDUAL scoring is not supported
+            if "TEAM" in scoring and not "INDIVIDUAL" in scoring:
+                form.add_error(None, "This is a game that scores teams and so only team play sessions can be recorded. Likely a form or game configuration error.")
+                return
+
+        # Only rscores are relevant, but if a session is submitted with
+        # valid pscores and invalid rscores, use the pscores. pscores
+        # are for informative purposes only and not used for ranking,
+        # only for calculating rscores in the absence of them.
+        altered = False
+        for i, s in enumerate(rscores):
+            # rscores and pscores map 1 to n (where n is 1 or more)
+            # Build a pscore dict in preparation
+            performer_score = {p: s for p, s in zip(players, pscores)}
+
+            # Make the team definitions immutable so they can be used as dict keys
+            trankers = [tuple(r) if isinstance(r, list) else (r,) for r in rankers]
+
+            # Now infer any missing rscores from sum of any available pscores
+            for i, (ranker, rscore) in enumerate(zip(trankers, rscores)):
+                if rscore in (None, MISSING_VALUE):
+                    score = 0
+                    for player in tuple(ranker):
+                        if not performer_score[player] in (None, MISSING_VALUE):
+                            score += performer_score[player]
+                    if score > 0:
+                        rscores[i] = score
+                        altered = True
+
+        if altered:
+            session_dict['rscores'] = deepcopy(rscores)
+            valid_rscores = all(isPositiveInt(s) for s in rscores)
+
+        # First things first, we need rscores for a scoring game
+        # (unless we have valid rankings and explicitly permit missing scores)
+        if not valid_rscores:
+            if not (valid_rankings and permit_missing_scores):
+                form.add_error(None, "This is a scoring game. Please enter scores")
+                return
+
+        # But if have them, and rankings are not valid we can maybe infer rankings from the rscores
+        if valid_rscores and not valid_rankings:
+            # Deduce rankings from supplied scores
+            ranker_indexes = {}
+            score_rankings = [None for r in rankings]
+            score_sorted_rankers = sorted(zip(rscores, rankers), reverse=score_high)
+
+            # This handles ties as well and produces tie-gapped ranking
+            # as per Leaderboards.models.session.Session.clean_ranks
+            prev_s = -1
+            for i, (s, r) in enumerate(score_sorted_rankers):
+                score_rankings[i] = score_rankings[i - 1] if s == prev_s else i + 1
+                ranker_indexes[tuple(r) if isinstance(r, list) else r] = i
+                prev_s = s
+
+            # Now re-order the rankings in the original player order again
+            all_new_rankings = [score_rankings[ranker_indexes[tuple(r) if isinstance(r, list) else r]] for r in rankers]
+
+            # Patch them into the supplied rankings (only were we were missing rankings)
+            new_rankings = [old if isPositiveInt(old) else new for i, (old, new) in enumerate(zip(rankings, all_new_rankings))]
+            rankings = deepcopy(new_rankings)
+
+            # And update the session_dict
+            valid_rankings = all(isPositiveInt(r) for r in rankings)
+            session_dict['rankings'] = deepcopy(rankings)
+            if hasattr(form, 'data'):
+                form.data = Session.dict_to_form(session_dict, form.data)
+
+        # If we (now) valid rankings and valid rscores were submitted we need them to agree
+        if valid_rscores and valid_rankings:
+            ranking_sorted_scores = sorted(zip(rankings, rscores))
+            score_sorted_rankings = sorted(zip(rankings, rscores), key=lambda rs: rs[1], reverse=score_high)
+
+            # The sortings above detect agreed ordering but fail to detect
+            # when one score maps to multiple rankings (which can happen if
+            # rankings and scores are supplied). We test for that explicitly.
+            one_score_per_rank = True
+            rank_scores = {}
+            for r, s in ranking_sorted_scores:
+                if r in rank_scores:
+                    if s != rank_scores[r]:
+                        one_score_per_rank = False
+                        break
+                else:
+                    rank_scores[r] = s
+
+            if ranking_sorted_scores != score_sorted_rankings or not one_score_per_rank:
+                form.add_error(None, "Submitted rankings and scores do not agree.")
+                return
+
+        return
+
+
+def pre_dispatch_handler(self):
+    '''
+    This is a simple injection point before the form is built but after which the request kwargs have been
+    translated to self.kargs, self.args, and self.app and self.model are available. it is at this pint we
+    inject self.unique_model_choice, and optional attribute which can identify fields that will have a DAL
+    forward request configured to call a handler of same name on the client side. On the client side this
+    code must be used to register the forward handler or DAL will not function as expected.
+
+        function registerForwarder() { yl.registerForwardHandler("MQFN", forward_handler); }
+        window.addEventListener("load", registerForwarder);
+
+    where
+        MQFN is thhe Model Qualified Field Name (below)
+        forward_handler is a JS function that will be called and must return a string (that will
+                          be submitted in the GET param `forward`) which for unique model choice
+                          support should contain a Comma Separated list of PKs already selcted in
+                          the formset. The default ajax_Autocomplete handler for rich models will
+                          then respect that adding a filter to query it uses. That support is built
+                          into the django_rich_views.
+
+    We need this only because:
+
+        https://github.com/yourlabs/django-autocomplete-light/issues/1312
+    '''
+    # This line of code will return the MFQNS that this form supports for syntax diagnosis
+    # mqfns = self.get_form(return_mqfns=True)
+    self.unique_model_choice = ['Performance.player'] if self.model._meta.object_name == "Session" else []
+
+
+def pre_validation_handler(self):
+    '''
+    When a model form is POSTed, this function is called
+        BEFORE a form validation
+
+    It should return a dict that is unpacked as kwargs passed to
+    the pre_transaction_handler, and can thus communicate with it.
+
+    When saving a Session form, the pre_transaction_handler wants
+    to see the submitted session in a dict form as per what is produced
+    by:
+        Leaderboards.models.session.Session.dict_from_form
+    That's a handy format for processing here where for Session
+    forms we reconcile rankings and scores ahead of the first form
+    validation so as to ensure it has valid rankings as best possible.
+
+    That is because the Session can be submitted with scores from
+    which ranks must be derived if needed, or with ranks an scores
+    in which case they should agree. Any changes to the session should
+    be reflect back in self.form.data which is Django validation
+    considers. The dict format is our convenience for simpler
+    reconciliation and (later pre_transaction handling - where
+    for Sessions it aims to determing any rating rebuild requirements).
+    '''
+    model = self.model._meta.model_name
+
+    if model == 'session':
+        # The new session (form form data) is VERY hard to represent as
+        # a Django model instance. We represent it as a dict instead.
+        # Essentially a translator of form_data (a QueryDict) into a more
+        # tractable form. If it's an Edit form we have  apk if it's an Add
+        # form we won't, so passa session pk, only if it's available.
+        submitted_session = Session.dict_from_form(self.form.data, getattr(self, "pk", None))
+
+        # Ranking information can arrive as ranks, scores or a combination including
+        # rank scroees, or performance scores . This all needs reconiliation before
+        # we proceed. new_session is modified in place with ranks and scores
+        # reconciled and/or updates form.errors with any errors it finds, forcing
+        # validation to fail
+        reconciled_session = deepcopy(submitted_session)
+        # Reconciles the supplied session in situ
+
+        if settings.DEBUG:
+            log.debug(f"RANK RECONCILIATION, form provided:")
+            for key, value in sorted(self.form.data.items()):
+                log.debug(f"\t{key}: {value}")
+
+            log.debug(f"RANK RECONCILIATION, session derived from it:")
+            for key, value in sorted(submitted_session.items()):
+                log.debug(f"\t{key}: {value}")
+
+        reconcile_ranks(self.form, reconciled_session)
+
+        if settings.DEBUG:
+            log.debug(f"RANK RECONCILIATION, reconciled session :")
+            for key, value in sorted(reconciled_session.items()):
+                log.debug(f"\t{key}: {value}")
+
+            log.debug(f"RANK RECONCILIATION, reconciled form:")
+            for key, value in sorted(self.form.data.items()):
+                log.debug(f"\t{key}: {value}")
+
+        # Find what the reconciler changed:
+        return {'new_session': reconciled_session}
+
+
+def pre_transaction_handler(self, new_session=None):
     '''
     When a model form is POSTed, this function is called
         BEFORE a transaction (to save data) has been opened
 
     It should return a dict that is unpacked as kwargs passed to
-    the pre_save handler, and can thus communicate with it.
+    the pre_save_handler, and can thus communicate with it.
 
     This has access to form.data and form.cleaned_data and is
     intended for making decisions based on the post before we
@@ -70,7 +369,13 @@ def pre_transaction_handler(self):
     This is a vector for sending debug information to the client
     before a transaction is opened for saving.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    self is an instance of RichCreateView or RichUpdateView.
+
+    :param new_session: The pre_validation handler should return a new
+                        session, i.e. the one in train of being saved,
+                        tn the dict format defined by:
+                        Leaderboards.models.session.Session.dict_from_form
+                        This handler will receive it.
     '''
     model = self.model._meta.model_name
 
@@ -105,19 +410,12 @@ def pre_transaction_handler(self):
     # to check if the submission changes any rating affecting fields and make note of that
     # so that the post processor can update the ratings with a rebuild request if needed
     if model == 'session':
-        output(f"PRE-PROCESSING Session submission.")
+        output(f"Session Submission Rebuild Request Determination")
         output("\n")
-        output(f"Using form data:")
+        output(f"Form data:")
         for (key, val) in self.form.data.items():
             output(f"\t{key}:{val}")
 
-        # The new session (form form data) is VERY hard to represent as
-        # a Django model instance. We represent it as a dict instead.
-        # Essentially a translator of form_data (a QuryDict) into a more
-        # tractable form.
-        new_session = Session.dict_from_form(self.form.data)
-
-        output("\n")
         output("Form data as a Session dict:")
         for (key, val) in new_session.items():
             output(f"\t{key}:{val}")
@@ -125,7 +423,6 @@ def pre_transaction_handler(self):
         # We need the time, game and players first
         # As this is all we need to know for
         # both the Create and Update views.
-
         new_time = new_session["time"]
 
         # The time of the session cannot be in the future of course.
@@ -155,7 +452,8 @@ def pre_transaction_handler(self):
             return None
 
         # Players are identifed by PK in "performers"
-        # TOOD: does this field name work?
+        # TODO: does this field name work?
+        # TODO: Should we get this from rankers (which is a list of player IDs? or list of playerID lists in team play?
         new_players = [safe_get("performances__player", Player, pk) for pk in new_session["performers"]]
 
         # A rebuild of ratings is triggered under any of the following circumstances:
@@ -167,7 +465,7 @@ def pre_transaction_handler(self):
 
         # 1. It's a new_session session and any of the players involved have future sessions
         #    recorded already.
-        if isinstance(self, CreateViewExtended):
+        if isinstance(self, RichCreateView):
             output("\n")
             output(f"New Session")
 
@@ -203,7 +501,7 @@ def pre_transaction_handler(self):
         # 6. If the date time is changed such that the prior or next session
         #    for any player changes (i.e. the order of sessions for any player
         #    is changed)
-        elif isinstance(self, UpdateViewExtended):
+        elif isinstance(self, RichUpdateView):
             old_session = self.object
 
             output("\n")
@@ -344,7 +642,7 @@ def pre_transaction_handler(self):
         html += "</pre>\n</section>\n"
         # When "debug_only" is returned then all other args are ignored and the value
         # of the debug_only field is returned as an HTML response by the caller,
-        # the django_generic_view_extensions.views.post_generic handler.
+        # the django_rich_views.views.post_generic handler.
         return {'debug_only': html}
 
     else:
@@ -359,27 +657,30 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
         BEFORE the form is saved.
 
     This intended primarily to make decisions based on the the pre_transaction
-    handler's conclusions (and the post and existing database object if needed)
-    that involve a database save of any sort. That is becauyse this, unlike
-    pre_transaction runs inside an opened transaction and so whatever we save
-    herein can commit or rollback along with the rest of the save.
+    handler's conclusions (and the post and existing database object - pre any
+    alterations to it on the basis of the post, if needed) that involve a database
+    save of any sort.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    That is because this, unlike pre_transaction this runs inside an opened
+    transaction and so whatever is saved herein can commit or rollback along with
+    the rest of the save.
 
-    If it returns a dict that will be used as a kwargs dict into the
+    self is an instance of RichCreateView or RichUpdateView.
+
+    It returns a dict that will be used as a kwargs dict into the
     the configured post processor (pre_commit_handler below).
     '''
     model = self.model._meta.model_name
 
     change_log = None
     if model == 'session':
-        if isinstance(self, CreateViewExtended):
+        if isinstance(self, RichCreateView):
             # Create a change log, but we don't have a session yet
             # and also no change summary. We provide themw ith the
             # update in the pre_commit handler once the session is
             # saved.
             change_log = ChangeLog.create()
-        elif isinstance(self, UpdateViewExtended):
+        elif isinstance(self, RichUpdateView):
             old_session = self.object
             # Create a ChangeLog with the session now (pre_save status)
             # This captures the leaderboard_impact of the session as it
@@ -391,12 +692,21 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
     # Return the kwargs for the next handler
     return {'change_log': change_log, 'rebuild': rebuild, 'reason': reason}
 
+# TODO: When
+#    <input type="checkbox" value="on" id="id_Team-0-DELETE" name="Team-0-DELETE" style="display: none;">
+# is received. Test that Teams are deleted only if they have no other session references, elklse not deleted
+# I suspect standard Django form handling will not be smart enough here and we need to do something
+# pre-save or pre-commit or...
+#
+# 1, Check what the -DELETE currently does (test)
+# 2. Fix if necessary
+
 
 def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
     '''
     When a model form is POSTed, this function is called AFTER the form is saved.
 
-    self is an instance of CreateViewExtended or UpdateViewExtended.
+    self is an instance of RichCreateView or RichUpdateView.
 
     It will be running inside a transaction and can bail with an IntegrityError if something goes wrong
     achieving a rollback.
@@ -425,15 +735,23 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         if settings.DEBUG:
             log.debug(f"POST-PROCESSING Session {session.pk} submission.")
 
+        # Determine the submission mode
+        if isinstance(self, RichCreateView):
+            submission = "create"
+        elif isinstance(self, RichUpdateView):
+            submission = "update"
+        else:
+            raise ValueError("Pre commit handler called from unsupported class.")
+
         team_play = session.team_play
 
-        # TESTING NOTES: As Django performance is not 100% clear at this level from docs (we're pretty low)
+        # TESTING NOTES: As Django performance is not 100% clear at this level from docs.
         # Some empirical testing notes here:
         #
         # 1) Individual play mode submission: the session object here has session.ranks and session.performances populated
         #    This must have have happened when we saved the related forms by passing in an instance to the formset.save
         #    method. Alas inlineformsets are attrociously documented. Might pay to check this understanding some day.
-        #    Empirclaly seems fine. It is in django_generic_view_extensions.forms.save_related_forms that this is done.
+        #    Empirically seems fine. It is in django_rich_views.forms.save_related_forms that this is done.
         #    For example:
         #
         #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>]>
@@ -444,9 +762,6 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         #    session.performances.all()    QuerySet: <QuerySet [<Performance: Agnes>, <Performance: Aiden>, <Performance: Ben>, <Performance: Benjamin>]>
         #    session.ranks.all()           QuerySet: <QuerySet [<Rank: 1>, <Rank: 2>]>
         #    session.teams                 OrderedDict: OrderedDict([('1', None), ('2', None)])
-
-        # FIXME: Remove form access from here and access the form data from "change_log.changes" which is a dir that holds it.
-        #        That way we're not duplicating form interpretation again.
 
         # manage teams properly, as we handle teams in a special way creating them
         # on the fly as needed and reusing where player sets match.
@@ -461,128 +776,54 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             #    As a safety ignore inadvertently submittted "Team n" names.
 
             # Work out the total number of players and initialise a TeamPlayers list (with one list per team)
-            num_teams = int(self.request.POST["num_teams"])
+            num_teams = int(self.form.data["num_teams"])
             num_players = 0
             TeamPlayers = []
             for t in range(num_teams):
-                num_team_players = int(self.request.POST[f"Team-{t:d}-num_players"])
+                num_team_players = int(self.form.data[f"Team-{t:d}-num_players"])
                 num_players += num_team_players
                 TeamPlayers.append([])
 
-            # Populate the TeamPlayers record for each team (i.e. work out which players are on the same team)
+            # Now populate the (thus far, empty) TeamPlayers list for each team
+            # (i.e. work out which players are on the same team)
             player_pool = set()
             for p in range(num_players):
-                player = int(self.request.POST[f"Performance-{p:d}-player"])
+                player = int(self.form.data[f"Performance-{p:d}-player"])
 
                 assert not player in player_pool, "Error: Players in session must be unique"
                 player_pool.add(player)
 
-                team_num = int(self.request.POST[f"Performance-{p:d}-team_num"])
+                team_num = int(self.form.data[f"Performance-{p:d}-team_num"])
                 TeamPlayers[team_num].append(player)
 
             # For each team now, find it, create it , fix it as needed
             # and associate it with the appropriate Rank just created
             for t in range(num_teams):
+                # Get Team players that we already extracted from the POST
+                team_players_posted = TeamPlayers[t]
+
                 # Get the submitted Team ID if any and if it is supplied
                 # fetch the team so we can provisionally use that (renaming it
                 # if a new name is specified).
-                team_id = self.request.POST.get(f"Team-{t:d}-id", None)
-                team = None
+                team_id = self.form.data.get(f"Team-{t:d}-id", None)
 
-                # Get Team players that we already extracted from the POST
-                team_players_post = TeamPlayers[t]
-
-                # Get the team players according to the database (if we have a team_id!
-                team_players_db = []
-                if (team_id):
-                    try:
-                        team = Team.objects.get(pk=team_id)
-                        team_players_db = team.players.all().values_list('id', flat=True)
-                    # If team_id arrives as non-int or the nominated team does not exist,
-                    # either way we have no team and team_id should have been None.
-                    except (Team.DoesNotExist or ValueError):
-                        team_id = None
-
-                # Check that they are the same, if not, we'll have to create find or
-                # create a new team, i.e. ignore the submitted team (it could have no
-                # refrences left if that happens but we won't delete them simply because
-                # of that (an admin tool for finding and deleting unreferenced objects
-                # is a better approach, be they teams or other objects).
-                force_new_team = len(team_players_db) > 0 and set(team_players_post) != set(team_players_db)
+                # The name submitted for this team if any
+                team_name = self.form.data.get(f"Team-{t:d}-name", None)
 
                 # Get the appropriate rank object for this team
-                rank_id = self.request.POST.get(f"Rank-{t:d}-id", None)
-                rank_rank = self.request.POST.get(f"Rank-{t:d}-rank", None)
-                rank = session.ranks.get(rank=rank_rank)
+                rank_rank = self.form.data.get(f"Rank-{t:d}-rank", None)
+                rank_id = self.form.data.get(f"Rank-{t:d}-id", None)
+                if not rank_id:
+                    if session.ranks.filter(rank=rank_rank).exists():
+                        rank_id = session.ranks.get(rank=rank_rank).id
+                    elif submission == "create":
+                        breakpoint()
+                        # Prior version cays the rank must exist to have landed here.
+                        # What went wrong? Diagnose. Set DEBUG in relate_for save and check.
+                        print("debug here")
 
-                # A rank must have been saved before we got here, either with the POST
-                # specified rank_id (for edit forms) or a new ID (for add forms)
-                assert rank, f"Save error: No Rank was saved with the rank {rank_rank}"
-
-                # If a rank_id is specified in the POST it must match that saved
-                # before we got here using that POST specified ID.
-                if (not rank_id is None):
-                    assert int(rank_id) == rank.pk, f"Save error: Saved Rank has different ID to submitted form Rank ID! Rank ID {int(rank_id)} was submitted and Rank ID {rank.pk} has the same rank as submitted: {rank_rank}."
-
-                # The name submitted for this team
-                new_name = self.request.POST.get(f"Team-{t:d}-name", None)
-
-                # Find the team object that has these specific players.
-                # Filter by count first and filter by players one by one.
-                # recall: these filters are lazy, we construct them here
-                # but they do not do anything, are just recorded, and when
-                # needed the SQL is executed.
-                teams = Team.objects.annotate(count=Count('players')).filter(count=len(team_players_post))
-                for player in team_players_post:
-                    teams = teams.filter(players=player)
-
-                if settings.DEBUG:
-                    log.debug(f"Team Check: {len(teams)} teams that have these players: {team_players_post}.")
-
-                # If not found, then create a team object with those players and
-                # link it to the rank object and save that.
-                if len(teams) == 0 or force_new_team:
-                    team = Team.objects.create()
-
-                    for player_id in team_players_post:
-                        player = Player.objects.get(id=player_id)
-                        team.players.add(player)
-
-                    # If the name changed and is not a placeholder of form "Team n" use it.
-                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE):
-                        team.name = new_name
-
-                    team.save()
-                    rank.team = team
-                    rank.save()
-
-                    if settings.DEBUG:
-                        log.debug(f"\tCreated new team for {team.players} with name: {team.name}")
-
-                # If one is found, then link it to the approriate rank object and
-                # check its name against the submission (updating if need be)
-                elif len(teams) == 1:
-                    team = teams[0]
-
-                    # If the name changed and is not a placeholder of form "Team n" save it.
-                    if new_name and not re.match("^Team \d+$", new_name, ref.IGNORECASE) and new_name != team.name:
-                        if settings.DEBUG:
-                            log.debug(f"\tRenaming team for {team.players} from {team.name} to {new_name}")
-
-                        team.name = new_name
-                        team.save()
-
-                    # If the team is not linked to the rigth rank, fix the rank and save it.
-                    if (rank.team != team):
-                        rank.team = team
-                        rank.save()
-
-                        if settings.DEBUG:
-                            log.debug(f"\tPinned team {team.pk} with {team.players} to rank {rank.rank} ID: {rank.pk}")
-
-                # Weirdness, we can't legally have more than one team with the same set of players in the database
-                else:
-                    raise ValueError("Database error: More than one team with same players in database.")
+                # Submit the edit (to the database)
+                Team.get_create_or_edit(team_players_posted, team_name, edit=(team_id, rank_id, session.id))
 
         # Individual play
         else:
@@ -613,9 +854,9 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             if settings.DEBUG:
                 log.debug(f"A ratings rebuild has been requested for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
 
-            if isinstance(self, CreateViewExtended):
+            if submission == "create":
                 trigger = RATING_REBUILD_TRIGGER.session_add
-            elif isinstance(self, UpdateViewExtended):
+            elif submission == "update":
                 trigger = RATING_REBUILD_TRIGGER.session_edit
             else:
                 raise ValueError("Pre commit handler called from unsupported class.")
@@ -626,7 +867,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             rebuild_log = None
 
         if change_log:
-            if isinstance(self, CreateViewExtended):
+            if submission == "create":
                 # The change summary will be just a JSON representation of the session we just created (saved)
                 # changes will be none.
                 # TODO: We could consider calling it  ahcnage fomrnothing, lisitng all fields in changes, and making all tuples with a None as first entry.
@@ -634,14 +875,16 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
                 change_summary = session.__json__()
 
                 # Update the ChangeLog with this change_summary it could not be
-                # saved earlier in the pre_save handler as there was no session to
-                # compare with.
+                # saved earlier in the pre_save handler as there was no session
+                # yet to save as a change_summary.
                 change_log.update(session, change_summary, rebuild_log)
-            else:
+            elif submission == "update":
                 # Update the ChangeLog (change_summary was saved in the pre_save handler.
                 # If we compare the form with the saved session now, there will be no changes
                 # to log. and we lose the record of changes already recorded.
                 change_log.update(session, rebuild_log=rebuild_log)
+            else:
+                raise ValueError("Pre commit handler called from unsupported class.")
 
             change_log.save()
 
@@ -666,7 +909,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         # If there was a change logged (and/or a rebuild triggered)
         get_params = ""
         if change_log:
-            get_params = f"?changed={change_log.pk}"
+            get_params = f"?submission={submission}&changed={change_log.pk}"
 
         self.success_url = reverse_lazy('impact', kwargs={'model': 'Session', 'pk': session.pk}) + get_params
 

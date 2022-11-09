@@ -7,8 +7,8 @@ from django.shortcuts import render
 from django.core.exceptions import ObjectDoesNotExist
 from django.http.response import HttpResponseRedirect
 
-from django_generic_view_extensions.util import class_from_string
-from django_generic_view_extensions.datetime import time_str
+from django_rich_views.util import class_from_string
+from django_rich_views.datetime import time_str
 
 from ..models import ChangeLog, RebuildLog, RATING_REBUILD_TRIGGER
 from ..leaderboards import restyle_leaderboard, augment_with_deltas, leaderboard_changed, pk_keys, LB_PLAYER_LIST_STYLE, LB_STRUCTURE
@@ -50,8 +50,9 @@ def view_Impact(request, model, pk):
 
         # First decide the context of the view. Either a specific change log is specified as a get parameter,
         # or the identified session's latest change log is used if available or none if none are available.
+        submission = request.GET.get("submission", None)  # create or update or None
         clog = rlog = None
-        changed = request.GET.get("changed", None)
+        changed = request.GET.get("changed", None)  # PK of a ChangeLog
 
         if changed:
             try:
@@ -191,18 +192,12 @@ def view_Impact(request, model, pk):
                 # for the feedback immediately after a rebuild, before it's committed!
                 rebuild_log_is_dated[game.pk] = leaderboard_changed(rlog.leaderboard_after(game, wrap=False), reference)
 
-        # A flag to tell the view this is being rendered ias fedback to a submission.
-        # For now just true.
-        # TODO: We want to use this view to look at Changelogs (and mayb Rebuild logs)
-        # again later, after submission To examime what an histoic change did.
-        is_submission_feedback = True
-
         c = {"model": m,
              "model_name": model,
              "model_name_plural": m._meta.verbose_name_plural,
              "object_id": pk,
              "date_time": session.date_time_local,  # Time of the edited session
-             "is_submission_feedback": is_submission_feedback,
+             "submission": submission,
              "is_latest": islatest,  # The edited/submitted session is the latest in that game
              "is_first": isfirst,  # The edited/submitted session is the first in that game
              "game": session.game,

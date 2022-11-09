@@ -4,7 +4,7 @@ from django import template
 from django.utils.safestring import mark_safe
 from django.template.defaultfilters import pluralize
 
-from django_generic_view_extensions.util import DjangoObjectJSONEncoder
+from django_rich_views.util import DjangoObjectJSONEncoder
 
 register = template.Library()
 
@@ -140,7 +140,14 @@ def duration(value, args=None):
 
     And improved to include a resolution argument.
 
-    The arguments are provided in a CSV list.
+    The arguments are provided in a CSV list, for example:
+
+    {{timedelta|duration:"phrase,minutes"}}
+
+    Has two arguments both keywords as follows:
+
+    mode: "machine", "phrase", "phrase_lines", "clock"
+    resolution: "microseconds", "milliseconds", "seconds", "minutes", "hours", "days"
     '''
     if not isinstance(value, datetime.timedelta):
         return value
