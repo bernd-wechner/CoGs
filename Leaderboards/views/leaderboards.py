@@ -266,13 +266,23 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                     # Counts supplied in the full_snapshot are global and we want to constrain them to
                     # the leagues in question.
                     #
-                    # Playcounts are always across all the leagues specified.
-                    #   if we filter games on any leagues, the we list games played by any of the leagues
-                    #        and play count across all the leagues makes sense.
-                    #   if we filter games on all leagues, then list only games played by all the leagues present
-                    #        and it still makes sense to list a playcount across all those leagues.
+                    # We have three options:
+                    #
+                    # in-league:    show only snapshots played in the specified leagues
+                    # cross-league  show snapshots played by any players in the selected leagues
+                    # global        show all snapshots
+                    if lo.leagues:
+                        if lo.show_cross_league_snaps:
+                            counts = game.play_counts(leagues=lo.leagues, asat=board.date_time, broad=True)
+                        else:
+                            counts = game.play_counts(leagues=lo.leagues, asat=board.date_time)
 
-                    counts = game.play_counts(leagues=lo.game_leagues, asat=board.date_time)
+                        plays = counts['total']
+                        sessions = counts['sessions']
+                    else:
+                        counts = game.play_counts(asat=board.date_time)
+                        plays = counts['total']
+                        sessions = counts['sessions']
 
                     # snapshot 0 and 1 are the session PK and localized time
                     # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
@@ -281,7 +291,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                     # The HTML header and analyses use flexi player naming and expect client side to render
                     # appropriately. See Player.name() for flexi naming standards.
                     snapshot = (snapshot[0:2]
-                             +(counts['total'], counts['sessions'])
+                             +(plays, sessions)
                              +snapshot[4:8]
                              +(lbf,))
 

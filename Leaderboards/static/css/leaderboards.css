@@ -4,12 +4,12 @@
 /* LEADERBOARD OPTIONS */
 
 
-/* 	
-	TODO: Show only the button row by default, with a drop arrow. 
-	That reveals the basic options, and an Advanced options drop arrow, 
-	which would reveal the advanced options. Thiswill take some redesign 
-	of the grid.  
-*/ 
+/*
+	TODO: Show only the button row by default, with a drop arrow.
+	That reveals the basic options, and an Advanced options drop arrow,
+	which would reveal the advanced options. Thiswill take some redesign
+	of the grid.
+*/
 
 /* Example of using color variables
 :root {
@@ -31,7 +31,7 @@ background-color: var(--background-color);
 	grid-template-columns: min-content min-content 1fr;
 	grid-auto-rows: min-content;
 	grid-column-gap: 15px;
-	grid-row-gap: 5px;  
+	grid-row-gap: 5px;
 	grid-template-areas:
 	  	"lbl_view   lo_buttons    lo_buttons    "
 	  	".          lbl_basic     lo_basic      "
@@ -41,7 +41,7 @@ background-color: var(--background-color);
 }
 
 .lo_buttons {
-	grid-area: lo_buttons; 
+	grid-area: lo_buttons;
 	display: grid;
 	grid-template-columns: min-content min-content max-content  1fr;
 	grid-auto-rows: min-content;
@@ -64,38 +64,39 @@ background-color: var(--background-color);
 .lo_visibility {
   	display: grid;
 	grid-area: lo_visibility;
-  
+
 	grid-template-columns: repeat(3, auto);
 	grid-auto-rows: min-content;
 	grid-column-gap: 10px;
-	grid-row-gap: 0px;  
-	grid-template-areas: 
-		"lo_highlight_players  lo_highlight_changes  lo_highlight__selected" 
-		"lo_session_details    lo_pre_predictions    lo_post_predictions"
-		"lo_show_d_rank        lo_show_d_rating      lo_show_baseline"
-		"lo_select_players     lo_select_players     lo_select_players";
+	grid-row-gap: 0px;
+	grid-template-areas:
+		"lo_highlight_players  lo_highlight_changes        lo_highlight__selected"
+		"lo_session_details    lo_pre_predictions          lo_post_predictions"
+		"lo_show_d_rank        lo_show_d_rating            lo_show_baseline"
+		"lo_select_players     lo_show_cross_league_snaps  lo_show_cross_league_snaps";
 }
 
-.lo_highlight_players   { grid-area: lo_highlight_players; }
-.lo_highlight_changes   { grid-area: lo_highlight_changes; }
-.lo_highlight__selected { grid-area: lo_highlight__selected; }
-.lo_session_details     { grid-area: lo_session_details; }
-.lo_pre_predictions     { grid-area: lo_pre_predictions; }
-.lo_post_predictions    { grid-area: lo_post_predictions; }
-.lo_show_d_rank    		{ grid-area: lo_show_d_rank; }
-.lo_show_d_rating 		{ grid-area: lo_show_d_rating; }
-.lo_show_baseline  		{ grid-area: lo_show_baseline; }
-.lo_select_players  	{ grid-area: lo_select_players; }
+.lo_highlight_players		{ grid-area: lo_highlight_players; }
+.lo_highlight_changes		{ grid-area: lo_highlight_changes; }
+.lo_highlight__selected		{ grid-area: lo_highlight__selected; }
+.lo_session_details			{ grid-area: lo_session_details; }
+.lo_pre_predictions			{ grid-area: lo_pre_predictions; }
+.lo_post_predictions		{ grid-area: lo_post_predictions; }
+.lo_show_d_rank				{ grid-area: lo_show_d_rank; }
+.lo_show_d_rating			{ grid-area: lo_show_d_rating; }
+.lo_show_baseline			{ grid-area: lo_show_baseline; }
+.lo_select_players			{ grid-area: lo_select_players; }
+.lo_show_cross_league_snaps	{ grid-area: lo_show_cross_league_snaps; }
 
 .lo_advanced {
   	display: none; /* toggled to grid when displayed */
 	grid-area: lo_advanced;
-  
+
 	grid-template-columns: auto 4ch repeat(3, auto);
 	grid-column-gap: 15px;
 
 	grid-auto-rows: min-content;
-	grid-row-gap: 5px;  
+	grid-row-gap: 5px;
 
 /* TODO: A location filter, a tourneys filter */
 /* TODO: Add a Player selector which highlights "players in current snapshot" and one "players in any snapshot" */
@@ -139,13 +140,13 @@ background-color: var(--background-color);
 .selectors_multi {
   display: grid;
   grid-area: selectors_multi;
-  
+
   grid-template-columns: repeat(2, auto);
   grid-auto-rows: min-content;
   grid-column-gap: 10px;
-  grid-row-gap: 0px;  
-  grid-template-areas: 
-  	"label_games        ."  
+  grid-row-gap: 0px;
+  grid-template-areas:
+  	"label_games        ."
   	"select_games       ."
   	"label_players      label_leagues     "
   	"select_players     select_leagues    ";
@@ -202,7 +203,7 @@ background-color: var(--background-color);
 
 /* LEADERBOARD TABLES */
 
-table.legend 
+table.legend
 {
 	font-size: 80%;
 }
@@ -216,7 +217,7 @@ table.leaderboard
 	margin-right: 10px;
 	border-color: #600;
 	border-style: solid;
-	border-width: 0 0 1px 1px;  /* top, right, bottom, left */ 
+	border-width: 0 0 1px 1px;  /* top, right, bottom, left */
 	border-collapse: collapse;
 	border-spacing: 10px;
 }
@@ -228,11 +229,11 @@ table.reference
 
 table.baseline
 {
-	filter: opacity(40%);	
+	filter: opacity(40%);
 }
 
-th.leaderboard, 
-td.leaderboard 
+th.leaderboard,
+td.leaderboard
 {
 	border-color: #600;
 	border-style: solid;
@@ -246,7 +247,7 @@ td.leaderboard
 
 th.leaderboard.header { background-color: var(--leaderboard_normal); font-weight: bold; font-size: 120%; }
 
-th.leaderboard.normal, 
+th.leaderboard.normal,
 td.leaderboard.normal {	background-color: var(--leaderboard_normal);	font-weight: normal; }
 
 td.leaderboard.highlight_players_off {	font-weight: normal; }
@@ -256,13 +257,13 @@ td.leaderboard.highlight_changes_off { background-color: var(--leaderboard_norma
 td.leaderboard.highlight_changes_on { background-color: var(--leaderboard_change) !important; }
 
 td.leaderboard.highlight_selected_off { background-color: var(--leaderboard_normal); }
-td.leaderboard.highlight_selected_on {background-color: var(--leaderboard_select) !important; } 
+td.leaderboard.highlight_selected_on {background-color: var(--leaderboard_select) !important; }
 
 td.leaderboard.highlight_changes_on.highlight_selected_on { background-color: var(--leaderboard_select_change) !important; }
 
 table.leaderboard.wrapper { border-style: none; margin: 10px; }
 
-table.leaderboard.wrapper > tbody > tr > td 
+table.leaderboard.wrapper > tbody > tr > td
 {
 	vertical-align: top;
 	background-color: transparent;
