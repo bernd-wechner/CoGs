@@ -117,6 +117,7 @@ server_site_bup="$server_site_dir.backup.$backup_timestamp"
 
 # localhost configs (Development machine - script must be run on the dev machine and it must have paswordless ssh access to the webserver)
 dev_site_dir="/home/bernd/workspace/CoGs"
+dev_DRV_dir="/home/bernd/workspace/Django/django-rich-views/django_rich_views" # Under heavy development alongside
 dev_venv_dir="/home/bernd/.virtualenvs/CoGs"
 
 # resolveable domain names for the source and target host (we append the local domain if it's not localhost)
@@ -207,8 +208,20 @@ if [ "$copy_site" = true ]; then
 	site_files_copied=true
 	code_files_copied=true
 
+	prepare_then="cd \"$server_site_dir\"; source \"$server_venv_dir/bin/activate\";"
+
+	if [ $source_host = "localhost" ]; then
+		# Copy the django-rich-view app into the root folder
+		# While it's under heavy development we're not installing it as a package under site-packages
+		# which will be the in the future when it's considered stable enough at least for a beta
+		# release.
+		# A trailing slash on a source path means "copy the contents of this directory".
+		# Without a trailing slash it means "copy the directory"
+		echo "Copying django-rich-views (dev)"
+		${prefix}rsync $opts $exclude "$dev_DRV_dir" "$target_user@$target_host:$server_site_dir"
+	fi
+
 	if [ $target_host != "localhost" ]; then
-		prepare_then="cd \"$server_site_dir\"; source \"$server_venv_dir/bin/activate\";"
 		# If we are copying the site to a webserver we also want to make sure we install any new package requirements in the venv.
 		# This has to happen before we collect static (next step) as missing packages will cause manage.py to fail.
 		echo "Collecting Python packages on $target_host"
@@ -221,7 +234,6 @@ if [ "$copy_site" = true ]; then
 		# the recent copy to server.
 		echo "Collecting static files on $target_host"
 		${prefix}ssh $target_user@$target_host "$prepare_then rm -rf static; python manage.py collectstatic --noinput"
-
 	fi
 fi
 

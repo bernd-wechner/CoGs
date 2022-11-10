@@ -333,6 +333,8 @@ class Game(AdminModel):
                 performances = self.last_performances(asat=asat)
 
             # The play_number of the last performance is the play count at that time.
+            # play_number of a performance is the number of its play (for its player at its game)
+            # performances are the last performance in this game for each player.
             pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
             for key in pc:
                 if pc[key] is None:
