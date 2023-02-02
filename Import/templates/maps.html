@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+A page that offers options for mapping imported games, players, locations
+to local entities.
+==================================================================================
+{% endcomment %}
+
+{% block content %}
+Jump to:<br>
+{#These jump such that the header is under the site header - pretty daft. How to fix?#}
+<a href="#Games">Games</a><br>
+<a href="#Players">Players</a><br>
+<a href="#Locations">Locations</a><br>
+
+{% comment %}
+TODO:
+Add Create New to the list (at top)
+Define a threshold (about 0.2 I reckon)
+	above which Create New is shown by default on the list (the guesses are just too bad).
+	below which the top candidate is slected by default
+When Create New is selected, show a link beside to the Add form (which opens in a new window).
+	preopulate the Add form with the clues.
+Add to the Players list a link or ToolTip that shows a sumary of game sessions that player was in, to compare
+{% endcomment %}
+
+<h1>Game Session Import</h1>
+
+<a name="Games"></a><h2>Games</h2>
+
+<table>
+<tr><th>BG Stats name</th><th>Best Distance</th><th>CoGs candidates</th></tr>
+{% for id, key_clues_candidates in map_games.items %}
+	<tr><td>{{key_clues_candidates.1.name}}</td>
+		<td>{{key_clues_candidates.0|floatformat:1}}</td>
+		<td>
+			{% if key_clues_candidates.2|length > 1 %}
+				<select class="form_control" name="game_{{id}}">
+				    {% for candidate in key_clues_candidates.2 %}
+			            <option value="{{candidate.pk}}">{{candidate}}</option>
+				    {% endfor %}
+				</select>
+			{% else %}
+				<b>{{key_clues_candidates.2}}</b>
+			{% endif  %}
+		</td>
+	</tr>
+{% endfor %}
+<table>
+
+<a name="Players"></a><h2>Players</h2>
+
+<table>
+<tr><th>BG Stats name</th><th>Best Distance</th><th>CoGs candidates</th></tr>
+{% for id, key_clues_candidates in map_players.items %}
+	<tr><td>{{key_clues_candidates.1.name}}</td>
+		<td>{{key_clues_candidates.0|floatformat:1}}</td>
+		<td>
+			{% if key_clues_candidates.2|length > 1 %}
+				<select class="form_control" name="player_{{id}}">
+				    {% for candidate in key_clues_candidates.2 %}
+			            <option value="{{candidate.pk}}">{{candidate.complete_name}}</option>
+				    {% endfor %}
+				</select>
+			{% else %}
+				<b>{{key_clues_candidates.2}}</b>
+			{% endif  %}
+		</td>
+	</tr>
+{% endfor %}
+<table>
+
+<a name="Locations"></a><h2>Locations</h2>
+
+<table>
+<tr><th>BG Stats name</th><th>Best Distance</th><th>CoGs candidates</th></tr>
+{% for id, key_clues_candidates in map_locations.items %}
+	<tr><td>{{key_clues_candidates.1.name}}</td>
+		<td>{{key_clues_candidates.0|floatformat:1}}</td>
+		<td>
+			{% if key_clues_candidates.2|length > 1 %}
+				<select class="form_control" name="location_{{id}}">
+				    {% for candidate in key_clues_candidates.2 %}
+			            <option value="{{candidate.pk}}">{{candidate}}</option>
+				    {% endfor %}
+				</select>
+			{% else %}
+				<b>{{key_clues_candidates.2}}</b>
+			{% endif  %}
+		</td>
+	</tr>
+{% endfor %}
+<table>
+
+{% endblock %}

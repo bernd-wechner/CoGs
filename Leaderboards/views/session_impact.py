@@ -91,7 +91,7 @@ def view_Impact(request, model, pk):
                     log.debug(f"\tfetched last logged rebuild: {rlog}")
 
         # RebuildLogs may be more sticky than ChangeLogs (i.e. expire less frequently)
-        # and if so we may bhave found an rlog and no clog yet, and technically there
+        # and if so we may have found an rlog and no clog yet, and technically there
         # should not be one (or we'd have found it above!). For completeness in this
         # case we'll check and if debugging report.
         if rlog and not clog:
@@ -100,7 +100,7 @@ def view_Impact(request, model, pk):
                 clog = clogs.first()
 
                 if settings.DEBUG:
-                    log.debug(f"\tUnexpected oddity, found rlog wbut not clog, yet the rlog identifies {clogs.count()} clog(s) and we're using: {clog}")
+                    log.debug(f"\tUnexpected oddity, found rlog but not clog, yet the rlog identifies {clogs.count()} clog(s) and we're using: {clog}")
 
         # a changelog stores two impacts each with two snapshots.
         if clog:
@@ -134,10 +134,10 @@ def view_Impact(request, model, pk):
 
         # These are properties of the current session and hence relevant only in the post submission feedback scenario where
         # TOOD: Not even that simple.
-        #      On a multiuser system it could be two edits to a session are submitted one hot on the tail of hte other by diferent people
-        #      Submission feedback therefore needs a snapshot of the session htat was saved not what is actually now in hte database.
+        #      On a multiuser system it could happen that two edits to a session are submitted one hot on the tail of the other by different people
+        #      Submission feedback therefore needs a snapshot of the session that was saved not what is actually now in the database.
         #      We have to pass that in here somehow. That is hard for a complete session object, very hard, and so maybe we do that only for
-        #      the session game and datetime (which is all we've used up to this point. Then we don't use methods but compare dates agsint first
+        #      the session game and datetime (which is all we've used up to this point. Then we don't use methods but compare dates against first
         #      and last in database.
         islatest = session.is_latest
         isfirst = session.is_first

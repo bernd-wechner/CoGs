@@ -273,7 +273,10 @@ function InitControls(options, exempt) {
 	if (!ex.includes("analysis_post")) $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
 	if (!ex.includes("show_d_rank"))   $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
 	if (!ex.includes("show_d_rating")) $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
+
+	// The snapshot selecting options
 	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
+	if (!ex.includes("show_cross_league_snaps")) $('#chk_show_cross_league_snaps').prop('checked', dval(options.show_cross_league_snaps, false));
 
 	// And the selection options
 	if (!ex.includes("select_players")) $('#chk_select_players').prop('checked', dval(options.select_players, false));
@@ -346,8 +349,11 @@ async function URLopts(make_static) {
 	const analysis_post = $('#chk_analysis_post').is(":checked");
 	const show_d_rank   = $('#chk_show_d_rank').is(":checked");
 	const show_d_rating = $('#chk_show_d_rating').is(":checked");
-	const show_baseline = $('#chk_show_baseline').is(":checked");
 	const select_players = $('#chk_select_players').is(":checked");
+
+	// Then the snapshot selecting options
+	const show_baseline = $('#chk_show_baseline').is(":checked");
+	const show_cross_league_snaps = $('#chk_show_cross_league_snaps').is(":checked");
 
 	const names = $('#names').val();
 	const links = $('#links').val();
@@ -582,6 +588,7 @@ async function URLopts(make_static) {
 	if (show_d_rating != defaults.show_d_rating) opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
 	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
 	if (select_players != defaults.select_players) opts.push("select_players="+encodeURIComponent(select_players));
+	if (show_cross_league_snaps != defaults.show_cross_league_snaps) opts.push("show_cross_league_snaps="+encodeURIComponent(show_cross_league_snaps));
 
 	// Then the leaderboard screen layout options
 	// This also has a valid default, and we only have to submit deviations from

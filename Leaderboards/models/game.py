@@ -234,7 +234,7 @@ class Game(AdminModel):
         return Ps
 
     @property_method
-    def session_list(self, leagues=[], asat=None) -> list:
+    def session_list(self, leagues=[], asat=None, broad=False) -> list:
         '''
         Returns a list of sessions that played this game. Useful for counting or traversing.
 
@@ -245,6 +245,7 @@ class Game(AdminModel):
 
         :param leagues: Returns sessions played considering the specified league or leagues or all leagues if none is specified.
         :param asat: Optionally returns the sessions played as at a given date
+        :param broad: A basic session list is of sessions in any of the specified leagues. A broad one is a list of all sessions that contai players in any of the specified lists.
         '''
         League = apps.get_model(APP, "League")
         Session = apps.get_model(APP, "Session")
@@ -265,17 +266,23 @@ class Game(AdminModel):
 
         if asat is None:
             if leagues:
-                return Session.objects.filter(game=self, league__in=leagues)
+                if broad:
+                    return Session.objects.filter(game=self, performances__player__leagues__in=leagues).distinct()
+                else:
+                    return Session.objects.filter(game=self, league__in=leagues)
             else:
                 return Session.objects.filter(game=self)
         else:
             if leagues:
-                return Session.objects.filter(game=self, league__in=leagues, date_time__lte=asat)
+                if broad:
+                    return Session.objects.filter(game=self, performances__player__leagues__in=leagues, date_time__lte=asat).distinct()
+                else:
+                    return Session.objects.filter(game=self, league__in=leagues, date_time__lte=asat)
             else:
                 return Session.objects.filter(game=self, date_time__lte=asat)
 
     @property_method
-    def play_counts(self, leagues=[], asat=None) -> dict:
+    def play_counts(self, leagues=[], asat=None, broad=False) -> dict:
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
             total:    is the sum of all the individual player counts (so a count of total play experiences)
@@ -293,8 +300,11 @@ class Game(AdminModel):
 
         :param leagues: Returns playcounts considering the specified league or leagues or all leagues if none is specified.
         :param asat: Optionally returns the play counts as at a given date
+        :param broad: basic play counts are for all sessions in any of the provided leagues, broad play counts include all sessions played in by members of an of the specified leagues,
         '''
         League = apps.get_model(APP, "League")
+        Session = apps.get_model(APP, "Session")
+        Performance = apps.get_model(APP, "Performance")
         Rating = apps.get_model(APP, "Rating")
 
         # If a single league was provided make a list with one entry.
@@ -311,34 +321,32 @@ class Game(AdminModel):
             elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
                 raise ValueError(f"Unexpected league: {leagues[l]}.")
 
-        if asat is None:
-            if leagues:
-                ratings = Rating.objects.filter(game=self, player__leagues__in=leagues)
+        if leagues:
+            sfilter = Q(game=self)
+            if not asat is None:
+                sfilter &= Q(date_time__lte=asat)
+
+            if broad:
+                lfilter = Q()
+                for league in leagues:
+                    lfilter |= Q(performances__player__leagues=league)
             else:
-                ratings = Rating.objects.filter(game=self)
+                lfilter = Q(league__in=leagues)
 
-            pc = ratings.aggregate(total=Sum('plays'), max=Max('plays'), average=Avg('plays'), players=Count('plays'))
-            for key in pc:
-                if pc[key] is None:
-                    pc[key] = 0
-
-            pc['sessions'] = self.session_list(leagues).count()
+            sessions = Session.objects.filter(sfilter & lfilter)
+            performances = Performance.objects.filter(session__in=sessions, player__leagues__in=leagues)
         else:
-            # Can't use the Ratings model as that stores current ratings (and play counts). Instead use the Performance
-            # model which records ratings (and play counts) after every game session and the sessions have a date/time
-            # so the information can be extracted therefrom.
-            if leagues:
-                performances = self.last_performances(leagues=leagues, asat=asat)
-            else:
-                performances = self.last_performances(asat=asat)
+            performances = self.last_performances(asat=asat)
 
-            # The play_number of the last performance is the play count at that time.
-            pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
-            for key in pc:
-                if pc[key] is None:
-                    pc[key] = 0
+        # The play_number of the last performance is the play count at that time.
+        # play_number of a performance is the number of its play (for its player at its game)
+        # performances are the last performance in this game for each player.
+        pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
+        for key in pc:
+            if pc[key] is None:
+                pc[key] = 0
 
-            pc['sessions'] = self.session_list(leagues, asat=asat).count()
+        pc['sessions'] = self.session_list(leagues, asat=asat, broad=broad).count()
 
         return pc
 
@@ -613,6 +621,7 @@ class Game(AdminModel):
     def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
+
         :param cls: Our class (so we can build a queryset on it to return)
         :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
         :param session: The request session (if there's a filter recorded there we honor it)

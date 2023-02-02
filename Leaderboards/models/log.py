@@ -72,8 +72,8 @@ class ChangeLog(AdminModel):
     # This should saliently record which fields changed and for those that changed the value before and after the change
     changes = models.TextField(verbose_name='Changes logged for this session', null=True)
 
-    # Any changes to the game a session relates are centrally important to note because
-    # it determines whcih leaderboards are impacted. session.game of course identifies the
+    # Any changes to the game a session relates to are centrally important to note because
+    # it determines which leaderboards are impacted. session.game of course identifies the
     # game but that is the game the session points to now (and it may have been edited again
     # after this change). An unlikely scenario of course, but if it happens we want to know
     # and so a log is doubly important.
@@ -191,6 +191,29 @@ class ChangeLog(AdminModel):
         Returns a tuple of game instances affected by the chnage
         '''
         return (self.game_after_change,) if not self.game_before_change or self.game_after_change == self.game_before_change else (self.game_before_change, self.game_after_change)
+
+    @property
+    def submission(self):
+        '''
+        Returns the submission type that this change log resulted from. This is one of 'create' or 'update' and
+        determined implicitly because 'create' log has no game_before_change or leaderboard_impact_before_change
+        and the recorded changes (Changes) lacks a 'changes' key.An 'update' submisison will leave all these in
+        place. The three conditions should agree.
+        '''
+        if self.leaderboard_impact_before_change is None:
+            return 'create'
+        else:
+            return 'update'
+
+    @property
+    def submission_phrase(self):
+        '''
+        Same as submission but as a phrase for template use.
+        '''
+        if self.leaderboard_impact_before_change is None:
+            return "a Session submission"
+        else:
+            return "a Session edit"
 
     @classmethod
     def create(cls, session=None, change_summary=None, rebuild_log=None):

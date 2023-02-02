@@ -52,7 +52,7 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 {% elif submission == "update" %}
 <p>Thanks for submitting updates for your game of {{ game.name }} played on {{ date_time }}.</p>
 {% else %}
-<p>This is a summary of changes caused by the submission of a {{ submission }} {{model_name.title}} request at {{ change_date_time }}.</p>
+<p>This is a summary of changes caused by {% if change_log %} {{ change_log.submission_phrase }} {% else %}a request{% endif %} at {{ change_date_time }}.</p>
 {% endif %}
 
 

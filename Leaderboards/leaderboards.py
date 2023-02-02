@@ -37,10 +37,13 @@ from . import models
 # of the enum and typically the value that is used in URLs and in GET and POST
 # submissions. The second value is the plain text label that can be used on selector
 # on a web page if needed, a more verbose explanation of the selection.
+
+# Player name rendering
 NameSelections = OrderedDict((("nick", "nickname"),
                               ("full", "full name"),
                               ("complete", "full name (nickname)")))
 
+# Link target selection
 LinkSelections = OrderedDict((("none", "nowhere"),
                               ("CoGs", "CoGs Leaderboard Space"),
                               ("BGG", "boardgamegeek.com")))
@@ -86,7 +89,7 @@ class LB_STRUCTURE(enum.Enum):
 
 
 # As leaderboards are lists of players, possibly in a session wrapper (list) in a game wrapper (list)
-# A couple fo one liners that makes a nested tree of tuples mutable (converts them all to lists)
+# A couple of one liners that makes a nested tree of tuples mutable (converts them all to lists)
 # and vice versa, so we can lock leadeboards and unlock them explicitly if an edit is targetted.
 def mutable(e):
     return list(map(mutable, e)) if isinstance(e, (list, tuple)) else e
@@ -178,9 +181,11 @@ class leaderboard_options:
                       'player_leagues_any',  # Players in any of self.player_leagues
                       'player_leagues_all'}  # Players in all of self.player_leagues
 
+    # Transport of multiselected field (to server and back - even if not used for leaderboard presentation).
+    #
     # There are multi-select lists boxes that can provide the data for options like games_ex/in,
     # game_leagues_any/all, game_players_any/all, players_ex/in, player_leagues_any/all
-    # If the ese contain data, BUT no explicit option using the data is on, we still want to
+    # If these contain data, BUT no explicit option using the data is on, we still want to
     # transport the data so that it comes back to a refreshed view and can inform any options that
     # are client side implemented (in Javascript). In short we don't want to lose that data in a
     # submission but we retatain it in a neutral (no filtering) fashion.These can aslo provide fallback
@@ -190,7 +195,7 @@ class leaderboard_options:
     # Only players has an auto_selected transporter to inform the client that these were selected
     # automatically by select_players. players conversely are user selected. And the client
     # should merge these but will know which ones were manually selected and which auto and which
-    # both.
+    # both when they are trasnprted seperately.
     transport_options = {'games', 'players', 'leagues', 'players_auto_selected'}
 
     # Options that affect selections (which other options apply to)
@@ -204,7 +209,7 @@ class leaderboard_options:
     # Options that influence evolution presentations. These will be historic
     # leaderboards that show how a given leaderboard got to where it is, after
     # each game session recorded for that game which saw a change to the boards.
-    evolution_options = {'compare_with', 'compare_back_to'}
+    evolution_options = {'compare_with', 'compare_back_to', 'show_baseline', 'show_cross_league_snaps'}
 
     # Options that affect how we render leaderboards on screen
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
@@ -290,7 +295,7 @@ class leaderboard_options:
     played_since = None  # The date since which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
 
-    # A generic list of leagues for transport (as a a selector)
+    # A generic list of leagues for transport (as a selector)
     leagues = []
 
     # Options for intelligent selections
@@ -309,7 +314,7 @@ class leaderboard_options:
     compare_with = 1  # Compare with this many historic leaderboards
     compare_back_to = None  # Compare all leaderboards back to this date (and the leaderboard that was the latest one then)
 
-    # NOTE: The reamining options are not enabled or disabled they always have a value
+    # NOTE: The remaining options are not enabled or disabled they always have a value
     #       i.e. are self enabling.
 
     # Options for formatting the contents of a given leaderbaords
@@ -327,6 +332,7 @@ class leaderboard_options:
     show_d_rank = False  # Show the rank delta (movement) this session caused
     show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
+    show_cross_league_snaps = False  # Show snapshots that are in any leagues that players in the selected leagues are in (even if they are not selected)
 
     # An option to display the legend
     show_legend = False
@@ -365,9 +371,9 @@ class leaderboard_options:
 
     def __init__(self, urequest={}, ufilter={}, utz=UTC):
         '''
-        Build a leaderboard options instance populated with options from arequest dictionary
+        Build a leaderboard options instance populated with options from a request dictionary
         (could be from request.GET or request.POST). If none is specified build with default
-        values, i.e.e do nothing here (defaults are specified in attribute declarations above)
+        values, i.e. do nothing here (defaults are specified in attribute declarations above)
 
         :param urequest: a user request, i.e. a request.GET or request.POST dictionary that
                          contains options.
@@ -432,10 +438,16 @@ class leaderboard_options:
             if sgames:
                 games = list(map(int, sgames.split(",")))  # list of ints
 
+                # Save as a transport option
+                self.games = games
+
         if 'players' in urequest:
             splayers = urequest['players']  # CSV string
             if splayers:
                 players = list(map(int, splayers.split(",")))  # list of ints
+
+                # Save as a transport option
+                self.players = players
 
         # TODO check if we can specify NO league filtering. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
@@ -446,6 +458,9 @@ class leaderboard_options:
 
             if preferred_league and not leagues:
                 leagues = [preferred_league]
+
+            # Save as a transport option
+            self.leagues = leagues
 
         ##################################################################
         # GAME FILTERS
@@ -880,6 +895,9 @@ class leaderboard_options:
             elif not self.show_baseline:
                 self.show_baseline = True
 
+        if 'show_cross_league_snaps' in urequest:
+            self.show_cross_league_snaps = json.loads(urequest['show_cross_league_snaps'].lower())  # A boolean value is parsed
+
         # Legend option
         if 'show_legend' in urequest:
             if urequest['show_legend']:
@@ -1147,7 +1165,7 @@ class leaderboard_options:
             val = getattr(self, attr)
 
             # Don't include methods or enums or dicts
-            if not callable(val) and not isinstance(val, enum.EnumMeta) and not isinstance(val, OrderedDict):
+            if not callable(val) and not isinstance(val, (enum.EnumMeta, OrderedDict)):
                 # Format date_times sensibly
                 if isinstance(val, datetime):
                     val = val.strftime(settings.DATETIME_INPUT_FORMATS[0])
@@ -1157,7 +1175,7 @@ class leaderboard_options:
                     val = list(val)
 
                 # and textify enums as they don't JSONify either
-                elif isinstance(val, NameSelection) or isinstance(val, LinkSelection):
+                elif isinstance(val, (NameSelection, LinkSelection)):
                     val = val.name
 
                 # Only include the value if it needs no enabling or if it is enabled.
@@ -1169,7 +1187,7 @@ class leaderboard_options:
     def last_session_property(self, field):
         '''
         Returns a lazy Queryset that when evaluated produces the nominated property of the
-        last session played given the current options sepcifying league and perspective.
+        last session played given the current options specifying league and perspective.
         This is irrespective of the game, and is intended for the given league or leagues
         to return a property of the last activity as a reference for most recent event
         calculatiuons.
@@ -1494,68 +1512,32 @@ class leaderboard_options:
         if self.is_enabled('as_at'):
             sfilter &= Q(date_time__lte=self.as_at)
 
-        # Respect the game_leagues filter
-        # This game may be played by different leagues
-        # and we may be interested in a view on one or more leagues that are specified in
-        # game_leagues_any or game_leagues all.
+        # TODO: This is broken. Snapshots are sessions not games and sessions have their own
+        #       league. To with we only need consult lo.leagues (the selected leagues) and list
+        #       snapshots only played in those leagues.
+        #       We could if an option is selected also display those in any leagues that any of
+        #       the listed players are in (so that we get a complete view of their skill evoltion)
+        #       This could be what Is tarte dimplemented in a cross-league counting. It now cross
+        #       league viewing at it starts here inb the session selection.Food for thought.
 
-        # A tuning constant. A view over ALL leagues listed affords a Broad and a Narrow
-        # view of the sessions played. Broad includes All the sessions played in any league
-        # in the list. It's simpler, faster and very likely more what is wanted. That is, looking
-        # at a group of leagues, the "latest" leaderboard would be the latest among any of the leagues
-        # and the latest standing relevant to ALL those leagues.
-        #
-        # A Narrow view looks deepr and uses only sessions that contain players from all of the leagues.
-        # This loooks only at elague interactiuon, or promiscuity if you will. And is turned off by default
-        # now because there is no UI to choose between the two. There may never be, it's a tad overwhelmingly
-        # complicated to differentiate between these.
-        BROAD_ALL_VIEW = True
+        # Respect the league selections as a filter on the snapshots to show
+        # (the same selctor can explicitly be used to select games or players too but select snapshots
+        # by default)
 
-        # ANY is easy, and sessions are played in aleague and we casn just find sessions in any of the leagues
-        # provided in self.game_leagues.
-        if self.is_enabled('game_leagues_any'):
-            sfilter &= Q(league__pk__in=self.game_leagues)
-            session_source = models.Session.objects.filter(sfilter)
+        if self.leagues:
+            if self.show_cross_league_snaps:
+                # We want all the sessions that contain a player that is in any of the selected leagues.
+                lfilter = Q()
+                for pk in self.leagues:
+                    lfilter |= Q(performances__player__leagues__pk=pk)
+                sfilter &= lfilter
+            else:
+                # We want only sessions that were played in the selected leagues
+                sfilter &= Q(league__pk__in=self.leagues)
 
-        # ALL can be just as easy. If we are showing the leaderboards for games b=layed by ALL
-        # of a list of leagues, we probbaly want actually to see snapshots, in particular the latetst
-        # snapshot from the list of session played in ANY of those leagues. If so, that's easy. And we
-        # do that here
-        elif self.is_enabled('game_leagues_all') and BROAD_ALL_VIEW:
-            sfilter &= Q(league__pk__in=self.game_leagues)
-            session_source = models.Session.objects.filter(sfilter)
-
-        # If however for ALL we want a more restruictview fetching snapshots only after sessions that contained
-        # players from ALL the leagues, then this is much trickier to write as a query and needs us to drill down
-        # into the players and their leagues.
-        #
-        # Fames are played in a league (i.e. each session is atttributed to a league), and so any session only
-        # has 'a' league in Session.league. It can be more than one league at the same time and so any AND
-        # constraint placed on it will fail. Instead we use a tailored query that looks at the leagues that players
-        # in the session are in and returns all session which contai players across all the leagues.
-        #
-        # This is A) inconsistent with ANY which looks at the session league and not player leagues, and
-        # B) probably only really useful for two leagues or if there are a lot of highly league promiscuous
-        # players wandering between leagues ;-).
-        elif self.is_enabled('game_leagues_all'):
-            # This is mildly complicated we want the leagues to be ORed because the session query will be joined
-            # with performances and players producing one tuple per player in a session. To wit we need to
-            # bring it back to one tuple per session by annotating with a Count on leagues, and we can then
-            # return session with the full count, namely ALL the leagues represented.
-            #
-            # But we need to filter first for all tuples that are in any of the leagues, so an OR filter.
-            # the AND part arises from the fact that we select onlys essions that have the full distinct count
-            # of leagues associated with thm. Hairy but it works.
-            lfilter = Q()
-            for pk in self.game_leagues:
-                lfilter |= Q(performances__player__leagues__pk__in=pk)
-            sfilter &= lfilter & Q(league_count=len(self.game_leagues))
-
-            session_source = models.Session.objects.annotate(league_count=Count('performances__player__leagues__pk', distinct=True)).filter(sfilter)
-
-        # With no league filtering, build the session source from the extant sfilter only
+            session_source = models.Session.objects.filter(sfilter).distinct()
         else:
-            session_source = models.Session.objects.filter(sfilter)
+            session_source = models.Session.objects.all()
 
         # At this stage we have session_source that
         #   Specifies a game

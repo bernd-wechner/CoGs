@@ -834,7 +834,7 @@ class Session(TimeZoneMixIn, AdminModel):
         if asat is None:
             asat = self.date_time
 
-        # Get the play couns as at asat
+        # Get the play counts as at asat
         counts = self.game.play_counts(asat=asat)
 
         # TODO: Respect the style
@@ -869,7 +869,7 @@ class Session(TimeZoneMixIn, AdminModel):
 
         Such snapshots are often delivered inside a game wrapper.
 
-        This is differs from wrapped_leaderboard only in that it is a shorthand for a
+        This differs from wrapped_leaderboard only in that it is a shorthand for a
         common use case and includes a diagnostic snapshot (the latest game board) if
         this is the last session in this game and the latest board is not the same.
 

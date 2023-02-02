@@ -108,8 +108,8 @@ def ajax_Events(request, as_context=False):
     # Build a graph (test for now)
     (players, frequency) = Event.frequency("players", events, as_lists=True)
 
-    # We need include the graph only on a as_context call (the inital page load), not on
-    # AJAZ calls (that return the data update)
+    # We need include the graph only on an as_context call (the inital page load), not on
+    # AJAX calls (that return the data update)
     if as_context:
         plot = figure(height=350,
                       x_axis_label="Count of Players",
@@ -118,16 +118,16 @@ def ajax_Events(request, as_context=False):
                       border_fill_alpha=0,
                       tools="pan,wheel_zoom,box_zoom,save,reset")
 
-        # These are empircially tuned. The figure size is specified above
+        # These are empirically tuned. The figure size is specified above
         # and the ticks and labels are by default adjusted below, but those
         # adjustments can pack them so close they overlap. Which is pretty
-        # uggly. These two tuners will be respected to adjust the packing
+        # ugly. These two tuners will be respected to adjust the packing
         # in config to follow and are sort of judged by eye. More than this
         # number of labels is considered too tight, packing wise.
         max_xticks = 30
         max_yticks = 40
 
-        # Now we want to und the x axis from the min to max number of
+        # Now we want to run the x axis from the min to max number of
         # players. And the frequency axis we'd like to run from 0 to the
         # max frequency.
         xticks = 1 + max(players) - min(players)
