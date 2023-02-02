@@ -100,9 +100,7 @@ def import_CoGs_sessions(request):
         result += "Missing Games:\n{}\n".format(fmt_str(missing_games))
         result += "Missing Players:\n{}\n".format(fmt_str(missing_players))
 
-    return HttpResponse(f"<html><body<p>{title}</p><p>It is now {datetime.now()}.</p><p><pre>{result}</pre></p></body></html>")
-
-
+    return HttpResponse(f"<html><body<p>{title}</p><p>It is now {datetime.now()}.</p><p><pre>{result}</pre></p></body></html>
 def import_Wollongong_sessions(request):
     title = "Import Wollongong scoresheet"
 

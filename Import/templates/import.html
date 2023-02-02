@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% comment %}
+==================================================================================
+A page that for uploading data for import into the Leaderboards app.
+==================================================================================
+{% endcomment %}
+
+{% block content %}
+	<form method ='post' enctype ="multipart/form-data">
+	    {% csrf_token %}
+{#		{{ form.related_forms.ImportContext.name }}#}
+		<table>
+		{{ form.related_forms.ImportContext.as_table }}
+	    {{ form.as_table }}
+		</table>
+	    <input type="submit" value = "Submit">
+	</form>
+{% endblock %}

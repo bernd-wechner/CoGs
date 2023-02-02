@@ -621,6 +621,7 @@ class Game(AdminModel):
     def selector_queryset(cls, query="", session={}, all=False):
         '''
         Provides a queryset for ModelChoiceFields (select widgets) that ask for it.
+
         :param cls: Our class (so we can build a queryset on it to return)
         :param query: A simple string being a query that is submitted (typically typed into a django-autcomplete-light ModelSelect2 or ModelSelect2Multiple widget)
         :param session: The request session (if there's a filter recorded there we honor it)

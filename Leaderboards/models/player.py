@@ -5,12 +5,13 @@ from ..leaderboards import LB_PLAYER_LIST_STYLE
 from tailslide import Median
 
 from django.db import models
-from django.db.models import Q, F, Count, Min, Max, Value, FilteredRelation, Case, When
+from django.db.models import Q, F, Count, Min, Max, Value, FilteredRelation, Case, When, Expression, Value, CharField
+from django.db.models.functions import Concat
 from django.apps import apps
 from django.urls import reverse
 from django.contrib import admin
 from django.contrib.auth.models import User
-from django.utils.functional import cached_property
+from django.utils.functional import cached_property, classproperty
 from django.db.models import IntegerField, TextField, ForeignKey, FloatField, DecimalField
 from django.db.models.functions import Extract, Greatest
 from django.db.models.expressions import Subquery, OuterRef, ExpressionWrapper
@@ -84,11 +85,19 @@ class Player(PrivacyMixIn, AdminModel):
 
     @cached_property
     def full_name(self) -> str:
-        return "{} {}".format(self.name_personal, self.name_family)
+        return f"{self.name_personal} {self.name_family}"
+
+    @classproperty
+    def Full_name(cls) -> Expression:  # For use in annotations and filters @NoSelf
+        return Concat('name_personal', Value(' '), 'name_family', output_field=CharField())
 
     @cached_property
     def complete_name(self) -> str:
-        return "{} {} ({})".format(self.name_personal, self.name_family, self.name_nickname)
+        return f"{self.name_personal} {self.name_family} ({self.name_nickname})"
+
+    @classproperty
+    def Complete_name(cls) -> Expression:  # For use in annotations and filters @NoSelf
+        return Concat('name_personal', Value(' '), 'name_family', Value(' ('), 'name_nickname', Value(')'), output_field=CharField())
 
     @cached_property
     def games_played(self) -> list:

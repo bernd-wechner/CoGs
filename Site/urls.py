@@ -7,16 +7,10 @@ from django.contrib.auth import views as auth_views
 from django.contrib.flatpages import views as flat_views
 from django.conf import settings
 from django.views.static import serve as serve_static
-# from django.conf.urls.static import static
-# from django.contrib.staticfiles.urls import staticfiles_urlpatterns
-# from django.contrib.staticfiles.storage import staticfiles_storage
-# from django.views.generic.base import RedirectView
-# from functools import reduce
 
 from django_rich_views.ajax import ajax_Autocomplete, ajax_Selector
 
 from Leaderboards import views
-from Leaderboards import importers
 
 # A note on flatpages:
 #    These are loaded from the database table django_flatpage (model "Flat pages" in the admin interface
@@ -86,8 +80,8 @@ urlpatterns = [
 
     # An AJAX view that is used to return the value of a select option given an id/pk
     # If we create a formset dynamically from supplied IDs the select widget wants to
-    # have text to display for that ID too. This isuse exists with django-autocomplete-light
-    # widgets becuase they are initially empty until the autocomplete URL above is called to
+    # have text to display for that ID too. This issue exists with django-autocomplete-light
+    # widgets because they are initially empty until the autocomplete URL above is called to
     # populate a drop down. It doesn't exist using normal Django select widgets because they
     # are initialised with ALL the options a model offers (not scaleable alas).
     #
@@ -95,7 +89,10 @@ urlpatterns = [
     path('selector/<model>/<pk>', ajax_Selector, {'app': 'Leaderboards'}, name='get_selector'),
 
     # Serve static files
-    re_path(r'^%s(?P<path>.*)$' % re.escape(settings.STATIC_URL.lstrip('/')), serve_static, kwargs={"document_root": settings.STATIC_ROOT})
+    re_path(r'^%s(?P<path>.*)$' % re.escape(settings.STATIC_URL.lstrip('/')), serve_static, kwargs={"document_root": settings.STATIC_ROOT}),
+
+    # The Import app
+    path('import/', include('Import.urls')),
 ]
 # These are two equivalent forms of the re_path for static fiules above. One key differene is both these won't serve static files
 # if settings.DEBUG is off it seems. Got me beat why not. So I pinched the re_path out of the bottom one.
@@ -114,10 +111,6 @@ if settings.DEBUG:  # and not settings.SITE_IS_LIVE:
         path('rebuild', views.view_RebuildRatings, name='rebuild'),
 
         path('daltest/', views.view_DALtest),
-
-        # Currrently tailored to needs each time
-        # TODO: Write a generic importer
-        path('import', importers.import_Wollongong_sessions, name='import'),
 
         path(r'kill/<model>/<pk>', views.view_Kill, name='kill'),
         path('__debug__/', include(debug_toolbar.urls)),

@@ -112,7 +112,8 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
-    'Leaderboards'
+    'Leaderboards',
+    'Import'
 )
 
 MIDDLEWARE = (
