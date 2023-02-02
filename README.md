@@ -1,43 +1,44 @@
-![alt text][logo]
+![CoGs Logo](https://github.com/bernd-wechner/CoGs/blob/master/Leaderboards/static/img/logo.png?raw=true)
 # CoGs Leaderboard Server
 
 Aims to be a website that can manage TrueSkill based leaderboards for game players of any kind.
 
 ## Basics:
-  * The CoGs webserver is written in python3 using the django web framework.
-  * I use the Eclipse IDE with PyDev (LiClips bundles this too) and while there are plenty of othe options I can recomment it because:
+  * The CoGs webserver is written in python3 using the Django web framework.
+  * I use the Eclipse IDE with PyDev ([LiClipse](https://www.liclipse.com/) bundles this too) and while there are plenty of other options I can recommend it because:
     * Pretty awesome visual debugging. Can set breakpoints and examine all internals.
     * Pretty nice code collapse and outline features in its editor
-    * Platform independent (runs no Linux and Windows) In fact I started dev on Windows and moved to Linux. 
+    * Platform independent (runs on Linux and Windows). In fact I started development on Windows and moved to Linux. 
     * Supports inline task management TODO comments appearing as tasks in a task list. I love that. 
+    * It's free, free, free, not freemium - no features you'll run into that suddenly throw up a paywall.
     * Which is all I'm after really ;-).
-  * This a very incomplete project with much learning going on. Contributions welcome.
-  * I wrote a  generic django extensions module that need tidy up and documentation as time permits:
-    * Django had awesome generic forms, but total lack of generic detail views I wanted some for easy generic display of indivudal records
-    * Django does not supply in the context any information on related objects. I implemented a system for doing that - for the Session form.
-    * Once it's tidy and well documented it could be a community contrib to Django
- 
+  * This is a very incomplete project with much learning going on. Contributions are welcome.
+  * I wrote a  generic django extensions module (django-rich-views) that needs tidy up and documentation as time permits:
+    * Django had awesome generic forms, but total lack of generic detail views I wanted some for easy generic display of individual records
+    * Django does not supply in the context, any information on related objects. I implemented a system for doing that - for the Session form in particular, introducing the idea of a rich object, one that only makes sense as a small family of related objects. Here, the Session is such an object, it only makes sense along with Game, Location, Rank and Performance objects and Player  possibly Team objects as well. A session has no real meaning outside of this little family of objects for a single game Session.
+    * Once it's tidy and well documented it could be a community contrib to Django I suspect.
+
 ## How to build a site like CoGs
 
 Great site describes it here:
 
-http://www.htmlgoodies.com/beyond/reference/create-a-django-python-project-with-pydev.html
+​	http://www.htmlgoodies.com/beyond/reference/create-a-django-python-project-with-pydev.html
 
-But read that only if you get stuck I guess follwing the steps below. I've tried to be complete 
-but it can be improved with each new effort. So if you're stating out, note anything that you 
-could improve below, and improve it!
+But read that only if you get stuck I guess following the steps below. I've tried to be complete 
+but it can be improved with each new effort. So if you're starting out, note anything that you 
+would improve below, and improve it - or ask me to!
 
-##How to build the CoGs site
+### How to build the CoGs site
 
-1. Install needed dependencies (in a venv where needed):
+1. Install needed dependencies (in a [venv](https://docs.python.org/3/library/venv.html) where needed). What follows is a Linux based approach, Windows will be different and if someone wants to write up a Windows set of steps please do.
 
-    ```
-    sudo apt install git
-    sudo apt install postgresql pgadmin3
-    sudo apt install python3 python3-pip python3-venv
+    ```bash
+    sudo apt install python3 python3-pip python3-venv postgresql pgadmin4 git
+    
     mkdir ~/.virtualenvs
     python3 -m venv ~/.virtualenvs/CoGs
     source ~/.virtualenvs/CoGs/bin/activate
+    
     pip install --upgrade pip
     pip install wheel
     pip install -r requirements.txt
@@ -57,42 +58,19 @@ could improve below, and improve it!
    and the PyDev support guys suggested the above which worked a breeze.
 
    Now load the project in Eclipse:<br>
-     i. Work out where you want it to live. On a Linux system recommend ~/workspace<br>
-     ii. Fetch it from github with: git clone https://github.com/bernd-wechner/CoGs.git<br>
-     iii. Open the Eclipse project file in Eclipse **(Work out how to do that and update this!)**<br>
+     i. Work out where you want it to live. On a Linux system I'd recommend `~/workspace` <br>
+     ii. Fetch it from github with: `git clone https://github.com/bernd-wechner/CoGs.git`<br>
+     iii. Open the Eclipse project file in Eclipse **(TODO: Work out how to do that and update this!)**<br>
 
-   If you want to start from scratch and get the cleanest of clean projects, I did this once after a major overaul:<br>
-      i. Create a new Pydev Django Project in Eclipse (CoGs)<br>
-      ii. Create a new Django App in Eclipse (Leaderboards)<br>
-      iii. Find the CoGs code and copy individual files as needed into these projects which includes but is not limited to:<br>
-          * CoGs/settings.py<br>
-     	  * CoGs/urls.py<br>
-     	  * CoGs/wsgi.py<br>
-     	  * Leaderboards/models.py<br>
-     	  * Leaderboards/views.py<br>
-     	  * Leaderboards/admin.py<br>
-     	  * Essentially if you're copying like this you want to understand each file as you go and what its role is.<br>
-     	  * Django documentation is real cool there.<br>
-   
-   If not starting from scratch but getting an existing CoGS dev workspace up and running, then it's a tad different, 
-   here's an outline of what I did to set up a dev box on a new Mint 19 system:
-   
-   Install pgAdmin4
-   connect to the database
-   create a role CoGs
-   create a database CoGs
-   Backup the live site database
-   Restore it on the dev box     	       
-    
 3. Seed your database
 	
    I want to find a way to do this in a simple command but in the mean time.
 
    Database tips:
-     * In pgAdminIII a user is called a Role.
+     * In pgAdmin4 a user is called a Role.
      * Create a new Role "CoGs"  (i.e. a login).
-     * Make sure you can log into the database. That is edit the file: pg_hba.conf
-     It migth be in  /var/lib/pgsql/data` or `/etc/postgresql/vv/main` whre vv is the postgresql version.
+     * Make sure you can log in to the database. That is edit the file: `pg_hba.conf`
+       It migth be in `/var/lib/pgsql/data` or `/etc/postgresql/vv/main` where `vv` is the postgresql version.
 
        And make sure the connection METHOD for local is "md5" not "peer".
 	
@@ -101,9 +79,9 @@ could improve below, and improve it!
        providing a username and password.
 		
        Restart the postgresql server after editing it with:
-	`service postgresql restart`
+	    `service postgresql restart`
 
-    Export data was done with:
+   Export data was done with:
 	```
 	python3 manage.py dumpdata --format xml --indent 4 > data.xml
 	python3 manage.py dumpdata --format json --indent 4 > data.json
@@ -123,17 +101,18 @@ could improve below, and improve it!
 4. Try it out
 
   1. Open the CoGs project in Eclipse
-  2. Right click the project then click "Debug As..." the "PyDev: Django". 
+  2. Right click the project then click `Debug As...` then `PyDev: Django`
   3. In your Console panel you should see something like:
-  	```
-	Performing system checks...
 
-	System check identified no issues (0 silenced).
-	December 05, 2016 - 11:52:55
-	Django version 1.10.1, using settings 'CoGs.settings'
-	Starting development server at http://127.0.0.1:8000/
-	Quit the server with CONTROL-C.
-	```
+  	```
+  	Performing system checks...
+  	
+  	System check identified no issues (0 silenced).
+  	December 05, 2016 - 11:52:55
+  	Django version 1.10.1, using settings 'CoGs.settings'
+  	Starting development server at http://127.0.0.1:8000/
+  	Quit the server with CONTROL-C.
+  	```
   4. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
 Now dive in ...
@@ -153,7 +132,7 @@ This produces CoGs.dia and Cogs.dot which you need dia to view:
 
 	sudo apt install dia
 	sudo apt install xdot	
-	
+
 Alas the dia file seems to have all tables coincident though neatly moverable yet I can't find a cool layout option.
 The dot file is well laid out. Butit proves to be large and so schemaSpy produces a more navigable result.
 
@@ -163,7 +142,7 @@ Installed the file:
 
 	mv schemaSpy_5.0.0.jar ~/bin/schemaSpy
 	chmod +x ~/bin/schemaSpy
-	
+
 downloaded the Java postgresql driver from: https://jdbc.postgresql.org/download.html
 
 Installed the file:
@@ -173,9 +152,7 @@ Installed the file:
 ran schemaSpy in my Doc folder:
 
 	schemaSpy -t pgsql -cp /usr/share/java/postgresql-9.4.1211.jar -host localhost -db CoGs -s public -u CoGs -p ManyTeeth -o .
-		
+
 Produces a rich documentation site under index.html including a better schema diagram, but you cna't move things around, it's well layed out but fixed in place.
 
 You can click on any table and get a cool relative view though. And if you install xdot can view the .dot files.
-
-[logo]: https://github.com/bernd-wechner/CoGs/blob/master/Leaderboards/static/CoGS%20Logo%20WebEmail.png "CoGs Logo"
