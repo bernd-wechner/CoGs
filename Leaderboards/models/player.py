@@ -1,6 +1,6 @@
 from . import APP, MAX_NAME_LENGTH, ALL_LEAGUES
 
-from ..leaderboards import LB_PLAYER_LIST_STYLE
+from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
 
 from tailslide import Median
 

@@ -1,6 +1,10 @@
 from . import APP, RATING_REBUILD_TRIGGER
 
-from ..leaderboards import LB_STRUCTURE, LB_PLAYER_LIST_STYLE, immutable, player_ratings, player_rankings, restyle_leaderboard, augment_with_deltas
+from ..leaderboards.enums import LB_STRUCTURE, LB_PLAYER_LIST_STYLE
+from ..leaderboards.util import immutable
+from ..leaderboards.style import restyle_leaderboard
+from ..leaderboards.player import player_ratings, player_rankings
+from ..leaderboards import augment_with_deltas
 
 from django.db import models
 from django.conf import settings
