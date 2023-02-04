@@ -30,40 +30,56 @@ would improve below, and improve it - or ask me to!
 
 ### How to build the CoGs site
 
-1. Install needed dependencies (in a [venv](https://docs.python.org/3/library/venv.html) where needed). What follows is a Linux based approach, Windows will be different and if someone wants to write up a Windows set of steps please do.
+1. Install needed dependencies, in a [venv](https://docs.python.org/3/library/venv.html) ideally. What follows is a Linux based approach (Windows will be different and if someone wants to write up a Windows set of steps please do) and makes two key assumption you need to modify as you desire:
+
+    1. That you want to store you venvs in `~/.virtual-envs`. A totally arbitrary subsumption to illustrate the steps and just where I happen to keep mine. You can keep yours wherever you like, just replace `~/.virtual-envs` with a directory you want to home for your venvs.
+    2. That you house your development projects in `~/workspace`. Again, you can keep them wherever you like, bust just substitute `~/workspace` with the directory you choose to call home for your development projects.
 
     ```bash
+    # Get the basic together
     sudo apt install python3 python3-pip python3-venv postgresql pgadmin4 git
     
-    mkdir ~/.virtualenvs
+    # Create an activate a venv
+    mkdir ~/.virtualenvs # if necessary
     python3 -m venv ~/.virtualenvs/CoGs
     source ~/.virtualenvs/CoGs/bin/activate
     
+    # Prep the venv for use
     pip install --upgrade pip
     pip install wheel
+    
+    # Get the CoGs code base (because we need requirements.txt which describes the Pyhton packages we'll need)
+    mkdir ~/workspace # if necessary
+    cd ~/workspace
+    git clone https://github.com/bernd-wechner/CoGs.git # Or Fork on GitHub first and clone your repo (better)
+    
+    # Install the requirements
     pip install -r requirements.txt
     ```
 
 2. Install Eclipse and Pydev
 
    Recommend avoiding the ubuntu package and just going straight to 
-	https://www.eclipse.org 
+   https://www.eclipse.org 
    and get the latest Eclipse from there. 
 
    Then install PyDev from within Eclipse by adding these repositories:   	
-	pydev - http://pydev.org/updates
-	Django Template Editor - http://eclipse.kacprzak.org/updates
+   pydev - http://pydev.org/updates
+   Django Template Editor - http://eclipse.kacprzak.org/updates
 
    I had enormous troubles getting PyDev to work from the ubuntu repositories 
    and the PyDev support guys suggested the above which worked a breeze.
 
-   Now load the project in Eclipse:<br>
-     i. Work out where you want it to live. On a Linux system I'd recommend `~/workspace` <br>
-     ii. Fetch it from github with: `git clone https://github.com/bernd-wechner/CoGs.git`<br>
-     iii. Open the Eclipse project file in Eclipse **(TODO: Work out how to do that and update this!)**<br>
+   Now load the project in Eclipse:
+
+   1. Work out where you want it to live. On a Linux system I'd recommend `~/workspace` (if in 1. above you set one up use that)
+   2. If you didn't already (in step 1. above) fetch it from github with: 
+      `git clone https://github.com/bernd-wechner/CoGs.git`
+      (or fork on github and clone your repo which is generally better) and
+   3. Open the Eclipse project file in Eclipse **(TODO: Work out how to do that and update this!)**
 
 3. Seed your database
-	
+
    I want to find a way to do this in a simple command but in the mean time.
 
    Database tips:
@@ -73,36 +89,38 @@ would improve below, and improve it - or ask me to!
        It migth be in `/var/lib/pgsql/data` or `/etc/postgresql/vv/main` where `vv` is the postgresql version.
 
        And make sure the connection METHOD for local is "md5" not "peer".
-	
+
        Peer authentication will mean you're always trying to login with your account name, 
        but CoGs uses the CoGs user, and you want to be able to log in as the CoGs user by 
        providing a username and password.
-		
+   	
        Restart the postgresql server after editing it with:
-	    `service postgresql restart`
+       `service postgresql restart`
 
    Export data was done with:
-	```
-	python3 manage.py dumpdata --format xml --indent 4 > data.xml
-	python3 manage.py dumpdata --format json --indent 4 > data.json
-	python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
-	```
+   ```
+   python3 manage.py dumpdata --format xml --indent 4 > data.xml
+   python3 manage.py dumpdata --format json --indent 4 > data.json
+   python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
+   ```
    Just to get all possible formats for the heck of it. Only need one. 
 
    Import data is then done with:
-	```
-	python3 manage.py loaddata <file>
-	
-	where <file> is one of the three files I dumped with dumpdata. 
-	```
+   ```
+   python3 manage.py loaddata <file>
+   
+   where <file> is one of the three files I dumped with dumpdata. 
+   ```
 
    That should see you with a seeded database.
 
 4. Try it out
 
-  1. Open the CoGs project in Eclipse
-  2. Right click the project then click `Debug As...` then `PyDev: Django`
-  3. In your Console panel you should see something like:
+  5. Open the CoGs project in Eclipse
+
+  6. Right click the project then click `Debug As...` then `PyDev: Django`
+
+  7. In your Console panel you should see something like:
 
   	```
   	Performing system checks...
