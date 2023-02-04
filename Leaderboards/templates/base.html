@@ -11,41 +11,12 @@
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
 
-	{% block styles %}{% endblock %}
+	{% include "django-rich-views/include/CDN_libs.html" %}
 
-	{# Centralised version management in the template #}
-	{% setvar "3.5.1" as version_JQuery %}  {# Note DAL breaks if we use 3.6.0 See: https://github.com/yourlabs/django-autocomplete-light/issues/1283#issuecomment-1063931256 #}
-	{% setvar "4.0.13" as version_Select2 %}
-	{% setvar "1.12.1" as version_JQueryUI %}
-	{% setvar "1.12.0" as version_Underscore %}
-	{% setvar "4.6.10" as version_Flatpickr %}
-	{% setvar "2.3.0" as version_Luxon %}
+	{% block styles %}{% endblock %}
 
 	{# Website tracking and analysis (Umami) #}
 	<script async defer data-website-id="64ca24e9-5cf9-47c0-ae5f-3a5782e8af18" src="https://webstat.thumbs.place/umami.js"></script>
-
-	{# Underscore library of useful functions #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/underscore.js/{{version_Underscore}}/underscore-min.js" crossorigin="anonymous"></script> 	{# Useful functions #}
-
-	{# JQuery #}
-	{% if DEBUG_JQuery %}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.js" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.js" crossorigin="anonymous"></script>
-	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.js" crossorigin="anonymous"></script>
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-	{% else %}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/{{version_JQuery}}/jquery.min.js" crossorigin="anonymous"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/select2/{{version_Select2}}/js/select2.full.min.js" crossorigin="anonymous"></script>
-	{# Provides .sortable() at very least. See https://jqueryui.com/demos/ #}
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.min.js" crossorigin="anonymous"></script>
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/{{version_JQueryUI}}/jquery-ui.css" integrity="sha512-urpIFwfLI9ZDL81s6eJjgBF7LpG+ROXjp1oNwTj4gSlCw00KiV1rWBrfszV3uf5r+v621fsAwqvy1wRJeeWT/A==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-	{% endif %}
-
-	{# Bootstrap - Experimental #}
-	{# Changes appearance of whole site rather radically - and not satisfactorily without tuning (and understanding why it does what it does #}
-{#    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">#}
-{#    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>#}
 
 	{# Django Autocomplete Light (DAL) #}
 	{% if dal_media and not form %}  {# form.media is included on forms which includes the DAL media #}
@@ -54,27 +25,16 @@
 		<!-- END DAL media -->
 	{% endif %}
 
-	{# Bootstrap theme for select2 widget #}
-	<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/select2-bootstrap-theme/0.1.0-beta.10/select2-bootstrap.min.css" integrity="sha512-kq3FES+RuuGoBW3a9R2ELYKRywUEQv0wvPTItv3DSGqjpbNtGWVdvT8qwdKkqvPzT93jp8tSF4+oN4IeTEIlQA==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-	<script>$.fn.select2.defaults.set( "theme", "bootstrap" );</script>
-
-	{# Configure DateTime inputs #}
-	<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/luxon/{{version_Luxon}}/luxon.min.js"></script>
-	<script src="https://cdnjs.cloudflare.com/ajax/libs/flatpickr/{{version_Flatpickr}}/flatpickr.min.js"></script>
-
-	<script>
-		const datetime_format = "{{default_datetime_input_format}}";
-	</script>
-
-{#  An experiment to see if this fix helps me wioth setting tabindex on select widgets - ALas it didn't #}
+{#  An experiment to see if this fix helps me with setting tabindex on select widgets - ALas it didn't #}
 {#	<script src="{% static 'js/select2-tab-fix.min.js' %}"></script>#}
+
 	<script src="{% static 'js/jstz.min.js' %}"></script>
 	<script src="{% static 'js/datetime_functions.js' %}"></script>
 
 	{# Set some global variables based on context data  #}
 	<script>
 		// Template provided variables that submit_info.js expects.
+		const datetime_format = "{{default_datetime_input_format}}";
 		const CSRF_field 	= '{% csrf_token %}';
 		const POST_RECEIVER = "{% url 'post_client_info' %}";
 		const SESSION_timezone = "{{ request.session.timezone }}";

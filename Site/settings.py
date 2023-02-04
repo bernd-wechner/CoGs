@@ -137,7 +137,7 @@ if SITE_IS_LIVE:
         MIDDLEWARE = ('django_lighttpd_middleware.LighttpdMiddleware',) + MIDDLEWARE
 # enable the debug toolbar when needed (it slows things down enormously)
 # else:
-#     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar', )
+#     INSTALLED_APPS = INSTALLED_APPS + ('debug_toolbar',)
 #     MIDDLEWARE = MIDDLEWARE + ('debug_toolbar.middleware.DebugToolbarMiddleware',)
 
 ROOT_URLCONF = 'Site.urls'

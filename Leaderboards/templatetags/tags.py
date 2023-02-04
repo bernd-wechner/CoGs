@@ -16,20 +16,6 @@ from ..models import APP
 register = template.Library()
 
 
-@register.simple_tag
-def setvar(val=None):
-    '''
-    Used as follows:
-
-    {% setvar "value" as variable_name %}
-
-    and then applied with {{variable_name}}.
-
-    :param val: a value to set the variable to.
-    '''
-    return val
-
-
 @register.simple_tag(takes_context=True)
 def list_format(context, obj):
     '''
@@ -136,3 +122,4 @@ def get_attr(model, pk, attribute):
         return mark_safe(attr())
     else:
         return mark_safe(attr)
+

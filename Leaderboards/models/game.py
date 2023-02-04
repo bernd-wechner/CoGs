@@ -1,6 +1,7 @@
 from . import APP, ALL_LEAGUES, FLOAT_TOLERANCE, MAX_NAME_LENGTH
 
-from ..leaderboards import LB_PLAYER_LIST_STYLE, styled_player_list
+from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
+from ..leaderboards.style import styled_player_list
 
 from django.db import models
 from django.db.models import Q, F, Func, Count, Sum, Max, Avg, Subquery, OuterRef

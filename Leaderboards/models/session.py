@@ -1,6 +1,7 @@
 from . import APP, MIN_TIME_DELTA, FLOAT_TOLERANCE, MISSING_VALUE, TrueskillSettings
 
-from ..leaderboards import LB_PLAYER_LIST_STYLE, LB_STRUCTURE, player_rankings
+from ..leaderboards.enums import LB_PLAYER_LIST_STYLE, LB_STRUCTURE
+from ..leaderboards.player import player_rankings
 from ..trueskill_helpers import TrueSkillHelpers  # Helper functions for TrueSkill, based on "Understanding TrueSkill"
 
 from django.db import models, IntegrityError

@@ -21,7 +21,9 @@ from django_rich_views.datetime import datetime_format_python_to_PHP
 from .widgets import html_selector
 
 from ..models import Player, Game, League, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
-from ..leaderboards import leaderboard_options, NameSelections, LinkSelections, augment_with_deltas, LB_STRUCTURE
+from ..leaderboards.options import leaderboard_options
+from ..leaderboards.enums import LB_STRUCTURE, NameSelections, LinkSelections
+from ..leaderboards import augment_with_deltas
 
 from Site.logutils import log
 
