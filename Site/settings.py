@@ -7,6 +7,7 @@ import os
 import sys
 
 from tzlocal import get_localzone
+from crequest.middleware import CrequestMiddleware
 from django.conf import global_settings
 
 # A custom CoGs setting that enables or disables use of the leaderboard cache.
@@ -127,6 +128,7 @@ MIDDLEWARE = (
     'django.middleware.security.SecurityMiddleware',
     'django_rich_views.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
+    'crequest.middleware.CrequestMiddleware',
     'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
 
