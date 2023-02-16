@@ -7,12 +7,15 @@ import os
 import sys
 
 from tzlocal import get_localzone
+from crequest.middleware import CrequestMiddleware
 from django.conf import global_settings
 
 # A custom CoGs setting that enables or disables use of the leaderboard cache.
 # It's great for performance, but gets in the way of performance tests on uncached
 # responses.
 USE_LEADERBOARD_CACHE = True
+
+USE_BOOTSTRAP = False
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -22,7 +25,8 @@ SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
-# And this is the URL where static files will be expected by django pages
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/3.1/howto/static-files/
 STATIC_URL = "/static/"
 
 # This is where FileField will store files
@@ -112,6 +116,7 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
+    'Site',
     'Leaderboards',
     'Import'
 )
@@ -127,6 +132,7 @@ MIDDLEWARE = (
     'django.middleware.security.SecurityMiddleware',
     'django_rich_views.middleware.TimezoneMiddleware',
     'django_currentuser.middleware.ThreadLocalUserMiddleware',
+    'crequest.middleware.CrequestMiddleware',
     'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
 

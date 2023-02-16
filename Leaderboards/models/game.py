@@ -16,8 +16,11 @@ from django_rich_views.decorators import property_method
 from django_rich_views.model import field_render, link_target_url
 from django_rich_views.util import AssertLog
 from django_rich_views.queryset import get_SQL
+from django_rich_views.filterset import get_filterset
 
 from datetime import timedelta
+
+from crequest.middleware import CrequestMiddleware
 
 import json
 import enum
@@ -645,12 +648,31 @@ class Game(AdminModel):
 
     intrinsic_relations = None
 
+    def request_sessions(self):
+        '''
+        We include a session count in string representations, but want it to reflect any filters
+        in place for the current request, notably a league filter!
+        '''
+        request = CrequestMiddleware.get_request()
+        sessions = self.sessions.all()
+
+        fs = get_filterset(request, self.sessions.model)
+        specs = fs.get_specs()
+        if specs:
+            sfilter = Q()
+            filters = ["__".join(spec.components) for spec in specs]
+            values = [spec.value for spec in specs]
+            for f, v in zip(filters, values):
+                sfilter &= Q(**{f: v})
+            sessions = sessions.filter(sfilter)
+
     def __unicode__(self): return getattr(self, self.selector_field)
 
     def __str__(self): return self.__unicode__()
 
     def __verbose_str__(self):
-        return f'{self.name} (plays {self.min_players}-{self.max_players})'
+        sessions = self.request_sessions()
+        return f'{self.name} ({len(sessions)} sessions recorded, {self.min_players}-{self.max_players} players)'
 
     def __rich_str__(self, link=None):
         name = field_render(self.name, link_target_url(self, link))
@@ -659,7 +681,8 @@ class Game(AdminModel):
         beta = self.trueskill_beta
         tau = self.trueskill_tau * 100
         p = int(self.trueskill_p * 100)
-        return f'{name} (plays {pmin}-{pmax}), Skill factor: {beta:0.2f}, Draw probability: {p:d}%, Skill dynamics factor: {tau:0.2f}'
+        sessions = self.request_sessions()
+        return f'{name} (({len(sessions)} sessions recorded, {pmin}-{pmax} players), Skill factor: {beta:0.2f}, Draw probability: {p:d}%, Skill dynamics factor: {tau:0.2f}'
 
     def __detail_str__(self, link=None):
         detail = self.__rich_str__(link)

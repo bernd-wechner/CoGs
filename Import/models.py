@@ -53,7 +53,7 @@ class ImportContext(AdminModel):
     editors = models.ManyToManyField(User, verbose_name='Editors', related_name='import_contexts')
 
 
-class Import(TimeZoneMixIn, AdminModel):
+class Import(AdminModel, TimeZoneMixIn):
     '''
     A record of attempted imports and status
 

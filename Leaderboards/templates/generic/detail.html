@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 {% load filters %}
+{% load django-rich-views %}
 {% block title %}{{title}}{% endblock %}
 
 {% block styles %}
@@ -15,12 +16,12 @@
 		function init() {
 			filters	= {{filters|safe}};
 			object_browser = {{view.object_browser|json}};
-			
+
 			URL = "{% url 'get_detail_html' model=model_name pk=pk %}";
-			
-			// It's awkward how we can to land here via the template/context on load and via the ajax response on browsing. 
-			// So this kind of info has to pass into the page from two directions. 
-			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse) 
+
+			// It's awkward how we can to land here via the template/context on load and via the ajax response on browsing.
+			// So this kind of info has to pass into the page from two directions.
+			// TODO: Consider simplifying this so one pass works or fewer, simpler things are passed if we're stuck with two passes (on load and on browse)
 			{% if view.object_browser.0 %}
 				URL_prior = "{% url 'get_detail_html' model=model_name pk=view.object_browser.0 %}";
 			{% else %}
@@ -32,47 +33,47 @@
 			{% else %}
 				URL_next = URL
 			{% endif %}
-			
+
 			update_browser();
 		}
 		window.onload = init;
-		
+
 		function update_browser() {
 			pk_prior = object_browser[0];
 			pk_next = object_browser[1];
-		
+
 			$("#browser_prior").css("visibility", pk_prior == null ? "hidden" : "visible");
 			$("#browser_next").css("visibility", pk_next == null ? "hidden" : "visible");
-			
+
 			url = "{% url 'list' model_name %}"
 			if ({{filters|length}}>0) url += "?{{filters|join:'&'}}";
 			html = "{{model_name}} " + object_browser[2] + " of <a href='" + url + "'>" + object_browser[3] + "</a>";
-			
+
 			$("#browser_position").html(html);
 		}
-		
+
 		function toggle_filters() {
 			current = $(".toggle")[0].style.visibility;
 			if (current == "collapse") {
-				$(".toggle").css('visibility', 'visible'); 
-				show_hide_list_formats($('#opt_list').is(':checked')); 
+				$(".toggle").css('visibility', 'visible');
+				show_hide_list_formats($('#opt_list').is(':checked'));
 			}
 			else
-				$(".toggle").css('visibility', 'collapse');		
+				$(".toggle").css('visibility', 'collapse');
 		}
 
 		function show_hide_list_formats(show) {
-			if (show) 
+			if (show)
 				$("#opt_list_formats").css('visibility', 'visible');
 			else
-				$("#opt_list_formats").css('visibility', 'collapse');		
+				$("#opt_list_formats").css('visibility', 'collapse');
 		}
-		
+
 		function set_flags(mode) {
 			// if one of the shortcut modes is clicked sets all the check boxes to reflect the choice
 			switch(mode) {
 			{% for shorthand, list in format_shorthands.items %}
-				case "{{shorthand}}": 
+				case "{{shorthand}}":
 					{% for setting, value in format_flags.items %}
 						{% if setting in list %}
 							$("#opt_{{setting}}").prop("checked", true);
@@ -82,16 +83,16 @@
 					{% endfor %}
 					break;
 			{% endfor %}
-			}		
+			}
 		}
-		
+
 		function URLopts() {
 			opts = []
-		
+
 			{% for setting, value in format_flags.items %}
-				if ($('#opt_{{setting}}').is(':checked')) 
+				if ($('#opt_{{setting}}').is(':checked'))
 					opts.push("{{setting}}");
-				else 
+				else
 					opts.push("no{{setting}}")
 			{% endfor %}
 
@@ -103,7 +104,7 @@
 			format_char_lim = $('#opt_char_limit').val();
 			format_indent = $('#opt_indent').val();
 			format_line_width = $('#opt_line_width').val();
-			
+
 			opts.push(format_object);
 			opts.push(format_list_vals);
 			opts.push(format_obj_str);
@@ -114,36 +115,36 @@
 
 			// The filter if specified (relevant only for prior/next browsing, but needs to be conserved if specified)
 			for (f in filters) opts.push(filters[f]);
-			
+
 			url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 
-			// Add the global league filter to URL opts used in GET requests 
+			// Add the global league filter to URL opts used in GET requests
 			$league_id = $("#id_league_view").val();
 			url_opts += ($league_id == 0) ? "" : "&league=" + $league_id;
 
 			return url_opts;
-		}		
-		
+		}
+
 		function show_url() {
 			var url = "{% url 'view' model=model_name pk=pk %}" + URLopts();
 			window.history.pushState("","", url);
 		}
-				
+
 		var REQUEST = new XMLHttpRequest();
 		REQUEST.onreadystatechange = function () {
 		    // Process the returned JSON
 			if (this.readyState === 4 && this.status === 200){
 				var response = JSON.parse(this.responseText);
 				$("#data").html(response.HTML);
-				
-				URL = response.json_URL 
+
+				URL = response.json_URL
 				URL_prior = response.json_URL_prior
 				URL_next = response.json_URL_next
 				object_browser = response.object_browser
 				update_browser();
-				
+
      			window.history.pushState("","", response.view_URL);
-				
+
 				$("#reloading_icon").css("visibility", "hidden");
 				$("#opt_normal").prop('disabled', false);
 				$("#opt_all_model").prop('disabled', false);
@@ -163,26 +164,26 @@
 			REQUEST.open("GET", url, true);
 			REQUEST.send(null);
 		}
-		
+
 		function fetch_neighbour(url) {
 			// fetch a neighbouring object without reloading the whole page (AJAX request)
 			$("#reloading_icon").css("visibility", "visible");
 			REQUEST.open("GET", url + URLopts(), true);
 			REQUEST.send(null);
-		}								
+		}
 	</script>
-	
+
 	<div id="pagemenu">
 		<p>
 			{% if user.is_authenticated %}
 				<a href="{% url 'edit' model_name pk %}">[Edit]</a>
 				<a href="{% url 'delete' model_name pk %}">[Delete]</a>
 				<a href="{% url 'add' model_name %}">[New]</a>
-			{% endif %}	  
+			{% endif %}
 				<a href="{% url 'list' model_name %}">[List]</a>
 		</p>
 	</div>
-	
+
 	<table id="DetailViewOptions" class="tight">
 		<tr>
 			<td class='tight options'>
@@ -201,11 +202,11 @@
 			    <br/>
 				<input type="button" id="opt_specified" value="Show:" onclick="refetch(event);">
 				<a onclick='show_url()' style='margin-left: 8ch;'>URL</a>
-				<a 
+				<a
 			</td>
 			<td class='tight options'>
 				<br/>
-				<input type="checkbox" id="opt_flat" value="flat" {{format_flags.flat|checked}}>Scalar Values 
+				<input type="checkbox" id="opt_flat" value="flat" {{format_flags.flat|checked}}>Scalar Values
 				<input type="checkbox" id="opt_list" value="list" {{format_flags.list|checked}} onclick="show_hide_list_formats(this.checked);"}>List Values
 			</td>
 		</tr>
@@ -273,7 +274,7 @@
 				<input type="radio" name="opt_link_format" id="opt_link_format_internal" value="internal_links" {{format_modes.link|checked:1}}>CoGs
 				<input type="radio" name="opt_link_format" id="opt_link_format_external" value="external_links" {{format_modes.link|checked:2}}>BGG
 			</td>
-		</tr>		
+		</tr>
 		<tr id="opt_misc_formats" class='tight options toggle' style="visibility:collapse;">
 			<td class='tight options' valign="top">
 				<b>and:</b>
@@ -298,10 +299,10 @@
 	<div id="browser_control"><p>
 		{# The best site I know for finding good arrows: http://stackoverflow.com/questions/6520445/overriding-get-method-in-models #}
 		<a id="browser_prior" onclick="fetch_neighbour(URL_prior);">&#9664;</a>
-		<span id="browser_position"></span>		
-		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>	
+		<span id="browser_position"></span>
+		<a id="browser_next" onclick="fetch_neighbour(URL_next);">&#9658;</a>
 		{% if filters_text %}
-			in the <b>filtered set:</b> {{filters_text}}			
+			in the <b>filtered set:</b> {{filters_text}}
 		{% endif %}
 		</p>
 	</div>

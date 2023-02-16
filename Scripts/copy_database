@@ -3,7 +3,7 @@
 # Back a database up on one server, then restore it
 # on another server.
 #
-# This is VERY dangerous. And will rename the target databse
+# This is VERY dangerous. And will rename the target database
 # not ovewriting it.
 #
 # The intent here is to fluidly move a live database to a dev,

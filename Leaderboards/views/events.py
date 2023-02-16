@@ -3,10 +3,10 @@
 #===============================================================================
 import json, re
 
-from django.shortcuts import render
 from django.http.response import HttpResponse
-from django.template.loader import render_to_string
 from django.core.serializers.json import DjangoJSONEncoder
+
+from django_rich_views.render import rich_render, rich_render_to_string
 
 from dal import autocomplete
 
@@ -20,7 +20,7 @@ from .widgets import html_selector
 
 
 def view_Events(request):
-    return render(request, 'views/events.html', context=ajax_Events(request, as_context=True))
+    return rich_render(request, 'views/events.html', context=ajax_Events(request, as_context=True))
 
 
 def ajax_Events(request, as_context=False):
@@ -197,6 +197,6 @@ def ajax_Events(request, as_context=False):
 
         return context
     else:
-        events_table = render_to_string("include/events_table.html", context).strip()
-        events_stats_table = render_to_string("include/events_stats_table.html", context).strip()
+        events_table = rich_render_to_string("include/events_table.html", context).strip()
+        events_stats_table = rich_render_to_string("include/events_stats_table.html", context).strip()
         return HttpResponse(json.dumps((events_table, events_stats_table, settings, players, frequency), cls=DjangoJSONEncoder))

@@ -1,6 +1,6 @@
 #!/bin/bash
 ##############################################################################################################################
-# Copy the CoGs website from one server to another
+# Copy a website from one server to another
 #
 # Assumes both machines have:
 #
@@ -119,6 +119,8 @@ server_site_bup="$server_site_dir.backup.$backup_timestamp"
 dev_site_dir="/home/bernd/workspace/CoGs"
 dev_DRV_dir="/home/bernd/workspace/Django/django-rich-views/django_rich_views" # Under heavy development alongside
 dev_venv_dir="/home/bernd/.virtualenvs/CoGs"
+
+# SERVER CONFIGS - name interpretation and user definition
 
 # resolveable domain names for the source and target host (we append the local domain if it's not localhost)
 if [ "$source_hostname" = "localhost" ];then

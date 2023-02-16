@@ -11,12 +11,12 @@ from django.conf import settings
 from django.utils import timezone
 from django.utils.formats import localize
 from django.utils.timezone import localtime
-from django.shortcuts import render
 from django.http.response import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
 
-from django_rich_views.context import add_timezone_context, add_debug_context
+from django_rich_views.context import add_rich_context, add_timezone_context, add_debug_context
 from django_rich_views.datetime import datetime_format_python_to_PHP
+from django_rich_views.render import rich_render
 
 from .widgets import html_selector
 
@@ -95,10 +95,11 @@ def view_Leaderboards(request):
          'debug_mode': request.session.get("debug_mode", False)
          }
 
+    add_rich_context(request, c)
     add_timezone_context(request, c)
     add_debug_context(request, c)
 
-    return render(request, 'views/leaderboards.html', context=c)
+    return rich_render(request, 'views/leaderboards.html', context=c)
 
 
 def ajax_Leaderboards(request, as_list=False, include_baseline=True):

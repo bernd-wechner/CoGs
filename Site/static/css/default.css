@@ -69,13 +69,6 @@ body {
     background-color: var(--background-color);
 }
 
-.img_button {
-    height: 14px;  /* Should match default button height - TODO: is there a better way? */
-    padding: 0;
-    margin: 0;
-    vertical-align: bottom;
-}
-
 .button_left {
 	float: left;
 	margin-right: 0.5em;

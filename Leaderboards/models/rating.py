@@ -29,7 +29,7 @@ from timezone_field import TimeZoneField
 from Site.logutils import log
 
 
-class RatingModel(TimeZoneMixIn, AdminModel):
+class RatingModel(AdminModel, TimeZoneMixIn):
     '''
     A Trueskill rating for a given Player at a give Game.
 

@@ -50,14 +50,14 @@ from Site.logutils import log
 def game_duration(session):
     '''
     Return a time delta suggestion for a new session from the last session. That is, just return the
-    expecte duration of thet game in from_session.
+    expected duration of the game in session.
 
     :param session: A session that identifies the game
     '''
     return session.game.expected_play_time
 
 
-class Session(TimeZoneMixIn, AdminModel):
+class Session(AdminModel, TimeZoneMixIn):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''

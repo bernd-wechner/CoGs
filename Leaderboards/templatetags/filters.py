@@ -15,11 +15,6 @@ def to_name(value):
 
 
 @register.filter
-def json(value):
-    return mark_safe(JSON.dumps(value, cls=DjangoObjectJSONEncoder))
-
-
-@register.filter
 def value(bound_field, value):
     """
     Takes a bound field and sets the value attribute on that field to the specified value.

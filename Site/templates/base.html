@@ -1,12 +1,22 @@
 <!DOCTYPE html>
 <html>
 <head>
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="robots" content="NONE,NOARCHIVE" />
+
 	{% load static %}
+	{% load django-rich-views %}
 	{% load tags %}
 	<title>{% block title %}{% endblock %}</title>
 
+    <!-- DRV CSS -->
+	<link rel="stylesheet" type="text/css" href="{% static 'django-rich-views/css/default.css' %}" />
+
+    <!-- Site CSS -->
 	<link rel="stylesheet" type="text/css" href="{% static 'css/default.css' %}" />
-	<link rel="stylesheet" type="text/css" href="{% static 'django-rich-views/default.css' %}" />
+
 	<link rel="icon" href="{% static 'img/favicon.ico' %}">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 	<meta charset="UTF-8" />
@@ -25,8 +35,8 @@
 		<!-- END DAL media -->
 	{% endif %}
 
-{#  An experiment to see if this fix helps me with setting tabindex on select widgets - ALas it didn't #}
-{#	<script src="{% static 'js/select2-tab-fix.min.js' %}"></script>#}
+	{#  An experiment to see if this fix helps me with setting tabindex on select widgets - ALas it didn't #}
+	{#	<script src="{% static 'js/select2-tab-fix.min.js' %}"></script>#}
 
 	<script src="{% static 'js/jstz.min.js' %}"></script>
 	<script src="{% static 'js/datetime_functions.js' %}"></script>

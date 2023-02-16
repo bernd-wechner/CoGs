@@ -10,6 +10,7 @@ django-currentuser @ https://github.com/asucrews/django-currentuser/archive/refs
 django-rich-views @ https://github.com/bernd-wechner/django-rich-views/archive/refs/heads/master.zip
 django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
 django-cache-memoized
+django-crequest
 django-model-admin-fields
 django-model-privacy-mixin
 django-stats-middleware>=0.2
