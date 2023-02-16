@@ -1,8 +1,8 @@
 #===============================================================================
 # An object inspector
 #===============================================================================
-from django.shortcuts import render
 from django_rich_views.util import class_from_string
+from django_rich_views.render import rich_render
 
 
 def view_Inspect(request, model, pk):
@@ -16,4 +16,4 @@ def view_Inspect(request, model, pk):
 
     result = getattr(o, "inspector", "{} has no 'inspector' property implemented.".format(model))
     c = {"title": "{} Inspector".format(model), "inspector": result}
-    return render(request, 'views/inspector.html', context=c)
+    return rich_render(request, 'views/inspector.html', context=c)

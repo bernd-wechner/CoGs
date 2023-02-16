@@ -15,6 +15,8 @@ from django.conf import global_settings
 # responses.
 USE_LEADERBOARD_CACHE = True
 
+USE_BOOTSTRAP = False
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # SECURITY WARNING: keep the secret key used in production secret!
@@ -23,7 +25,8 @@ SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
 
-# And this is the URL where static files will be expected by django pages
+# Static files (CSS, JavaScript, Images)
+# https://docs.djangoproject.com/en/3.1/howto/static-files/
 STATIC_URL = "/static/"
 
 # This is where FileField will store files
@@ -113,6 +116,7 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
+    'Site',
     'Leaderboards',
     'Import'
 )

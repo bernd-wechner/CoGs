@@ -31,7 +31,7 @@ from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 
 
-class Player(PrivacyMixIn, AdminModel):
+class Player(AdminModel, PrivacyMixIn):
     '''
     A player who is presumably collecting Ratings on Games and participating in leaderboards in one or more Leagues.
 

@@ -57,7 +57,7 @@ def game_duration(session):
     return session.game.expected_play_time
 
 
-class Session(TimeZoneMixIn, AdminModel):
+class Session(AdminModel, TimeZoneMixIn):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
