@@ -1,7 +1,20 @@
+'''
+Game Record Import models
+
+Provides:
+
+    1. A model for each of Games, Player and Location storing a map from theit (some other apps) ID to ours (GameMap, PlayerMap, LocationMap)
+    2. A model to store import contexts (ImportContext) which bind a set of maps
+    3. A model that records Imports (and is used for managing them)
+        - Session has a FroegnKey back to here that can optionalle record an import that a Session came from.
+        - Session being hte object that binds a game, players, location and results to record a play session.
+    4. Proximite measure support (LevenshteinDistance) for matching their game names to ours, players to our etc and providing
+        ordered proposals on the basis of proximity for map creation.
+'''
+
 import os, re
 
 from django.db import models
-from django.db.models import F
 from django.conf import settings
 from django.contrib.auth.models import User
 
@@ -37,20 +50,41 @@ def local_path(instance, filename):
 # These capture the fact of an Import, the state its at (started, complete, half done) and record the history of imports
 
 
-class ImportContext(AdminModel):
+class ImportContext(AdminModel, TimeZoneMixIn):
     '''
     Defines an import context against which we can store maps of game, player and location IDs as needed.
 
     The Maps (Game, Player, Location) are tied to a given context (via an Import) so that repeated imports
-    in the same context can benefit from a growing map over time. The importing user should be a an editor
+    in the same context can benefit from a growing map over time. The importing user should be an editor
     but that user (or an admin) can permit other users to edit the context. By edit here, we mean edit the
-    mappings associatated with this context.
+    mappings associated with this context.
 
     AdminModel provides created_on and created_on_tz and created_on_local() that describe the
     time the import was first attempted (the file uploaded and this record created)
     '''
     name = models.CharField('Name of the Session Import Context', max_length=MAX_NAME_LEN)
     editors = models.ManyToManyField(User, verbose_name='Editors', related_name='import_contexts')
+
+    @property
+    def game_maps(self):
+        '''
+        All the game maps associated with this context.
+        '''
+        return GameMap.objects.filter(related_import__context=self)
+
+    @property
+    def player_maps(self):
+        '''
+        All the player maps associated with this context.
+        '''
+        return PlayerMap.objects.filter(related_import__context=self)
+
+    @property
+    def location_maps(self):
+        '''
+        All the location maps associated with this context.
+        '''
+        return LocationMap.objects.filter(related_import__context=self)
 
 
 class Import(AdminModel, TimeZoneMixIn):
@@ -76,7 +110,13 @@ class Import(AdminModel, TimeZoneMixIn):
 
     def init_maps(self, game_ids, player_ids, location_ids, save=False):
         '''
-        Initialises the maps for this import. Used to track mapping progress.
+        Initialises the maps for this import.
+
+        Each map, GameMap, PlayerMap, LocationMap maps their ID to our ID (theirs to ours)
+
+        We initialise them simply with theirs, the creation of ours will be based on suggestions based
+        on Clues -- see GameClues, PlayerClues and LocationClues below (not models, just classes used in
+        the hunt for matches see hunt_game, hunt_player and hunt_location below).
 
         :param game_ids: An iterable of their IDs (classically a set, or list, or tuple) of their IDs
         :param player_ids: An iterable of their IDs (classically a set, or list, or tuple) of their IDs
@@ -89,6 +129,9 @@ class Import(AdminModel, TimeZoneMixIn):
 
     def init_game_maps(self, theirs, save=False):
         '''
+        Given a list of their game IDs initialises the import map creation process by creating an
+        empty (incomplete) map for each of their games.
+
         :param theirs: An iterable (classically a set, or list, or tuple) of their IDs
         :param save: Save the maps (else just return them as a list, unsaved)
         '''
@@ -102,6 +145,9 @@ class Import(AdminModel, TimeZoneMixIn):
 
     def init_player_maps(self, theirs, save=False):
         '''
+        Given a list of their player IDs initialises the import map creation process by creating an
+        empty (incomplete) map for each of their players.
+
         :param theirs: An iterable (classically a set, or list, or tuple) of their IDs
         :param save: Save the maps (else just return them as a list, unsaved)
         '''
@@ -115,6 +161,9 @@ class Import(AdminModel, TimeZoneMixIn):
 
     def init_location_maps(self, theirs, save=False):
         '''
+        Given a list of their location IDs initialises the import map creation process by creating an
+        empty (incomplete) map for each of their locations.
+
         :param theirs: An iterable (classically a set, or list, or tuple) of their IDs
         :param save: Save the maps (else just return them as a list, unsaved)
         '''
@@ -128,48 +177,81 @@ class Import(AdminModel, TimeZoneMixIn):
 
     @property
     def mapped_games(self):
+        '''
+        All the games that have been mapped already.
+        '''
         return self.game_maps.objects.exclude(ours__isnull=True)
 
     @property
     def games_tomap(self):
+        '''
+        All the games that are in the import but have not been mapped yet
+        '''
         return self.game_maps.objects.filter(ours__isnull=True)
 
     @property
     def games_progress(self):
+        '''
+        Returns a measure of progress as a 2-tuple.
+        The % complete is simply mapped/total*100.
+        '''
         mapped = self.mapped_games.count()
         total = self.game_maps.objects.all().count()
         return (mapped, total)
 
     @property
     def mapped_players(self):
+        '''
+        All the players that have been mapped already.
+        '''
         return self.player_maps.objects.exclude(ours__isnull=True)
 
     @property
     def players_tomap(self):
+        '''
+        All the players that are in the import but have not been mapped yet
+        '''
         return self.player_maps.objects.filter(ours__isnull=True)
 
     @property
     def players_progress(self):
+        '''
+        Returns a measure of progress as a 2-tuple.
+        The % complete is simply mapped/total*100.
+        '''
         mapped = self.mapped_players.count()
         total = self.player_maps.objects.all().count()
         return (mapped, total)
 
     @property
     def mapped_locations(self):
+        '''
+        All the locations that have been mapped already.
+        '''
         return self.game_maps.objects.exclude(ours__isnull=True)
 
     @property
     def locations_tomap(self):
+        '''
+        All the locations that are in the import but have not been mapped yet
+        '''
         return self.game_maps.objects.filter(ours__isnull=True)
 
     @property
     def locations_progress(self):
+        '''
+        Returns a measure of progress as a 2-tuple.
+        The % complete is simply mapped/total*100.
+        '''
         mapped = self.mapped_locations.count()
         total = self.location_maps.objects.all().count()
         return (mapped, total)
 
     @property
     def progress(self):
+        '''
+        Returns a measure of total progress as a 2-tuple for each of hte maps we intend to build.
+        '''
         return {"Games": self.games_progress,
                 "Players": self.players_progress,
                 "Locations": self.locations_progress}
@@ -201,19 +283,31 @@ class Import(AdminModel, TimeZoneMixIn):
 # We can store ints, UUIDs, strigs in that, even tuples of them in JSON format for example.
 
 
-class GameMap(AdminModel):
+class GameMap(AdminModel, TimeZoneMixIn):
+    '''
+    Records a map of their ID to our ID for a game. The map is defined during a session import and associated with that.
+    The session import is associated with a context and all the context related game maps can be fetched from the context.
+    '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='game_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Game', max_length=MAX_KEY_LEN)
     ours = models.ForeignKey(Game, verbose_name='Our Game', related_name='import_maps', null=True, on_delete=models.SET_NULL)
 
 
-class PlayerMap(AdminModel):
+class PlayerMap(AdminModel, TimeZoneMixIn):
+    '''
+    Records a map of their ID to our ID for a player. The map is defined during a session import and associated with that.
+    The session import is associated with a context and all the context related game maps can be fetched from the context.
+    '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='player_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Player', max_length=MAX_KEY_LEN)
     ours = models.ForeignKey(Player, verbose_name='Our Player', related_name='import_maps', null=True, on_delete=models.SET_NULL)
 
 
-class LocationMap(AdminModel):
+class LocationMap(AdminModel, TimeZoneMixIn):
+    '''
+    Records a map of their ID to our ID for a location. The map is defined during a session import and associated with that.
+    The session import is associated with a context and all the context related game maps can be fetched from the context.
+    '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='location_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Location', max_length=MAX_KEY_LEN)
     ours = models.ForeignKey(Location, verbose_name='Our Location', related_name='import_maps', null=True, on_delete=models.SET_NULL)
@@ -223,16 +317,21 @@ class LocationMap(AdminModel):
 #
 # We provide a Levenshtein distance function for this.
 #
+# Documented here:
+#
 #    http://andilabs.github.io/2018/04/06/searching-in-django-unaccent-levensthein-full-text-search-postgres-power.html
+#
+# Used as follows:
 #
 #    .annotate(levenshtein_distance_dist=Levenshtein(F('name'), 'Foobar')
 #
-# Django already includes  trigram function offering this too.
+# Django already includes a trigram function offering this too.
 #
 #    https://docs.djangoproject.com/en/dev/ref/contrib/postgres/lookups/#trigram-similarity
 #
 #    .annotate(trigram_similarity=TrigramSimilarity(F('name'), 'Foobar'))
-
+#
+# But Levenshtein is natively available in PostGResQL and alledgedly better than Trigram.
 
 class LevenshteinDistance(models.Func):
     template = "%(function)s(%(expressions)s, '%(search_term)s')"
@@ -245,183 +344,3 @@ class LevenshteinDistance(models.Func):
             search_term=search_term,
             **extras
         )
-
-############################################################################################################################
-# MAP clues
-#
-# When performing an import we need to map the context, games, playes, locations from the defintions used in the imported
-# format to our internals objects.
-#
-# On reading import data, we collect clues for that mapping process and here we define some standard Clue sets for the purpose.
-
-
-class ContextClues:
-    '''
-    Clues for identifying an exiting context (which has maps predefined which may help, if not suffice, in mapping a
-    current import. But in any case once we finish defining the maps we need to save those maps against a context, an
-    exisiting one, or a new one.
-    '''
-    name = None
-    email = None
-    BGGid = None
-
-
-class GameClues:
-    '''
-    A template for a CoGs game hunt, ON reading data, a clue object can be instantiated and passed to a hunter function.
-    '''
-    name = None
-    BGGid = None
-
-
-class PlayerClues:
-    '''
-    A template for a CoGs player hunt, ON reading data, a clue object can be instantiated and passed to a hunter function.
-    '''
-    name = None
-    email = None
-    BGGid = None
-    notes = None
-
-
-class LocationClues:
-    '''
-    A template for a CoGs location hunt, ON reading data, a clue object can be instantiated and passed to a hunter function.
-    '''
-    name = None
-    notes = None
-
-############################################################################################################################
-# HUNTERS loking for a local object that matches the imoprted one (or a list of candidates)_
-#
-# Functions that take clues and return candidates as either a single value (when confident) or a list of possible values
-# in order of confidence, if not so sure.
-
-
-candidate_limit = 10
-
-
-def hunt_game(clues, limit=candidate_limit, add_name=False, include_best_quality=False):
-    '''
-    Given Game clues will try to find candidate games in our database
-
-    :param clues:
-    :param limit:
-    :param add_name:
-    :param include_best_quality:
-    '''
-    if clues.BGGid:
-        try:
-            cogsGame = Game.objects.get(BGGid=clues.BGGid)
-            if include_best_quality:
-                return 0, cogsGame
-            else:
-                return cogsGame
-        except Game.DoesNotExist:
-            pass
-
-    if clues.name:
-        candidates = Game.objects.annotate(lev_dist=LevenshteinDistance(F('name'), clues.name)).order_by('lev_dist')[:limit]
-        if candidates:
-            result = list(candidates) if len(candidates) > 1 else [candidates]
-            if add_name:
-                result.insert(0, clues.name)
-            if include_best_quality:
-                return candidates[0].lev_dist / len(clues.name), result
-            else:
-                return result
-
-    if include_best_quality:
-        return len(clues.name), None
-    else:
-        return None
-
-
-def hunt_player(clues, limit=candidate_limit, add_name=False, include_best_quality=False):
-    '''
-    Given Player clues will try to find candidate players in our database
-
-    :param clues: an instance of PlayerClues
-    :param limit:
-    :param add_name:
-    :param include_best_quality:
-    '''
-    cogsPlayer = None
-
-    if clues.BGGid:
-        try:
-            cogsPlayer = Player.objects.get(BGGname=clues.BGGid)  # @UndefinedVariable
-            if include_best_quality:
-                return 0, cogsPlayer
-            else:
-                return cogsPlayer
-        except Player.DoesNotExist:
-            pass
-
-    if not cogsPlayer and clues.email:
-        try:
-            cogsPlayer = Player.objects.get(email_address__iexact=clues.email)  # @UndefinedVariable
-            if include_best_quality:
-                return 0, cogsPlayer
-            else:
-                return cogsPlayer
-        except Player.DoesNotExist:
-            pass
-
-    # clues.name can == "Anonymous player" and technically session that include anonymous players
-    # we eitehr need to a) ignore or b) create an anoynous unrated player for. The case for the
-    # latter is modest, I mean it's fair to assume a player unknown is not likely a master, but a
-    # noob butfar from known or certain, or always likely.
-    if not cogsPlayer and clues.name:
-        # How to pass full_name?
-        candidates = Player.objects.annotate(lev_dist=LevenshteinDistance(Player.Full_name, clues.name)).order_by('lev_dist')[:limit]
-        if candidates:
-            result = list(candidates) if len(candidates) > 1 else [candidates]
-            if add_name:
-                result.insert(0, clues.name)
-            if include_best_quality:
-                return candidates[0].lev_dist / len(clues.name), result
-            else:
-                return result
-
-    # TODO: Work out how notes can be used
-    # we will have candidates here already (probably). Can we combine notes with name for a joint fuzzy match?
-    if not cogsPlayer and clues.notes:
-        # TODO:
-        # Similarly a lexical distance search on name_personal + name_personal_family
-        # albeit perhaps htis one migth be a trigram similarity?
-        # https://docs.djangoproject.com/en/4.1/ref/contrib/postgres/lookups/
-        pass
-
-    if include_best_quality:
-        return len(clues.name), None
-    else:
-        return None
-
-
-def hunt_location(clues, limit=candidate_limit, add_name=False, include_best_quality=False):
-    '''
-    Given Location clues will try to find candidate locations in our database
-
-    :param clues:
-    :param limit:
-    :param add_name:
-    :param include_best_quality:
-    '''
-    if clues.name:
-        candidates = Location.objects.annotate(lev_dist=LevenshteinDistance(F('name'), clues.name)).order_by('lev_dist')[:limit]
-        if candidates:
-            result = list(candidates) if len(candidates) > 1 else [candidates]
-            if add_name:
-                result.insert(0, clues.name)
-            if include_best_quality:
-                return candidates[0].lev_dist / len(clues.name), result
-            else:
-                return result
-
-    # TODO: Work out what to do with clues.notes if it exists
-
-    if include_best_quality:
-        return len(clues.name), None
-    else:
-        return None

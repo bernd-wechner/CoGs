@@ -1,11 +1,19 @@
-# A Quick import test
+'''
+Game Record Import BGstats support
 
+The BGstats app can export game play records in a JSON format.
+
+We implement support for reading those here.
+
+WIP
+
+'''
 import json
 import zipfile
 
-from Leaderboards.models import Game, Player, Location, Session
+#from Leaderboards.models import Game, Player, Location, Session
 
-from .models import ContextClues, GameClues, PlayerClues, LocationClues, hunt_game, hunt_player, hunt_location
+from ..hunters import ContextClues, GameClues, PlayerClues, LocationClues, hunt_game, hunt_player, hunt_location
 
 
 class SessionPreCache:

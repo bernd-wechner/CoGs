@@ -657,14 +657,17 @@ class Game(AdminModel):
         sessions = self.sessions.all()
 
         fs = get_filterset(request, self.sessions.model)
-        specs = fs.get_specs()
-        if specs:
-            sfilter = Q()
-            filters = ["__".join(spec.components) for spec in specs]
-            values = [spec.value for spec in specs]
-            for f, v in zip(filters, values):
-                sfilter &= Q(**{f: v})
-            sessions = sessions.filter(sfilter)
+        if fs:
+            specs = fs.get_specs()
+            if specs:
+                sfilter = Q()
+                filters = ["__".join(spec.components) for spec in specs]
+                values = [spec.value for spec in specs]
+                for f, v in zip(filters, values):
+                    sfilter &= Q(**{f: v})
+                sessions = sessions.filter(sfilter)
+
+        return sessions
 
     def __unicode__(self): return getattr(self, self.selector_field)
 
