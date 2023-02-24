@@ -88,7 +88,6 @@ if SITE_IS_LIVE:
     X_FRAME_OPTIONS = 'DENY'
 else:
     INTERNAL_IPS = ['127.0.0.1', '192.168.0.11']
-    from Site.settings_development import *
 
 # Don't debug when running tests (unless --debug-mode is used to override this.
 DEBUG = DEBUG and not TESTING

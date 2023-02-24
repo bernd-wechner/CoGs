@@ -4,7 +4,7 @@
 
 from django.shortcuts import render
 
-from .bgstats import import_sessions
+from .formats.bgstats import import_sessions
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 
