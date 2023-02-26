@@ -3,6 +3,8 @@ from . import APP, ALL_LEAGUES, FLOAT_TOLERANCE, MAX_NAME_LENGTH
 from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
 from ..leaderboards.style import styled_player_list
 
+from Import.models import Import
+
 from django.db import models
 from django.db.models import Q, F, Func, Count, Sum, Max, Avg, Subquery, OuterRef
 from django.apps import apps
@@ -97,6 +99,10 @@ class Game(AdminModel):
     trueskill_beta = models.FloatField('TrueSkill Skill Factor (ß)', default=trueskill.BETA)
     trueskill_tau = models.FloatField('TrueSkill Dynamics Factor (τ)', default=trueskill.TAU)
     trueskill_p = models.FloatField('TrueSkill Draw Probability (p)', default=trueskill.DRAW_PROBABILITY)
+
+    # Optionally associate with an import. We call it "source" and if it is null (none)
+    # this suggests not imported but entered directly through the UI.
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='games', null=True, on_delete=models.SET_NULL)
 
     @property
     def global_sessions(self) -> list:

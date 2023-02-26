@@ -1,5 +1,7 @@
 from . import APP, MAX_NAME_LENGTH
 
+from Import.models import Import
+
 from django.db import models
 from django.conf import settings
 from django.apps import apps
@@ -24,6 +26,10 @@ class Location(AdminModel):
     timezone = TimeZoneField('Timezone of the Location', default=settings.TIME_ZONE)
     location = LocationField('Geolocation of the Location', blank=True)
     leagues = models.ManyToManyField('League', verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
+
+    # Optionally associate with an import. We call it "source" and if it is null (none)
+    # this suggests not imported but entered directly through the UI.
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='locations', null=True, on_delete=models.SET_NULL)
 
     @property
     def link_internal(self) -> str:

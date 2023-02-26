@@ -2,6 +2,8 @@ from . import APP, MAX_NAME_LENGTH, ALL_LEAGUES
 
 from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
 
+from Import.models import Import
+
 from tailslide import Median
 
 from django.db import models
@@ -78,6 +80,10 @@ class Player(AdminModel, PrivacyMixIn):
     visibility_name_family = BitField(visibility, verbose_name='Family Name Visibility', default=('share_leagues',), blank=True)
     visibility_email_address = BitField(visibility, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
     visibility_BGGname = BitField(visibility, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
+
+    # Optionally associate with an import. We call it "source" and if it is null (none)
+    # this suggests not imported but entered directly through the UI.
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='players', null=True, on_delete=models.SET_NULL)
 
     @cached_property
     def owner(self) -> User:

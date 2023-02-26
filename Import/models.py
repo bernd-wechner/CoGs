@@ -21,8 +21,6 @@ from django.contrib.auth.models import User
 from django_model_admin_fields import AdminModel
 from django_rich_views.model import TimeZoneMixIn
 
-from Leaderboards.models import Game, Player, Location
-
 MAX_NAME_LEN = 256
 MAX_KEY_LEN = 256
 MAX_FILENAME_LEN = 128
@@ -287,30 +285,36 @@ class GameMap(AdminModel, TimeZoneMixIn):
     '''
     Records a map of their ID to our ID for a game. The map is defined during a session import and associated with that.
     The session import is associated with a context and all the context related game maps can be fetched from the context.
+
+    We use lazy references to Leaderrboard models so as to avoid circular references.
     '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='game_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Game', max_length=MAX_KEY_LEN)
-    ours = models.ForeignKey(Game, verbose_name='Our Game', related_name='import_maps', null=True, on_delete=models.SET_NULL)
+    ours = models.ForeignKey('Leaderboards.Game', verbose_name='Our Game', related_name='import_maps', null=True, on_delete=models.SET_NULL)
 
 
 class PlayerMap(AdminModel, TimeZoneMixIn):
     '''
     Records a map of their ID to our ID for a player. The map is defined during a session import and associated with that.
     The session import is associated with a context and all the context related game maps can be fetched from the context.
+
+    We use lazy references to Leaderrboard models so as to avoid circular references.
     '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='player_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Player', max_length=MAX_KEY_LEN)
-    ours = models.ForeignKey(Player, verbose_name='Our Player', related_name='import_maps', null=True, on_delete=models.SET_NULL)
+    ours = models.ForeignKey('Leaderboards.Player', verbose_name='Our Player', related_name='import_maps', null=True, on_delete=models.SET_NULL)
 
 
 class LocationMap(AdminModel, TimeZoneMixIn):
     '''
     Records a map of their ID to our ID for a location. The map is defined during a session import and associated with that.
     The session import is associated with a context and all the context related game maps can be fetched from the context.
+
+    We use lazy references to Leaderrboard models so as to avoid circular references.
     '''
     related_import = models.ForeignKey(Import, verbose_name='Import', related_name='location_maps', on_delete=models.CASCADE)
     theirs = models.CharField('Their Location', max_length=MAX_KEY_LEN)
-    ours = models.ForeignKey(Location, verbose_name='Our Location', related_name='import_maps', null=True, on_delete=models.SET_NULL)
+    ours = models.ForeignKey('Leaderboards.Location', verbose_name='Our Location', related_name='import_maps', null=True, on_delete=models.SET_NULL)
 
 ############################################################################################################################
 # SIMILARITY support

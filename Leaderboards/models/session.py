@@ -78,7 +78,7 @@ class Session(AdminModel, TimeZoneMixIn):
     team_play = models.BooleanField('Team Play', default=False)  # By default games are played by individuals, if true, this session was played by teams
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
-    # this suggests not imported bu entered directly through the UI.
+    # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, on_delete=models.SET_NULL)
 
     # Foreign Keys that for part of a rich session object
