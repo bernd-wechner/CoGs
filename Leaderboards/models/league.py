@@ -9,11 +9,11 @@ from django.core.validators import RegexValidator
 
 from django_model_admin_fields import AdminModel
 
-from django_rich_views.model import field_render
+from django_rich_views.model import field_render, NotesMixIn
 from django_rich_views.decorators import property_method
 
 
-class League(AdminModel):
+class League(AdminModel, NotesMixIn):
     '''
     A group of Players who are competing at Games which have a Leaderboard of Ratings.
 
@@ -30,6 +30,7 @@ class League(AdminModel):
     locations = models.ManyToManyField('Location', verbose_name='Locations', blank=True, related_name='leagues_playing_here')
     players = models.ManyToManyField('Player', verbose_name='Players', blank=True, related_name='member_of_leagues')
     games = models.ManyToManyField('Game', verbose_name='Games', blank=True, related_name='played_by_leagues')
+
 
     @property
     def link_internal(self) -> str:

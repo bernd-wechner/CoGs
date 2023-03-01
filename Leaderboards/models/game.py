@@ -15,7 +15,7 @@ from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 from django_model_admin_fields import AdminModel
 
 from django_rich_views.decorators import property_method
-from django_rich_views.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url, NotesMixIn
 from django_rich_views.util import AssertLog
 from django_rich_views.queryset import get_SQL
 from django_rich_views.filterset import get_filterset
@@ -31,7 +31,7 @@ import trueskill
 from Site.logutils import log
 
 
-class Game(AdminModel):
+class Game(AdminModel, NotesMixIn):
     TourneyRules = apps.get_model(APP, "TourneyRules", False)
     League = apps.get_model(APP, "League", False)
 
@@ -103,6 +103,7 @@ class Game(AdminModel):
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='games', null=True, on_delete=models.SET_NULL)
+
 
     @property
     def global_sessions(self) -> list:

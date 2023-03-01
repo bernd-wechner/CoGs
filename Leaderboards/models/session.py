@@ -23,13 +23,12 @@ from django_model_admin_fields import AdminModel
 from django_cache_memoized import memoized
 
 from django_rich_views import FIELD_LINK_CLASS
-from django_rich_views.model import TimeZoneMixIn
+from django_rich_views.model import TimeZoneMixIn, NotesMixIn, field_render, link_target_url, safe_get
 from django_rich_views.util import AssertLog
 from django_rich_views.html import NEVER
 from django_rich_views.options import flt, osf
 from django_rich_views.datetime import safe_tz, time_str, make_aware
 from django_rich_views.decorators import property_method
-from django_rich_views.model import field_render, link_target_url, safe_get
 
 from timezone_field import TimeZoneField
 
@@ -58,7 +57,7 @@ def game_duration(session):
     return session.game.expected_play_time
 
 
-class Session(AdminModel, TimeZoneMixIn):
+class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''

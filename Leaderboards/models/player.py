@@ -27,13 +27,13 @@ from django_model_privacy_mixin import PrivacyMixIn
 
 from django_rich_views.options import flt
 from django_rich_views.decorators import property_method
-from django_rich_views.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url, NotesMixIn
 
 from bitfield import BitField
 from bitfield.forms import BitFieldCheckboxSelectMultiple
 
 
-class Player(AdminModel, PrivacyMixIn):
+class Player(AdminModel, PrivacyMixIn, NotesMixIn):
     '''
     A player who is presumably collecting Ratings on Games and participating in leaderboards in one or more Leagues.
 
@@ -84,6 +84,7 @@ class Player(AdminModel, PrivacyMixIn):
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='players', null=True, on_delete=models.SET_NULL)
+
 
     @cached_property
     def owner(self) -> User:

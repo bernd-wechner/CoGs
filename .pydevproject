@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <?eclipse-pydev version="1.0"?><pydev_project>
-                                                                    
+                                                                        
+    
     
     
     
@@ -18,7 +19,8 @@
     
     
     <pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER">CoGs Venv</pydev_property>
-                                                                    
+                                                                        
+    
     
     
     
@@ -36,37 +38,43 @@
     
     
     <pydev_variables_property name="org.python.pydev.PROJECT_VARIABLE_SUBSTITUTION">
-                                                
+                                                        
+        
         
         
         
         
         <key>DJANGO_MANAGE_LOCATION</key>
-                                                
+                                                        
+        
         
         
         
         
         <value>manage.py</value>
-                                                
+                                                        
+        
         
         
         
         
         <key>DJANGO_SETTINGS_MODULE</key>
-                                                
+                                                        
+        
         
         
         
         
         <value>Site.settings</value>
-                                            
+                                                    
+    
     
     
     
     
     </pydev_variables_property>
-                                                                    
+                                                                        
+    
     
     
     
@@ -84,7 +92,8 @@
     
     
     <pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH">
-                                                                                                                                        
+                                                                                                                                                
+        
         
         
         
@@ -102,7 +111,8 @@
         
         
         <path>/${PROJECT_DIR_NAME}</path>
-                                                                                                                                        
+                                                                                                                                                
+    
     
     
     
@@ -120,7 +130,8 @@
     
     
     </pydev_pathproperty>
-                                                                    
+                                                                        
+    
     
     
     
@@ -138,7 +149,7 @@
     
     
     <pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION">python 3.10</pydev_property>
-                                                                    
+                                                                        
 
 
 
@@ -160,10 +171,13 @@
     
     
     
+    
     <pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH">
         <path>/home/bernd/workspace/Django/django-cte</path>
+        <path>/home/bernd/workspace/Django/django-markdownfield</path>
     </pydev_pathproperty>
-                    
+                        
+
 
 
 

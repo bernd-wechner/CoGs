@@ -115,6 +115,7 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
+    'markdownfield',
     'Site',
     'Leaderboards',
     'Import'
@@ -321,6 +322,7 @@ if DEBUG:
     log.debug(f"Process Info: {pinfo()}")
     log.debug(f"Static root: {STATIC_ROOT}")
     log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+    log.debug(f"Installed apps: {INSTALLED_APPS}")
     log.debug(f"Database: {DATABASES['default']}")
     log.debug(f"Testing: {TESTING}")
     log.debug(f"Debug: {DEBUG}")

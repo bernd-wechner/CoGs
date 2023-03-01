@@ -9,7 +9,7 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_rich_views.model import field_render
+from django_rich_views.model import field_render, NotesMixIn
 
 from timezone_field import TimeZoneField
 
@@ -18,7 +18,7 @@ from mapbox_location_field.models import LocationField
 League = apps.get_model(APP, "League", require_ready=False)
 
 
-class Location(AdminModel):
+class Location(AdminModel, NotesMixIn):
     '''
     A location that a game session can take place at.
     '''
@@ -30,6 +30,7 @@ class Location(AdminModel):
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='locations', null=True, on_delete=models.SET_NULL)
+
 
     @property
     def link_internal(self) -> str:
