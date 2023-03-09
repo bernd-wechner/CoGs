@@ -54,8 +54,8 @@ if HOSTNAME == PRODUCTION:
     WARNINGS = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
-    # database = "CoGs"
-    database = "CoGs_test"
+    database = "CoGs"
+    # database = "CoGs_test"
     DEBUG = True
     WARNINGS = True
 else:
@@ -97,6 +97,7 @@ INSTALLED_APPS = (
     'dal',
     'dal_select2',
     'timezone_field',
+    'markdownfield',
     'mapbox_location_field',
     'django.contrib.admin',
     'django.contrib.auth',
@@ -115,7 +116,6 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
-    'markdownfield',
     'Site',
     'Leaderboards',
     'Import'
@@ -219,7 +219,7 @@ DATETIME_FORMAT = 'D, j M Y H:i'
 DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S %z'] + global_settings.DATETIME_INPUT_FORMATS
 
 # The MapBox key for mapbox_location_field
-MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIoiY2treHZ1aDZwMmpmMzJwbXI2MmRlZHlhbCJ9.1R5AO1qnzLzmTawb3ykFnQ"
+MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIjoiY2xlcGt4eThoMGEwdTQybnFjMmhkYzZwdSJ9.8kCxKJg_MUmXlh0uEvsrTw"
 
 # Use the Pickle Serializer. It comes with a warning when using the cookie backend
 # but we're using the default database backend so are safe. Basically if:

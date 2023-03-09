@@ -1902,10 +1902,10 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     def dict_to_form(cls, session_dict, form_data):
         '''
         The reverse for dict from form. Put here once more to centralise the
-        Form intelligence avoid it's being implemented elsewhere. We want to take
-        a session_dict as created by dict_from_form and update the supplied form.
+        Form intelligence and avoid it's being implemented elsewhere. We want to 
+        take a session_dict as created by dict_from_form and update the supplied form.
 
-        This is mostly needed to pre_validation form processing which might
+        This is mostly needed for pre_validation form processing which might
         need to change the form to pass validation.
 
         The known use case to date, is in rank/score reconciliation, in which

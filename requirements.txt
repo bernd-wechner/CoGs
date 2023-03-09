@@ -24,6 +24,7 @@ django-relativefilepathfield>=1.0.3
 django-reset-migrations>=0.4.0
 django-timezone-field>=4.1.1
 enum-compat>=0.0.3
+geopy
 idna>=2.10
 JSON-Datetime>=0.0.6
 numpy>=1.21.0
