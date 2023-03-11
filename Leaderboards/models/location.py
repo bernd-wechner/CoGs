@@ -24,7 +24,7 @@ from bitfield import BitField
 
 League = apps.get_model(APP, "League", require_ready=False)
 
-GeoLocationBlurRadius = 500 # meters
+DefaultGeoLocationBlurRadius = 500 # meters
 
 class Location(AdminModel, PrivacyMixIn, NotesMixIn):
     '''
@@ -39,6 +39,7 @@ class Location(AdminModel, PrivacyMixIn, NotesMixIn):
     # the geolocation is subject to rpivacy constraints. Being a LocationFiedl we'd want to offer
     # a blurred map in preference to hiding it completely, and not display hte lat/lon.
     visibility_location = BitField(visibility_options, verbose_name='Geolocation Visibility', default=('all',), blank=True)
+    blur_radius = models.FloatField('Radius of Uncertainy for Hidden Locations', blank=True, null=True)
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
@@ -92,14 +93,15 @@ class Location(AdminModel, PrivacyMixIn, NotesMixIn):
             # define a circle of uncertainty
             lon, lat = value
             bear = 360 * random()
-            dist  = GeoLocationBlurRadius * random()
+            blur = self.blur_radius if self.blur_radius else DefaultGeoLocationBlurRadius
+            dist  = blur * random()
             new_point = GeodesicDistance(meters=dist).destination(Point(lat, lon), bearing=bear)
             # We return the new point with an ancillary blur radius.
             # Note, the django-mapbox-location-field that we use takes points
             # a (lon, lat) and geopy as (lat, lon). Easy to get confused.
             # By adding a new element to the tuple renderers may need to take note.
             # Notably the form_widget ...
-            return (new_point.longitude, new_point.latitude, GeoLocationBlurRadius)
+            return (new_point.longitude, new_point.latitude, blur)
 
         return PrivacyMixIn.HIDDEN
 
