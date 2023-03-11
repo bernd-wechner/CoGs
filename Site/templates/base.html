@@ -161,7 +161,7 @@
 							</select>
 {#							{{league_widget|safe}}#}
 						</div>
-				        <div id="login"">
+				        <div id="login">
 							{% if user.is_authenticated %}
 					        	[ Logged in as: {% if user.player %}{{ user.player }}{% else %}{{ user }}{% endif%}
 					        	| <a href="{% url 'logout' %}?next={{request.path}}">Logout</a> |

@@ -1,4 +1,4 @@
-from . import APP, MAX_NAME_LENGTH, ALL_LEAGUES
+from . import APP, MAX_NAME_LENGTH, ALL_LEAGUES, visibility_options
 
 from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
 
@@ -66,20 +66,12 @@ class Player(AdminModel, PrivacyMixIn, NotesMixIn):
     # account
     user = models.OneToOneField(User, verbose_name='Username', related_name='player', blank=True, null=True, default=None, on_delete=models.SET_NULL)
 
-    # Privacy control (interfaces with django_model_privacy_mixin)
-    visibility = (
-        ('all', 'Everyone'),
-        ('share_leagues', 'League Members'),
-        ('share_teams', 'Team Members'),
-        ('all_is_registrar', 'Registrars'),
-        ('all_is_staff', 'Staff'),
-    )
-
-    visibility_name_nickname = BitField(visibility, verbose_name='Nickname Visibility', default=('all',), blank=True)
-    visibility_name_personal = BitField(visibility, verbose_name='Personal Name Visibility', default=('all',), blank=True)
-    visibility_name_family = BitField(visibility, verbose_name='Family Name Visibility', default=('share_leagues',), blank=True)
-    visibility_email_address = BitField(visibility, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
-    visibility_BGGname = BitField(visibility, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
+    # PrivacyMixIn `visibility_` atttributes to configure visibility of possibly "private" fields
+    visibility_name_nickname = BitField(visibility_options, verbose_name='Nickname Visibility', default=('all',), blank=True)
+    visibility_name_personal = BitField(visibility_options, verbose_name='Personal Name Visibility', default=('all',), blank=True)
+    visibility_name_family = BitField(visibility_options, verbose_name='Family Name Visibility', default=('share_leagues',), blank=True)
+    visibility_email_address = BitField(visibility_options, verbose_name='Email Address Visibility', default=('share_leagues', 'share_teams'), blank=True)
+    visibility_BGGname = BitField(visibility_options, verbose_name='BoardGameGeek Name Visibility', default=('share_leagues', 'share_teams'), blank=True)
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.

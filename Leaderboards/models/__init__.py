@@ -38,6 +38,16 @@ MIN_TIME_DELTA = timedelta.resolution  # A nominally smallest time delta we'll c
 
 MISSING_VALUE = -1  # Used primarily for PKs (which are  never negative)
 
+#===============================================================================
+# Privacy control (interfaces with django_model_privacy_mixin)
+#===============================================================================
+visibility_options = (
+    ('all', 'Everyone'),
+    ('share_leagues', 'League Members'),
+    ('share_teams', 'Team Members'),
+    ('all_is_registrar', 'Registrars'),
+    ('all_is_staff', 'Staff'),
+)
 
 #===============================================================================
 # A structured approach to rating rebuild logging

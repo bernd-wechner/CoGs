@@ -1,4 +1,8 @@
-from . import APP, MAX_NAME_LENGTH
+from . import APP, MAX_NAME_LENGTH, visibility_options
+
+from geopy.distance import GeodesicDistance
+from geopy.point import Point
+from random import random
 
 from Import.models import Import
 
@@ -8,6 +12,7 @@ from django.apps import apps
 from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
+from django_model_privacy_mixin import PrivacyMixIn
 
 from django_rich_views.model import field_render, NotesMixIn
 
@@ -15,10 +20,13 @@ from timezone_field import TimeZoneField
 
 from mapbox_location_field.models import LocationField
 
+from bitfield import BitField
+
 League = apps.get_model(APP, "League", require_ready=False)
 
+GeoLocationBlurRadius = 500 # meters
 
-class Location(AdminModel, NotesMixIn):
+class Location(AdminModel, PrivacyMixIn, NotesMixIn):
     '''
     A location that a game session can take place at.
     '''
@@ -27,10 +35,14 @@ class Location(AdminModel, NotesMixIn):
     location = LocationField('Geolocation of the Location', blank=True)
     leagues = models.ManyToManyField('League', verbose_name='Leagues using the Location', blank=True, related_name='Locations_used', through=League.locations.through)
 
+    # PrivacyMixIn `visibility_` atttributes to configure visibility of possibly "private" fields
+    # the geolocation is subject to rpivacy constraints. Being a LocationFiedl we'd want to offer
+    # a blurred map in preference to hiding it completely, and not display hte lat/lon.
+    visibility_location = BitField(visibility_options, verbose_name='Geolocation Visibility', default=('all',), blank=True)
+
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='locations', null=True, on_delete=models.SET_NULL)
-
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='locations', blank=True, null=True, on_delete=models.SET_NULL)
 
     @property
     def link_internal(self) -> str:
@@ -61,6 +73,35 @@ class Location(AdminModel, NotesMixIn):
         return qs
 
     intrinsic_relations = None
+
+    def hide(self, field):
+        '''
+        PrivacyMixIn calls this if a field need hiding (for privacy reasons)
+
+        This is our chance to tweak the defintion of hidden. Specifically for the location field,
+        we want to blur the presentation, show a map that is "roughly" where the location is and
+        not show the lat/lon.
+
+        :param field:    The field
+        '''
+        value = getattr(self, field.name)
+        form_field = field.formfield()
+        form_widget = form_field.widget
+
+        if isinstance(field, LocationField):
+            # define a circle of uncertainty
+            lon, lat = value
+            bear = 360 * random()
+            dist  = GeoLocationBlurRadius * random()
+            new_point = GeodesicDistance(meters=dist).destination(Point(lat, lon), bearing=bear)
+            # We return the new point with an ancillary blur radius.
+            # Note, the django-mapbox-location-field that we use takes points
+            # a (lon, lat) and geopy as (lat, lon). Easy to get confused.
+            # By adding a new element to the tuple renderers may need to take note.
+            # Notably the form_widget ...
+            return (new_point.longitude, new_point.latitude, GeoLocationBlurRadius)
+
+        return PrivacyMixIn.HIDDEN
 
     def __unicode__(self): return getattr(self, self.selector_field)
 
