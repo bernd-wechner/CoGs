@@ -1,6 +1,7 @@
 from . import APP, FLOAT_TOLERANCE, RATING_REBUILD_TRIGGER, TrueskillSettings
 
 from ..leaderboards import LB_PLAYER_LIST_STYLE
+from ..models.leaderboards import Leaderboard_Cache
 
 import trueskill
 
@@ -27,6 +28,7 @@ from collections import OrderedDict
 from timezone_field import TimeZoneField
 
 from Site.logutils import log
+
 
 
 class RatingModel(AdminModel, TimeZoneMixIn):
@@ -301,6 +303,12 @@ class Rating(RatingModel):
         # Get the session impact (records results in database Performance objects)
         # This updates the Performance objects associated with that session.
         impact = session.calculate_trueskill_impacts()
+
+        # Invalidate any cache that may exist for this session
+        # Any dwonstream dependent sessions will be covered by
+        # the calling rebuildder - this method only handles this
+        # specific indivual session.
+        Leaderboard_Cache.invalidate(session)
 
         # Update the rating for this player/game combo
         # So this regardless of the sessions status as latest for any players

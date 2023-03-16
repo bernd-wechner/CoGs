@@ -14,6 +14,7 @@ from django.conf import global_settings
 # It's great for performance, but gets in the way of performance tests on uncached
 # responses.
 USE_LEADERBOARD_CACHE = True
+USE_SESSION_FOR_LEADERBOARD_CACHE = False
 
 USE_BOOTSTRAP = False
 

@@ -21,8 +21,10 @@ from django_rich_views.render import rich_render
 from .widgets import html_selector
 
 from ..models import Player, Game, League, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
+from ..models.leaderboards import Leaderboard_Cache # import directly for PyDev
 from ..leaderboards.options import leaderboard_options
 from ..leaderboards.enums import LB_STRUCTURE, NameSelections, LinkSelections
+from ..leaderboards.util import immutable
 from ..leaderboards import augment_with_deltas
 
 from Site.logutils import log
@@ -146,9 +148,6 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
     a link to nothing or a URL based on player.pk or player.BGGname as per the request.
     '''
 
-    if not settings.USE_LEADERBOARD_CACHE and "leaderboard_cache" in request.session:
-        del request.session["leaderboard_cache"]
-
     # Fetch the options submitted (and the defaults)
     session_filter = request.session.get('filter', {})
     tz = pytz.timezone(request.session.get("timezone", "UTC"))
@@ -157,13 +156,25 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = lo.titles()
 
+    # Use the session as a leaderboard cache
+    # Else use the Leaderboard_Cache model
+    # The session support is legacy, global model based support was added later.
+    # it is preferred as it means the first load of a leaderboard view benefits
+    # from cache whcih was not the case when using session to cche them.
+    use_session_cache = settings.USE_SESSION_FOR_LEADERBOARD_CACHE
+
+    # The on Session based Leaderboard Cacher - delete if not being used
+    if not (settings.USE_LEADERBOARD_CACHE and use_session_cache) and "leaderboard_cache" in request.session:
+        del request.session["leaderboard_cache"]
+
     # Get the cache if available
     #
     # It should contain leaderboard snapshots already produced.
     # Each snapshot is uniquely identified by the session.pk
     # that it belongs to. And so we can store them in cache in
     # a dict keyed on session.pk
-    lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {}
+    if settings.USE_LEADERBOARD_CACHE and use_session_cache:
+        lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {}
 
     # Fetch the queryset of games that these options specify
     # This is lazy and should not have caused a database hit just return an unevaluated queryset
@@ -194,7 +205,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
         # We want to know if the session is already in a cached snapshot.
 
         # Note: the snapshot query does not constrain sessions to the same location as
-        # as does the game query. once we have the games that were played at the event,
+        # does the game query. once we have the games that were played at the event,
         # we're happy to include all sessions during the event regardless of where. The
         # reason being that we want to see evolution of the leaderboards during the event
         # even if some people outside of the event are playing it and impacting the board.
@@ -238,18 +249,37 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                 if settings.DEBUG:
                     log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")
 
-                # First fetch the global (unfiltered) snapshot for this board/session
-                if board.pk in lb_cache:
-                    full_snapshot = lb_cache[board.pk]
-                    if settings.DEBUG:
-                        log.debug(f"\t\tFound it in cache!")
-
+                if settings.USE_LEADERBOARD_CACHE:
+                    if use_session_cache:
+                        # Session based cache:
+                        # First fetch the global (unfiltered) snapshot for this board/session
+                        if board.pk in lb_cache:
+                            full_snapshot = lb_cache[board.pk]
+                            if settings.DEBUG:
+                                log.debug(f"\t\tFound it in cache!")
+                        else:
+                            if settings.DEBUG:
+                                log.debug(f"\t\tBuilding it!")
+                            full_snapshot = board.leaderboard_snapshot
+                            if full_snapshot:
+                                lb_cache[board.pk] = full_snapshot
+                    else:
+                        # Global cache:
+                        try:
+                            full_snapshot = immutable(Leaderboard_Cache.objects.get(session=board).board)
+                            if settings.DEBUG:
+                                log.debug(f"\t\tFound it in cache!")
+                        except Leaderboard_Cache.DoesNotExist:
+                            if settings.DEBUG:
+                                log.debug(f"\t\tBuilding it!")
+                            full_snapshot = board.leaderboard_snapshot
+                            if full_snapshot:
+                                lb_cache = Leaderboard_Cache(session=board, board=full_snapshot)
+                                lb_cache.save()
                 else:
                     if settings.DEBUG:
-                        log.debug(f"\t\tBuilding it!")
+                        log.debug(f"\t\tBuilding it! (caching is disabled)")
                     full_snapshot = board.leaderboard_snapshot
-                    if full_snapshot:
-                        lb_cache[board.pk] = full_snapshot
 
                 if settings.DEBUG:
                     log.debug(f"\tGot the full board/snapshot. It has {len(full_snapshot[LB_STRUCTURE.session_data_element.value])} players on it.")
@@ -315,7 +345,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
             # Then build the game tuple with all its snapshots
             leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline))
 
-    if settings.USE_LEADERBOARD_CACHE:
+    if settings.USE_LEADERBOARD_CACHE and use_session_cache:
         request.session["leaderboard_cache"] = lb_cache
 
     if settings.DEBUG:
