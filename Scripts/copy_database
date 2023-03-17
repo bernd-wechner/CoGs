@@ -3,17 +3,22 @@
 # Back a database up on one server, then restore it
 # on another server.
 #
-# This is VERY dangerous. And will rename the target database
-# not ovewriting it.
+# This is VERY dangerous. So will rename the target database
+# not ovewrite it.
 #
 # The intent here is to fluidly move a live database to a dev,
 # test or sandbox server and maybe back again.
 ##############################################################################################################################
 
 show_help_and_exit () {
-	echo "Usage: copy_database source destination"
+	echo "Usage: copy_database [-B0Dh] source destination"
 	echo ""
 	echo "where:"
+	echo "	-B	Just backup the target database (nothing else)"
+	echo "	-0	requests no action just a report of command line parsing"
+	echo "	-D	requests a dry run that echoes all commands that would be run (but aren't)"
+	echo "	-h	Show help"
+	echo
 	echo "	source is the name of a postgresql server to copy from"
 	echo "	destination is the name of a postgresql server to copy to"
 	echo ""
@@ -25,11 +30,13 @@ show_help_and_exit () {
 ##############################################################################################################################
 # CAPTURE ARGS
 
+backup_only=false
 test_args=false
 dry_run=false
 
-while getopts "0Dh" flag; do
+while getopts "B0Dh" flag; do
 	case "$flag" in
+	    B) backup_only=true ;;
 	    0) test_args=true ;;
 		D) dry_run=true ;;
 		h) show_help_and_exit;;
@@ -163,51 +170,58 @@ else
 	prefix=""
 fi
 
-# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
-# without it prompting for one mid stream on some command.
-${prefix}sudo echo "Copying $source_hostname database to $target_hostname machine"
+if [ $backup_only = true ];then
+	# Back up the target database
+	echo "Saving the $target_hostname $database database to $backup_file_targetdb... $target_pass_warn"
+	${prefix}pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_targetdb"
+	echo "Saved the $database database to $backup_file_targetdb."
+else
+	# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
+	# without it prompting for one mid stream on some command.
+	${prefix}sudo echo "Copying $source_hostname database to $target_hostname machine"
 
-# Back up the source database (custom format is designed for use with pg_restore)
-echo "Saving the $source_hostname $database database to $backup_file_source... $source_pass_warn"
-${prefix}pg_dump --host=$source_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_sourcedb"
-echo "Saved the $source_hostname $database database to $backup_file_sourcedb."
+	# Back up the target database
+	echo "Saving the $target_hostname $database database to $backup_file_targetdb... $target_pass_warn"
+	${prefix}pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_targetdb"
+	echo "Saved the $database database to $backup_file_targetdb."
 
-# Back up the target database
-echo "Saving the $target_hostname $database database to $backup_file_target... $target_pass_warn"
-${prefix}pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_targetdb"
-echo "Saved the $database database to $backup_file_targetdb."
+	# Back up the source database (custom format is designed for use with pg_restore)
+	echo "Saving the $source_hostname $database database to $backup_file_sourcedb... $source_pass_warn"
+	${prefix}pg_dump --host=$source_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_sourcedb"
+	echo "Saved the $source_hostname $database database to $backup_file_sourcedb."
 
-# Assume we're running on a development machine and all other targets are
-# ssh reachable and webservers where UWSGI has database connections open
-if [ "$target_hostname" != "localhost" ];then
-	# Stop UWSGI on the target site (so as to unlock the target database)
-	# Need password-free root ssh access to the server setup for this
-	echo "Stopping the UWSGI service on $target_hostname"
-	${prefix}ssh root@$target_host "service uwsgi stop"
+	# Assume we're running on a development machine and all other targets are
+	# ssh reachable and webservers where UWSGI has database connections open
+	if [ "$target_hostname" != "localhost" ];then
+		# Stop UWSGI on the target site (so as to unlock the target database)
+		# Need password-free root ssh access to the server setup for this
+		echo "Stopping the UWSGI service on $target_hostname"
+		${prefix}ssh root@$target_host "service uwsgi stop"
+	fi
+
+	# Disconnect the processes using the database
+	echo "Disconnecting users... $target_pass_warn"
+	${prefix}psql $target_db -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" #> /dev/null
+
+	# Rename database to database_timestamp on the target server
+	echo "Renaming database $database to ${database}_$backup_suffix on $target_hostname ..."
+	${prefix}psql $target_db -qc "ALTER DATABASE \"$database\" RENAME TO \"${database}_$backup_suffix\";" #>&/dev/null
+
+	# Recreate the database in the target database
+	echo "Recreating (empty) $database database on $target_hostname ..."
+	${prefix}psql $target_db -qc "CREATE DATABASE \"$database\" OWNER '$ownername';" #>&/dev/null
+
+	# Now restore the source system backup to the target system
+	echo "Loading the $source_hostname $database database on $target_hostname ..."
+	${prefix}pg_restore $target_db --dbname=$database "$backup_file_sourcedb" #>&/dev/null
+
+	# Assume we're running on a development machine and all other targets are
+	# ssh reachable and webservers where UWSGI has database connections open
+	if [ "$target_hostname" != "localhost" ];then
+		# Restart UWSGI on the target site
+		echo "Restarting the UWSGI service on $target_hostname"
+		${prefix}ssh root@$target_host "service uwsgi start"
+	fi
+
+	echo "Done."
 fi
-
-# Disconnect the processes using the database
-echo "Disconnecting users... $target_pass_warn"
-${prefix}psql $target_db -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" #> /dev/null
-
-# Rename database to database_timestamp on the target server
-echo "Renaming database $database to ${database}_$backup_suffix on $target_hostname ..."
-${prefix}psql $target_db -qc "ALTER DATABASE \"$database\" RENAME TO \"${database}_$backup_suffix\";" #>&/dev/null
-
-# Recreate the database in the target database
-echo "Recreating (empty) $database database on $target_hostname ..."
-${prefix}psql $target_db -qc "CREATE DATABASE \"$database\" OWNER '$ownername';" #>&/dev/null
-
-# Now restore the source system backup to the target system
-echo "Loading the $source_hostname $database database on $target_hostname ..."
-${prefix}pg_restore $target_db --dbname=$database "$backup_file_sourcedb" #>&/dev/null
-
-# Assume we're running on a development machine and all other targets are
-# ssh reachable and webservers where UWSGI has database connections open
-if [ "$target_hostname" != "localhost" ];then
-	# Restart UWSGI on the target site
-	echo "Restarting the UWSGI service on $target_hostname"
-	${prefix}ssh root@$target_host "service uwsgi start"
-fi
-
-echo "Done."
