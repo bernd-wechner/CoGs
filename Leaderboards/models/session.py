@@ -78,7 +78,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, blank=True, on_delete=models.SET_NULL)
 
     # Foreign Keys that for part of a rich session object
     # ranks = ForeignKey from Rank (one rank per player or team depending on mode)
@@ -923,8 +923,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             # the latest board for this game is not from this session if it's not the same as this session after board)
             latest = self.wrapped_leaderboard(player_list)
 
-            # TODO: Check that this comparison works. It's  aguess for now. probably does NOT WORK
-            include_latest = not after == latest
+            # The first element in the wrapped leaderbaord is the session ID
+            include_latest = not after[0] == latest[0]
 
             if include_latest:
                 # TODO: For now just a diagnostic check but what should be do in general?
@@ -1902,7 +1902,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     def dict_to_form(cls, session_dict, form_data):
         '''
         The reverse for dict from form. Put here once more to centralise the
-        Form intelligence and avoid it's being implemented elsewhere. We want to 
+        Form intelligence and avoid it's being implemented elsewhere. We want to
         take a session_dict as created by dict_from_form and update the supplied form.
 
         This is mostly needed for pre_validation form processing which might
