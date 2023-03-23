@@ -156,15 +156,16 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
     # Create a page title, based on the leaderboard options (lo).
     (title, subtitle) = lo.titles()
 
+    use_cache = settings.USE_LEADERBOARD_CACHE and not lo.ignore_cache
     # Use the session as a leaderboard cache
     # Else use the Leaderboard_Cache model
     # The session support is legacy, global model based support was added later.
     # it is preferred as it means the first load of a leaderboard view benefits
     # from cache whcih was not the case when using session to cche them.
-    use_session_cache = settings.USE_SESSION_FOR_LEADERBOARD_CACHE
+    use_session_cache = use_cache and settings.USE_SESSION_FOR_LEADERBOARD_CACHE
 
     # The on Session based Leaderboard Cacher - delete if not being used
-    if not (settings.USE_LEADERBOARD_CACHE and use_session_cache) and "leaderboard_cache" in request.session:
+    if not use_session_cache and "leaderboard_cache" in request.session:
         del request.session["leaderboard_cache"]
 
     # Get the cache if available
@@ -173,7 +174,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
     # Each snapshot is uniquely identified by the session.pk
     # that it belongs to. And so we can store them in cache in
     # a dict keyed on session.pk
-    if settings.USE_LEADERBOARD_CACHE and use_session_cache:
+    if use_session_cache:
         lb_cache = request.session.get("leaderboard_cache", {}) if not lo.ignore_cache else {}
 
     # Fetch the queryset of games that these options specify
@@ -249,7 +250,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                 if settings.DEBUG:
                     log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")
 
-                if settings.USE_LEADERBOARD_CACHE:
+                if use_cache:
                     if use_session_cache:
                         # Session based cache:
                         # First fetch the global (unfiltered) snapshot for this board/session
@@ -345,7 +346,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
             # Then build the game tuple with all its snapshots
             leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline))
 
-    if settings.USE_LEADERBOARD_CACHE and use_session_cache:
+    if use_session_cache:
         request.session["leaderboard_cache"] = lb_cache
 
     if settings.DEBUG:
