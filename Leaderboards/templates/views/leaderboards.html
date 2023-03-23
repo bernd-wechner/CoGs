@@ -123,6 +123,12 @@ boards ofinterest. This is the central product of the leaderboards app.
 				<span class="tooltiptext" style="width: 200%;">Show a session header that displays the TrueSkill predictions after this session was played.</span>
 				</label>
 			</div>
+			<div class="lo_show_performances">
+				<input type="checkbox" id="chk_show_performances" oninput='DrawTables("tblLB");'>
+				<label for="chk_show_performances" class="tooltip">Show Expected Performances
+				<span class="tooltiptext" style="width: 300%;">If any of session details, or pre- or post-session predictions are displayed, include the expected perfromances upon which the rankings and assesments were based (teeth).</span>
+				</label>
+			</div>
 			<div class="lo_show_d_rank">
 				<input type="checkbox" id="chk_show_d_rank" oninput='DrawTables("tblLB");'>
 				<label for="chk_show_d_rank" class="tooltip">Show Rank Deltas

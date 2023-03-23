@@ -268,11 +268,12 @@ function InitControls(options, exempt) {
 	if (!ex.includes("links")) $('#links').val(dval(options.links, "none"));
 
 	// Then the extra info options for leaderboard headers
-	if (!ex.includes("details"))       $('#chk_details').prop('checked', dval(options.details, false));
-	if (!ex.includes("analysis_pre"))  $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
-	if (!ex.includes("analysis_post")) $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
-	if (!ex.includes("show_d_rank"))   $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
-	if (!ex.includes("show_d_rating")) $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
+	if (!ex.includes("details"))           $('#chk_details').prop('checked', dval(options.details, false));
+	if (!ex.includes("analysis_pre"))      $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
+	if (!ex.includes("analysis_post"))     $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
+	if (!ex.includes("show_performances")) $('#chk_show_performances').prop('checked', dval(options.show_performances, false));
+	if (!ex.includes("show_d_rank"))       $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
+	if (!ex.includes("show_d_rating"))     $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
 
 	// The snapshot selecting options
 	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
@@ -344,12 +345,13 @@ async function URLopts(make_static) {
 	const highlight_selected = $('#chk_highlight_selected').is(":checked");
 
 	// Then the extra info options for leaderboard headers
-	const details       = $('#chk_details').is(":checked");
-	const analysis_pre  = $('#chk_analysis_pre').is(":checked");
-	const analysis_post = $('#chk_analysis_post').is(":checked");
-	const show_d_rank   = $('#chk_show_d_rank').is(":checked");
-	const show_d_rating = $('#chk_show_d_rating').is(":checked");
-	const select_players = $('#chk_select_players').is(":checked");
+	const details           = $('#chk_details').is(":checked");
+	const analysis_pre      = $('#chk_analysis_pre').is(":checked");
+	const analysis_post     = $('#chk_analysis_post').is(":checked");
+	const show_performances = $('#chk_show_performances').is(":checked");
+	const show_d_rank       = $('#chk_show_d_rank').is(":checked");
+	const show_d_rating     = $('#chk_show_d_rating').is(":checked");
+	const select_players    = $('#chk_select_players').is(":checked");
 
 	// Then the snapshot selecting options
 	const show_baseline = $('#chk_show_baseline').is(":checked");
@@ -581,13 +583,14 @@ async function URLopts(make_static) {
 	// Then the extra info options for leaderboard headers
 	// These too have valid defaults, on or off, and we only have to submit
 	// deviations from that default.
-	if (details       != defaults.details)       opts.push("details="+encodeURIComponent(details));
-	if (analysis_pre  != defaults.analysis_pre)  opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
-	if (analysis_post != defaults.analysis_post) opts.push("analysis_post="+encodeURIComponent(analysis_post));
-	if (show_d_rank   != defaults.show_d_rank)   opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
-	if (show_d_rating != defaults.show_d_rating) opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
-	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
-	if (select_players != defaults.select_players) opts.push("select_players="+encodeURIComponent(select_players));
+	if (details           != defaults.details)           opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre      != defaults.analysis_pre)      opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (analysis_post     != defaults.analysis_post)     opts.push("analysis_post="+encodeURIComponent(analysis_post));
+	if (show_performances != defaults.show_performances) opts.push("show_performances="+encodeURIComponent(show_performances));
+	if (show_d_rank       != defaults.show_d_rank)       opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
+	if (show_d_rating     != defaults.show_d_rating)     opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
+	if (show_baseline     != defaults.show_baseline)     opts.push("show_baseline="+encodeURIComponent(show_baseline));
+	if (select_players    != defaults.select_players)    opts.push("select_players="+encodeURIComponent(select_players));
 	if (show_cross_league_snaps != defaults.show_cross_league_snaps) opts.push("show_cross_league_snaps="+encodeURIComponent(show_cross_league_snaps));
 
 	// Then the leaderboard screen layout options
@@ -912,6 +915,7 @@ function DrawTables(target, links) {
 		document.getElementById("chk_details").checked,
 		document.getElementById("chk_analysis_pre").checked,
 		document.getElementById("chk_analysis_post").checked,
+		document.getElementById("chk_show_performances").checked,
 		document.getElementById("chk_show_d_rank").checked,
 		document.getElementById("chk_show_d_rating").checked,
 		document.getElementById("chk_show_baseline").checked,

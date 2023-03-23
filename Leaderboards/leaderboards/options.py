@@ -118,7 +118,7 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
 
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_d_rank', 'show_d_rating'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_performances', 'show_d_rank', 'show_d_rating'}
 
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
@@ -232,6 +232,7 @@ class leaderboard_options:
     details = False  # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False  # Show the TrueSkill Pre-session analysis
     analysis_post = False  # Show the TrueSkill Post-session analysis
+    show_performances = False  # Show the expected performands on details or analyses
     show_d_rank = False  # Show the rank delta (movement) this session caused
     show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
@@ -779,6 +780,13 @@ class leaderboard_options:
             elif not self.analysis_post:
                 self.analysis_post = True
 
+        if 'show_performances' in urequest:
+            if urequest['show_performances']:
+                self.show_performances = json.loads(urequest['show_performances'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_performances:
+                self.show_performances = True
+
         # Column selecting options
         if 'show_d_rank' in urequest:
             if urequest['show_d_rank']:
@@ -790,6 +798,7 @@ class leaderboard_options:
         if 'show_d_rating' in urequest:
             if urequest['show_d_rating']:
                 self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_d_rating:
                 self.show_d_rating = True
 

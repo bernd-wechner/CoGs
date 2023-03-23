@@ -984,7 +984,12 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         scoring = Game.ScoringOptions(self.game.scoring).name
 
-        data = []  # A list of (PK, BGGname) tuples as data for a template view to build links to BGG if desired.
+        # data captures a list of options for template substituton.
+        # A list of (PK, BGGname, anno, peranno) where anno and peranno are
+        # a basic annotation and a performance inclusive annotation
+        # respectively.
+        data = [] # (PK, BGGname, anno, peranno) elements
+
         if ol_style:
             detail = f'<OL style="{ol_style}">'
         else:
@@ -1020,47 +1025,51 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         for row, co_rankers in enumerate(rankers_scores_perfs):
             co_rankers_html = []
             for (ranker, score, eperf) in co_rankers:
+                # We support two levels of ranker annotation in these lists
+                #
+                # Basic - or "anno"
+                # Basic plus an expected performance indicator - or "peranno"
                 delim = ", "
-                if score and eperf:
-                    legend = f"Score{delim}Expected performance (teeth)"
-                elif score:
-                    legend = f"Score"
-                elif eperf:
-                    legend = f"Expected performance (teeth)"
-                else:
-                    legend = None
-                legend = f"<span class='tooltiptext' style='width: 600%;'>{legend}</span>" if legend else None
 
+                # Don't report invalid scores if they exist.
+                # If the ranker is a team the game bmust support team scoring
+                # If the ranker is a player it must supprot individual scoring
+                # This should never happen really.
+                if not ((isinstance(ranker, Team) and "TEAM" in scoring) or (isinstance(ranker, Player) and "INDIVIDUAL" in scoring)):
+                    score = None
+
+                tt = ("<div class='tooltip'><span class='tooltiptext' style='width: 600%;'>", "</span>", "</div>")
+                if score and eperf:
+                    anno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
+                    peranno = f" ({tt[0]}Score{delim}Expected performance (teeth){tt[1]}{score}{delim}{eperf:.1f}{tt[2]})"
+                elif score:
+                    anno = peranno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
+                elif eperf:
+                    anno = ""
+                    peranno = f" ({tt[0]}Expected performance (teeth){tt[1]}{eperf:.1f}{tt[2]})"
+                else:
+                    anno = peranno = None
+
+                # We add a template {anno} to end of each player so a template can replace it with anno or peranno
+                # based on the selected options (leaderboard_options.show_performances)
+                PK = ranker.pk
                 if isinstance(ranker, Team):
                     # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
-                    ranker_str = field_render(ranker, flt.template, osf.verbose)
-                    has_score = "TEAM" in scoring and score
-                    data.append((ranker.pk, None))  # No BGGname for a team
+                    ranker_str = field_render(ranker, flt.template, osf.verbose) + f"{{anno.{row}}}"
+                    data.append((PK, None, anno, peranno))  # No BGGname for a team
 
                 elif isinstance(ranker, Player):
                     # Render the field first as a template which has:
                     # {Player.PK} in place of the player's name, and a
                     # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
-                    ranker_str = field_render(ranker , flt.template, osf.template)
+                    ranker_str = field_render(ranker , flt.template, osf.template) + f"{{anno.{row}}}"
 
                     # Replace the player name template item with the formatted name of the player
                     ranker_str = re.sub(fr'{{Player\.{ranker.pk}}}', ranker.name(name_style), ranker_str)
 
-                    has_score = "INDIVIDUAL" in scoring and score
-
                     # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
-                    PK = ranker.pk
                     BGG = None if (ranker.BGGname is None or len(ranker.BGGname) == 0 or ranker.BGGname.isspace()) else ranker.BGGname
-                    data.append((PK, BGG))
-
-                # Add the legend (if any) as a tooltip
-                if legend:
-                    if has_score and eperf:
-                        ranker_str += f" (<div class='tooltip'>{legend}{score}{delim}{eperf:.1f}</div>)"
-                    elif has_score:
-                        ranker_str += f" (<div class='tooltip'>{legend}{score}</div>)"
-                    elif eperf:
-                        ranker_str += f" (<div class='tooltip'>{legend}{eperf:.1f}</div>)"
+                    data.append((PK, BGG, anno, peranno))
 
                 co_rankers_html.append(ranker_str)
 
