@@ -1126,21 +1126,6 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         :param name_style: Must be supplied
         '''
-        # TODO: Fix this. Found a big mistake in earlier refactoring.
-        # _html_rankers_ol can only get "performance" froma Rank object, not a ranker.
-        # predicted_ranking returns rankers. THis second arg "performance" is useless.
-        # it's suppplied only when rankers are supplied (and hence can't be used) and
-        # not supplied when ranksa re suppled in leaderboard_header above.
-        #
-        # The fix I think is that predicted_ranking and predicted_ranking_after after
-        # need to return the required performance and we neeed to pass that in. As an
-        # attribute of ranks it's meaningless. Unless predicted_ranking can return ranks
-        # I guess (and the rank of the rank is ignored, it's order in the ordered list
-        # is honoured?)
-        #
-        # We don't have scores, but we can deliver performances. Not as an attribute of
-        # ranker because that will be a Player/Team, but it
-
         (ordered_rankers, confidence, expected_performances) = self.predicted_ranking(with_performances=True)
         quality = self.prediction_quality
 

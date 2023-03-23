@@ -8,7 +8,7 @@ from .. import models
 
 def styled_player_tuple(player_list_tuple, rank=None, style=LB_PLAYER_LIST_STYLE.rich, names="nick"):
     '''
-    Takes a tuple styled after LB_PLAYER_LIST_STYLE.data and returns a styled tupled as requested.
+    Takes a tuple styled after LB_PLAYER_LIST_STYLE.data and returns a styled tuple as requested.
 
     styled_player_tuple() below is more convenient as it takes an ordered player list from
     which rank is derived. Only the rich style includes the rank.

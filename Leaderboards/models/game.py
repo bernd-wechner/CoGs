@@ -376,6 +376,7 @@ class Game(AdminModel, NotesMixIn):
         :param leagues:   Show only players in any of these leagues if specified, else in any league (a single league or a list of leagues)
         :param asat:      Show the leaderboard as it was at this time rather than now, if specified
         :param names:     Specifies how names should be rendered in the leaderboard, one of the Player.name() options.
+        :param style:     an LB_PLAYER_LIST_STYLE enum value
         :param style      The style of leaderboard to return, a LB_PLAYER_LIST_STYLE value
                           LB_PLAYER_LIST_STYLE.rich is special in that it will ignore league filtering and name formatting
                           providing rich data sufficent for the recipient to do that (choose what leagues to present and
@@ -524,14 +525,16 @@ class Game(AdminModel, NotesMixIn):
             A flag, True if a baseline snapshot is included
             data (a playerlist or a session snapshot - session wrapped player list)
 
-        :param leaderboard:  a leaderboard or a list of session wrapped leaderboard (snaphots) for this game
-        :param snap:         if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
-        :param hide_baseline:if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
-        :param leagues:      self.leaderboard argument passed through
-        :param asat:         self.leaderboard argument passed through
-        :param names:        self.leaderboard argument passed through
-        :param style:        self.leaderboard argument passed through
-        :param data:         self.leaderboard argument passed through
+        :param leaderboard:   a leaderboard or a list of session wrapped leaderboard (snaphots) for this game
+        :param snap:          if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
+        :param has_reference: a game wrapper flag to add, informs user that there's a reference snapshot included
+        :param has_baseline:  a game wrapper flag to add, informs user that there's a baseline snapshot included
+        :param hide_baseline: if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
+        :param leagues:       self.leaderboard argument passed through
+        :param asat:          self.leaderboard argument passed through
+        :param names:         self.leaderboard argument passed through
+        :param style:         self.leaderboard argument passed through
+        :param data:          self.leaderboard argument passed through
         '''
         if leaderboard is None:
             leaderboard = self.leaderboard(leagues, asat, names, style, data)
@@ -541,7 +544,7 @@ class Game(AdminModel, NotesMixIn):
         if leaderboard:
             counts = self.play_counts()
 
-            # TODO: Respect styles. IMportantly .data shoudl be minimlist reoctructable.
+            # TODO: Respect styles. Importantly .data should be minimlist reoctructable.
             # none might mean no wrapper
             # data drops the BGGid and name
             # rating and ratings map to simple
