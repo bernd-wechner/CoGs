@@ -102,7 +102,7 @@ class Game(AdminModel, NotesMixIn):
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='games', null=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='games', null=True, blank=True, on_delete=models.SET_NULL)
 
 
     @property
