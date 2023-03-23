@@ -870,8 +870,8 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             if submission == "create":
                 # The change summary will be just a JSON representation of the session we just created (saved)
                 # changes will be none.
-                # TODO: We could consider calling it  ahcnage fomrnothing, lisitng all fields in changes, and making all tuples with a None as first entry.
-                # Not sure of the benefits of this is beyond concistency ....
+                # TODO: We could consider calling it a change from nothing, listng all fields in changes, and making all tuples
+                # with a None as first entry. Not sure of the benefits of this is beyond consistency ....
                 change_summary = session.__json__()
 
                 # Update the ChangeLog with this change_summary it could not be
