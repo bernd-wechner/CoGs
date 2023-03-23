@@ -548,7 +548,7 @@ class TrueSkillHelpers:
     def Update_skills(self, session):
         pass
 
-    def Predicted_ranking(self, session, after=False):
+    def Predicted_ranking(self, session, with_performances=False, after=False):
         '''
         Returns a tuple of players or teams that represents the preducted ranking given their skills
         before (or after) the nominated session and a probability of that ranking in a 2-tuple.
@@ -559,7 +559,8 @@ class TrueSkillHelpers:
         A team (instance of the Leaderboard app's Team model)
         A list of either players or teams - if a tie is predicted at that rank
 
-        :param session: an instance of the leaderboards model Rank
+        :param session: an instance of the leaderboards model Session
+        :param with_performances: if Ture includes a tuple of expected performances mapping one to one mapping with the tuple of players/teams
         :param after: if true, gets and uses skills "after" rather than "before" the present ranks (recorded play session).
         '''
 
@@ -575,13 +576,13 @@ class TrueSkillHelpers:
                         )
 
         # One dict to hold the performers and another to hold the performances
-        performers = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
-        performances = SortedDict()  # Keyed and sorted on trueskill_mu of the performer
+        performers = SortedDict(lambda perf: -perf)  # Keyed and sorted on trueskill_mu of the performer
+        performances = SortedDict(lambda perf: -perf)  # Keyed and sorted on trueskill_mu of the performer
 
         if session.team_play:
             for team in session.teams:
                 p = self.team_performance([P(player, after) for player in team.players.all()])
-                k = -p.mu
+                k = p.mu
 
                 if not k in performers:
                     performers[k] = []
@@ -593,7 +594,7 @@ class TrueSkillHelpers:
         else:
             for player in session.players:
                 p = P(player, after)
-                k = -p.mu
+                k = p.mu
 
                 if not k in performers:
                     performers[k] = []
@@ -625,7 +626,10 @@ class TrueSkillHelpers:
         prob = self.P_ranking_performers(tuple(performances.values()))
 
         # Return the ordered tuple
-        return (tuple(performers.values()), prob)
+        if with_performances:
+            return (tuple(performers.values()), prob, tuple(performers.keys()))
+        else:
+            return (tuple(performers.values()), prob)
 
     def Rank_performance(self, rank, after=False):
         '''
