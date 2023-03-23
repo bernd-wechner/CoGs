@@ -5,11 +5,13 @@ import json, re
 
 from django.http.response import HttpResponse
 from django.core.serializers.json import DjangoJSONEncoder
+from django.conf import settings as django_settings
 
 from django_rich_views.render import rich_render, rich_render_to_string
 
 from dal import autocomplete
 
+from bokeh import __version__ as bokeh_version
 from bokeh.plotting import figure
 from bokeh.embed import components
 from bokeh.models.callbacks import CustomJS
@@ -17,6 +19,7 @@ from bokeh.models.callbacks import CustomJS
 from ..models import Event, League, Location, ALL_LEAGUES, ALL_LOCATIONS
 
 from .widgets import html_selector
+from django.utils.safestring import mark_safe
 
 
 def view_Events(request):
@@ -174,6 +177,20 @@ def ajax_Events(request, as_context=False):
     if month_days: settings["month_days"] = month_days
     if gap_days: settings["gap_days"] = gap_days
 
+    use_min = "" if django_settings.DEBUG else ".min"
+    media = {
+        "css": mark_safe("\n".join([
+            f"<link href='http://cdn.pydata.org/bokeh/release/bokeh-{bokeh_version}{use_min}.css' rel='stylesheet' type='text/css'>",
+            f"<link href='http://cdn.pydata.org/bokeh/release/bokeh-widgets-{bokeh_version}{use_min}.css' rel='stylesheet' type='text/css'>"
+            ])),
+        "js": mark_safe("\n".join([
+            f"<script src='https://cdn.bokeh.org/bokeh/release/bokeh-{bokeh_version}{use_min}.js'></script>",
+            f"<script src='https://cdn.bokeh.org/bokeh/release/bokeh-widgets-{bokeh_version}{use_min}.js'></script>",
+            f"<script src='https://cdn.bokeh.org/bokeh/release/bokeh-tables-{bokeh_version}{use_min}.js'></script>",
+            f"<script src='https://cdn.bokeh.org/bokeh/release/bokeh-api-{bokeh_version}{use_min}.js'></script>"
+            ])),
+        }
+
     context = {"title": "Game Events",
                "events": events,
                "stats": stats,
@@ -181,7 +198,8 @@ def ajax_Events(request, as_context=False):
                "defaults": defaults,
                "players": players,
                "frequency": frequency,
-               "DEBUG_BokehJS": True
+               "DEBUG_BokehJS": True,
+               "bokeh_media": media
                }
 
     if as_context:
