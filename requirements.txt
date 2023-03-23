@@ -11,7 +11,7 @@ django-rich-views @ https://github.com/bernd-wechner/django-rich-views/archive/r
 django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
 django-cache-memoized
 django-crequest
-django-markdownfield @ https://github.com/bernd-wechner/django-markdownfield/archive/refs/heads/master.zip
+django-markdownfield @ https://github.com/bernd-wechner/django-markdownfield/archive/refs/heads/develop.zip
 django-model-admin-fields
 django-model-privacy-mixin
 django-stats-middleware>=0.2
