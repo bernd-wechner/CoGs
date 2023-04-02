@@ -3,7 +3,7 @@ import enum
 from collections import OrderedDict
 
 # Some useful enums to use in the options. Really just a way of encapsulating related
-# types so we can use them in templates to pupulate selectors and receive them from
+# types so we can use them in templates to populate selectors and receive them from
 # requests in an orderly way.
 #
 # They are defined as lists of 2-tuples. The first value in each tuple is the name

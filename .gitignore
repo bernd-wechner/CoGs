@@ -6,8 +6,8 @@ logs/
 Debugging/
 Seed Data/
 Notes/
-Leaderboards/migrations/
-Scripts/publish-exclusions
+#Leaderboards/migrations/
+#Scripts/publish-exclusions
 .externalToolBuilders/
 CoGs.odb
 test.out

@@ -23,13 +23,12 @@ from django_model_admin_fields import AdminModel
 from django_cache_memoized import memoized
 
 from django_rich_views import FIELD_LINK_CLASS
-from django_rich_views.model import TimeZoneMixIn
+from django_rich_views.model import TimeZoneMixIn, NotesMixIn, field_render, link_target_url, safe_get
 from django_rich_views.util import AssertLog
 from django_rich_views.html import NEVER
 from django_rich_views.options import flt, osf
 from django_rich_views.datetime import safe_tz, time_str, make_aware
 from django_rich_views.decorators import property_method
-from django_rich_views.model import field_render, link_target_url, safe_get
 
 from timezone_field import TimeZoneField
 
@@ -58,7 +57,7 @@ def game_duration(session):
     return session.game.expected_play_time
 
 
-class Session(AdminModel, TimeZoneMixIn):
+class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
@@ -78,8 +77,8 @@ class Session(AdminModel, TimeZoneMixIn):
     team_play = models.BooleanField('Team Play', default=False)  # By default games are played by individuals, if true, this session was played by teams
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
-    # this suggests not imported bu entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, on_delete=models.SET_NULL)
+    # this suggests not imported but entered directly through the UI.
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, blank=True, on_delete=models.SET_NULL)
 
     # Foreign Keys that for part of a rich session object
     # ranks = ForeignKey from Rank (one rank per player or team depending on mode)
@@ -924,8 +923,8 @@ class Session(AdminModel, TimeZoneMixIn):
             # the latest board for this game is not from this session if it's not the same as this session after board)
             latest = self.wrapped_leaderboard(player_list)
 
-            # TODO: Check that this comparison works. It's  aguess for now. probably does NOT WORK
-            include_latest = not after == latest
+            # The first element in the wrapped leaderbaord is the session ID
+            include_latest = not after[0] == latest[0]
 
             if include_latest:
                 # TODO: For now just a diagnostic check but what should be do in general?
@@ -1903,10 +1902,10 @@ class Session(AdminModel, TimeZoneMixIn):
     def dict_to_form(cls, session_dict, form_data):
         '''
         The reverse for dict from form. Put here once more to centralise the
-        Form intelligence avoid it's being implemented elsewhere. We want to take
-        a session_dict as created by dict_from_form and update the supplied form.
+        Form intelligence and avoid it's being implemented elsewhere. We want to
+        take a session_dict as created by dict_from_form and update the supplied form.
 
-        This is mostly needed to pre_validation form processing which might
+        This is mostly needed for pre_validation form processing which might
         need to change the form to pass validation.
 
         The known use case to date, is in rank/score reconciliation, in which

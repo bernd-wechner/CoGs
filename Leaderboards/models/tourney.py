@@ -7,7 +7,7 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_rich_views.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url, NotesMixIn
 
 DEFAULT_TOURNEY_MIN_PLAYS = 2
 DEFAULT_TOURNEY_WEIGHT = 1
@@ -57,7 +57,7 @@ class TourneyRules(AdminModel):
         verbose_name_plural = "Rules"
 
 
-class Tourney(AdminModel):
+class Tourney(AdminModel, NotesMixIn):
     '''A Tourney is simply a group of games that can present a shared leaderboard according to specified weights.'''
     name = models.CharField('Name of the Tourney', max_length=200)
     games = models.ManyToManyField('Game', verbose_name='Games', through=TourneyRules)

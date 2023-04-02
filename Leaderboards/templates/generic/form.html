@@ -5,6 +5,7 @@
 {#{% load django_bootstrap5 %}#}
 {#{% load crispy_forms_tags %}#}
 {% load django-rich-views %}
+
 {% block title %}{{ title }}{% endblock %}
 
 {% block styles %}
@@ -85,6 +86,10 @@
 		// Catch related form errors that come in (in order to report them)
 		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};
 	</script>
+	{% if has_location %}
+		{% load mapbox_location_field_tags %}
+		{% location_field_includes %}
+	{% endif %}
 {% endblock %}
 
 {% block endscript %}

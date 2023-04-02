@@ -14,6 +14,7 @@ from django.db.models.expressions import Window, F, ExpressionWrapper
 from django.db.models.functions.window import Lag
 
 from django_rich_views.util import isInt
+from django_rich_views.model import NotesMixIn
 from django_rich_views.queryset import get_SQL, print_SQL
 
 from django_model_admin_fields import AdminModel
@@ -23,8 +24,7 @@ from django_cte import With
 from .session import Session
 from .performance import Performance
 
-
-class Event(AdminModel):
+class Event(AdminModel, NotesMixIn):
     '''
     A model for defining gaming events. The idea being that we can show all leaderboards
     relevant to a particular event (games and tourneys) and specify the time bracket and

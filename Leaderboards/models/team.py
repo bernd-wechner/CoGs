@@ -7,12 +7,12 @@ from django.urls import reverse
 
 from django_model_admin_fields import AdminModel
 
-from django_rich_views.model import field_render, link_target_url
+from django_rich_views.model import field_render, link_target_url, NotesMixIn
 
 import html
 
 
-class Team(AdminModel):
+class Team(AdminModel, NotesMixIn):
     '''
     A player team, which is defined when a team play game is recorded and needed to properly display a session as it was played,
     and to calculate team based TrueSkill ratings. Teams have no names just a list of players.

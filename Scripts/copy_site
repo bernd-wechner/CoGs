@@ -11,8 +11,8 @@
 ##############################################################################################################################
 
 show_help_and_exit () {
-	echo "Usage: copy_script -smdvtc0D source destination"
-	echo "   or: copy_script -smdvtc0D destination"
+	echo "Usage: copy_script [-smdvtc0Dh] source destination"
+	echo "   or: copy_script [-smdvtc0Dh] destination"
 	echo ""
 	echo "where:"
 	echo "	-s	copies the site source code, sans the site media"
@@ -21,6 +21,7 @@ show_help_and_exit () {
 	echo "	-v	copies the site venv (only useful where venvs have same path)"
 	echo "	-0	requests no action just a report of command line parsing"
 	echo "	-D	requests a dry run that echoes all commands that would be run (but aren't)"
+	echo "	-h	Show help"
 	echo
 	echo "	source is the name of a webserver server to copy from ('localhost' assumed if not provided)"
 	echo "	destination is the name of a webserver server to copy to (required)"
@@ -236,6 +237,15 @@ if [ "$copy_site" = true ]; then
 		# the recent copy to server.
 		echo "Collecting static files on $target_host"
 		${prefix}ssh $target_user@$target_host "$prepare_then rm -rf static; python manage.py collectstatic --noinput"
+	fi
+
+	if [ $target_host != "localhost" ]; then
+		# Finally we want to perform any outsanding migrations that were copied over
+		# But as migrations entail some risk, we back the database up first!
+		${prefix}$copy_DB -B "$target_host"
+
+		echo "Performing database migration(s)"
+		${prefix}ssh $target_user@$target_host "$prepare_then python manage.py migrate"
 	fi
 fi
 

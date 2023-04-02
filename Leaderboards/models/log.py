@@ -106,7 +106,7 @@ class ChangeLog(AdminModel):
         Returns the leaderboard impact before the change unpacked into a Python tuple.
 
         Note that before and after have two contexts.
-            Before and after teh change that was logged.
+            Before and after the change that was logged.
             Before and after the logged session was played.
         We endeavour to be clear at every stage which before and after we're talking about.
 
@@ -135,7 +135,7 @@ class ChangeLog(AdminModel):
         Returns the leaderboard impact after the change unpacked into a Python tuple.
 
         Note that before and after have two contexts.
-            Before and after teh change that was logged.
+            Before and after the change that was logged.
             Before and after the logged session was played.
         We endeavour to be clear at every stage which before and after we're talking about.
 
@@ -175,7 +175,7 @@ class ChangeLog(AdminModel):
         if game == self.game_after_change or game == "after":
             return lb_after_change
 
-        # Only if the game chnaged, are we interested in checking the before
+        # Only if the game changed, are we interested in checking the before
         # change game as well and if we have that one, we want its leaderboard impact.
         elif game == self.game_before_change or game == "before":
             return lb_before_change

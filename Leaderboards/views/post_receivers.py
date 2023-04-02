@@ -3,6 +3,11 @@
 # the client side JavaScript submits information about the client and user
 # using it.
 #===============================================================================
+import pytz
+
+from datetime import datetime
+from geopy.geocoders import Nominatim
+
 from django.conf import settings
 from django.http.response import HttpResponse
 from django.utils.timezone import activate
@@ -31,7 +36,7 @@ def receive_ClientInfo(request):
     if (request.POST):
         if "clear_session" in request.POST:
             if settings.DEBUG:
-                log.debug(f"referrer = {request.META.get('HTTP_REFERER')}")
+                log.debug(f"ClientInfo received - referrer = {request.META.get('HTTP_REFERER')}")
             session_keys = list(request.session.keys())
             for key in session_keys:
                 del request.session[key]
@@ -40,19 +45,45 @@ def receive_ClientInfo(request):
         # Check for the timezone
         if "timezone" in request.POST:
             if settings.DEBUG:
-                log.debug(f"Timezone = {request.POST['timezone']}")
+                log.debug(f"ClientInfo received - Timezone = {request.POST['timezone']}")
             request.session['timezone'] = request.POST['timezone']
             activate(request.POST['timezone'])
 
+            # To help any map boxes that may be in use we add to the session some
+            # framing and positioning info
+            try:
+                tz = pytz.timezone(request.POST['timezone'])
+                country, city = tz.zone.split('/')
+                geolocator = Nominatim(user_agent=settings.SITE_TITLE)
+                location = geolocator.geocode(f"{city}, {country}")
+                box, point = location.raw['boundingbox'], location.point
+                request.session['geo_point'] = point
+                request.session['geo_box'] = box
+                if settings.DEBUG:
+                    log.debug(f"\tdecoded geolocation as: {point=}, {box=}")
+            except Exception as E:
+                pass
+
         if "utcoffset" in request.POST:
             if settings.DEBUG:
-                log.debug(f"UTC offset = {request.POST['utcoffset']}")
+                log.debug(f"ClientInfo received - UTC offset = {request.POST['utcoffset']}")
             request.session['utcoffset'] = request.POST['utcoffset']
 
         if "location" in request.POST:
             if settings.DEBUG:
-                log.debug(f"location = {request.POST['location']}")
+                log.debug(f"ClientInfo received - location = {request.POST['location']}")
             request.session['location'] = request.POST['location']
+
+            try:
+                geolocator = Nominatim(user_agent=settings.SITE_TITLE)
+                location = geolocator.geocode(request.POST['location'])
+                box, point = location.raw['boundingbox'], location.point
+                request.session['geo_point'] = point
+                request.session['geo_box'] = box
+                if settings.DEBUG:
+                    log.debug(f"\tdecoded geolocation as: {point=}, {box=}")
+            except Exception as E:
+                pass
 
     return HttpResponse()
 
