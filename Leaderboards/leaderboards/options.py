@@ -992,7 +992,7 @@ class leaderboard_options:
         a filtered snaphot because global leaderboads for a game can grow very
         large and most views will be concerned with a subset based on leagues.
 
-        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list
+        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list and style LB_PLAYER_LIST_STYLE.rich
         '''
         leaderboard = leaderboard_snapshot[LB_STRUCTURE.session_data_element.value]
         self.session_players = [str(p) for p in leaderboard_snapshot[LB_STRUCTURE.session_players_element.value]]
