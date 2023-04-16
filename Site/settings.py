@@ -132,7 +132,6 @@ MIDDLEWARE = (
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django_rich_views.middleware.TimezoneMiddleware',
-    'django_currentuser.middleware.ThreadLocalUserMiddleware',
     'crequest.middleware.CrequestMiddleware',
     'Site.logutils.LoggingMiddleware'  # Just sets the reference time for logging to be at start of the request
 )
