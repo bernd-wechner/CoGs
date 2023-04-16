@@ -315,6 +315,16 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 
 		HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
 		$('#after_change_session_board_before').append(HTML)
+
+		{% if includes_diagnostic %}
+			{% comment %}
+				includes_diagnostic is a bool in the template and tells us that impact_after_change
+				has a 3rd snapshot being the latest board for diagnositcs.
+				TODO: We should render that too. It is added by Session.leaderboard_impact() if
+				it detects an anomoly
+			{% endcomment %}
+		{% endif %}
+
     {% endif %} {# change_log #}
 
 	{% if rebuild_log %}

@@ -148,11 +148,11 @@ def view_Impact(request, model, pk):
         # impacts contain two leaderboards. But if a diagnostic board is appended they contain 3.
         includes_diagnostic = len(impact_after_change[LB_STRUCTURE.game_data_element.value]) == 3
 
-        if settings.DEBUG:
-            log.debug(f"\t{islatest=}, {isfirst=}, {includes_diagnostic=}")
-
         # Get the list of games impacted by the change
         games = rlog.Games if rlog else clog.Games if clog else session.game
+
+        if settings.DEBUG:
+            log.debug(f"\t{islatest=}, {isfirst=}, {includes_diagnostic=}, {games=}, {rlog=}, {clog=}")
 
         # If there was a leaderboard rebuild get the before and after boards
         if rlog:

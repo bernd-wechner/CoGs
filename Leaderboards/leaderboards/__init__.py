@@ -17,7 +17,7 @@ def augment_with_deltas(master, baseline=None, structure=LB_STRUCTURE.game_wrapp
     '''
     Given a master leaderboard and a baseline to compare it against, will
     augment the master with delta measures (adding a previous rank
-    and rating elements to each player tuple)
+    and a previous rating element to each player tuple)
 
     This is very flexible with structures and formats. Accepts JSON and Python and
     each of the leaderboard structures and returns the same. General purpose augmenter
