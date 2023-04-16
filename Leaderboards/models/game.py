@@ -487,6 +487,7 @@ class Game(AdminModel, NotesMixIn):
         if settings.DEBUG:
             log.debug(f"\t\tBuilt leaderboard.")
 
+
         return None if len(lb) == 0 else styled_player_list(lb, style=style, names=names)
 
     @property_method
@@ -551,7 +552,7 @@ class Game(AdminModel, NotesMixIn):
         if leaderboard:
             counts = self.play_counts()
 
-            # TODO: Respect styles. Importantly .data should be minimlist reoctructable.
+            # TODO: Respect styles. Importantly .data should be minimalist and reconstructable.
             # none might mean no wrapper
             # data drops the BGGid and name
             # rating and ratings map to simple
