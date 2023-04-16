@@ -75,7 +75,7 @@ class Player(AdminModel, PrivacyMixIn, NotesMixIn):
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='players', null=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='players', editable=False, null=True, on_delete=models.SET_NULL)
 
 
     @cached_property
@@ -246,22 +246,65 @@ class Player(AdminModel, PrivacyMixIn, NotesMixIn):
         else:
             return None
 
+    @property
+    def name_template(self):
+        '''
+        Can be used in HTML to anchor the position of a player name, that can then
+        be replaced by a rendered name. Templates are used for storing data so that
+        the privacy of players is not compromised by storing such data, and can be
+        managed at time of rendering the stored HTMl. Particularly relevant to cached
+        leaderboards (which contain HTML elements when session wrapped)
+        '''
+        return fr'{{Player\.{self.pk}}}'
+
+    @property
+    def name_variants(self):
+        '''
+        Returns a tuple of the name name variants supported with privacy rules applied.
+        '''
+        return (self.name_nickname, self.full_name , self.complete_name)
+
+    @property
+    def name_options(self):
+        '''
+        Returns a string enclosed { } containing first the Pk of the player and then
+        the name options. These are inthe order fo the optioins defined in
+        Leaderboards.leaderboards.enums.NameSelections, an enum that can index
+        into this list to get the name in the selected format.
+
+        This can be used with self.name_template. That is, instances in an HTML template
+        of self.name_template can be replaced by this at render time.
+
+        The reason this is done at render time si that such templates cna be cached globally
+        (in Leaderboard_Cache) and so only self.name_templates shoudl be stored, and when
+        the cache is retriend, they should be replaced pre-flight to the client with this
+        string, so the client side can render the template dynamically.
+        '''
+        return "{" + f"{self.pk}" + ",".join([v for v in self.name_variants]) + "}"
+
     def name(self, style="full"):
         '''
         Renders the players name in a nominated style
-        :param style: Supports "nick", "full", "complete", "flexi"
+        :param style: Supports "nick", "full", "complete", "flexi", "template"
 
         flexi is a special request to return {pk, nick, full, complete}
         empowering the caller to choose the name style later. This is
         ideally to allow a client to choose rendering in Javascript
         rather than fixing the rendering at server side.
+
+        template is another special request, to provide a PK containing template that
+        can be replaced with a rendered name when rendering takes place. That can
+        happen client side especially when flexis delivered (which has the Privacy
+        constraints applied already to all variants it supplies, and so the relevant
+        one can be chosed client side and applied by subbing htis template out.
         '''
-        # TODO: flexi has to use a delimeter that cannot be in a name and that should be enforced (names have them escaped
-        #       currently using comma, but names can still have commas!
+        # TODO: flexi has to use a delimeter that cannot be in a name and that should be enforced (names
+        #       have them escaped currently using comma, but names can still have commas!
         return (self.name_nickname if style == "nick"
            else self.full_name if style == "full"
            else self.complete_name if style == "complete"
-           else f"{{{self.pk},{self.name_nickname},{self.full_name},{self.complete_name}}}" if style == "flexi"
+           else self.name_options if style == "flexi"
+           else self.name_template if style == "template"
            else "Anonymous")
 
     def rating(self, game):

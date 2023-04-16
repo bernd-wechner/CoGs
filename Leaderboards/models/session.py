@@ -78,7 +78,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, blank=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', editable=False, null=True, blank=True, on_delete=models.SET_NULL)
 
     # Foreign Keys that for part of a rich session object
     # ranks = ForeignKey from Rank (one rank per player or team depending on mode)
@@ -779,8 +779,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         Returns the leaderboard as it was immediately before this session, in the form of
         LB_STRUCTURE.player_list
 
-        :param style: a LB_PLAYER_LIST_STYLE to use.
-        :param wrap: If true puts the previous sessions session wrapper around the leaderboard.
+        :param style: an LB_PLAYER_LIST_STYLE to use.
+        :param wrap:  if true puts the previous sessions session wrapper around the leaderboard.
         '''
         session = self.previous_session()
         player_list = self.leaderboard(asat=self.date_time - MIN_TIME_DELTA, style=style)
@@ -801,8 +801,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         Returns the leaderboard as it was immediately after this session, in the form of
         LB_STRUCTURE.player_list
 
-        :param style: a LB_PLAYER_LIST_STYLE to use.
-        :param wrap: If true puts this sessions session wrapper around the leaderboard.
+        :param style: an LB_PLAYER_LIST_STYLE to use.
+        :param wrap:  if true puts this sessions session wrapper around the leaderboard.
         '''
         session = self
         player_list = self.leaderboard(asat=self.date_time, style=style)
@@ -823,16 +823,25 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             LB_STRUCTURE.session_wrapped_player_list
 
         A session wrapper contains:
-            session.pk,
-            session.date_time (in local time),
-            session.game.play_counts()['total'],
-            session.game.play_counts()['sessions'],
-            session.players() (as a list of pks),
-            session.leaderboard_header(),
-            session.leaderboard_analysis(),
-            session.leaderboard_analysis_after(),
-            game.leaderboard(asat)  # leaderboard after this game sessions
-            game.leaderboard()      # current (latest) leaderboard for this game (if needed for diagnostics or otherwise)
+            # Session metadata
+            0 session.pk,
+            1 session.date_time (in local time),
+            2 session.game.play_counts()['total'],
+            3 session.game.play_counts()['sessions'],
+
+            # Player details
+            4 session.players() (as a list of pks),
+
+            # Some HTML analytic headers
+            5 session.leaderboard_header(),
+            6 session.leaderboard_analysis(),
+            7 session.leaderboard_analysis_after(),
+
+            # The leaderboard(s)
+            8 game.leaderboard(asat)  # leaderboard after this game sessions
+
+            Leaderboards.leaderboards.enums.LB_STRUCTURE provides pointers into this structure.
+                They must reflect what is produced here.
 
         :param leaderboard:
         :param leagues:      self.leaderboard argument passed through
@@ -850,19 +859,48 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         # Get the play counts as at asat
         counts = self.game.play_counts(asat=asat)
 
-        # Build the snapshot tuple
-        return (self.pk,
-                localize(localtime(self.date_time)),
-                counts['total'],
-                counts['sessions'],
-                [p.pk for p in self.players],
-                self.leaderboard_header(),
-                self.leaderboard_analysis(),
-                self.leaderboard_analysis_after(),
-                leaderboard)
+        # Two standard use cases exist:
+        #     prep for render:    name_style is "flexi". The client can adjust links, name styles and performance displays on the fly without a server round trip
+        #     prep for storage    name_style is "template". We don't want to include any of the name variants in data as the session wrapped leaderboard containing
+        #                         these rankers may be saved in JSON format either with change logs or in the laderboard cache and we want player name privace
+        #                         constrained to render time.
+        #     We conclude which to use by  the style. `data` style is for storage and `rich` is for render
+        name_style = "template" if style == LB_PLAYER_LIST_STYLE.data else "flexi"
 
-    @property
-    def leaderboard_snapshot(self) -> tuple:
+        # These HTML headers are al; 2-tuples in the form (html, data)
+        # where the data provides rendering data, in particular, player
+        # link, name and performance data, so the rendered can dynamically
+        # render the leaderboard headers in response to choces made by the
+        # end user while viewing, The 'leaderboard' - an ordered list of
+        # players) in the rich player list style, is a tuple of similar data
+        # for each player on the leaderboard. The HTML headers include players
+        # and so provide their own data for that.
+        #
+        # In practice all three of the HTML headers currently only list the
+        # players in this session so their data elements actually replicate
+        # each other. THe flexibility is retained in case of other HTML
+        # headers that may be impelmented in future that might include other
+        # players (hard to imagine any but we maintain a flexible approach here
+        # in case).
+        html_headers = (
+                self.leaderboard_header(name_style=name_style),
+                self.leaderboard_analysis(name_style=name_style),
+                self.leaderboard_analysis_after(name_style=name_style),
+            )
+
+        # TODO: We want to add for each player in the session name expansions
+        #       this is the list provided by
+        # Build the snapshot tuple
+        return (self.pk,                                # 0
+                localize(localtime(self.date_time)),    # 1
+                counts['total'],                        # 2
+                counts['sessions'],                     # 3
+                [p.pk for p in self.players],           # 4
+                *html_headers,                          # 5,6,7 unpacked into this session wrapping tuple
+                leaderboard)                            # 8
+
+    @property_method
+    def leaderboard_snapshot(self, style=LB_PLAYER_LIST_STYLE.simple) -> tuple:
         '''
         Prepares a leaderboard snapshot for passing to a view for rendering.
 
@@ -870,35 +908,12 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         That is: the leaderboard in this game as it stood just after this session was played.
 
-        Such snapshots are often delivered inside a game wrapper.
-
-        This differs from wrapped_leaderboard only in that it is a shorthand for a
-        common use case and includes a diagnostic snapshot (the latest game board) if
-        this is the last session in this game and the latest board is not the same.
-
-        To clarify, the snapshot builds the board from the latest performances of
-        all players at the time this session was played, while the latest game board
-        uses the ratings as they stand. A difference suggests the ratings don't reflect
-        the performances and a data integrity issue.
+        Such snapshots are often delivered to the client inside a game wrapper as well.
         '''
-
-        # Get the leaderboard asat the time of this session.
-        # That includes the performances of this session and
-        # hence the impact of this session.
-        #
-        # We provide an annotated version which supplies us with
-        # the information needed for player filtering and rendering,
-        # the leaderboard returned is complete (no league filter applied,
-        # or name rendering options supplied).
-        #
-        # It will be up to the view to filter players as desired and
-        # select the name format at render time.
-
         if settings.DEBUG:
-            log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk}")
+            log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk} with style '{style.name}'")
 
-        # Build the snapshot tuple (session wrapped leaderboard)
-        leaderboard = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.rich)  # returns LB_STRUCTURE.player_list
+        leaderboard = self.leaderboard_after(style=style)  # returns LB_STRUCTURE.player_list
         snapshot = self.wrapped_leaderboard(leaderboard)
 
         return snapshot
@@ -908,6 +923,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         '''
         Returns a game_wrapped_session_wrapped pair of player_lists representing the leaderboard
         for this session game as it stood before the session was played, and after it was played.
+
+        :param style: The LB_PLAYER_LIST_STYLE to use in the returned boards (player lists).
         '''
         before = self.leaderboard_before(style=style, wrap=True)  # session wrapped
         after = self.leaderboard_after(style=style, wrap=True)  # session wrapped
@@ -925,7 +942,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             include_latest = not after[0] == latest[0]
 
             if include_latest:
-                raise ValidationError("A surprising internal error. Likely a coding bug.")
+                raise ValidationError("A surprising internal error. Likely a coding bug. A diagnostic board was attached to the impact summary.")
         else:
             include_latest = False
 
@@ -963,9 +980,15 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         '''
         Internal OL factory for list of rankers on a session.
 
+        Two standard use cases exist:
+            prep for render:    name_style is "flexi". The client can adjust links, name styles and performance displays on the fly without a server round trip
+            prep for storage    name_style is "template". We don't want to include any of the name variants in data as the session wrapped leaderboard containing
+                                these rankers may be saved in JSON format either with change logs or in the laderboard cache and we want player name privace
+                                constrained to render time.
+
         :param ordered_ranks_or_rankers: An ordered list of Player/Team objects (or lists of them for ties)
                                          or Ranks objects (or lists of them for ties).
-        :param expected_performance:     Name of Rank property that supplies a Predicted Performance summary as a (mu, sigma) tuple
+        :param expected_performance:     Name of Rank property that supplies a Predicted Performance summary as a (mu, sigma) tuple, or a (mu, sigma) tuple
         :param name_style:               The style in which to render names
         :param ol_style:                 A style to apply to the OL if any
         '''
@@ -974,7 +997,13 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         Rank = apps.get_model(APP, "Rank")
         Game = apps.get_model(APP, "Game")
 
+        if settings.DEBUG:
+            log.debug(f"\tBuilding rankers list: {name_style=} {'for render' if name_style=='flexi' else 'for storage' if name_style=='template' else ''}")
+
         def expected_performance_val(i, co_ranker, expected_performance):
+            # TODO: Confirm that if the rank is for team it returns the team's expected performance and
+            #       if the expected_performances are supplied as a tuple or list that if for a team that
+            #       they reflect the team expected performance.
             if isinstance(co_ranker, Rank) and hasattr(co_ranker, expected_performance):
                 return getattr(co_ranker, expected_performance)[0] # (Extract mu from a (mu, sigma) tuple
             elif isinstance(expected_performance, (tuple, list)) and i < len(expected_performance) and i >= 0:
@@ -1001,7 +1030,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         rankers_scores_perfs = []
         for i, R_or_r in enumerate(ordered_ranks_or_rankers):
             if isinstance(R_or_r, (list, tuple)):
-                # R_or_r is a list of ranks, player or teams who tied (co-rankers)
+                # R_or_r is a list of ranks, players or teams who tied (co-rankers)
                 # Each one is a rank with score or not
                 rankers_scores_perfs.append([(co_ranker.ranker,
                                               co_ranker.score,
@@ -1011,8 +1040,9 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                                                   None,
                                                   expected_performance_val(i, co_ranker, expected_performance)) for co_ranker in R_or_r])
             else:
+                # R_or_r is a single rank, player or team who tied (co-rankers)
                 # For consistency with tied ranks, create a one entry list (tied with self ;-).
-                # For renderig a strig at this rank, that is all we need
+                # For rendering a string at this rank, that is all we need
                 rankers_scores_perfs.append([(R_or_r.ranker,
                                               R_or_r.score,
                                               expected_performance_val(i, R_or_r, expected_performance),
@@ -1054,18 +1084,17 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 # based on the selected options (leaderboard_options.show_performances)
                 PK = ranker.pk
                 if isinstance(ranker, Team):
+                    # TODO: confirm that team rendering does not leak and private member data
                     # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
                     ranker_str = field_render(ranker, flt.template, osf.verbose) + f"{{anno.{row}}}"
-                    data.append((PK, None, anno, peranno))  # No BGGname for a team
+                    BGG = None # No BGGname for a team
+                    data.append((PK, BGG, anno, peranno)) # TODO check the peranno is in fact the expected team performance! it probably isn't.
 
                 elif isinstance(ranker, Player):
                     # Render the field first as a template which has:
                     # {Player.PK} in place of the player's name, and a
                     # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
                     ranker_str = field_render(ranker , flt.template, osf.template) + f"{{anno.{row}}}"
-
-                    # Replace the player name template item with the formatted name of the player
-                    ranker_str = re.sub(fr'{{Player\.{ranker.pk}}}', ranker.name(name_style), ranker_str)
 
                     # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
                     BGG = None if (ranker.BGGname is None or len(ranker.BGGname) == 0 or ranker.BGGname.isspace()) else ranker.BGGname
@@ -1098,7 +1127,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         pk and BGG name of the rankers in that session which allows the
         template to link names to this site or to BGG as it desires.
 
-        :param name_style: Must be supplied
+        :param name_style: what style to render names with
         '''
         (ordered_ranks, probability) = self.actual_ranking(as_ranks=True)
 
@@ -1110,7 +1139,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         detail += f"This result was deemed {probability:0.1%} likely."
 
-        return (detail, data)
+        return (mark_safe(detail), data)
 
     def leaderboard_analysis(self, name_style="flexi"):
         '''

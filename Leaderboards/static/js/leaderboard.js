@@ -28,6 +28,35 @@ function leaderboard_metrics(LB, show_baseline) {
 	return [boardcount, maxshots, totalshots, boardshots];
 }
 
+function toString(v) {
+    if(v == null || v == undefined) {
+        return "";
+    }
+    return String(v);
+}
+
+function fix_template_names(html, name_variants, name_format)
+{
+	const iNickName = 0;
+	const iFullName = 1;
+	const iCompleteName = 2;
+
+	for (let pid in name_variants)
+	{
+		// A javascript dict is instance of Object
+		// We receive a string if not a dict, but force whatever we get to string regardless
+		const chosen_name = !(name_variants[pid] instanceof Object) ? toString(name_variants[pid])
+						  : name_format == 'nick' ? name_variants[pid][iNickName]
+						  : name_format == 'full' ? name_variants[pid][iFullName]
+						  : name_format == 'complete' ? name_variants[pid][iCompleteName]
+						  : "ERROR";
+
+		html = html.replace(new RegExp(`{Player\.${pid}}`,'g'), chosen_name);
+	}
+
+	return html;
+}
+
 // Function to draw one leaderboard table
 function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_format, diagnose) {
 /*
@@ -199,6 +228,36 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 			session.analysis_post_html = LB[iGameData][snapshot][iSessionAnalysisPost][0];
 			session.analysis_post_data = LB[iGameData][snapshot][iSessionAnalysisPost][1];
 
+			// session.players is special, can be a list of PKs or a dict keyed on PK of
+			// name variants for substituting into the three html elements:
+			//		session.details_html
+			//		session.analysis_pre_html
+			//		session.analysis_post_html
+			//
+			// These all list the same session players with differrent details.  So the name expansions
+			// are shared once only in session.players not three times in each of the data elements
+			// accompanyng the HTML elements. Those Data elements include the BGG ids for linking and
+			// optional annotations for the each player in the list (scores and performance records/predictions)
+			//
+			// If it's not an array (list of PKs) we assume it's a dict/object with keys and values
+			let player_name_variants = {};
+
+			if (Array.isArray(session.players)) {
+				// A default variant if none are provided
+				for (const pk of session.players)
+					player_name_variants[pk] = `Player ${pk}`;
+			} else {
+				// Conserve the dict for lookups
+				player_name_variants = session.players;
+				// provide a list of PKs for rest of this function (keys are str, we want int)
+				session.players = Object.keys(session.players).map(Number);
+			}
+
+			// Now expand all the templated names in the HTML elements
+			session.details_html = fix_template_names(session.details_html, player_name_variants, name_format)
+			session.analysis_pre_html = fix_template_names(session.analysis_pre_html, player_name_variants, name_format)
+			session.analysis_post_html = fix_template_names(session.analysis_post_html, player_name_variants, name_format)
+
 			session.link 			    = url_view_Session.replace('00',session.pk);
 
 			player_list                = LB[iGameData][snapshot][iPlayerList];
@@ -264,26 +323,6 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 
 			linkRankerID[PK] = links == "CoGs" ? PK : links == "BGG" ?  BGGname : null;
 		}
-
-		// A regex replacer which has as args first the matched string then each of
-		// the matched subgroups
-		// The subgroups we expect from name update to the HTML headers are:
-		// pk, nick, full, complete
-		// We don't actually need the PK, it's just there.
-		function fix_template_name(match, pk, nick, full, complete) {
-		    switch (name_format) {
-		      case "nick": return nick;
-		      case "full": return full;
-		      case "complete": return complete;
-		      default: throw new Error ("Illegal name selector.");
-		    }
-		}
-
-		// Fix the names in the HTML headers
-		// An example: "{1,Bernd,Bernd <Hidden>,Bernd <Hidden> (Bernd)}"
-		session.details_html       = session.details_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
-		session.analysis_pre_html  = session.analysis_pre_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
-		session.analysis_post_html = session.analysis_post_html.replace(/{(\d+),(.+?),(.+?),(.+?)}/mg, fix_template_name);
 
 		// A regex replacer which has as args first the matched string then each of
 		// the matched subgroups
