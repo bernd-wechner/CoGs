@@ -48,6 +48,7 @@ def ajax_Detail(request, model, pk):
     view = view_Detail()
     view.request = request
     view.kwargs = {'model':model, 'pk': pk}
+
     view.get_object()
 
     view_url = reverse("view", kwargs={"model":view.model.__name__, "pk": view.obj.pk})

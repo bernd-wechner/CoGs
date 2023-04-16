@@ -114,7 +114,8 @@
 			opts.push('linewidth='+format_line_width);
 
 			// The filter if specified (relevant only for prior/next browsing, but needs to be conserved if specified)
-			for (f in filters) opts.push(filters[f]);
+			if ({{filters|length}}>0)
+				for (const f of filters) opts.push(filters[f]);
 
 			url_opts = (opts.length > 0) ? "?" + opts.join("&") : ""
 
