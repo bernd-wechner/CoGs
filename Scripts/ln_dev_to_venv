@@ -1,0 +1,7 @@
+##/bin/bash
+python_version=3.8
+target_dir=~/.virtualenvs/CoGs/lib/python$python_version/site-packages/
+ln -fs ~/workspace/Django/django-rich-views/django_rich_views $target_dir
+ln -fs ~/workspace/Django/django-mapbox-location-field/mapbox_location_field $target_dir
+ln -fs ~/workspace/Django/django-model-privacy-mixin/src/django_model_privacy_mixin $target_dir
+ln -fs ~/workspace/Django/django-model-admin-fields/src/django_model_admin_fields $target_dir

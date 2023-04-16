@@ -1,2 +1,0 @@
-##/bin/bash
-ln -s ~/workspace/Django/django-rich-views/django_rich_views ~/.virtualenvs/CoGs/lib/python3.8/site-packages/
