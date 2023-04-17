@@ -118,7 +118,7 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
 
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_d_rank', 'show_d_rating'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_performances', 'show_d_rank', 'show_d_rating'}
 
     # Options impacting the layout of leaderboards on the screen/page
     layout_options = {'cols'}
@@ -232,6 +232,7 @@ class leaderboard_options:
     details = False  # Show session details atop each boards (about the session that produced that board)
     analysis_pre = False  # Show the TrueSkill Pre-session analysis
     analysis_post = False  # Show the TrueSkill Post-session analysis
+    show_performances = False  # Show the expected performands on details or analyses
     show_d_rank = False  # Show the rank delta (movement) this session caused
     show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
@@ -779,6 +780,13 @@ class leaderboard_options:
             elif not self.analysis_post:
                 self.analysis_post = True
 
+        if 'show_performances' in urequest:
+            if urequest['show_performances']:
+                self.show_performances = json.loads(urequest['show_performances'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_performances:
+                self.show_performances = True
+
         # Column selecting options
         if 'show_d_rank' in urequest:
             if urequest['show_d_rank']:
@@ -790,6 +798,7 @@ class leaderboard_options:
         if 'show_d_rating' in urequest:
             if urequest['show_d_rating']:
                 self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_d_rating:
                 self.show_d_rating = True
 
@@ -880,9 +889,17 @@ class leaderboard_options:
                     sessions = [game_tuple[igd]]
 
                 for session_tuple in sessions:
-                    # The session wrapper includes the player PKs as its 5th element
-                    session_players = set(session_tuple[4])
+                    # The session wrapper includes the session player PKs
+                    player_source = session_tuple[LB_STRUCTURE.session_players_element.value]
+                    if isinstance(player_source, (list, tuple)):
+                        session_players = set([str(p) for p in player_source])
+                    elif isinstance(player_source, dict):
+                        session_players = set([str(p) for p in player_source.keys()])
+                    else:
+                        session_players = set()
+
                     players.update(session_players)
+
                     if settings.DEBUG:
                         log.debug(f"Applied players: {session_players}, yielding {len(players)} players: {players}")
 
@@ -983,10 +1000,18 @@ class leaderboard_options:
         a filtered snaphot because global leaderboads for a game can grow very
         large and most views will be concerned with a subset based on leagues.
 
-        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list
+        :param leaderboard_snapshot: A leaderboard with structure LB_STRUCTURE.session_wrapped_player_list and style LB_PLAYER_LIST_STYLE.rich
         '''
         leaderboard = leaderboard_snapshot[LB_STRUCTURE.session_data_element.value]
-        self.session_players = [str(p) for p in leaderboard_snapshot[LB_STRUCTURE.session_players_element.value]]
+
+        # Capture the session players as a list of PKs (as strings)
+        player_source = leaderboard_snapshot[LB_STRUCTURE.session_players_element.value]
+        if isinstance(player_source, (list, tuple)):
+            self.session_players = [str(p) for p in player_source]
+        elif isinstance(player_source, dict):
+            self.session_players = [str(p) for p in player_source.keys()]
+        else:
+            self.session_players = []
 
         # leaderboard is a well defined list of tuples that contain player info/metadata
         # The list is ordered by ranking.

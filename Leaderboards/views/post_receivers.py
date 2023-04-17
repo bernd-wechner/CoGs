@@ -7,6 +7,7 @@ import pytz
 
 from datetime import datetime
 from geopy.geocoders import Nominatim
+from http import HTTPStatus
 
 from django.conf import settings
 from django.http.response import HttpResponse
@@ -85,7 +86,7 @@ def receive_ClientInfo(request):
             except Exception as E:
                 pass
 
-    return HttpResponse()
+    return HttpResponse(status=HTTPStatus.NO_CONTENT)
 
 
 def receive_Filter(request):

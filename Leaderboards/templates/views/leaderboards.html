@@ -21,8 +21,10 @@ boards ofinterest. This is the central product of the leaderboards app.
 	<section id="leaderboard_options" class="leaderboard_options">
 		<div class="lbl_view">View:</div>
 		<div class="lbl_basic">using:</div>
-		<div class="lbl_advanced tooltip"><a onclick="toggle_visibility('lo_advanced', 'grid', 'options_display_button');">Advanced options <span id="options_display_button"></span></a>
-			<span class="tooltiptext_right">Display or hide the advanced options</span></div>
+		<div class="lbl_advanced tooltip">
+			<a onclick="toggle_visibility('lo_advanced', 'grid', 'options_display_button');">Advanced options <span id="options_display_button"></span></a>
+			<span class="tooltiptext_right">Display or hide the advanced options</span>
+		</div>
 
 		<div class="lo_buttons">
 			<div class="lo_reload_icon">
@@ -121,6 +123,12 @@ boards ofinterest. This is the central product of the leaderboards app.
 				<input type="checkbox" id="chk_analysis_post" oninput='DrawTables("tblLB");'>
 				<label for="chk_analysis_post" class="tooltip">Show Post-Session TrueSkill Predictions
 				<span class="tooltiptext" style="width: 200%;">Show a session header that displays the TrueSkill predictions after this session was played.</span>
+				</label>
+			</div>
+			<div class="lo_show_performances">
+				<input type="checkbox" id="chk_show_performances" oninput='DrawTables("tblLB");'>
+				<label for="chk_show_performances" class="tooltip">Show Expected Performances
+				<span class="tooltiptext" style="width: 300%;">If any of session details, or pre- or post-session predictions are displayed, include the expected perfromances upon which the rankings and assesments were based (teeth).</span>
 				</label>
 			</div>
 			<div class="lo_show_d_rank">

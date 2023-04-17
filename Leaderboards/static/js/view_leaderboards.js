@@ -12,9 +12,9 @@
 
 // Note we have to initialise these by calling select2() if we want to call select2('data')
 // at any point. This is explained here:
-// https://github.com/select2/select2/issues/3582
+// 		https://github.com/select2/select2/issues/3582
 // I would have thought the DAL widget has this already handled. But apprently not.
-// If we do this in the   template (that includes this script) rather than here, for
+// If we do this in the  template (that includes this script) rather than here, for
 // some reason it doesn't work right. Initilaising them here seems to work fine.
 $('#games').select2();
 $('#players').select2();
@@ -103,12 +103,12 @@ function InitControls(options, exempt) {
 	// footnote: The league selector could be populated from game_leagues or
 	// player_leagues though they should typically be identical anyhow (albeit
 	// not guaranteed to be. If roundtripping from this form they will be, but
-	// a URL GET request can specify separate lists. We'll priritise game_leagues
+	// a URL GET request can specify separate lists. We'll prioritise game_leagues
 	// here.
 	//
 	// We can exempt these if "ajax" is provided in the exempt argument. ANY
 	// call to InitControls that might happen after another call to it which
-	// may not have got a reply yet to poppulate the control risks, an unnecssary
+	// may not have got a reply yet to populate the control risks, an unnecssary
 	// ajax call and double population of the control
 	if (!ex.includes("ajax")) {
 		// players are special as they may have been autoselected server side, and
@@ -124,9 +124,14 @@ function InitControls(options, exempt) {
 		// leagues as well can be used to filter players or games and/or justtransported as a selector.
 		const leagues = _.union(options.game_leagues, options.player_leagues, options.leagues);
 
-		Select2Init($('#games'), options.games);
-		Select2Init($('#leagues'), leagues);
-		Select2Init($('#players'), players);
+		if (options.games.length) Select2Init($('#games'), options.games)
+		else $('#games').val(null).trigger('change');
+
+		if (leagues.length) Select2Init($('#leagues'), leagues)
+		else $('#leagues').val(null).trigger('change');
+
+		if (players.length) Select2Init($('#players'), players)
+		else $('#players').val(null).trigger('change');
 	}
 
 	// ===================================================================================
@@ -268,11 +273,12 @@ function InitControls(options, exempt) {
 	if (!ex.includes("links")) $('#links').val(dval(options.links, "none"));
 
 	// Then the extra info options for leaderboard headers
-	if (!ex.includes("details"))       $('#chk_details').prop('checked', dval(options.details, false));
-	if (!ex.includes("analysis_pre"))  $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
-	if (!ex.includes("analysis_post")) $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
-	if (!ex.includes("show_d_rank"))   $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
-	if (!ex.includes("show_d_rating")) $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
+	if (!ex.includes("details"))           $('#chk_details').prop('checked', dval(options.details, false));
+	if (!ex.includes("analysis_pre"))      $('#chk_analysis_pre').prop('checked', dval(options.analysis_pre, false));
+	if (!ex.includes("analysis_post"))     $('#chk_analysis_post').prop('checked', dval(options.analysis_post, false));
+	if (!ex.includes("show_performances")) $('#chk_show_performances').prop('checked', dval(options.show_performances, false));
+	if (!ex.includes("show_d_rank"))       $('#chk_show_d_rank').prop('checked', dval(options.show_d_rank, false));
+	if (!ex.includes("show_d_rating"))     $('#chk_show_d_rating').prop('checked', dval(options.show_d_rating, false));
 
 	// The snapshot selecting options
 	if (!ex.includes("show_baseline")) $('#chk_show_baseline').prop('checked', dval(options.show_baseline, false));
@@ -344,12 +350,13 @@ async function URLopts(make_static) {
 	const highlight_selected = $('#chk_highlight_selected').is(":checked");
 
 	// Then the extra info options for leaderboard headers
-	const details       = $('#chk_details').is(":checked");
-	const analysis_pre  = $('#chk_analysis_pre').is(":checked");
-	const analysis_post = $('#chk_analysis_post').is(":checked");
-	const show_d_rank   = $('#chk_show_d_rank').is(":checked");
-	const show_d_rating = $('#chk_show_d_rating').is(":checked");
-	const select_players = $('#chk_select_players').is(":checked");
+	const details           = $('#chk_details').is(":checked");
+	const analysis_pre      = $('#chk_analysis_pre').is(":checked");
+	const analysis_post     = $('#chk_analysis_post').is(":checked");
+	const show_performances = $('#chk_show_performances').is(":checked");
+	const show_d_rank       = $('#chk_show_d_rank').is(":checked");
+	const show_d_rating     = $('#chk_show_d_rating').is(":checked");
+	const select_players    = $('#chk_select_players').is(":checked");
 
 	// Then the snapshot selecting options
 	const show_baseline = $('#chk_show_baseline').is(":checked");
@@ -581,13 +588,14 @@ async function URLopts(make_static) {
 	// Then the extra info options for leaderboard headers
 	// These too have valid defaults, on or off, and we only have to submit
 	// deviations from that default.
-	if (details       != defaults.details)       opts.push("details="+encodeURIComponent(details));
-	if (analysis_pre  != defaults.analysis_pre)  opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
-	if (analysis_post != defaults.analysis_post) opts.push("analysis_post="+encodeURIComponent(analysis_post));
-	if (show_d_rank   != defaults.show_d_rank)   opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
-	if (show_d_rating != defaults.show_d_rating) opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
-	if (show_baseline != defaults.show_baseline) opts.push("show_baseline="+encodeURIComponent(show_baseline));
-	if (select_players != defaults.select_players) opts.push("select_players="+encodeURIComponent(select_players));
+	if (details           != defaults.details)           opts.push("details="+encodeURIComponent(details));
+	if (analysis_pre      != defaults.analysis_pre)      opts.push("analysis_pre="+encodeURIComponent(analysis_pre));
+	if (analysis_post     != defaults.analysis_post)     opts.push("analysis_post="+encodeURIComponent(analysis_post));
+	if (show_performances != defaults.show_performances) opts.push("show_performances="+encodeURIComponent(show_performances));
+	if (show_d_rank       != defaults.show_d_rank)       opts.push("show_d_rank="+encodeURIComponent(show_d_rank));
+	if (show_d_rating     != defaults.show_d_rating)     opts.push("show_d_rating="+encodeURIComponent(show_d_rating));
+	if (show_baseline     != defaults.show_baseline)     opts.push("show_baseline="+encodeURIComponent(show_baseline));
+	if (select_players    != defaults.select_players)    opts.push("select_players="+encodeURIComponent(select_players));
 	if (show_cross_league_snaps != defaults.show_cross_league_snaps) opts.push("show_cross_league_snaps="+encodeURIComponent(show_cross_league_snaps));
 
 	// Then the leaderboard screen layout options
@@ -644,7 +652,12 @@ function GetShortcutButtons() {
 	// Start afresh
 	shortcut_buttons = [null];
 
-	shortcut_buttons.push(["All leaderboards", true, false, false, {"enabled": []}]);
+	shortcut_buttons.push(["All leaderboards", true, false, false, {
+		"enabled": [],
+		"leagues": [],
+		"game_leagues": [],
+		"player_leagues": []
+		}]);
 
 	if (pl_id)
 		shortcut_buttons.push([`All ${pl_name} leaderboards`, true, false, false,
@@ -912,6 +925,7 @@ function DrawTables(target, links) {
 		document.getElementById("chk_details").checked,
 		document.getElementById("chk_analysis_pre").checked,
 		document.getElementById("chk_analysis_post").checked,
+		document.getElementById("chk_show_performances").checked,
 		document.getElementById("chk_show_d_rank").checked,
 		document.getElementById("chk_show_d_rating").checked,
 		document.getElementById("chk_show_baseline").checked,

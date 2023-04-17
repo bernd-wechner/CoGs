@@ -78,7 +78,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
     # Optionally associate with an import. We call it "source" and if it is null (none)
     # this suggests not imported but entered directly through the UI.
-    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', null=True, blank=True, on_delete=models.SET_NULL)
+    source = models.ForeignKey(Import, verbose_name='Source', related_name='sessions', editable=False, null=True, blank=True, on_delete=models.SET_NULL)
 
     # Foreign Keys that for part of a rich session object
     # ranks = ForeignKey from Rank (one rank per player or team depending on mode)
@@ -210,7 +210,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                     else:
                         pid = 1
                         for player in rank.players:
-                            players["{}.{}".format(rank.rank, pid)] = player
+                            players[f"{rank.rank}.{pid}"] = player
                             pid += 1
             else:
                 # The players can be listed (indexed) in rank order.
@@ -520,31 +520,39 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
         return ts.Actual_ranking(self, as_ranks=as_ranks)
 
-    @property
-    def predicted_ranking(self) -> tuple:
+    @property_method
+    def predicted_ranking(self, with_performances=False) -> tuple:
         '''
         Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the predicted
         order (based on skills entering the session) as the first element in a tuple.
 
         The second is the probability associated with that prediction based on skills of
         players in the session.
+
+        :param with_performances: If True, returns a 3-tuple including the a tuple of expected
+                                  performances as the last item, with a 1 to 1 mapping with the
+                                  first element (the tuple of rankers).
         '''
         g = self.game
         ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
-        return ts.Predicted_ranking(self)
+        return ts.Predicted_ranking(self, with_performances=with_performances)
 
-    @property
-    def predicted_ranking_after(self) -> tuple:
+    @property_method
+    def predicted_ranking_after(self, with_performances=False) -> tuple:
         '''
         Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the predicted
         order (using skills updated on the basis of the actual results) as the first element in a tuple.
 
         The second is the probability associated with that prediction based on skills of
         players in the session.
+
+        :param with_performances: If True, returns a 3-tuple including the a tuple of expected
+                                  performances as the last item, with a 1 to 1 mapping with the
+                                  first element (the tuple of rankers).
         '''
         g = self.game
         ts = TrueSkillHelpers(tau=g.trueskill_tau, beta=g.trueskill_beta, p=g.trueskill_p)
-        return ts.Predicted_ranking(self, after=True)
+        return ts.Predicted_ranking(self, with_performances=with_performances, after=True)
 
     @property
     def relationships(self) -> set:
@@ -621,7 +629,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             return rank_dict
 
         actual_rank = dictify(self.actual_ranking()[0])
-        predicted_rank = dictify(self.predicted_ranking_after[0]) if after else dictify(self.predicted_ranking[0])
+        predicted_rank = dictify(self.predicted_ranking_after()[0]) if after else dictify(self.predicted_ranking()[0])
         total = 0
         right = 0
         for relationship in self.relationships:
@@ -771,8 +779,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         Returns the leaderboard as it was immediately before this session, in the form of
         LB_STRUCTURE.player_list
 
-        :param style: a LB_PLAYER_LIST_STYLE to use.
-        :param wrap: If true puts the previous sessions session wrapper around the leaderboard.
+        :param style: an LB_PLAYER_LIST_STYLE to use.
+        :param wrap:  if true puts the previous sessions session wrapper around the leaderboard.
         '''
         session = self.previous_session()
         player_list = self.leaderboard(asat=self.date_time - MIN_TIME_DELTA, style=style)
@@ -793,8 +801,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         Returns the leaderboard as it was immediately after this session, in the form of
         LB_STRUCTURE.player_list
 
-        :param style: a LB_PLAYER_LIST_STYLE to use.
-        :param wrap: If true puts this sessions session wrapper around the leaderboard.
+        :param style: an LB_PLAYER_LIST_STYLE to use.
+        :param wrap:  if true puts this sessions session wrapper around the leaderboard.
         '''
         session = self
         player_list = self.leaderboard(asat=self.date_time, style=style)
@@ -815,16 +823,25 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             LB_STRUCTURE.session_wrapped_player_list
 
         A session wrapper contains:
-            session.pk,
-            session.date_time (in local time),
-            session.game.play_counts()['total'],
-            session.game.play_counts()['sessions'],
-            session.players() (as a list of pks),
-            session.leaderboard_header(),
-            session.leaderboard_analysis(),
-            session.leaderboard_analysis_after(),
-            game.leaderboard(asat)  # leaderboard after this game sessions
-            game.leaderboard()      # current (latest) leaderboard for this game (if needed for diagnostics or otherwise)
+            # Session metadata
+            0 session.pk,
+            1 session.date_time (in local time),
+            2 session.game.play_counts()['total'],
+            3 session.game.play_counts()['sessions'],
+
+            # Player details
+            4 session.players() (as a list of pks),
+
+            # Some HTML analytic headers
+            5 session.leaderboard_header(),
+            6 session.leaderboard_analysis(),
+            7 session.leaderboard_analysis_after(),
+
+            # The leaderboard(s)
+            8 game.leaderboard(asat)  # leaderboard after this game sessions
+
+            Leaderboards.leaderboards.enums.LB_STRUCTURE provides pointers into this structure.
+                They must reflect what is produced here.
 
         :param leaderboard:
         :param leagues:      self.leaderboard argument passed through
@@ -842,29 +859,48 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         # Get the play counts as at asat
         counts = self.game.play_counts(asat=asat)
 
-        # TODO: Respect the style
-        # This is .rich
-        # .data should be minimlist to enable reconstruction
-        # Consider how others would be. Problem is the analysis blocks are rich and not great for storing in ChangeLogs.
-        # It is they that probably need to respect the rich vs simple vs data style.
-        # none might suggest no wrapping?
-        # data be minimalist
-        # rating and ratings could mape to simple
-        # rich is the current default
+        # Two standard use cases exist:
+        #     prep for render:    name_style is "flexi". The client can adjust links, name styles and performance displays on the fly without a server round trip
+        #     prep for storage    name_style is "template". We don't want to include any of the name variants in data as the session wrapped leaderboard containing
+        #                         these rankers may be saved in JSON format either with change logs or in the laderboard cache and we want player name privace
+        #                         constrained to render time.
+        #     We conclude which to use by  the style. `data` style is for storage and `rich` is for render
+        name_style = "template" if style == LB_PLAYER_LIST_STYLE.data else "flexi"
 
+        # These HTML headers are al; 2-tuples in the form (html, data)
+        # where the data provides rendering data, in particular, player
+        # link, name and performance data, so the rendered can dynamically
+        # render the leaderboard headers in response to choces made by the
+        # end user while viewing, The 'leaderboard' - an ordered list of
+        # players) in the rich player list style, is a tuple of similar data
+        # for each player on the leaderboard. The HTML headers include players
+        # and so provide their own data for that.
+        #
+        # In practice all three of the HTML headers currently only list the
+        # players in this session so their data elements actually replicate
+        # each other. THe flexibility is retained in case of other HTML
+        # headers that may be impelmented in future that might include other
+        # players (hard to imagine any but we maintain a flexible approach here
+        # in case).
+        html_headers = (
+                self.leaderboard_header(name_style=name_style),
+                self.leaderboard_analysis(name_style=name_style),
+                self.leaderboard_analysis_after(name_style=name_style),
+            )
+
+        # TODO: We want to add for each player in the session name expansions
+        #       this is the list provided by
         # Build the snapshot tuple
-        return (self.pk,
-                localize(localtime(self.date_time)),
-                counts['total'],
-                counts['sessions'],
-                [p.pk for p in self.players],
-                self.leaderboard_header(),
-                self.leaderboard_analysis(),
-                self.leaderboard_analysis_after(),
-                leaderboard)
+        return (self.pk,                                # 0
+                localize(localtime(self.date_time)),    # 1
+                counts['total'],                        # 2
+                counts['sessions'],                     # 3
+                [p.pk for p in self.players],           # 4
+                *html_headers,                          # 5,6,7 unpacked into this session wrapping tuple
+                leaderboard)                            # 8
 
-    @property
-    def leaderboard_snapshot(self) -> tuple:
+    @property_method
+    def leaderboard_snapshot(self, style=LB_PLAYER_LIST_STYLE.simple) -> tuple:
         '''
         Prepares a leaderboard snapshot for passing to a view for rendering.
 
@@ -872,35 +908,12 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         That is: the leaderboard in this game as it stood just after this session was played.
 
-        Such snapshots are often delivered inside a game wrapper.
-
-        This differs from wrapped_leaderboard only in that it is a shorthand for a
-        common use case and includes a diagnostic snapshot (the latest game board) if
-        this is the last session in this game and the latest board is not the same.
-
-        To clarify, the snapshot builds the board from the latest performances of
-        all players at the time this session was played, while the latest game board
-        uses the ratings as they stand. A difference suggests the ratings don't reflect
-        the performances and a data integrity issue.
+        Such snapshots are often delivered to the client inside a game wrapper as well.
         '''
-
-        # Get the leaderboard asat the time of this session.
-        # That includes the performances of this session and
-        # hence the impact of this session.
-        #
-        # We provide an annotated version which supplies us with
-        # the information needed for player filtering and rendering,
-        # the leaderboard returned is complete (no league filter applied,
-        # or name rendering options supplied).
-        #
-        # It will be up to the view to filter players as desired and
-        # select the name format at render time.
-
         if settings.DEBUG:
-            log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk}")
+            log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk} with style '{style.name}'")
 
-        # Build the snapshot tuple (session wrapped leaderboard)
-        leaderboard = self.leaderboard_after(style=LB_PLAYER_LIST_STYLE.rich)  # returns LB_STRUCTURE.player_list
+        leaderboard = self.leaderboard_after(style=style)  # returns LB_STRUCTURE.player_list
         snapshot = self.wrapped_leaderboard(leaderboard)
 
         return snapshot
@@ -910,6 +923,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         '''
         Returns a game_wrapped_session_wrapped pair of player_lists representing the leaderboard
         for this session game as it stood before the session was played, and after it was played.
+
+        :param style: The LB_PLAYER_LIST_STYLE to use in the returned boards (player lists).
         '''
         before = self.leaderboard_before(style=style, wrap=True)  # session wrapped
         after = self.leaderboard_after(style=style, wrap=True)  # session wrapped
@@ -927,10 +942,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             include_latest = not after[0] == latest[0]
 
             if include_latest:
-                # TODO: For now just a diagnostic check but what should be do in general?
-                # Report it on the impact view? Log it? Fix it?
-                # breakpoint()
-                pass
+                raise ValidationError("A surprising internal error. Likely a coding bug. A diagnostic board was attached to the impact summary.")
         else:
             include_latest = False
 
@@ -964,92 +976,137 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         return deltas
 
-    def _html_rankers_ol(self, ordered_rankers, expected_performance, name_style, ol_style="margin-left: 8ch;"):
+    def _html_rankers_ol(self, ordered_ranks_or_rankers, expected_performance, name_style, ol_style="margin-left: 8ch;"):
         '''
         Internal OL factory for list of rankers on a session.
 
-        # TODO: Fix this. It looks like once I passed in rank objects, and now no longer.
-        #       Rank objects make the ranker (player or team) available AND the rscore if there is one.
-        #       Look back in git history to see how this changed. Because at some point rank objects
-        #       are no longer passed in, but player or team objects are and this broke the tooltip as well!
-        #
-        # I broke it in this commit:
-        #     5d7e5f0bf59846e9d6cba64b4d65fb7d8b2d4d13
-        # dated 6/5/2021
+        Two standard use cases exist:
+            prep for render:    name_style is "flexi". The client can adjust links, name styles and performance displays on the fly without a server round trip
+            prep for storage    name_style is "template". We don't want to include any of the name variants in data as the session wrapped leaderboard containing
+                                these rankers may be saved in JSON format either with change logs or in the laderboard cache and we want player name privace
+                                constrained to render time.
 
-        :param ordered_rankers:         An ordered list of Player/Team objects (or lists of them for ties)
-                                        or Ranks objects (or lists of them for ties).
-        :param expected_performance:    Name of Rank property that supplies a Predicted Performance summary
-        :param name_style:              The style in which to render names
-        :param ol_style:                A style to apply to the OL if any
+        :param ordered_ranks_or_rankers: An ordered list of Player/Team objects (or lists of them for ties)
+                                         or Ranks objects (or lists of them for ties).
+        :param expected_performance:     Name of Rank property that supplies a Predicted Performance summary as a (mu, sigma) tuple, or a (mu, sigma) tuple
+        :param name_style:               The style in which to render names
+        :param ol_style:                 A style to apply to the OL if any
         '''
         Player = apps.get_model(APP, "Player")
         Team = apps.get_model(APP, "Team")
         Rank = apps.get_model(APP, "Rank")
         Game = apps.get_model(APP, "Game")
 
+        if settings.DEBUG:
+            log.debug(f"\tBuilding rankers list: {name_style=} {'for render' if name_style=='flexi' else 'for storage' if name_style=='template' else ''}")
+
+        def expected_performance_val(i, co_ranker, expected_performance):
+            # TODO: Confirm that if the rank is for team it returns the team's expected performance and
+            #       if the expected_performances are supplied as a tuple or list that if for a team that
+            #       they reflect the team expected performance.
+            if isinstance(co_ranker, Rank) and hasattr(co_ranker, expected_performance):
+                return getattr(co_ranker, expected_performance)[0] # (Extract mu from a (mu, sigma) tuple
+            elif isinstance(expected_performance, (tuple, list)) and i < len(expected_performance) and i >= 0:
+                return expected_performance[i]
+            else:
+                return None
+
         scoring = Game.ScoringOptions(self.game.scoring).name
 
-        data = []  # A list of (PK, BGGname) tuples as data for a template view to build links to BGG if desired.
+        # data captures a list of options for template substituton.
+        # A list of (PK, BGGname, anno, peranno) where anno and peranno are
+        # a basic annotation and a performance inclusive annotation
+        # respectively.
+        data = [] # (PK, BGGname, anno, peranno) elements
+
         if ol_style:
             detail = f'<OL style="{ol_style}">'
         else:
             detail = '<OL>'
 
-        rankers = OrderedDict()
-        for row, ranker in enumerate(ordered_rankers):
-            if isinstance(ranker, (list, tuple)):
-                tied_rankers = ranker
+        # Build a list of rankers (or tied ranker lists) - We can receive ranks or rankers so extract the rankers
+        # We also want to capture scores and any expected_performance if available, which are only available if
+        # Ranks are passed in, as they are properties of Rank.
+        rankers_scores_perfs = []
+        for i, R_or_r in enumerate(ordered_ranks_or_rankers):
+            if isinstance(R_or_r, (list, tuple)):
+                # R_or_r is a list of ranks, players or teams who tied (co-rankers)
+                # Each one is a rank with score or not
+                rankers_scores_perfs.append([(co_ranker.ranker,
+                                              co_ranker.score,
+                                              expected_performance_val(i, co_ranker, expected_performance),
+                                              ) if isinstance(co_ranker, Rank) else (
+                                                  co_ranker,
+                                                  None,
+                                                  expected_performance_val(i, co_ranker, expected_performance)) for co_ranker in R_or_r])
             else:
-                tied_rankers = [ranker]
+                # R_or_r is a single rank, player or team who tied (co-rankers)
+                # For consistency with tied ranks, create a one entry list (tied with self ;-).
+                # For rendering a string at this rank, that is all we need
+                rankers_scores_perfs.append([(R_or_r.ranker,
+                                              R_or_r.score,
+                                              expected_performance_val(i, R_or_r, expected_performance),
+                                              ) if isinstance(R_or_r, Rank) else (
+                                                  R_or_r,
+                                                  None,
+                                                  expected_performance_val(i, R_or_r, expected_performance))])
 
-            tied_rankers_html = []
-            for R in tied_rankers:
-                r = R.ranker if isinstance(R, Rank) else R
+        rankers = OrderedDict()
+        for row, co_rankers in enumerate(rankers_scores_perfs):
+            co_rankers_html = []
+            for (ranker, score, eperf) in co_rankers:
+                # We support two levels of ranker annotation in these lists
+                #
+                # Basic - or "anno"
+                # Basic plus an expected performance indicator - or "peranno"
+                delim = ", "
 
-                if isinstance(r, Team):
+                # Don't report invalid scores if they exist.
+                # If the ranker is a team the game bmust support team scoring
+                # If the ranker is a player it must supprot individual scoring
+                # This should never happen really.
+                if not ((isinstance(ranker, Team) and "TEAM" in scoring) or (isinstance(ranker, Player) and "INDIVIDUAL" in scoring)):
+                    score = None
+
+                tt = ("<div class='tooltip'><span class='tooltiptext' style='width: 600%;'>", "</span>", "</div>")
+                if score and eperf:
+                    anno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
+                    peranno = f" ({tt[0]}Score{delim}Expected performance (teeth){tt[1]}{score}{delim}{eperf:.1f}{tt[2]})"
+                elif score:
+                    anno = peranno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
+                elif eperf:
+                    anno = ""
+                    peranno = f" ({tt[0]}Expected performance (teeth){tt[1]}{eperf:.1f}{tt[2]})"
+                else:
+                    anno = peranno = None
+
+                # We add a template {anno} to end of each player so a template can replace it with anno or peranno
+                # based on the selected options (leaderboard_options.show_performances)
+                PK = ranker.pk
+                if isinstance(ranker, Team):
+                    # TODO: confirm that team rendering does not leak and private member data
                     # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
-                    ranker = field_render(r, flt.template, osf.verbose)
+                    ranker_str = field_render(ranker, flt.template, osf.verbose) + f"{{anno.{row}}}"
+                    BGG = None # No BGGname for a team
+                    data.append((PK, BGG, anno, peranno)) # TODO check the peranno is in fact the expected team performance! it probably isn't.
 
-                    if "TEAM" in scoring and isinstance(R, Rank) and not R.score is None:
-                        ranker += f" ({R.score})"
-
-                    data.append((r.pk, None))  # No BGGname for a team
-                elif isinstance(r, Player):
+                elif isinstance(ranker, Player):
                     # Render the field first as a template which has:
                     # {Player.PK} in place of the player's name, and a
                     # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
-                    ranker = field_render(r , flt.template, osf.template)
-
-                    # Replace the player name template item with the formatted name of the player
-                    ranker = re.sub(fr'{{Player\.{r.pk}}}', r.name(name_style), ranker)
-
-                    if "INDIVIDUAL" in scoring and isinstance(R, Rank) and not R.score is None:
-                        ranker += f" ({R.score})"
+                    ranker_str = field_render(ranker , flt.template, osf.template) + f"{{anno.{row}}}"
 
                     # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
-                    PK = r.pk
-                    BGG = None if (r.BGGname is None or len(r.BGGname) == 0 or r.BGGname.isspace()) else r.BGGname
-                    data.append((PK, BGG))
+                    BGG = None if (ranker.BGGname is None or len(ranker.BGGname) == 0 or ranker.BGGname.isspace()) else ranker.BGGname
+                    data.append((PK, BGG, anno, peranno))
 
-                # Add expected TrueSkill performance (mu, sigma) to the ranker string if requested
-                eperf = ""
-                if not expected_performance is None:
-                    perf = getattr(r, expected_performance, None)  # (mu, sigma)
-                    if not perf is None:
-                        eperf = perf[0]  # mu
+                co_rankers_html.append(ranker_str)
 
-                if eperf:
-                    tip = "<span class='tooltiptext' style='width: 600%;'>Expected performance (teeth)</span>"
-                    ranker += f" (<div class='tooltip'>{eperf:.1f}{tip}</div>)"
+            conjuntion = "<BR>" if len(co_rankers_html) > 3 else ", "
+            rankers[row] = conjuntion.join(co_rankers_html)
 
-                tied_rankers_html.append(ranker)
-
-            conjuntion = "<BR>" if len(tied_rankers_html) > 3 else ", "
-            rankers[row] = conjuntion.join(tied_rankers_html)
-
-        for row, tied_rankers in rankers.items():
-            detail += f'<LI value={row+1}>{tied_rankers}</LI>'
+        for row, co_rankers in rankers.items():
+            detail += f'<LI value={row+1}>{co_rankers}</LI>'
 
         detail += '</OL>'
 
@@ -1070,19 +1127,19 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         pk and BGG name of the rankers in that session which allows the
         template to link names to this site or to BGG as it desires.
 
-        :param name_style: Must be supplied
+        :param name_style: what style to render names with
         '''
         (ordered_ranks, probability) = self.actual_ranking(as_ranks=True)
 
         detail = f"<b>Results after: <a href='{link_target_url(self)}' class='{FIELD_LINK_CLASS}'>{time_str(self.date_time)}</a></b><br><br>"
 
-        (ol, data) = self._html_rankers_ol(ordered_ranks, None, name_style)
+        (ol, data) = self._html_rankers_ol(ordered_ranks, "performance", name_style)
 
         detail += ol
 
         detail += f"This result was deemed {probability:0.1%} likely."
 
-        return (detail, data)
+        return (mark_safe(detail), data)
 
     def leaderboard_analysis(self, name_style="flexi"):
         '''
@@ -1107,13 +1164,13 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         :param name_style: Must be supplied
         '''
-        (ordered_rankers, confidence) = self.predicted_ranking
+        (ordered_rankers, confidence, expected_performances) = self.predicted_ranking(with_performances=True)
         quality = self.prediction_quality
 
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
         detail = f"Predicted ranking <b>before</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_rankers, "performance", name_style)
+        (ol, data) = self._html_rankers_ol(ordered_rankers, expected_performances, name_style)
 
         detail += ol
 
@@ -1125,7 +1182,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         It includes an analysis of the session updates.
 
-        This comes in two parts, a templates, and ancillary data.
+        This comes in two parts, a template, and ancillary data.
 
         The template is HTML with placeholders for the ancillary data.
 
@@ -1136,28 +1193,22 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         Format is as follows:
 
-        1) An ordered list of players as a the prediction
+        1) An ordered list of players as the prediction
         2) A confidence in the prediction (some measure of probability)
         3) A quality measure of that prediction
 
         :param name_style: Must be supplied
         '''
-        (ordered_rankers, confidence) = self.predicted_ranking_after
+        (ordered_rankers, confidence, expected_performances) = self.predicted_ranking_after(with_performances=True)
         quality = self.prediction_quality_after
 
         tip_sure = "<span class='tooltiptext' style='width: 500%;'>Given the expected performance of players, the probability that this predicted ranking would happen.</span>"
         tip_accu = "<span class='tooltiptext' style='width: 300%;'>Compared with the actual result, what percentage of relationships panned out as expected performances predicted.</span>"
         detail = f"Predicted ranking <b>after</b> this session,<br><div class='tooltip'>{confidence:.0%} sure{tip_sure}</div>, <div class='tooltip'>{quality:.0%} accurate{tip_accu}</div>: <br><br>"
-        (ol, data) = self._html_rankers_ol(ordered_rankers, "performance_after", name_style)
+        (ol, data) = self._html_rankers_ol(ordered_rankers, expected_performances, name_style)
         detail += ol
 
         return (mark_safe(detail), data)
-
-    def leaderboard_analysis_current(self, name_style="flexi"):
-        pass
-        # TODO: Return the probability of the current ranking. So it's not part of
-        # theResults box above and we can rearrgae the optiiopns maybe to have TrueSkill section
-        # with Result Analsyis, Prediction Prior, Prediction Post.
 
     def previous_sessions(self, player=None):
         '''

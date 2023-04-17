@@ -6,7 +6,6 @@ chardet>=4.0.0
 Django>=4.0
 django-cte @ https://github.com/bernd-wechner/django-cte/archive/refs/heads/master.zip
 django-bitfield @ https://github.com/bernd-wechner/django-bitfield/archive/refs/heads/master.zip
-django-currentuser @ https://github.com/asucrews/django-currentuser/archive/refs/heads/master.zip
 django-rich-views @ https://github.com/bernd-wechner/django-rich-views/archive/refs/heads/master.zip
 django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
 django-cache-memoized

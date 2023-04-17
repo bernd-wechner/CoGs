@@ -46,6 +46,9 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 		[<a href="{% url 'edit' model_name object_id %}">Edit this {{ model_name.title }} again</a>]
 		[<a href="{% url 'list' model_name %}">List all {{ model_name_plural.title }}</a>]
 		[<a href="{% url 'list' model_name %}?game={{game.pk}}">List {{game.name}} {{ model_name_plural.title }}</a>]
+		{#	Quick access to the last 5 leaderboards to check evolution #}
+		[<a href="{% url 'leaderboards' %}?no_defaults&games_ex={{game.pk}}&num_players_top=10&compare_with=4&details=true&show_d_rank=true&show_d_rating=true&select_players=true">List {{game.name}} Leaderboard Evolution</a>]]
+		{#&leagues=1	How is league filterig working on Session Impacts? leaderboards mayneed explicit mention? #}
 	</p>
 {% endif %}
 
@@ -297,50 +300,60 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 	let board, HTML;
 
 	{% if change_log %}
-	{% if lb_impact_before_change %}
-	board = lb_impact_before_change;
-	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
-	$('#before_change_session_board_after').append(HTML)
+		{% if lb_impact_before_change %}
+			board = lb_impact_before_change;
+			HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
+			$('#before_change_session_board_after').append(HTML)
 
-	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
-	$('#before_change_session_board_before').append(HTML)
-    {% endif %} {# lb_impact_before_change #}
+			HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
+			$('#before_change_session_board_before').append(HTML)
+	    {% endif %} {# lb_impact_before_change #}
 
-	board = lb_impact_after_change;
-	HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
-	$('#after_change_session_board_after').append(HTML)
+		board = lb_impact_after_change;
+		HTML = LeaderboardTable(board, 0, "CoGs", LB_options, null, "nick");
+		$('#after_change_session_board_after').append(HTML)
 
-	HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
-	$('#after_change_session_board_before').append(HTML)
+		HTML = LeaderboardTable(board, 1, "CoGs", LB_options, null, "nick");
+		$('#after_change_session_board_before').append(HTML)
+
+		{% if includes_diagnostic %}
+			{% comment %}
+				includes_diagnostic is a bool in the template and tells us that impact_after_change
+				has a 3rd snapshot being the latest board for diagnositcs.
+				TODO: We should render that too. It is added by Session.leaderboard_impact() if
+				it detects an anomoly
+			{% endcomment %}
+		{% endif %}
+
     {% endif %} {# change_log #}
 
 	{% if rebuild_log %}
-	board = lb_impact_rebuild;
-	HTML = LeaderboardTable(board[{{games.0.pk}}], 0, "CoGs", LB_options, null, "nick");
-	$('#after_change_game_board0').append(HTML)
+		board = lb_impact_rebuild;
+		HTML = LeaderboardTable(board[{{games.0.pk}}], 0, "CoGs", LB_options, null, "nick");
+		$('#after_change_game_board0').append(HTML)
 
-	HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
-	$('#before_change_game_board0').append(HTML)
+		HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
+		$('#before_change_game_board0').append(HTML)
 
-	{% if rebuild_log_is_dated.games.0.pk %}
-	board = latest_game_boards_now;
-	HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
-	$('#latest_game_board_now0').append(HTML)
-	{% endif %} {# rebuild_log_is_dated #}
+		{% if rebuild_log_is_dated.games.0.pk %}
+			board = latest_game_boards_now;
+			HTML = LeaderboardTable(board[{{games.0.pk}}], 1, "CoGs", LB_options, null, "nick");
+			$('#latest_game_board_now0').append(HTML)
+		{% endif %} {# rebuild_log_is_dated #}
 
-	{% if games|length > 1 %}
-	HTML = LeaderboardTable(board[{{games.1.pk}}], 0, "CoGs", LB_options, null, "nick");
-	$('#after_change_game_board1').append(HTML)
+		{% if games|length > 1 %}
+			HTML = LeaderboardTable(board[{{games.1.pk}}], 0, "CoGs", LB_options, null, "nick");
+			$('#after_change_game_board1').append(HTML)
 
-	HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
-	$('#before_change_game_board1').append(HTML)
+			HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
+			$('#before_change_game_board1').append(HTML)
 
-	{% if rebuild_log_is_dated.games.1.pk %}
-	board = latest_game_boards_now;
-	HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
-	$('#latest_game_board_now1').append(HTML)
-	{% endif %} {# rebuild_log_is_dated #}
-	{% endif %} {# games|length > 1 #}
+			{% if rebuild_log_is_dated.games.1.pk %}
+				board = latest_game_boards_now;
+				HTML = LeaderboardTable(board[{{games.1.pk}}], 1, "CoGs", LB_options, null, "nick");
+				$('#latest_game_board_now1').append(HTML)
+			{% endif %} {# rebuild_log_is_dated #}
+		{% endif %} {# games|length > 1 #}
 
     {% endif %} {# rebuild_log #}
 </script>

@@ -1,4 +1,6 @@
 eclipse.preferences.version=1
+encoding//Leaderboards/management/commands/clear_leaderboard_cache.py=utf-8
+encoding//Leaderboards/management/commands/clear_leaderboard_logs.py=utf-8
 encoding//Leaderboards/management/commands/compact_primary_keys.py=utf-8
 encoding//Leaderboards/management/commands/update_primary_key.py=utf-8
 encoding//Leaderboards/models.py=utf-8
