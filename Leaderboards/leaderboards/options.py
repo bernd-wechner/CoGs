@@ -1,4 +1,4 @@
-import json, enum, numbers
+import json, enum, numbers, re
 
 from datetime import datetime, timedelta
 from collections import OrderedDict
@@ -8,6 +8,7 @@ from .enums import NameSelection, LinkSelection, LB_STRUCTURE
 from .util import is_number
 
 from django.conf import settings
+from django.http.request import QueryDict
 from django.utils.formats import localize
 from django.utils.timezone import localtime
 from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F
@@ -296,8 +297,13 @@ class leaderboard_options:
         if settings.DEBUG:
             log.debug(f"Building leaderboard options: {urequest=}, {ufilter=}")
 
+        # Create a mutable copy of urequest so we can do substitutes if desired.
+        # Specifically useful for the changed_in option shortcut
+        urq = QueryDict('', mutable=True)
+        urq.update(urequest)
+
         have_options = False
-        for item in urequest:
+        for item in urq:
             if item in self.all_options:
                 have_options = True
                 break
@@ -315,7 +321,7 @@ class leaderboard_options:
         # defaults. As soon as one option is specified normally that won't be needed,
         # but if no options are specified, it is needed to start with an empty set of
         # enabled options here.
-        if have_options or "no_defaults" in urequest:
+        if have_options or "no_defaults" in urq:
             self.enabled = set()
 
         # A very special case for the two evolution options. They are not enabled
@@ -325,9 +331,9 @@ class leaderboard_options:
         #
         # If both are supplied we need of course to ignore one. Matters not which,
         # but only one can be respected
-        if "compare_back_to" in urequest:
+        if "compare_back_to" in urq:
             self.compare_with = 0
-        elif "compare_with" in urequest:
+        elif "compare_with" in urq:
             self.compare_back_to = None
 
         # Keeping the same order as the properties above and recommended for
@@ -340,16 +346,16 @@ class leaderboard_options:
         players = []
         leagues = []
 
-        if 'games' in urequest:
-            sgames = urequest['games']  # CSV string
+        if 'games' in urq:
+            sgames = urq['games']  # CSV string
             if sgames:
                 games = list(map(int, sgames.split(",")))  # list of ints
 
                 # Save as a transport option
                 self.games = games
 
-        if 'players' in urequest:
-            splayers = urequest['players']  # CSV string
+        if 'players' in urq:
+            splayers = urq['players']  # CSV string
             if splayers:
                 players = list(map(int, splayers.split(",")))  # list of ints
 
@@ -358,8 +364,8 @@ class leaderboard_options:
 
         # TODO check if we can specify NO league filtering. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
-        if 'leagues' in urequest:
-            sleagues = urequest['leagues']  # CSV string
+        if 'leagues' in urq:
+            sleagues = urq['leagues']  # CSV string
             if sleagues:
                 leagues = list(map(int, sleagues.split(",")))  # list of ints
 
@@ -386,8 +392,8 @@ class leaderboard_options:
         ex_in = None
         game_games = games  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
-            if f'games_{suffix}' in urequest:
-                sgame_games = urequest[f'games_{suffix}']  # CSV string
+            if f'games_{suffix}' in urq:
+                sgame_games = urq[f'games_{suffix}']  # CSV string
                 if sgame_games:
                     game_games = list(map(int, sgame_games.split(",")))  # list of ints
 
@@ -425,11 +431,11 @@ class leaderboard_options:
         # is of no interest to a given league or leagues)
         self.need_enabling.add('top_games')
         self.need_enabling.add('latest_games')
-        if 'top_games' in urequest and urequest['top_games'].isdigit():
-            self.num_games = int(urequest["top_games"])
+        if 'top_games' in urq and urq['top_games'].isdigit():
+            self.num_games = int(urq["top_games"])
             self.__enable__('top_games', self.num_games)
-        elif 'latest_games' in urequest and urequest['latest_games'].isdigit():
-            self.num_games = int(urequest["latest_games"])
+        elif 'latest_games' in urq and urq['latest_games'].isdigit():
+            self.num_games = int(urq["latest_games"])
             self.__enable__('latest_games', self.num_games)
 
         # We can acccept leagues in an any or all form
@@ -438,8 +444,8 @@ class leaderboard_options:
         any_all = None
         game_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
-            if f'game_leagues_{suffix}' in urequest:
-                sgame_leagues = urequest[f'game_leagues_{suffix}']  # CSV string
+            if f'game_leagues_{suffix}' in urq:
+                sgame_leagues = urq[f'game_leagues_{suffix}']  # CSV string
                 if sgame_leagues:
                     game_leagues = list(map(int, sgame_leagues.split(",")))  # list of ints
 
@@ -479,8 +485,8 @@ class leaderboard_options:
         any_all = None
         game_players = players  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
-            if f'game_players_{suffix}' in urequest:
-                sgame_players = urequest[f'game_players_{suffix}']  # CSV string
+            if f'game_players_{suffix}' in urq:
+                sgame_players = urq[f'game_players_{suffix}']  # CSV string
                 if sgame_players:
                     game_players = list(map(int, sgame_players.split(",")))  # list of ints
 
@@ -510,31 +516,50 @@ class leaderboard_options:
             self.__enable__('game_players_any', False)
             self.__enable__('game_players_all', False)
 
+        ##################################################################
+        # TIME FILTERS
+        #
         # If a date is submitted (and parses validly) this asks us to list only
         # games that have a recorded play session after that date (exclude games
         # not played since them).
+        #
+        # Support a simple alias for a common request
+        if 'changed_in' in urq:
+            # changed_in can sepecify a month or year and we translate that to
+            # changed_since and asat spanning htat month or year.
+            changed_in = urq['changed_in']
+            if match:=re.fullmatch('(?P<year>\d\d\d\d)-(?P<month>\d\d?)', changed_in):
+                year = match["year"]
+                month = match["month"]
+                urq['changed_since'] = f"{year}-{int(month):02d}-01"
+                urq['as_at'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
+                del urq['changed_in']
+            elif match:=re.fullmatch('(?P<year>\d\d\d\d)', changed_in):
+                year = match["year"]
+                urq['changed_since'] = f"{year}-01-01"
+                urq['as_at'] = f"{int(year)+1:04d}-01-01 00:00:00"
+                del urq['changed_in']
+
         self.need_enabling.add('changed_since')
-        if 'changed_since' in urequest:
+        if 'changed_since' in urq:
             try:
-                self.changed_since = fix_time_zone(decodeDateTime(urequest['changed_since']), utz)
+                self.changed_since = fix_time_zone(decodeDateTime(urq['changed_since']), utz)
             except:
                 self.changed_since = None  # Must be a a Falsey value
 
             self.__enable__('changed_since', self.changed_since)
 
-        # A request for an event impact presentaton comes in the form
-        # of num_days, where num yays flags the length of the event to
-        # look for (looking back from now or as_at). We record it in
-        # self.num_days to flag that this is what we want to the processor.
-        # Other filters of  course may impact on this and reduce the number
-        # of games, which can in fact be handy if say the games of a long and
-        # busy games  event are logged and could produce a large number of
-        # boards. But for an average games night, probably makes little sense
-        # and has little utility.
-        self.need_enabling.add('num_days')
-        if 'num_days' in urequest and is_number(urequest['num_days']) and not self.changed_since:
-            self.num_days = float(urequest["num_days"])
-            self.__enable__('num_days', self.num_days)
+        # Now we capture the perspective request if it provides a valid datetime
+        self.need_enabling.add('as_at')
+        # asat is a permissible, legacy alias for as_at
+        if 'as_at' in urq or 'asat' in urq:
+            as_at = urq.get('as_at', urq.get('asat'))
+            try:
+                self.as_at = fix_time_zone(decodeDateTime(as_at), utz)
+            except:
+                self.as_at = None  # Must be a a Falsey value
+
+            self.__enable__('as_at', self.as_at)
 
         ##################################################################
         # PLAYER FILTERS
@@ -551,8 +576,8 @@ class leaderboard_options:
         ex_in = None
         player_players = players  # Use the transport option as a fallback.
         for suffix in ("ex", "in"):
-            if f'players_{suffix}' in urequest:
-                splayer_players = urequest[f'players_{suffix}']  # CSV string
+            if f'players_{suffix}' in urq:
+                splayer_players = urq[f'players_{suffix}']  # CSV string
                 if splayer_players:
                     player_players = list(map(int, splayer_players.split(",")))  # list of ints
 
@@ -594,21 +619,21 @@ class leaderboard_options:
         # As the starting point. Other options can add players of course, this
         # is not exclusive of other player selecting options.
         self.need_enabling.add('num_players_top')
-        if 'num_players_top' in urequest and urequest['num_players_top'].isdigit():
-            self.num_players_top = int(urequest["num_players_top"])
+        if 'num_players_top' in urq and urq['num_players_top'].isdigit():
+            self.num_players_top = int(urq["num_players_top"])
             self.__enable__('num_players_top', self.num_players_top)
 
         # Here we're requesting to provide context to the self.players that
         # are showing on the list. We may want to see a player or two or more
         # above and/or below them.
         self.need_enabling.add('num_players_above')
-        if 'num_players_above' in urequest and urequest['num_players_above'].isdigit():
-            self.num_players_above = int(urequest["num_players_above"])
+        if 'num_players_above' in urq and urq['num_players_above'].isdigit():
+            self.num_players_above = int(urq["num_players_above"])
             self.__enable__('num_players_above', self.num_players_above)
 
         self.need_enabling.add('num_players_below')
-        if 'num_players_below' in urequest and urequest['num_players_below'].isdigit():
-            self.num_players_below = int(urequest["num_players_below"])
+        if 'num_players_below' in urq and urq['num_players_below'].isdigit():
+            self.num_players_below = int(urq["num_players_below"])
             self.__enable__('num_players_below', self.num_players_below)
 
         # TODO: Can we support and/or combinations of min_plays, played_since and leagues_any/all?
@@ -616,16 +641,16 @@ class leaderboard_options:
         # Now we request to include players who have played at least a
         # few times.
         self.need_enabling.add('min_plays')
-        if 'min_plays' in urequest and urequest['min_plays'].isdigit():
-            self.min_plays = int(urequest["min_plays"])
+        if 'min_plays' in urq and urq['min_plays'].isdigit():
+            self.min_plays = int(urq["min_plays"])
             self.__enable__('min_plays', self.min_plays)
 
         # Now we request to include only players who have played the game
         # recently enough ...
         self.need_enabling.add('played_since')
-        if 'played_since' in urequest:
+        if 'played_since' in urq:
             try:
-                self.played_since = decodeDateTime(urequest['played_since'])
+                self.played_since = decodeDateTime(urq['played_since'])
             except:
                 self.played_since = None  # Must be a a Falsey value
 
@@ -637,8 +662,8 @@ class leaderboard_options:
         any_all = None
         player_leagues = leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
-            if f'player_leagues_{suffix}' in urequest:
-                splayer_leagues = urequest[f'player_leagues_{suffix}']  # CSV string
+            if f'player_leagues_{suffix}' in urq:
+                splayer_leagues = urq[f'player_leagues_{suffix}']  # CSV string
                 if splayer_leagues:
                     player_leagues = list(map(int, splayer_leagues.split(",")))  # list of ints
 
@@ -668,25 +693,13 @@ class leaderboard_options:
             self.__enable__('player_leagues_any', False)
             self.__enable__('player_leagues_all', False)
 
-        # Now we capture the persepctive request if it provides a valid datetime
-        self.need_enabling.add('as_at')
-        # asat is a permissible, legacy alias for as_at
-        if 'as_at' in urequest or 'asat' in urequest:
-            as_at = urequest.get('as_at', urequest.get('asat'))
-            try:
-                self.as_at = fix_time_zone(decodeDateTime(as_at), utz)
-            except:
-                self.as_at = None  # Must be a a Falsey value
-
-            self.__enable__('as_at', self.as_at)
-
         ##################################################################
         # SELECTION OPTIONS
 
         # Options for things that other options can act on (populating select boxes on the UI)
-        if 'select_players' in urequest:
-            if urequest['select_players']:
-                self.select_players = json.loads(urequest['select_players'].lower())  # A boolean value is parsed
+        if 'select_players' in urq:
+            if urq['select_players']:
+                self.select_players = json.loads(urq['select_players'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.select_players:
                 self.select_players = True
@@ -697,24 +710,24 @@ class leaderboard_options:
         # Now the evolution options. These are simpler as we can only specify one
         # method of selecting which snapshots to display. Compare_back_to is special
         # beast though as we record it as a number or a datetime. The latter is an explict
-        # request back to time, and the former is a number of days request for an event impact
-        # impact presentation that can work in concertn with num_days above.
+        # request back to time, and the former is a number of days request for an event
+        # impact presentation that can work in concert with num_days.
         self.need_enabling.add('compare_with')
         self.need_enabling.add('compare_back_to')
-        if 'compare_with' in urequest and urequest['compare_with'].isdigit():
-            self.compare_with = int(urequest['compare_with'])
+        if 'compare_with' in urq and urq['compare_with'].isdigit():
+            self.compare_with = int(urq['compare_with'])
             self.__enable__('compare_with', self.compare_with)
             self.__enable__('compare_back_to', False)
 
-        elif 'compare_back_to' in urequest:
-            if urequest['compare_back_to']:
+        elif 'compare_back_to' in urq:
+            if urq['compare_back_to']:
                 # Now if it's a number we keept it as float and if it's a strig that parses
                 # as a date_time we keept it as a date_time.
-                if is_number(urequest['compare_back_to']):
-                    self.compare_back_to = float(urequest['compare_back_to'])
+                if is_number(urq['compare_back_to']):
+                    self.compare_back_to = float(urq['compare_back_to'])
                 else:
                     try:
-                        self.compare_back_to = decodeDateTime(urequest['compare_back_to'])
+                        self.compare_back_to = decodeDateTime(urq['compare_back_to'])
                     except:
                         self.compare_back_to = None  # Must be a a Falsey value
             # If compare_back_to is specificed without any value, it is taken
@@ -730,27 +743,41 @@ class leaderboard_options:
             self.__enable__('compare_back_to', self.compare_back_to)
             self.__enable__('compare_with', False)
 
+        # A request for an event impact presentaton comes in the form
+        # of num_days, where num days flags the length of the event to
+        # look for (looking back from now or as_at). We record it in
+        # self.num_days to flag that this is what we want to the processor.
+        # Other filters of  course may impact on this and reduce the number
+        # of games, which can in fact be handy if say the games of a long and
+        # busy games  event are logged and could produce a large number of
+        # boards. But for an average games night, probably makes little sense
+        # and has little utility.
+        self.need_enabling.add('num_days')
+        if 'num_days' in urq and is_number(urq['num_days']) and not self.changed_since:
+            self.num_days = float(urq["num_days"])
+            self.__enable__('num_days', self.num_days)
+
         ##################################################################
         # HIGHLIGHT OPTIONS
 
         # Options for formatting the contents of a given leaderbaords
-        if 'highlight_players' in urequest:
-            if urequest['highlight_players']:
-                self.highlight_players = json.loads(urequest['highlight_players'].lower())  # A boolean value is parsed
+        if 'highlight_players' in urq:
+            if urq['highlight_players']:
+                self.highlight_players = json.loads(urq['highlight_players'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.highlight_players:
                 self.highlight_players = True
 
-        if 'highlight_changes' in urequest:
-            if urequest['highlight_changes']:
-                self.highlight_changes = json.loads(urequest['highlight_changes'].lower())  # A boolean value is parsed
+        if 'highlight_changes' in urq:
+            if urq['highlight_changes']:
+                self.highlight_changes = json.loads(urq['highlight_changes'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.highlight_changes:
                 self.highlight_changes = True
 
-        if 'highlight_selected' in urequest:
-            if urequest['highlight_selected']:
-                self.highlight_selected = json.loads(urequest['highlight_selected'].lower())  # A boolean value is parsed
+        if 'highlight_selected' in urq:
+            if urq['highlight_selected']:
+                self.highlight_selected = json.loads(urq['highlight_selected'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.highlight_selected:
                 self.highlight_selected = True
@@ -759,64 +786,64 @@ class leaderboard_options:
         # INFO OPTIONS
 
         # Options to include extra info in a leaderboard header
-        if 'details' in urequest:
-            if urequest['details']:
-                self.details = json.loads(urequest['details'].lower())  # A boolean value is parsed
+        if 'details' in urq:
+            if urq['details']:
+                self.details = json.loads(urq['details'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.details:
                 self.details = True
 
-        if 'analysis_pre' in urequest:
-            if urequest['analysis_pre']:
-                self.analysis_pre = json.loads(urequest['analysis_pre'].lower())  # A boolean value is parsed
+        if 'analysis_pre' in urq:
+            if urq['analysis_pre']:
+                self.analysis_pre = json.loads(urq['analysis_pre'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.analysis_pre:
                 self.analysis_pre = True
 
-        if 'analysis_post' in urequest:
-            if urequest['analysis_post']:
-                self.analysis_post = json.loads(urequest['analysis_post'].lower())  # A boolean value is parsed
+        if 'analysis_post' in urq:
+            if urq['analysis_post']:
+                self.analysis_post = json.loads(urq['analysis_post'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.analysis_post:
                 self.analysis_post = True
 
-        if 'show_performances' in urequest:
-            if urequest['show_performances']:
-                self.show_performances = json.loads(urequest['show_performances'].lower())  # A boolean value is parsed
+        if 'show_performances' in urq:
+            if urq['show_performances']:
+                self.show_performances = json.loads(urq['show_performances'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_performances:
                 self.show_performances = True
 
         # Column selecting options
-        if 'show_d_rank' in urequest:
-            if urequest['show_d_rank']:
-                self.show_d_rank = json.loads(urequest['show_d_rank'].lower())  # A boolean value is parsed
+        if 'show_d_rank' in urq:
+            if urq['show_d_rank']:
+                self.show_d_rank = json.loads(urq['show_d_rank'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_d_rank:
                 self.show_d_rank = True
 
-        if 'show_d_rating' in urequest:
-            if urequest['show_d_rating']:
-                self.show_d_rating = json.loads(urequest['show_d_rating'].lower())  # A boolean value is parsed
+        if 'show_d_rating' in urq:
+            if urq['show_d_rating']:
+                self.show_d_rating = json.loads(urq['show_d_rating'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_d_rating:
                 self.show_d_rating = True
 
         # Snapshot selecting options
-        if 'show_baseline' in urequest:
-            if urequest['show_baseline']:
-                self.show_baseline = json.loads(urequest['show_baseline'].lower())  # A boolean value is parsed
+        if 'show_baseline' in urq:
+            if urq['show_baseline']:
+                self.show_baseline = json.loads(urq['show_baseline'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_baseline:
                 self.show_baseline = True
 
-        if 'show_cross_league_snaps' in urequest:
-            self.show_cross_league_snaps = json.loads(urequest['show_cross_league_snaps'].lower())  # A boolean value is parsed
+        if 'show_cross_league_snaps' in urq:
+            self.show_cross_league_snaps = json.loads(urq['show_cross_league_snaps'].lower())  # A boolean value is parsed
 
         # Legend option
-        if 'show_legend' in urequest:
-            if urequest['show_legend']:
-                self.show_legend = json.loads(urequest['show_legend'].lower())  # A boolean value is parsed
+        if 'show_legend' in urq:
+            if urq['show_legend']:
+                self.show_legend = json.loads(urq['show_legend'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.show_legend:
                 self.show_legend = True
@@ -824,33 +851,33 @@ class leaderboard_options:
         ##################################################################
         # FORMATTING OPTIONS
 
-        if 'names' in urequest:
-            self.names = NameSelection[urequest['names']]
+        if 'names' in urq:
+            self.names = NameSelection[urq['names']]
 
-        if 'links' in urequest:
-            self.links = LinkSelection[urequest['links']]
+        if 'links' in urq:
+            self.links = LinkSelection[urq['links']]
 
         # Options for laying out leaderboards on screen
-        if 'cols' in urequest:
-            self.cols = urequest['cols']
+        if 'cols' in urq:
+            self.cols = urq['cols']
 
         # TODO: YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
-        if 'trace' in urequest:
-            strace = urequest['trace']  # CSV String
+        if 'trace' in urq:
+            strace = urq['trace']  # CSV String
             if strace:
                 self.trace = list(map(int, strace.split(",")))  # list of ints
 
         # A special option which isn't an option per se. If passed in we make
         # the provided options as static as we can with self.make_static()
-        if 'make_static' in urequest:
+        if 'make_static' in urq:
             self.make_static(ufilter, utz)
             self.made_static = True
 
         ##################################################################
         # ADMIN OPTIONS
-        if 'ignore_cache' in urequest:
-            if urequest['ignore_cache']:
-                self.ignore_cache = json.loads(urequest['ignore_cache'].lower())  # A boolean value is parsed
+        if 'ignore_cache' in urq:
+            if urq['ignore_cache']:
+                self.ignore_cache = json.loads(urq['ignore_cache'].lower())  # A boolean value is parsed
             # If no value is provided and the default is false, read that as an enabling request
             elif not self.ignore_cache:
                 self.ignore_cache = True
