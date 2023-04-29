@@ -555,7 +555,8 @@ class leaderboard_options:
         if 'as_at' in urq or 'asat' in urq:
             as_at = urq.get('as_at', urq.get('asat'))
             try:
-                self.as_at = fix_time_zone(decodeDateTime(as_at), utz)
+                now = fix_time_zone(datetime.now(), utz)
+                self.as_at = min(fix_time_zone(decodeDateTime(as_at), utz), now)
             except:
                 self.as_at = None  # Must be a a Falsey value
 
