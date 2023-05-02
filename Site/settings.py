@@ -117,6 +117,7 @@ INSTALLED_APPS = (
     'django_extensions',
     'reset_migrations',
     'django_rich_views',
+    'django_stats_middleware',
     'Site',
     'Leaderboards',
     'Import'
