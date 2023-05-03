@@ -18,6 +18,8 @@ from Leaderboards import views
 #    manually copied into that table for now. Be nice to write a loader.
 
 urlpatterns = [
+    path('summernote/', include('django_summernote.urls')),
+
     path(r'', views.view_Home.as_view(), name='home'),
     path(r'about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
     path(r'admin/', admin.site.urls, name='admin'),
