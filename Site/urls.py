@@ -22,6 +22,8 @@ urlpatterns = [
 
     path(r'', views.view_Home.as_view(), name='home'),
     path(r'about/', flat_views.flatpage, {'url': '/about/'}, name='about'),
+    path(r'api/leaderboard/', flat_views.flatpage, {'url': '/api/leaderboard/'}, name='api_leaderboard'),
+
     path(r'admin/', admin.site.urls, name='admin'),
 
     path(r'login/', views.view_Login.as_view(), name='login'),
@@ -118,3 +120,8 @@ if settings.DEBUG:  # and not settings.SITE_IS_LIVE:
         path('__debug__/', include(debug_toolbar.urls)),
     ]
 
+# Fallback onto flatpages
+# as per: https://docs.djangoproject.com/en/dev/ref/contrib/flatpages/#how-it-works
+urlpatterns += [
+    re_path(r"^(?P<url>.*/)$", flat_views.flatpage),
+]
