@@ -21,6 +21,7 @@ django-extensions>=3.1.1
 django-mapbox-location-field>=2
 django-relativefilepathfield>=1.0.3
 django-reset-migrations>=0.4.0
+django-summernote>=0.8.20.0
 django-timezone-field>=4.1.1
 enum-compat>=0.0.3
 geopy
