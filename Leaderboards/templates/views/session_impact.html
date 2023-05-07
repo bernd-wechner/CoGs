@@ -47,7 +47,7 @@ A rebuild_log indicates a rebuild was triggered and needs summarising,
 		[<a href="{% url 'list' model_name %}">List all {{ model_name_plural.title }}</a>]
 		[<a href="{% url 'list' model_name %}?game={{game.pk}}">List {{game.name}} {{ model_name_plural.title }}</a>]
 		{#	Quick access to the last 5 leaderboards to check evolution #}
-		[<a href="{% url 'leaderboards' %}?no_defaults&games_ex={{game.pk}}&num_players_top=10&compare_with=4&details=true&show_d_rank=true&show_d_rating=true&select_players=true">List {{game.name}} Leaderboard Evolution</a>]]
+		[<a href="{% url 'leaderboards' %}?no_defaults&games_ex={{game.pk}}&num_players_top=10&compare_with=4&details=true&show_d_rank=true&show_d_rating=true&select_players=true">List {{game.name}} Leaderboard Evolution</a>]
 		{#&leagues=1	How is league filterig working on Session Impacts? leaderboards mayneed explicit mention? #}
 	</p>
 {% endif %}
