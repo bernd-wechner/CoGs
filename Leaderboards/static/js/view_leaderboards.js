@@ -202,7 +202,8 @@ function InitControls(options, exempt) {
 	if (!ex.includes("num_games")) 		  $('#num_games').val(options.num_games);         // Mirror of #num_games_latest
 	if (!ex.includes("num_games_latest")) $('#num_games_latest').val(options.num_games);  // Mirror of #num_games
 
-	if (!ex.includes("changed_since"))	$('#changed_since').val(options.changed_since);
+	if (!ex.includes("changed_after"))	$('#changed_after').val(options.changed_after);
+	if (!ex.includes("changed_before"))	$('#changed_before').val(options.changed_before);
 	if (!ex.includes("num_days"))	    $('#num_days').val(options.num_days);	  		// Mirror of num_days_ev
 	if (!ex.includes("num_days"))	    $('#num_days_ev').val(options.num_days);  		// Mirror of num_days
 
@@ -211,7 +212,8 @@ function InitControls(options, exempt) {
 	if (!ex.includes("num_players_above"))	$('#num_players_above').val(options.num_players_above);
 	if (!ex.includes("num_players_below"))	$('#num_players_below').val(options.num_players_below);
 	if (!ex.includes("min_plays"))	   		$('#min_plays').val(options.min_plays);
-	if (!ex.includes("played_since"))	    $('#played_since').val(options.played_since);
+	if (!ex.includes("played_after"))	    $('#played_after').val(options.played_after);
+	if (!ex.includes("played_before"))	    $('#played_before').val(options.played_before);
 
 	// ========================================================================
 	// The perspective option
@@ -328,7 +330,8 @@ async function URLopts(make_static) {
 	// Then the rest of the game selectors
 	const num_games        = $('#num_games').val();
 	const num_games_latest = $('#num_games_latest').val();
-	const changed_since    = $("#changed_since").val();
+	const changed_after    = $("#changed_after").val();
+	const changed_before   = $("#changed_before").val();
 	const num_days         = $('#num_days').val();
 	const num_days_ev      = $('#num_days_ev').val();
 
@@ -337,7 +340,8 @@ async function URLopts(make_static) {
 	const num_players_above = $('#num_players_above').val();
 	const num_players_below = $('#num_players_below').val();
 	const min_plays         = $('#min_plays').val();
-	const played_since      = $('#played_since').val();
+	const played_after      = $('#played_after').val();
+	const played_before     = $('#played_before').val();
 
 	// Then the perspective and snapshot selectors
 	const as_at           = $('#as_at').val();
@@ -473,11 +477,17 @@ async function URLopts(make_static) {
 
 
 	// Handle the rest of the Player filters
-	if (is_enabled("chk_changed_since") && changed_since)
-		// We submit changed_since with a date/time. If it's not submitted
+	if (is_enabled("chk_changed_between") && changed_after)
+		// We submit changed_after with a date/time. If it's not submitted
 		// or submitted as an empty string then the server should not be
-		// enforcing a game_activity filter on games.
-		opts.push("changed_since="+encodeDateTime(changed_since));
+		// enforcing a game_activity filter on it.
+		opts.push("changed_after="+encodeDateTime(changed_after));
+
+	if (is_enabled("chk_changed_between") && changed_before)
+		// We submit changed_before with a date/time. If it's not submitted
+		// or submitted as an empty string then the server should not be
+		// enforcing a game_activity filter it.
+		opts.push("changed_before="+encodeDateTime(changed_before));
 
 	if (is_enabled("chk_num_days") && num_days)
 		// We submit session_games as the length of the session in days, only if
@@ -522,12 +532,16 @@ async function URLopts(make_static) {
 		// asks server not to filter players based on play count.
 		opts.push("min_plays="+encodeURIComponent(min_plays));
 
-	if (is_enabled("chk_played_since") && played_since)
-		// We submit also if request an option to filter on recent activity.
+	if (is_enabled("chk_played_between") && played_after)
+		// We submit also if requested, an option to filter on recent activity.
 		// Basically a way to say, we want to filter out anyone who hasn't
 		// played a game in the last period of interest, to grab a leaderboard
 		// of currently active players.
-		opts.push("played_since="+encodeDateTime(played_since));
+		opts.push("played_after="+encodeDateTime(played_after));
+
+	if (is_enabled("chk_played_between") && played_before)
+		// Similarly an upper constraint on the last play date.
+		opts.push("played_before="+encodeDateTime(played_before));
 
 	// Then the perspective option
 	if (as_at)
@@ -550,10 +564,12 @@ async function URLopts(make_static) {
 			break;
 	  case "compare_back_to":
 		  	if (compare_back_to)
-		  		// We submit a a date to compare back to. We want to compare
+		  		// We submit a date to compare back to. We want to compare
 				// back to the last session before this date as it created
 				// the leaderboard in effect at this date.
-				if (compare_back_to == changed_since)
+				if (compare_back_to == changed_after)
+					// We can shorten the URL a little by not duplicating the date
+					// in this common scenario.
 		  			opts.push("compare_back_to");
 				else
 		  			opts.push("compare_back_to="+encodeDateTime(compare_back_to));

@@ -103,37 +103,37 @@ background-color: var(--background-color);
 /* TODO: Add a Player selector which highlights "players in current snapshot" and one "players in any snapshot" */
 
 	grid-template-areas:
-		"label_filtering   selectors_multi         selectors_multi              selectors_multi              selectors_multi"
-		"label_filtering   filter_games            filter_games                 filter_games                 filter_games"
-		"label_filtering   intro_games             intro_games                  intro_games                  intro_games"
-		"label_filtering   .                       filter_games_selected_ex     filter_games_selected_ex     filter_games_selected_ex"
-		"label_filtering   .                       filter_games_league_any      filter_games_league_any      filter_games_league_any"
-		"label_filtering   .                       filter_games_league_all      filter_games_league_all      filter_games_league_all"
-		"label_filtering   .                       filter_games_player_any      filter_games_player_any      filter_games_player_any"
-		"label_filtering   .                       filter_games_player_all      filter_games_player_all      filter_games_player_all"
-		"label_filtering   .                       filter_games_top_n           filter_games_top_n           filter_games_top_n"
-		"label_filtering   .                       filter_games_latest_n        filter_games_latest_n        filter_games_latest_n"
-		"label_filtering   .                       filter_games_played_since    filter_games_played_since    filter_games_played_since"
-		"label_filtering   .                       filter_games_event         	filter_games_event         	 filter_games_event"
-		"label_filtering   .                       filter_games_selected_in     filter_games_selected_in     filter_games_selected_in"
-		"label_filtering   filter_players          filter_players               filter_players               filter_players"
-		"label_filtering   intro_players           intro_players                intro_players                intro_players"
-		"label_filtering   .                       filter_players_selected_ex   filter_players_selected_ex   filter_players_selected_ex"
-		"label_filtering   .                       filter_players_top           filter_players_top           filter_players_top"
-		"label_filtering   .                       filter_players_above         filter_players_above         filter_players_above"
-		"label_filtering   .                       filter_players_below         filter_players_below         filter_players_below"
-		"label_filtering   .                       filter_players_min_playcount filter_players_min_playcount filter_players_min_playcount"
-		"label_filtering   .                       filter_players_played_since  filter_players_played_since  filter_players_played_since"
-		"label_filtering   .                       filter_players_league_any    filter_players_league_any    filter_players_league_any"
-		"label_filtering   .                       filter_players_league_all    filter_players_league_all    filter_players_league_all"
-		"label_filtering   .                       filter_players_selected_in   filter_players_selected_in   filter_players_selected_in"
-		"label_perspective select_perspective      select_perspective           select_perspective           select_perspective"
-		"label_evolution   select_evolution        select_evolution             select_evolution             select_evolution"
-		"label_evolution   .                       select_evolution_none        select_evolution_none        select_evolution_none"
-		"label_evolution   .                       select_evolution_n_prior     select_evolution_n_prior     select_evolution_n_prior"
-		"label_evolution   .                       select_evolution_back_to     select_evolution_back_to     select_evolution_back_to"
-		"label_evolution   .                       select_evolution_session     select_evolution_session     select_evolution_session"
-		"button_apply      button_apply            .                            .                            ."
+		"label_filtering   selectors_multi         selectors_multi               selectors_multi               selectors_multi"
+		"label_filtering   filter_games            filter_games                  filter_games                  filter_games"
+		"label_filtering   intro_games             intro_games                   intro_games                   intro_games"
+		"label_filtering   .                       filter_games_selected_ex      filter_games_selected_ex      filter_games_selected_ex"
+		"label_filtering   .                       filter_games_league_any       filter_games_league_any       filter_games_league_any"
+		"label_filtering   .                       filter_games_league_all       filter_games_league_all       filter_games_league_all"
+		"label_filtering   .                       filter_games_player_any       filter_games_player_any       filter_games_player_any"
+		"label_filtering   .                       filter_games_player_all       filter_games_player_all       filter_games_player_all"
+		"label_filtering   .                       filter_games_top_n            filter_games_top_n            filter_games_top_n"
+		"label_filtering   .                       filter_games_latest_n         filter_games_latest_n         filter_games_latest_n"
+		"label_filtering   .                       filter_games_played_between   filter_games_played_between   filter_games_played_between"
+		"label_filtering   .                       filter_games_event         	 filter_games_event            filter_games_event"
+		"label_filtering   .                       filter_games_selected_in      filter_games_selected_in      filter_games_selected_in"
+		"label_filtering   filter_players          filter_players                filter_players                filter_players"
+		"label_filtering   intro_players           intro_players                 intro_players                 intro_players"
+		"label_filtering   .                       filter_players_selected_ex    filter_players_selected_ex    filter_players_selected_ex"
+		"label_filtering   .                       filter_players_top            filter_players_top            filter_players_top"
+		"label_filtering   .                       filter_players_above          filter_players_above          filter_players_above"
+		"label_filtering   .                       filter_players_below          filter_players_below          filter_players_below"
+		"label_filtering   .                       filter_players_min_playcount  filter_players_min_playcount  filter_players_min_playcount"
+		"label_filtering   .                       filter_players_played_between filter_players_played_between filter_players_played_between"
+		"label_filtering   .                       filter_players_league_any     filter_players_league_any     filter_players_league_any"
+		"label_filtering   .                       filter_players_league_all     filter_players_league_all     filter_players_league_all"
+		"label_filtering   .                       filter_players_selected_in    filter_players_selected_in    filter_players_selected_in"
+		"label_perspective select_perspective      select_perspective            select_perspective            select_perspective"
+		"label_evolution   select_evolution        select_evolution              select_evolution              select_evolution"
+		"label_evolution   .                       select_evolution_none         select_evolution_none         select_evolution_none"
+		"label_evolution   .                       select_evolution_n_prior      select_evolution_n_prior      select_evolution_n_prior"
+		"label_evolution   .                       select_evolution_back_to      select_evolution_back_to      select_evolution_back_to"
+		"label_evolution   .                       select_evolution_session      select_evolution_session      select_evolution_session"
+		"button_apply      button_apply            .                             .                             ."
 }
 
 .lo_admin {	grid-area: lo_admin; }
@@ -175,7 +175,7 @@ background-color: var(--background-color);
 .filter_games_selected_in { grid-area: filter_games_selected_in; }
 .filter_games_top_n { grid-area: filter_games_top_n; }
 .filter_games_latest_n { grid-area: filter_games_latest_n; }
-.filter_games_played_since { grid-area: filter_games_played_since; }
+.filter_games_played_between { grid-area: filter_games_played_between; }
 .filter_games_league_any { grid-area: filter_games_league_any; }
 .filter_games_league_all { grid-area: filter_games_league_all; }
 .filter_games_player_any { grid-area: filter_games_player_any; }
@@ -188,7 +188,7 @@ background-color: var(--background-color);
 .filter_players_above { grid-area: filter_players_above; }
 .filter_players_below { grid-area: filter_players_below; }
 .filter_players_min_playcount { grid-area: filter_players_min_playcount; }
-.filter_players_played_since { grid-area: filter_players_played_since; }
+.filter_players_played_between { grid-area: filter_players_played_between; }
 .filter_players_league_any { grid-area: filter_players_league_any; }
 .filter_players_league_all { grid-area: filter_players_league_all; }
 
@@ -273,4 +273,8 @@ table.leaderboard.wrapper > tbody > tr > td
 	padding-right: 15px;
 	padding-top: 0;
 	padding-bottom: 15px;
+}
+
+div.option_row {
+	height: 28px;
 }
