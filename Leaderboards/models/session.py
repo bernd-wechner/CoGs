@@ -105,6 +105,14 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     # intrinsic_relations = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
     intrinsic_relations = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
 
+    # TODO: here's an idea:
+    # a structure to build the forms in, so that form.as_table (and friends) can take an arg, an int being
+    # which group in the list below if defined. That way,we can request a split of this models form fields so
+    # that related forms can be inserted as desired between these groups.
+    # Currently the template loads form.as_table then the rankings template. But I aim to
+    # have the notes for example after the ranking template.
+    # rich_forms = [['game', 'date_time', 'league', 'location', 'team_play'],['notes']]
+
     # Specify which fields to inherit from entry to entry when creating a string of objects
     inherit_fields = ["date_time", "league", "location", "game"]
     inherit_time_delta = game_duration  # A callable (function) that is supplies with the previous session
@@ -837,7 +845,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             6 session.leaderboard_analysis(),
             7 session.leaderboard_analysis_after(),
 
-            # The leaderboard(s)
+            # The leaderboard
             8 game.leaderboard(asat)  # leaderboard after this game sessions
 
             Leaderboards.leaderboards.enums.LB_STRUCTURE provides pointers into this structure.
