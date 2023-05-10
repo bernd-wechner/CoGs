@@ -305,7 +305,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                 #        Leaderboards.leaderboards.options.leaderboard_options.names
                 #    which can take on one of the values from:
                 #        Leaderboards.leaderboards.enums.NameSelections
-                # TODO: confirm this arrives in templated not flexi name_styling. Should write a test and assert>
+                # TODO: confirm this arrives in templated not flexi name_styling. Should write a test and assert.
                 full_snapshot = restyle_leaderboard(full_snapshot, structure=LB_STRUCTURE.session_wrapped_player_list, style=LB_PLAYER_LIST_STYLE.rich)
 
                 if settings.DEBUG:

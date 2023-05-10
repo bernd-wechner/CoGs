@@ -335,7 +335,7 @@ class LocationMap(AdminModel, TimeZoneMixIn):
 #
 #    .annotate(trigram_similarity=TrigramSimilarity(F('name'), 'Foobar'))
 #
-# But Levenshtein is natively available in PostGResQL and alledgedly better than Trigram.
+# But Levenshtein is natively available in PostgreSQL and alledgedly better than Trigram.
 
 class LevenshteinDistance(models.Func):
     template = "%(function)s(%(expressions)s, '%(search_term)s')"
