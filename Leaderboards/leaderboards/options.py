@@ -11,17 +11,19 @@ from django.conf import settings
 from django.http.request import QueryDict
 from django.utils.formats import localize
 from django.utils.timezone import localtime
-from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F
+from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef
+
+from django.contrib.postgres.aggregates import ArrayAgg
+from django.contrib.postgres.expressions import ArraySubquery
 
 if settings.DEBUG:
     from django.db import connection
 
 from django_rich_views.datetime import fix_time_zone, UTC
 from django_rich_views.queryset import top, get_SQL
-from django_rich_views.datetime import decodeDateTime
+from django_rich_views.datetime import decodeDateTime, encodeDateTime
 
 from Site.logutils import log
-
 
 class leaderboard_options:
     '''
@@ -70,7 +72,8 @@ class leaderboard_options:
                     'game_leagues_all',  # Games played in all of self.game_leagues
                     'game_players_any',  # Games played by any of self.game_players
                     'game_players_all',  # Games played by all of self.game_players
-                    'changed_since',  # Games played since self.changed_since
+                    'changed_after',     # Games played since self.changed_after
+                    'changed_before',    # Games played on or before self.changed_before
                     'num_days'}  # Games played in the last event of self.num_days
 
     # Options that we accept that will filter the list of players presented on leaderboards
@@ -81,7 +84,8 @@ class leaderboard_options:
                       'num_players_above',  # self.num_players_above players above any players selected by self.players_in
                       'num_players_below',  # self.num_players_below players below any players selected by self.players_in
                       'min_plays',  # Players who have played the game at least self.min_plays times
-                      'played_since',  # Players who have played the game since self.played_since
+                      'played_after',  # Players who have played the game since self.played_after
+                      'played_before',  # Players who have played the game on or before self.played_before
                       'player_leagues_any',  # Players in any of self.player_leagues
                       'player_leagues_all'}  # Players in all of self.player_leagues
 
@@ -159,7 +163,7 @@ class leaderboard_options:
     #
     # The formatting, extra info, and layout options are not enabled
     # or disabled,they simply are (always in force).
-    enabled = {"game_leagues_any", "top_games", "player_leagues_any", "num_players_top"}
+    enabled = {"top_games", "game_leagues_any", "player_leagues_any", "num_players_top"}
 
     # Because not all options require enabling, only some/many
     # we ckeep a set of enabbleable options internally, which
@@ -183,7 +187,8 @@ class leaderboard_options:
     num_games = 6  # List only this many games (most popular ones or latest based on enabled option)
     game_leagues = []  # Restrict to games played by specified Leagues (any or all based on enabled option)
     game_players = []  # Restrict to games played by specified players (any or all based on enabled option)
-    changed_since = None  # Show only leaderboards that changed since this date
+    changed_after = None  # Show only leaderboards that changed since this date (i.e games played on or after this date)
+    changed_before = None  # Show only leaderboards that changed on or before this date (i.e. games played on or before this date)
     num_days = 1  # List only games played in the last num_days long event (also used for snapshot definition)
 
     # Options that determing which players are listed or selected/highlighted in the leaderboards
@@ -196,7 +201,8 @@ class leaderboard_options:
     num_players_above = 2  # The number of players above selected players to show on leaderboards
     num_players_below = 2  # The number of players below selected players to show on leaderboards
     min_plays = 2  # The minimum number of times a player has to have played this game to be listed
-    played_since = None  # The date since which a player needs to have played this game to be listed
+    played_after = None  # The date since which a player needs to have played this game to be listed
+    played_before = None  # The date before  which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
 
     # A generic list of leagues for transport (as a selector)
@@ -523,31 +529,44 @@ class leaderboard_options:
         # games that have a recorded play session after that date (exclude games
         # not played since them).
         #
-        # Support a simple alias for a common request
+        # Support simple aliases for a common requests
+        if 'changed_since' in urq:
+            # This is for backward compatibility.
+            # Years of reports used changed_since links and it's been renamed to changed_after
+            urq['changed_after'] = urq['changed_since']
+            del urq['changed_since']
+
         if 'changed_in' in urq:
             # changed_in can sepecify a month or year and we translate that to
-            # changed_since and asat spanning htat month or year.
+            # changed_after and changed_before spanning that month or year.
             changed_in = urq['changed_in']
             if match:=re.fullmatch('(?P<year>\d\d\d\d)-(?P<month>\d\d?)', changed_in):
                 year = match["year"]
                 month = match["month"]
-                urq['changed_since'] = f"{year}-{int(month):02d}-01"
-                urq['as_at'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
+                urq['changed_after'] = f"{year}-{int(month):02d}-01 00:00:00"
+                urq['changed_before'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
                 del urq['changed_in']
             elif match:=re.fullmatch('(?P<year>\d\d\d\d)', changed_in):
                 year = match["year"]
-                urq['changed_since'] = f"{year}-01-01"
-                urq['as_at'] = f"{int(year)+1:04d}-01-01 00:00:00"
+                urq['changed_after'] = f"{year}-01-01 00:00:00"
+                urq['changed_before'] = f"{int(year)+1:04d}-01-01 00:00:00"
                 del urq['changed_in']
 
-        self.need_enabling.add('changed_since')
-        if 'changed_since' in urq:
+        self.need_enabling.add('changed_after')
+        if 'changed_after' in urq:
             try:
-                self.changed_since = fix_time_zone(decodeDateTime(urq['changed_since']), utz)
+                self.changed_after = fix_time_zone(decodeDateTime(urq['changed_after']), utz)
+                self.__enable__('changed_after', self.changed_after)
             except:
-                self.changed_since = None  # Must be a a Falsey value
+                self.changed_after = None  # Must be a a Falsey value
 
-            self.__enable__('changed_since', self.changed_since)
+        self.need_enabling.add('changed_before')
+        if 'changed_before' in urq:
+            try:
+                self.changed_before = fix_time_zone(decodeDateTime(urq['changed_before']), utz)
+                self.__enable__('changed_before', self.changed_before)
+            except:
+                self.changed_before = None  # Must be a a Falsey value
 
         # Now we capture the perspective request if it provides a valid datetime
         self.need_enabling.add('as_at')
@@ -637,7 +656,7 @@ class leaderboard_options:
             self.num_players_below = int(urq["num_players_below"])
             self.__enable__('num_players_below', self.num_players_below)
 
-        # TODO: Can we support and/or combinations of min_plays, played_since and leagues_any/all?
+        # TODO: Can we support and/or combinations of min_plays, played_after and leagues_any/all?
 
         # Now we request to include players who have played at least a
         # few times.
@@ -646,16 +665,45 @@ class leaderboard_options:
             self.min_plays = int(urq["min_plays"])
             self.__enable__('min_plays', self.min_plays)
 
+        # Some simple aliases for player activity windows (in time)
+        if 'played_since' in urq:
+            # This is for backward compatibility, as played_since was renamed to played_after.
+            urq['played_after'] = urq['played_since']
+            del urq['played_since']
+
+        if 'played_in' in urq:
+            # changed_in can sepecify a month or year and we translate that to
+            # changed_after and changed_before spanning that month or year.
+            played_in = urq['played_in']
+            if match:=re.fullmatch('(?P<year>\d\d\d\d)-(?P<month>\d\d?)', played_in):
+                year = match["year"]
+                month = match["month"]
+                urq['played_after'] = f"{year}-{int(month):02d}-01 00:00:00"
+                urq['played_before'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
+                del urq['changed_in']
+            elif match:=re.fullmatch('(?P<year>\d\d\d\d)', played_in):
+                year = match["year"]
+                urq['played_after'] = f"{year}-01-01 00:00:00"
+                urq['played_before'] = f"{int(year)+1:04d}-01-01 00:00:00"
+                del urq['changed_in']
+
         # Now we request to include only players who have played the game
         # recently enough ...
-        self.need_enabling.add('played_since')
-        if 'played_since' in urq:
+        self.need_enabling.add('played_after')
+        if 'played_after' in urq:
             try:
-                self.played_since = decodeDateTime(urq['played_since'])
+                self.played_after = decodeDateTime(urq['played_after'])
+                self.__enable__('played_after', self.played_after)
             except:
-                self.played_since = None  # Must be a a Falsey value
+                self.played_after = None  # Must be a a Falsey value
 
-            self.__enable__('played_since', self.played_since)
+        self.need_enabling.add('played_before')
+        if 'played_before' in urq:
+            try:
+                self.played_before = decodeDateTime(urq['played_before'])
+                self.__enable__('played_before', self.played_before)
+            except:
+                self.played_before = None  # Must be a a Falsey value
 
         # We can acccept leagues in an any or all form
         self.need_enabling.add('player_leagues_any')
@@ -721,6 +769,16 @@ class leaderboard_options:
             self.__enable__('compare_back_to', False)
 
         elif 'compare_back_to' in urq:
+            if not urq['compare_back_to']:
+                # If compare_back_to is specificed without any value, it is taken
+                # to imply compare back to the changed_after time or the num_days
+                # event specification if either is specified (only one is sensible
+                # at a time).
+                if self.changed_after:
+                    urq['compare_back_to'] = encodeDateTime(self.changed_after)
+                elif self.num_days:
+                    urq['compare_back_to'] = self.num_days
+
             if urq['compare_back_to']:
                 # Now if it's a number we keept it as float and if it's a strig that parses
                 # as a date_time we keept it as a date_time.
@@ -731,15 +789,6 @@ class leaderboard_options:
                         self.compare_back_to = decodeDateTime(urq['compare_back_to'])
                     except:
                         self.compare_back_to = None  # Must be a a Falsey value
-            # If compare_back_to is specificed without any value, it is taken
-            # to imply compare back to the changed_since time or the num_days
-            # event specification if either is specified (only one is sensible
-            # at a time).
-            else:
-                if self.changed_since:
-                    self.compare_back_to = self.changed_since
-                elif self.num_days:
-                    self.compare_back_to = self.num_days
 
             self.__enable__('compare_back_to', self.compare_back_to)
             self.__enable__('compare_with', False)
@@ -750,11 +799,11 @@ class leaderboard_options:
         # self.num_days to flag that this is what we want to the processor.
         # Other filters of  course may impact on this and reduce the number
         # of games, which can in fact be handy if say the games of a long and
-        # busy games  event are logged and could produce a large number of
+        # busy games event are logged and could produce a large number of
         # boards. But for an average games night, probably makes little sense
         # and has little utility.
         self.need_enabling.add('num_days')
-        if 'num_days' in urq and is_number(urq['num_days']) and not self.changed_since:
+        if 'num_days' in urq and is_number(urq['num_days']):
             self.num_days = float(urq["num_days"])
             self.__enable__('num_days', self.num_days)
 
@@ -951,7 +1000,8 @@ class leaderboard_options:
               or self.is_enabled('num_players_above')
               or self.is_enabled('num_players_below')
               or self.is_enabled('min_plays')
-              or self.is_enabled('played_since')
+              or self.is_enabled('played_after')
+              or self.is_enabled('played_before')
               or self.is_enabled('player_leagues_any')
               or self.is_enabled('player_leagues_all')
               or self.is_enabled('select_players'))
@@ -992,7 +1042,7 @@ class leaderboard_options:
         # should win inclusion. If not though then we are listing the whole leaderboard and
         # we require someone to remaining filters to win inclusion. In summary?
         #
-        # If we have a full leadeboard we're trying to knock out all players who
+        # If we have a full leaderboard we're trying to knock out all players who
         # don't meet all the remaining criterai.
         #
         # If we have a top n leaderboard we're trying to include players again and
@@ -1001,8 +1051,11 @@ class leaderboard_options:
         if self.is_enabled('min_plays'):
             criteria.append(plays >= self.min_plays)
 
-        if self.is_enabled('played_since'):
-            criteria.append(last_play >= self.played_since)
+        if self.is_enabled('played_after'):
+            criteria.append(last_play >= self.played_after)
+
+        if self.is_enabled('played_before'):
+            criteria.append(last_play <= self.played_before)
 
         if self.is_enabled('num_players_top'):
             return any(criteria)  # Empty any list is False, as desired
@@ -1260,44 +1313,81 @@ class leaderboard_options:
             s_filter &= Q(game_id__in=self.games)
 
         # Restrict the list based on league memberships
-        g_post_filters = []
+        # Games, Sessions and players are associated with leagues.
+        # We could be interested in any of these. For now we will
+        # Just filter on game.leagues for selecting games.
+        # session.leagues will be used for snapshot filtering.
+        # TODO: Check we do this right! Game and snapshot filtering
+        # use the same option to trigger them.
+        #g_post_filters = []
         if self.is_enabled('game_leagues_any'):
-            g_filter = Q(played_by_leagues__pk__in=self.game_leagues)
-            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
+            #g_filter = Q(leagues__in=self.game_leagues)
+            g_filter = Q(matched_league_count__gte=1)
+            s_filter = Q(league__in=self.game_leagues)  # used for game's play stats (last_play in particular)
         elif self.is_enabled('game_leagues_all'):
-            # Collect post filters as the AND (all) operation demands repeated joins/filters
-            # See: https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-            # See also USE_ARRAY_AGG  below. This method is overrident by that option
-            for pk in self.game_leagues:
-                g_post_filters.append(Q(sessions__league__pk=pk))
-
-            # We want to report the latest session playerd among ALL the leagues, so this is
+            # We need to annotate the games_source with
+            #    league_count=Count('id', filter=Q(categories__in=self.game_leagues))
+            # later.
+            g_filter = Q(matched_league_count=len(self.game_leagues))
+            # We want to report the latest session played among ALL the leagues, so this is
             # simple search on all session played by ANY league from which we'll get the latest.
-            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
+            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's play stats (last_play in particular)
 
         # Respect the perspective request when finding last_play of a game
         # as in last_play before as_at
         if self.is_enabled('as_at'):
             s_filter &= Q(date_time__lte=self.as_at)
 
-        # We sort them by a measure of popularity (within the selected leagues)
+        ##########################################################################
+        # Get the game play stats
+        #
+        # Last_play:
+        #
+        # generate a last play Subquery for ordering by last lay if desired.
+        # Else we sort them by a measure of popularity total play couunt (within
+        # the selected leagues)
         latest_session_source = Session.objects.filter(s_filter)
         latest_session = top(latest_session_source.filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
-        session_count = Count('sessions', filter=g_filter, distinct=True)
-        play_count = Count('sessions__performances', filter=g_filter, distinct=True)
 
-        USE_ARRAY_AGG = True
-        game_source = Game.objects.filter(g_filter)
-        if g_post_filters:
-            # See https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-            # For a discussion of methods here. ArrayAgg is the cleanest most efficient but is Postgresql specific.
-            if USE_ARRAY_AGG:
-                game_source = game_source.annotate(player_leagues=ArrayAgg(F('sessions__league'), distinct=True)).filter(player_leagues__contains=self.game_leagues)
-            else:
-                for g_post_filter in g_post_filters:
-                    game_source = game_source.filter(g_post_filter)
-                game_source = game_source.distinct()
+        # session_count and play_count:
+        #
+        # The session and play counts are bit special. We need to use Subqueries but a Postgres specific
+        # ArraySubquery to get them. There's an odd feature of the trick we pull for do game filtering by
+        # leagues, which means, that if we simply annotate the query using Django's relationship hopping
+        # dunder (__ - two underscores) syntax, which produces table joins at the SQL level, the
+        # matched_league_count which is central to filtering it for `game_leagues_all` gets broke severly.
+        # Study of the SQL didn't reveal much alas, beside giving me headaches, but Subqueries, were a way
+        # out that worked and only the ArraySubquery ultimately bore fruit in empowerig us to count related
+        # sessions, and plays
+        game_sessions = Session.objects.filter(game=OuterRef('pk')).filter(s_filter).annotate(play_count=Count('performances'))
+        session_count = Count(ArraySubquery(game_sessions.values('pk')))
+        play_count = Count(ArraySubquery(game_sessions.values('play_count')))
+
+        if g_filter:
+            # To achieve an AND (all) filter on leagues proves mildly challenging.
+            #
+            # In the end it means that we need a matched_league_count. The AND
+            # condition is achieved by small sleight of hand, in that if the count
+            # is filtered against the specified game_leagues, Django applies this
+            # to the joining table of the ManyToMany relation and the count only
+            # incudes the filtered leagues. To wit if it only includes the leagues
+            # from our list then if the ocunt matches the length of our list we kow
+            # we have them all.
+            #
+            # For the OR (any) we simply don't care about the matched_league_count.
+            # Any number will do, one or more.
+            game_source = Game.objects.all().annotate(
+                            league_ids=ArrayAgg('leagues', distinct=True),
+                            matched_league_count=Count('id', filter=Q(leagues__in=self.game_leagues)),
+                            session_count=session_count,
+                            play_count=play_count
+                        ).filter(g_filter)
+        else:
+            game_source = Game.objects.all().annotate(
+                            session_count=session_count,
+                            play_count=play_count
+                        )
 
         if settings.DEBUG:
             log.debug("GAME SOURCE:")
@@ -1305,23 +1395,16 @@ class leaderboard_options:
             log.debug("LATEST SESSION SOURCE:")
             log.debug(f"\t{get_SQL(latest_session_source)}")
 
-        games = (game_source.annotate(last_play=last_play)
-                            .annotate(session_count=session_count)
-                            .annotate(play_count=play_count)
-                            .filter(session_count__gt=0)
-                            .order_by('-play_count'))
+        games = (game_source.annotate(last_play=last_play).filter(session_count__gt=0).order_by('-play_count'))
 
         # Now build up gfilter based on the game selectors
-        #
-        # We want to include a game if it matches ANY of"
-        #
-        # changed_since,
-        # game_players_any or game_players_all
+        gfilter  = Q()
 
-        or_filters = Q()
+        if self.is_enabled('changed_after'):
+            gfilter &= Q(sessions__date_time__gte=self.changed_after)
 
-        if self.is_enabled('changed_since'):
-            or_filters |= Q(sessions__date_time__gte=self.changed_since)
+        if self.is_enabled('changed_before'):
+            gfilter &= Q(sessions__date_time__lte=self.changed_before)
 
         # Filter the games on player participation ...
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
@@ -1339,11 +1422,9 @@ class leaderboard_options:
                 for pk in self.game_players[1:]:
                     sessions = sessions.filter(performances__player=pk)
 
-            or_filters |= Q(sessions__pk__in=sessions.values_list('pk'))
+            gfilter &= Q(sessions__pk__in=sessions.values_list('pk'))
 
-        gfilter = or_filters
-
-        if self.is_enabled('num_days'):
+        if self.is_enabled('top_games'):
             # Find only games played on or after the event start time
             est = self.last_event_start_time(self.num_days)
             gfilter &= Q(sessions__date_time__gte=est)
@@ -1684,8 +1765,11 @@ class leaderboard_options:
         if self.is_enabled("as_at"):
             subtitle.append(f"as at {localize(localtime(self.as_at))}")
 
-        if self.is_enabled("changed_since"):
-            subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
+        if self.is_enabled("changed_after"):
+            subtitle.append(f"changed after {localize(localtime(self.changed_after))}")
+
+        if self.is_enabled("changed_before"):
+            subtitle.append(f"changed before {localize(localtime(self.changed_before))}")
 
         if self.is_enabled("compare_back_to"):
             if isinstance(self.compare_back_to, numbers.Real):
@@ -1697,7 +1781,7 @@ class leaderboard_options:
                 days = "day's" if cb == 1 else "days'"
                 time = f"before the last event of {cb} {days} duration"
             elif isinstance(self.compare_back_to, datetime):
-                time = "at that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
+                time = "at that same time" if self.compare_back_to == self.changed_after else localize(localtime(self.compare_back_to))
             else:
                 time = None
 
@@ -1738,20 +1822,23 @@ class leaderboard_options:
         if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
             self.compare_back_to = fix_time_zone(self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False), utz)
 
-        # Map self.num_days to self.changed_since and self.compare_back_to
+        # Map self.num_days to fixed datetimes
         if self.is_enabled('num_days'):
             # Disable num_days option (which is relative to now and not static.
             self.__enable__('num_days', False)
 
             # Enable the equivalent time window and evolution options
-            self.changed_since = fix_time_zone(self.last_event_start_time(self.num_days, as_ExpressionWrapper=False), utz)
-            self.__enable__('changed_since', True)
+            self.changed_after = fix_time_zone(self.last_event_start_time(self.num_days, as_ExpressionWrapper=False), utz)
+            self.__enable__('changed_after', True)
 
-            self.as_at = fix_time_zone(self.last_event_end_time(as_ExpressionWrapper=False), utz)
-            self.__enable__('as_at', True)
+            self.changed_before = fix_time_zone(self.last_event_end_time(as_ExpressionWrapper=False), utz)
+            self.__enable__('changed_before', True)
 
-            self.compare_back_to = self.changed_since
+            self.compare_back_to = self.changed_after
             self.__enable__('compare_back_to', True)
+
+            self.as_at = self.changed_before
+            self.__enable__('as_at', True)
 
         # If a user session filter is used, convert it to explicit static options
         # Only league supported for now. If no leagues are explict and preferred
