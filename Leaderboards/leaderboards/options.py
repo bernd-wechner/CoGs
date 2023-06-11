@@ -888,7 +888,11 @@ class leaderboard_options:
                 self.show_baseline = True
 
         if 'show_cross_league_snaps' in urq:
-            self.show_cross_league_snaps = json.loads(urq['show_cross_league_snaps'].lower())  # A boolean value is parsed
+            if urq['show_cross_league_snaps']:
+                self.show_cross_league_snaps = json.loads(urq['show_cross_league_snaps'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_cross_league_snaps:
+                self.show_cross_league_snaps = True
 
         # Legend option
         if 'show_legend' in urq:

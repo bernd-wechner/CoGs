@@ -1,8 +1,12 @@
 #from django.core import management
+from django.db import connection
+from django.apps import apps
 from django.test import TestCase
 from django.test.client import RequestFactory
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 
+from io import StringIO
 from dateutil import parser
 from datetime import datetime
 from crequest.middleware import CrequestMiddleware
@@ -226,8 +230,23 @@ def create_session(game, players,
 
     return session
 
+def reset_SQL_sequences():
+    '''
+    For tests that report primary keys and validate against them it's important all Test Cases
+    have identical PKs. Alas unless SQL sequences are reset between TestCases that doesn't happen.
+
+    Inspired by: https://gist.github.com/diegolopmon/e0d376fa46995b2b433e
+    '''
+    SQL = StringIO()
+    for app in apps.get_app_configs():
+        call_command('sqlsequencereset', app.label, stdout=SQL)
+    cursor = connection.cursor()
+    cursor.execute(SQL.getvalue())
+
 
 def setup_test_database(cls):
+    print("Setting up Test Database")
+
     # Create a user (to login so we can post session add/edit requests)
     User = get_user_model()
     cls.user1 = User.objects.create_user('admin', 'noone@gmail.com', 'password')  # @UnusedVariable
@@ -318,26 +337,28 @@ def setup_test_database(cls):
 
     # Create sessions.
     # We want at least one session per game type to test various rank/score configuration submissions
-    cls.session00 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 00:00:00 +10:00')  # @UnusedVariable
-    cls.sessionIH = create_session(cls.gameIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 01:00:00 +10:00')  # @UnusedVariable
-    cls.sessionIL = create_session(cls.gameIL, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 02:00:00 +10:00')  # @UnusedVariable
+    # A note on times: In January Hobart/Tasmania is at UTC+11. Using Hobart as our test site.
+    # We choose a datetime suchg that the hour is equal to the session ID for convenience.
+    cls.session00 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 01:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionIH = create_session(cls.gameIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 02:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionIL = create_session(cls.gameIL, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 03:00:00 +11:00', cls.league1)  # @UnusedVariable
 
     # Team based sessions (2 player teams)
-    cls.sessionTH2 = create_session(cls.gameTH, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 03:00:00 +10:00')  # @UnusedVariable
-    cls.sessionTL2 = create_session(cls.gameTL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 04:00:00 +10:00')  # @UnusedVariable
+    cls.sessionTH2 = create_session(cls.gameTH, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 04:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionTL2 = create_session(cls.gameTL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 05:00:00 +11:00', cls.league1)  # @UnusedVariable
 
     # We want a team based session in which the team is unique (3 player sessions)
-    cls.sessionTH3 = create_session(cls.gameTH, [[cls.player1, cls.player2, cls.player3], [cls.player4, cls.player5, cls.player6]], [1, 2], '2022-01-01 05:00:00 +10:00')  # @UnusedVariable
+    cls.sessionTH3 = create_session(cls.gameTH, [[cls.player1, cls.player2, cls.player3], [cls.player4, cls.player5, cls.player6]], [1, 2], '2022-01-01 06:00:00 +11:00', cls.league2)  # @UnusedVariable
 
     # Mixed Team/Individual sessions
-    cls.sessionTIHi = create_session(cls.gameTIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 06:00:00 +10:00')  # @UnusedVariable
-    cls.sessionTILt2 = create_session(cls.gameTIL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 07:00:00 +10:00')  # @UnusedVariable
+    cls.sessionTIHi = create_session(cls.gameTIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 07:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.sessionTILt2 = create_session(cls.gameTIL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 08:00:00 +11:00', cls.league2)  # @UnusedVariable
 
     # We want a series of maybe 5 sessions to test rebuild triggering on time, game, player shifts.
-    cls.session01 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [4, 3, 2, 1], '2022-01-01 08:00:00 +10:00')  # @UnusedVariable
-    cls.session02 = create_session(cls.game0, [cls.player3, cls.player4, cls.player5, cls.player6], [2, 3, 1, 4], '2022-01-01 09:00:00 +10:00')  # @UnusedVariable
-    cls.session03 = create_session(cls.game0, [cls.player1, cls.player2, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 10:00:00 +10:00')  # @UnusedVariable
-    cls.session04 = create_session(cls.game0, [cls.player1, cls.player4, cls.player5, cls.player3], [1, 2, 3, 4], '2022-01-01 11:00:00 +10:00')  # @UnusedVariable
+    cls.session01 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [4, 3, 2, 1], '2022-01-01 09:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.session02 = create_session(cls.game0, [cls.player3, cls.player4, cls.player5, cls.player6], [2, 3, 1, 4], '2022-01-01 10:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.session03 = create_session(cls.game0, [cls.player1, cls.player2, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 11:00:00 +11:00', cls.league3)  # @UnusedVariable
+    cls.session04 = create_session(cls.game0, [cls.player1, cls.player4, cls.player5, cls.player3], [1, 2, 3, 4], '2022-01-01 12:00:00 +11:00', cls.league1)  # @UnusedVariable
 
     # Save a this fixture for use in manual testing too
     # management.call_command('dumpdata', natural_foreign=True, indent=4, output="CoGs_test_data.json")

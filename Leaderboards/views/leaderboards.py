@@ -370,7 +370,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
             snapshots.reverse()
 
             # Then build the game tuple with all its snapshots
-            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline))
+            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline, asat=lo.as_at))
 
     if use_session_cache:
         request.session["leaderboard_cache"] = lb_cache

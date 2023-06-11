@@ -312,7 +312,7 @@ class Game(AdminModel, NotesMixIn):
 
         :param leagues: Returns playcounts considering the specified league or leagues or all leagues if none is specified.
         :param asat: Optionally returns the play counts as at a given date
-        :param broad: basic play counts are for all sessions in any of the provided leagues, broad play counts include all sessions played in by members of an of the specified leagues,
+        :param broad: basic play counts are for all sessions in any of the provided leagues, broad play counts include all sessions played in by members of any of the specified leagues,
         '''
         League = apps.get_model(APP, "League")
         Session = apps.get_model(APP, "Session")
@@ -550,7 +550,8 @@ class Game(AdminModel, NotesMixIn):
 
         # Permit submission of an empty tuple () to return an empty tuple.
         if leaderboard:
-            counts = self.play_counts()
+            # TODO: And the league filter?
+            counts = self.play_counts(asat=asat)
 
             # TODO: Respect styles. Importantly .data should be minimalist and reconstructable.
             # none might mean no wrapper

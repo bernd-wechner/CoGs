@@ -1,5 +1,5 @@
 ##/bin/bash
-python_version=3.8
+python_version=3.9
 target_dir=~/.virtualenvs/CoGs/lib/python$python_version/site-packages/
 ln -fs ~/workspace/Django/django-rich-views/django_rich_views $target_dir
 ln -fs ~/workspace/Django/django-mapbox-location-field/mapbox_location_field $target_dir
