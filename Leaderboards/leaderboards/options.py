@@ -11,7 +11,7 @@ from django.conf import settings
 from django.http.request import QueryDict
 from django.utils.formats import localize
 from django.utils.timezone import localtime
-from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef
+from django.db.models import F, Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef
 
 from django.contrib.postgres.aggregates import ArrayAgg
 from django.contrib.postgres.expressions import ArraySubquery
@@ -368,7 +368,6 @@ class leaderboard_options:
                 # Save as a transport option
                 self.players = players
 
-        # TODO check if we can specify NO league filtering. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
         if 'leagues' in urq:
             sleagues = urq['leagues']  # CSV string
@@ -448,7 +447,7 @@ class leaderboard_options:
         self.need_enabling.add('game_leagues_any')
         self.need_enabling.add('game_leagues_all')
         any_all = None
-        game_leagues = leagues  # Use the transport option as a fallback.
+        game_leagues = self.leagues  # Use the transport option as a fallback.
         for suffix in ("any", "all"):
             if f'game_leagues_{suffix}' in urq:
                 sgame_leagues = urq[f'game_leagues_{suffix}']  # CSV string
@@ -460,7 +459,7 @@ class leaderboard_options:
                 #    ?game_leagues_any=1,2,3
                 #    ?leagues=1,2,3&game_leagues_any
                 if not game_leagues:
-                    game_leagues = leagues
+                    game_leagues = self.leagues
 
                 any_all = suffix
                 break
@@ -1399,7 +1398,7 @@ class leaderboard_options:
             log.debug("LATEST SESSION SOURCE:")
             log.debug(f"\t{get_SQL(latest_session_source)}")
 
-        games = (game_source.annotate(last_play=last_play).filter(session_count__gt=0).order_by('-play_count'))
+        games = game_source.annotate(last_play=last_play).filter(session_count__gt=0).order_by('-play_count')
 
         # Now build up gfilter based on the game selectors
         gfilter  = Q()
@@ -1413,20 +1412,12 @@ class leaderboard_options:
         # Filter the games on player participation ...
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
             if self.is_enabled('game_players_any'):
-                sessions = Session.objects.filter(performances__player__pk__in=self.game_players)
+                gfilter &= Q(sessions__performances__player__pk__in=self.game_players)
             elif self.is_enabled('game_players_all'):
-                # Only method I've found is with an intersection. Problem presented here:
+                # Most elegant method I found is with ArrayAgg (postgresql specific)
                 # https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-                # sessions = Session.objects.filter(performances__player=self.game_players[0])
-                # for pk in self.game_players[1:]:
-                    # sessions = sessions.intersection(Session.objects.filter(performances__player=pk))
-
-                # Another mothod using joins
-                sessions = Session.objects.filter(performances__player=self.game_players[0])
-                for pk in self.game_players[1:]:
-                    sessions = sessions.filter(performances__player=pk)
-
-            gfilter &= Q(sessions__pk__in=sessions.values_list('pk'))
+                games = games.annotate(game_players=ArrayAgg(F('sessions__performances__player'), distinct=True))
+                gfilter &= Q(game_players__contains=self.game_players)
 
         if self.is_enabled('top_games'):
             # Find only games played on or after the event start time

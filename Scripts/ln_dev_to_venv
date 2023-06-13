@@ -1,8 +1,25 @@
-##/bin/bash
+#!/bin/bash
 python_version=3.9
-target_dir=~/.virtualenvs/CoGs/lib/python$python_version/site-packages/
-ln -fs ~/workspace/Django/django-rich-views/django_rich_views $target_dir
-ln -fs ~/workspace/Django/django-mapbox-location-field/mapbox_location_field $target_dir
-ln -fs ~/workspace/Django/django-model-privacy-mixin/src/django_model_privacy_mixin $target_dir
-ln -fs ~/workspace/Django/django-model-admin-fields/src/django_model_admin_fields $target_dir
-ln -fs ~/workspace/Django/django-stats-middleware/src/django_stats_middleware $target_dir
+target_dir=~/.virtualenvs/CoGs/lib/python$python_version/site-packages
+source_dir=~/workspace/Django
+
+packages=(
+	"$source_dir/django-rich-views/src/django_rich_views"
+	"$source_dir/django-mapbox-location-field/mapbox_location_field"
+	"$source_dir/django-model-privacy-mixin/src/django_model_privacy_mixin"
+	"$source_dir/django-model-admin-fields/src/django_model_admin_fields"
+	"$source_dir/django-stats-middleware/src/django_stats_middleware"
+)
+
+for source in "${packages[@]}"
+do
+   target=$target_dir/$(basename $source)
+   if [[ ! -L "$target" ]]
+   then
+       rm -rf $target
+   fi
+
+   ln -fs $source $target_dir/
+
+   ls -ld $target
+done

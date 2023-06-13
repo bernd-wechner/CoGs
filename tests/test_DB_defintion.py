@@ -245,6 +245,9 @@ def reset_SQL_sequences():
 
 
 def setup_test_database(cls):
+    '''
+    Sets up a simple database for numerous test scenarios.
+    '''
     print("Setting up Test Database")
 
     # Create a user (to login so we can post session add/edit requests)
@@ -277,7 +280,12 @@ def setup_test_database(cls):
     cls.game5 = cls.gameTIH = Game.objects.create(name="TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS.value)
     cls.game6 = cls.gameTIL = Game.objects.create(name="TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS.value)
 
-    cls.all_games = [cls.game0, cls.game1, cls.game2, cls.game3, cls.game4, cls.game5, cls.game6]
+    # Some games for mixed players (filter testing)
+    cls.game7 = Game.objects.create(name="IHSW_1", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value)
+    cls.game8 = Game.objects.create(name="IHSW_2", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value)
+    cls.game9 = Game.objects.create(name="IHSW_3", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value)
+
+    cls.all_games = [cls.game0, cls.game1, cls.game2, cls.game3, cls.game4, cls.game5, cls.game6, cls.game7, cls.game8, cls.game9]
 
     # Create a couple of tourneys
     cls.tourney1 = Tourney.objects.create(name='tourney1')
@@ -305,8 +313,12 @@ def setup_test_database(cls):
     cls.pgroup2_7 = [cls.player2, cls.player3, cls.player4, cls.player5, cls.player6, cls.player7]
     cls.pgroup3_8 = [cls.player3, cls.player4, cls.player5, cls.player6, cls.player7, cls.player8]
     cls.pgroup1_4 = [cls.player1, cls.player2, cls.player3, cls.player4]
+    cls.pgroup1_2 = [cls.player1, cls.player2]
+    cls.pgroup3_4 = [cls.player3, cls.player4]
     cls.pgroup1_3 = [cls.player1, cls.player2, cls.player3]
     cls.pgroup3_5 = [cls.player3, cls.player4, cls.player5]
+    cls.pgroup3_6 = [cls.player3, cls.player4, cls.player5, cls.player6]
+    cls.pgroup4_6 = [cls.player4, cls.player5, cls.player6]
 
     # # Create a couple of teams
     # team1 = Team.objects.create(name='team1')
@@ -339,26 +351,31 @@ def setup_test_database(cls):
     # We want at least one session per game type to test various rank/score configuration submissions
     # A note on times: In January Hobart/Tasmania is at UTC+11. Using Hobart as our test site.
     # We choose a datetime suchg that the hour is equal to the session ID for convenience.
-    cls.session00 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 01:00:00 +11:00', cls.league1)  # @UnusedVariable
-    cls.sessionIH = create_session(cls.gameIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 02:00:00 +11:00', cls.league1)  # @UnusedVariable
-    cls.sessionIL = create_session(cls.gameIL, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 03:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.session00 = create_session(cls.game0, cls.pgroup1_4, [1, 2, 3, 4], '2022-01-01 01:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionIH = create_session(cls.gameIH, cls.pgroup1_4, [1, 2, 3, 4], '2022-01-01 02:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionIL = create_session(cls.gameIL, cls.pgroup1_4, [1, 2, 3, 4], '2022-01-01 03:00:00 +11:00', cls.league1)  # @UnusedVariable
 
     # Team based sessions (2 player teams)
-    cls.sessionTH2 = create_session(cls.gameTH, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 04:00:00 +11:00', cls.league1)  # @UnusedVariable
-    cls.sessionTL2 = create_session(cls.gameTL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 05:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionTH2 = create_session(cls.gameTH, [cls.pgroup1_2, cls.pgroup3_4], [1, 2], '2022-01-01 04:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.sessionTL2 = create_session(cls.gameTL, [cls.pgroup1_2, cls.pgroup3_4], [1, 2], '2022-01-01 05:00:00 +11:00', cls.league1)  # @UnusedVariable
 
     # We want a team based session in which the team is unique (3 player sessions)
-    cls.sessionTH3 = create_session(cls.gameTH, [[cls.player1, cls.player2, cls.player3], [cls.player4, cls.player5, cls.player6]], [1, 2], '2022-01-01 06:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.sessionTH3 = create_session(cls.gameTH, [cls.pgroup1_3, cls.pgroup4_6], [1, 2], '2022-01-01 06:00:00 +11:00', cls.league2)  # @UnusedVariable
 
     # Mixed Team/Individual sessions
-    cls.sessionTIHi = create_session(cls.gameTIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 07:00:00 +11:00', cls.league2)  # @UnusedVariable
-    cls.sessionTILt2 = create_session(cls.gameTIL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 08:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.sessionTIHi = create_session(cls.gameTIH, cls.pgroup1_4, [1, 2, 3, 4], '2022-01-01 07:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.sessionTILt2 = create_session(cls.gameTIL, [cls.pgroup1_2, cls.pgroup3_4], [1, 2], '2022-01-01 08:00:00 +11:00', cls.league2)  # @UnusedVariable
 
-    # We want a series of maybe 5 sessions to test rebuild triggering on time, game, player shifts.
-    cls.session01 = create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [4, 3, 2, 1], '2022-01-01 09:00:00 +11:00', cls.league1)  # @UnusedVariable
-    cls.session02 = create_session(cls.game0, [cls.player3, cls.player4, cls.player5, cls.player6], [2, 3, 1, 4], '2022-01-01 10:00:00 +11:00', cls.league2)  # @UnusedVariable
-    cls.session03 = create_session(cls.game0, [cls.player1, cls.player2, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 11:00:00 +11:00', cls.league3)  # @UnusedVariable
+    # We want a series of sessions to test rebuild triggering on time, game, player shifts.
+    cls.session01 = create_session(cls.game0, cls.pgroup1_4, [4, 3, 2, 1], '2022-01-01 09:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.session02 = create_session(cls.game0, cls.pgroup3_6, [2, 3, 1, 4], '2022-01-01 10:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.session03 = create_session(cls.game0, [cls.player1, cls.player3, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 11:00:00 +11:00', cls.league3)  # @UnusedVariable
     cls.session04 = create_session(cls.game0, [cls.player1, cls.player4, cls.player5, cls.player3], [1, 2, 3, 4], '2022-01-01 12:00:00 +11:00', cls.league1)  # @UnusedVariable
+
+    # Some sessions of mixed players in low play games for player filter testing
+    cls.session05 = create_session(cls.game7, [cls.player1, cls.player7], [1, 2], '2022-01-01 13:00:00 +11:00', cls.league1)  # @UnusedVariable
+    cls.session06 = create_session(cls.game8, [cls.player2, cls.player5], [1, 2], '2022-01-01 14:00:00 +11:00', cls.league2)  # @UnusedVariable
+    cls.session07 = create_session(cls.game9, [cls.player3, cls.player8], [1, 2], '2022-01-01 15:00:00 +11:00', cls.league3)  # @UnusedVariable
 
     # Save a this fixture for use in manual testing too
     # management.call_command('dumpdata', natural_foreign=True, indent=4, output="CoGs_test_data.json")

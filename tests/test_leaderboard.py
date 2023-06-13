@@ -123,12 +123,48 @@ def board_play_stats(result):
         play_stats[game_id] = (session, date_time, plays, sessions)
     return play_stats
 
+def game_league_stats(result):
+    '''
+    Similar to board stats, but with a focus on extracting the game leagues
+    (for testing those specifically).
+
+    :param result: A JSON response decoded and loaded with json.loads() already
+    '''
+    games = result[3]
+    league_stats = {}
+    for game in games:
+        game_id = game[0]
+        league_ids = [l.id for l in Game.objects.get(id=game_id).leagues.all()]
+
+        league_stats[game_id] = league_ids
+    return league_stats
+
+def game_player_stats(result):
+    '''
+    Similar to board stats, but with a focus on extracting the game players
+    (for testing those specifically).
+
+    :param result: A JSON response decoded and loaded with json.loads() already
+    '''
+    games = result[3]
+    player_stats = {}
+    for game in games:
+        game_id = game[0]
+        player_ids = set()
+        for s in Game.objects.get(id=game_id).sessions.all():
+            player_ids.update([p.player.id for p in s.performances.all()])
+
+        player_stats[game_id] = sorted(list(player_ids))
+    return player_stats
+
+
 def print_data_set():
     '''
     Useful for designing tests, this will just print the test data in a handy way
     '''
+    all_games = Game.objects.all().order_by("id")
     print("\nTest Data Set Summary (Games, Sessions, Players):")
-    for g in Game.objects.all().order_by("id"):
+    for g in all_games:
         game_leagues = [l.id for l in g.leagues.all()]
         print(f"{g.id} {g.name} leagues:{game_leagues}:")
         sessions = Session.objects.filter(game=g).order_by("id")  # @UndefinedVariable
@@ -163,16 +199,6 @@ class LeaderboardTestCase(TestCase):
     def test_board_selectors(self):
         '''
         Testing the board selection options.
-
-        The test data is expected to hold 12 session between:
-            '2022-01-01 00:00:00 +10:00'
-        and:
-            '2022-01-01 11:00:00 +10:00'
-        inclusive, one hour apart.
-
-        And 7 games, with IDs 0 to 6.
-
-        Will need snaphots to test, so multiple session per game.
         '''
         print_data_set()
 
@@ -188,11 +214,13 @@ class LeaderboardTestCase(TestCase):
 
             # Confirm we got the default number of games
             self.assertEqual(len(stats), default.num_games, f"Expected {default.num_games} and got {len(stats)}.")
+
             # Confirm they are all in the filtered league
             # TODO: ensure test data has a game or two not in the league
             for gid in stats:
                 game = Game.objects.get(pk=gid)
                 self.assertIn(lid, game.leagues.all().values_list('pk', flat=True), f"Returned games must be in league {lid}. Game {gid} isn't.")
+
             # There is no ordering option yet
             # TODO: implement an ordering option
             #        latest_games does return them in order of last play though
@@ -207,7 +235,11 @@ class LeaderboardTestCase(TestCase):
             ######################################################################################
             # no defaults
             #
+            # 'no_defaults' - ignore default values, notably for
+            #     'top_games',  # The top (most popular) self.num_games
+            #
             # We should get on board for each game (no filters in place)
+            # TODO: test top_games
             response = self.response('json_leaderboards', "?no_defaults")
             stats = board_stats(response)
 
@@ -218,6 +250,8 @@ class LeaderboardTestCase(TestCase):
 
             ######################################################################################
             # latest_games
+            #
+            # 'latest_games',  # The latest self.num_games
             #
             # The aim is to select the most recently played games.
             latest_games=4
@@ -234,10 +268,17 @@ class LeaderboardTestCase(TestCase):
             ######################################################################################
             # game_leagues (all and any)
             #
+            # 'game_leagues_any',  # Games played in any of self.game_leagues
+            # 'game_leagues_all',  # Games played in all of self.game_leagues
+            #
             # The aim is to select games that are played by all or any of the cited leagues.
             #
             # We need games in different leagues, at least three leagues, and two or more games
             # in each league.
+            #
+            # TODO: leagues= without a game_leagues_any/all should not filter on leagues
+            #       leagues= with an empty game_leagues_any/all should be same as specifyling leaguies with the option
+            #       leagues= and game_leagues_any/all= specifying differnt lists shoudls ee the latter used
             game_leagues = lambda gid: Game.objects.get(pk=gid).leagues.values_list('id', flat=True)
 
             response = self.response('json_leaderboards', f"?game_leagues_all=1,3")
@@ -262,15 +303,20 @@ class LeaderboardTestCase(TestCase):
             # and a second without.
             # In both cases, perspective (as_at) will determine the count.
             #
-            # In the test data set we have 12 sessions between '2022-01-01 00:00:00 +10:00'
-            # and '2022-01-01 11:00:00 +10:00' one hour apart for 7 games, so 7 leaderboards
-            # total.We can check all 7 games and extract the play stats for confirmation
-            # that they meet expectaions.
+            # In the test data set we have sessions from '2022-01-01 00:00:00 +10:00'
+            # one hour apart for 10 games, so 10 leaderboards total.We can check all
+            # 10 games and extract the play stats for confirmation that they meet expectaions.
             #
-            # We do one test without asat embracing all 7 games and then one as at
-            # '2022-01-01 06:00:00 +11:00' embracing 5 of them
+            # We check play stats in cahoots with all thee filters:
             #
-            # TODO: We play counts also repsond to the leagues filter and the broad filter.
+            #    as_at - the perspective
+            #    leagues -  the leagues
+            #        leagues= is a transporter
+            #        game_leagues_any/all can if empty draw from the transporter, or list leagues themselves.
+            #    show_cross_league_snaps - Show snapshots that are in any leagues that players in the selected leagues are in (even if they are not selected)
+            #
+            # TODO: Need better tests for show_cross_league_snaps
+            # TODO: Need to chekc the leagues transport and game_leangues_any/all interactions
             response = self.response('json_leaderboards', "?no_defaults")
             stats = board_play_stats(response)
             expected = {1: (12, 'Sat, 1 Jan 2022 12:00', 20, 5), # confirmed correct
@@ -279,10 +325,13 @@ class LeaderboardTestCase(TestCase):
                         4: (6, 'Sat, 1 Jan 2022 06:00', 10, 2), # confirmed correct
                         5: (5, 'Sat, 1 Jan 2022 05:00', 4, 1), # confirmed correct
                         6: (7, 'Sat, 1 Jan 2022 07:00', 4, 1), # confirmed correct
-                        7: (8, 'Sat, 1 Jan 2022 08:00', 4, 1)} # confirmed correct
+                        7: (8, 'Sat, 1 Jan 2022 08:00', 4, 1), # confirmed correct
+                        8: (13, 'Sat, 1 Jan 2022 13:00', 2, 1), # confirmed correct
+                        9: (14, 'Sat, 1 Jan 2022 14:00', 2, 1), # confirmed correct
+                        10: (15, 'Sat, 1 Jan 2022 15:00', 2, 1)} # confirmed correct
             self.assertEqual(stats, expected, "Leaderboard play statistics (last_play, total_plays, total_sessions) not as expected.")
 
-            # With an asat filter
+            # With an asat filter (so only games that were played before then and status at that time)
             response = self.response('json_leaderboards', "?no_defaults&asat=2022-01-01+06-00-00++11-00")
             stats = board_play_stats(response)
             expected = {1: (1, 'Sat, 1 Jan 2022 01:00', 4, 1),
@@ -310,21 +359,58 @@ class LeaderboardTestCase(TestCase):
                         5: (5, 'Sat, 1 Jan 2022 05:00', 4, 1)}
             self.assertEqual(stats, expected, "Leaderboard play statistics (last_play, total_plays, total_sessions) not as expected.")
 
-        ######################################################################################
-        # game_leagues (all and any)
-        #
-        response = self.response('json_leaderboards', "?no_defaults&")
+            ######################################################################################
+            # game_leagues (all and any)
+            #
+            # 'game_leagues_any',  # Games played in any of self.game_leagues
+            # 'game_leagues_all',  # Games played in all of self.game_leagues
+            response = self.response('json_leaderboards', "?no_defaults&game_leagues_any=2,3")
+            stats = game_league_stats(response)
+            expected = {4: [1, 2, 3],
+                        1: [1, 2],
+                        2: [1, 2],
+                        3: [1, 2],
+                        5: [1, 3],
+                        7: [1, 3]}
+            self.assertEqual(stats, expected, "Leaderboard games_leages_any failed")
 
-        ######################################################################################
-        # game_players (all and any)
-        #
-        # We need a good mix of games and players to test this.
-        #
-        # The aim is to select games that have been played by all or any of the cited players.
-        response = self.response('json_leaderboards', "?no_defaults&")
+            # TODO: Check this as with players_all. Players_all needed an ArrayAgg to work the _all
+            response = self.response('json_leaderboards', "?no_defaults&game_leagues_all=2,3")
+            stats = game_league_stats(response)
+            expected = {4: [1, 2, 3]}
+            self.assertEqual(stats, expected, "Leaderboard games_leages_all failed")
+
+            ######################################################################################
+            # game_players (all and any)
+            #
+            # 'game_players_any',  # Games played by any of self.game_players
+            # 'game_players_all',  # Games played by all of self.game_players
+            #
+            # We need a good mix of games and players to test this.
+            #
+            # The aim is to select games that have been played by all or any of the cited players.
+            response = self.response('json_leaderboards', "?no_defaults&game_players_any=5,7")
+            stats = game_player_stats(response)
+            expected = {1: [1, 2, 3, 4, 5, 6],
+                        4: [1, 2, 3, 4, 5, 6],
+                        8: [1, 7],
+                        9: [2, 5]
+                       }
+            self.assertEqual(stats, expected, "Leaderboard games_players_any failed")
+
+            response = self.response('json_leaderboards', "?no_defaults&game_players_all=2,5")
+            stats = game_player_stats(response)
+            expected = {1: [1, 2, 3, 4, 5, 6],
+                        4: [1, 2, 3, 4, 5, 6],
+                        9: [2, 5]}
+            self.assertEqual(stats, expected, "Leaderboard games_players_all failed")
 
         ######################################################################################
         # changed (after and before)
+        #
+        # 'changed_after',     # Games played since self.changed_after
+        # 'changed_before',    # Games played on or before self.changed_before
+        response = self.response('json_leaderboards', "?no_defaults&game_players_all=2,5")
 
         ######################################################################################
         # game (ex and in)
