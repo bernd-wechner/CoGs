@@ -105,67 +105,77 @@ def ajax_Events(request, as_context=False):
     # Collect the implcit events
     events = Event.implicit(leagues, locations, date_from, date_to, duration_min, duration_max, month_days, gap_days)
 
-    # And some stats about them
-    stats = Event.stats(events)
+    if events:
+        # And some stats about them
+        stats = Event.stats(events)
 
-    # Build a graph (test for now)
-    (players, frequency) = Event.frequency("players", events, as_lists=True)
+        # Build a graph (test for now)
+        (players, frequency) = Event.frequency("players", events, as_lists=True)
 
-    # We need include the graph only on an as_context call (the inital page load), not on
-    # AJAX calls (that return the data update)
-    if as_context:
-        plot = figure(height=350,
-                      x_axis_label="Count of Players",
-                      y_axis_label="Number of Events",
-                      background_fill_alpha=0,
-                      border_fill_alpha=0,
-                      tools="pan,wheel_zoom,box_zoom,save,reset")
+        # We need include the graph only on an as_context call (the inital page load), not on
+        # AJAX calls (that return the data update)
+        if as_context:
+            plot = figure(height=350,
+                          x_axis_label="Count of Players",
+                          y_axis_label="Number of Events",
+                          background_fill_alpha=0,
+                          border_fill_alpha=0,
+                          tools="pan,wheel_zoom,box_zoom,save,reset")
 
-        # These are empirically tuned. The figure size is specified above
-        # and the ticks and labels are by default adjusted below, but those
-        # adjustments can pack them so close they overlap. Which is pretty
-        # ugly. These two tuners will be respected to adjust the packing
-        # in config to follow and are sort of judged by eye. More than this
-        # number of labels is considered too tight, packing wise.
-        max_xticks = 30
-        max_yticks = 40
+            # These are empirically tuned. The figure size is specified above
+            # and the ticks and labels are by default adjusted below, but those
+            # adjustments can pack them so close they overlap. Which is pretty
+            # ugly. These two tuners will be respected to adjust the packing
+            # in config to follow and are sort of judged by eye. More than this
+            # number of labels is considered too tight, packing wise.
+            max_xticks = 30
+            max_yticks = 40
 
-        # Now we want to run the x axis from the min to max number of
-        # players. And the frequency axis we'd like to run from 0 to the
-        # max frequency.
-        xticks = 1 + max(players) - min(players)
-        xspace = 1 + xticks // max_xticks
+            # Now we want to run the x axis from the min to max number of
+            # players. And the frequency axis we'd like to run from 0 to the
+            # max frequency.
+            xticks = 1 + max(players) - min(players)
+            xspace = 1 + xticks // max_xticks
 
-        yticks = 1 + max(frequency)
-        yspace = 1 + yticks // max_yticks
+            yticks = 1 + max(frequency)
+            yspace = 1 + yticks // max_yticks
 
-        plot.xaxis.ticker = list(range(min(players), max(players) + 1, xspace))
-        plot.yaxis.ticker = list(range(0, max(frequency) + 1, yspace))
-        plot.toolbar.logo = None
+            plot.xaxis.ticker = list(range(min(players), max(players) + 1, xspace))
+            plot.yaxis.ticker = list(range(0, max(frequency) + 1, yspace))
+            plot.toolbar.logo = None
 
-        plot.y_range.start = 0
+            plot.y_range.start = 0
 
-        bars = plot.vbar(x=players, top=frequency, width=0.9)
+            bars = plot.vbar(x=players, top=frequency, width=0.9)
 
-        # This example is good: https://docs.bokeh.org/en/latest/docs/user_guide/interaction/callbacks.html#customjs-for-widgets
-        # But not perfect. How to trigger that onchange in JS?
-        bars.data_source.js_on_change("change", CustomJS(args=dict(xticker=plot.xaxis.ticker, yticker=plot.yaxis.ticker), code=f"""
-            //console.log("DEBUG! Data source changed!");
-            const startx = Math.min(...players); const endx = Math.max(...players);
-            const starty = 0;                    const endy = Math.max(...frequency);
+            # This example is good: https://docs.bokeh.org/en/latest/docs/user_guide/interaction/callbacks.html#customjs-for-widgets
+            # But not perfect. How to trigger that onchange in JS?
+            bars.data_source.js_on_change("change", CustomJS(args=dict(xticker=plot.xaxis.ticker, yticker=plot.yaxis.ticker), code=f"""
+                //console.log("DEBUG! Data source changed!");
+                const startx = Math.min(...players); const endx = Math.max(...players);
+                const starty = 0;                    const endy = Math.max(...frequency);
 
-            const xticks = 1 + endx - startx;
-            const xspace = 1 + Math.floor(xticks / {max_xticks});
+                const xticks = 1 + endx - startx;
+                const xspace = 1 + Math.floor(xticks / {max_xticks});
 
-            const yticks = 1 + endy - starty;
-            const yspace = 1 + Math.floor(yticks / {max_yticks});
+                const yticks = 1 + endy - starty;
+                const yspace = 1 + Math.floor(yticks / {max_yticks});
 
-            xticker.ticks = _.range(startx, endx+1, xspace);
-            yticker.ticks = _.range(starty, endy+1, yspace);
-            //debugger;
-        """))
+                xticker.ticks = _.range(startx, endx+1, xspace);
+                yticker.ticks = _.range(starty, endy+1, yspace);
+                //debugger;
+            """))
 
-        graph_script, graph_div = components(plot)
+            graph_script, graph_div = components(plot)
+    else:
+        # Fail (a little more) gracefully on a database lacking events (than we otherwise would)
+        stats = None
+        players = None
+        frequency = None
+        plot = None
+        bars = None
+        graph_script = None
+        graph_div = None
 
     settings = {}
     if leagues: settings["leagues"] = leagues
@@ -210,8 +220,8 @@ def ajax_Events(request, as_context=False):
                         "widget_locations": html_selector(Location, "locations", settings.get("locations", None), ALL_LOCATIONS, multi=True),
                         "graph_script": graph_script,
                         "graph_div": graph_div,
-                        "plotid": plot.id,
-                        "barsid": bars.id})
+                        "plotid": plot.id if plot else None,
+                        "barsid": bars.id if bars else None})
 
         return context
     else:
