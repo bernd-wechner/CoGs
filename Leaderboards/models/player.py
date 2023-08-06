@@ -116,6 +116,15 @@ class Player(AdminModel, PrivacyMixIn, NotesMixIn):
         games = Game.objects.filter(Q(sessions__ranks__rank=1) & (Q(sessions__ranks__player=self) | Q(sessions__ranks__team__players=self))).distinct()
         return None if (games is None or games.count() == 0) else games
 
+    @cached_property
+    def play_counts(self) -> dict:
+        '''
+        Returns all the games that that this player has played along with a play count (how many times they played it)
+        '''
+        Game = apps.get_model(APP, "Game", False)
+        games = Game.objects.filter(Q(sessions__performances__player=self)).annotate(play_count=Count('id')).order_by('-play_count')
+        return None if (games is None or games.count() == 0) else {g.name: g.play_count for g in games}
+
     @property_method
     def last_play(self, game=None) -> object:
         '''
