@@ -548,12 +548,12 @@ class TrueSkillHelpers:
     def Update_skills(self, session):
         pass
 
-    def Predicted_ranking(self, session, with_performances=False, after=False):
+    def Predicted_ranking(self, session, with_performances=False, after=False) -> tuple:
         '''
-        Returns a tuple of players or teams that represents the preducted ranking given their skills
+        Returns a tuple of players or teams that represents the predicted ranking given their skills
         before (or after) the nominated session and a probability of that ranking in a 2-tuple.
 
-        Each list item can be:
+        Each item can be:
 
         A player (instance of the Leaderboard app's Player model)
         A team (instance of the Leaderboard app's Team model)

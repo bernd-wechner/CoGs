@@ -1,0 +1,8 @@
+deactivate
+rm -rf ~/.virtualenvs/CoGs_test
+#python -m venv ~/.virtualenvs/CoGs_test
+#source ~/.virtualenvs/CoGs_test/bin/activate
+#pip install --upgrade pip
+pip cache purge
+#pip install wheel
+#pip install -r requirements.txt

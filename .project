@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <projectDescription>
-	<name>CoGs</name>
+	<name>CoGs Git - develop branch</name>
 	<comment></comment>
 	<projects>
 	</projects>
@@ -15,4 +15,11 @@
 		<nature>org.python.pydev.pythonNature</nature>
 		<nature>org.python.pydev.django.djangoNature</nature>
 	</natures>
+	<linkedResources>
+		<link>
+			<name>django-rich-views</name>
+			<type>2</type>
+			<location>/home/bernd/workspace/Django/django-rich-views</location>
+		</link>
+	</linkedResources>
 </projectDescription>

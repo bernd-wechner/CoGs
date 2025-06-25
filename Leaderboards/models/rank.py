@@ -25,9 +25,9 @@ class Rank(AdminModel):
     score = models.IntegerField('Score', default=None, null=True, blank=True)  # What this team scored if the game has team scores.
 
     # One or the other of these has a value the other should be null (enforce in integrity checks)
-    # We coudlof course opt to use a single GenericForeignKey here:
+    # We could of course opt to use a single GenericForeignKey here:
     #    https://docs.djangoproject.com/en/1.10/ref/contrib/contenttypes/#generic-relations
-    #    but there are some complexites they introduce that are rather unnatracive as well
+    #    but there are some complexities they introduce that are rather unattractive as well
     player = models.ForeignKey('Player', verbose_name='Player', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # If the player is deleted keep this rank
     team = models.ForeignKey('Team', verbose_name='Team', blank=True, null=True, related_name='ranks', on_delete=models.SET_NULL)  # if the team is deleted keep this rank
 

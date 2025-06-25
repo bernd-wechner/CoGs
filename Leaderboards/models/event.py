@@ -1,16 +1,19 @@
+import logging
+
 from datetime import timedelta
 from collections import Counter
 
 from tailslide import Median
 
 from django.db import models
+from django.conf import settings
 from django.utils import timezone
 
-from django.db.models import Q, Case, When, DateTimeField, DurationField
+from django.db.models import Q, Value, Case, When, DateTimeField, DurationField, IntegerField, Sum, OuterRef, Subquery 
 from django.db.models.aggregates import Count, Min, Max, Avg
 from django.contrib.postgres.aggregates import ArrayAgg
-from django.db.models.functions import Extract
-from django.db.models.expressions import Window, F, ExpressionWrapper
+from django.db.models.functions import Extract, Coalesce, RowNumber, FirstValue
+from django.db.models.expressions import Window, F, ExpressionWrapper, RowRange
 from django.db.models.functions.window import Lag
 
 from django_rich_views.util import isInt
@@ -23,6 +26,8 @@ from django_cte import With
 
 from .session import Session
 from .performance import Performance
+
+log = logging.getLogger("CoGs")
 
 class Event(AdminModel, NotesMixIn):
     '''
@@ -90,51 +95,78 @@ class Event(AdminModel, NotesMixIn):
             sessions = sessions.filter(date_time__lte=dt_to)
 
         # Then get the events (as all runs of session with gap_days
-        # between them.
+        # between them).
 
         # We need to anotate the sessions in two tiers alas, because we need a Window
-        # to get the previous essions time, and then a window to group the sessions and
-        # windows can't reference windows ... doh! The solution is what is to select
+        # to get the previous sessions time, and then a window to group the sessions and
+        # windows can't reference windows ... doh! The solution is to select
         # from a subquery. Alas Django does not support selecting FROM a subquery (yet).
         # Enter the notion of a Common Table Expression (CTE) which is essentially a
         # a way of naming a query to use as the FROM target of another query. There is
-        # fortunately a package "django_cte" tahat adds CTE support to querysets. It's
-        # a tad clunky bt works.
+        # fortunately a package "django_cte" that adds CTE support to querysets. It's
+        # a tad clunky but works.
         #
         # Step 1 is to do the first windowing annotation, adding the prev_date_time and
         # based on it flagging the first session in each event.
+        #
+        # prev_date_time:    The date_time of the chronologically preceding session
+        #                    (We gurantee unique times in the database to ensure orderable 
+        #                    sessions)
+        #
+        # dt_difference:     The difference in time between this session and its preceding session.
+        # event_start:       If the differnece is greater than the gap this session is the first in an implicit event! And this is its date_time (null otherwise) 
         sessions = sessions.order_by("date_time").annotate(
                     prev_date_time=Window(expression=Lag('date_time'), order_by=F('date_time').asc()),
                     dt_difference=ExpressionWrapper(F('date_time') - F('prev_date_time'), output_field=DurationField()),
                     event_start=Case(When(dt_difference__gt=timedelta(days=gap_days), then='date_time')),
-                )
+                    row_number=Window(expression=RowNumber(), order_by=F('date_time').asc()),
+                    #event_start_row=Case(When(dt_difference__gt=timedelta(days=gap_days), then=F('row_number')))
+                    event_start_row=Case(
+                        When(Q(prev_date_time__isnull=True), Value(1)),  # Default for the very first session
+                        When(dt_difference__gt=timedelta(days=gap_days), then=F('row_number'))
+                    )                    
+                    )
 
-        # Step 2 we need to instantiate a CTE
-        sessions = With(sessions, "inner_sessions")
+        # if settings.DEBUG:
+        #     log.debug(f"Sessions SQL:")
+        #     print_SQL(sessions)
 
-        # Step 3 we build a new queryset (that selects from the CTE and annotate that
-        # The oddity here is tha django_cte requires us to call with_cte() to include
-        # the CTE's SQL in the new query's SQL. Go figure (I've checked the code, may
-        # fork and patch some time).
-        #
-        # The grouping expression is SQL esoterica, that I pilfered from:
-        #
-        #    https://stackoverflow.com/a/56729571/4002633
-        #    https://dbfiddle.uk/?rdbms=postgres_11&fiddle=0360fd313400e533cd76fbc39d0e22d3
-        # week
-        # It works because a Window that has no partition_by included, makes a single partition
-        # of all the row from this one to the end. Which is why we need to ensure and order_by
-        # clause in the Window. Ordered by date_time, a count of all the event_start values (nulls)
-        # are not counted, returns how many event_starts there are before this row. And so a count
-        # events before this row. A sneaky SQL trick. It relies on the event_start not having a
-        # default value (an ELSE clause) and hence defaulting to null. Count() ignores the nulls.
-        sessions_with_event = sessions.queryset().annotate(
-                            event=Window(expression=Count(sessions.col.event_start), order_by=sessions.col.date_time),
-                            # local_time=ExpressionWrapper(F('date_time__local'), output_field=DateTimeField())
-                        )
+        # Step 2 we build a new queryset (that selects from the previous queryset and annotates that with an event ID)
 
-        print_SQL(sessions_with_event)
+        sessions_with_event = Session.From(sessions, debug=True).annotate(
+            event_group_id=Window(
+                expression=Max('event_start_row'),
+                order_by=F('row_number').asc(),
+                frame=RowRange(start=None, end=0),  # A frame from the first to the current row
+            ),
+        )
 
+        # Step 3 get the the properties of each event
+        events = Session.From(sessions_with_event, debug=True).annotate(
+            event_start = Min('date_time')
+            )
+
+        if settings.DEBUG:
+            log.debug(f"Event SQL:")
+            print_SQL(events)
+
+        # if settings.DEBUG:
+        #     log.debug(f"Sessions With Event SQL:")
+        #     print_SQL(sessions_with_event)
+
+        events = sessions_with_event.values('event_group_id')
+        # .annotate(
+        #             start_time=Min('date_time'),
+        #             end_time=Max('date_time'),
+        #             session_count=Count('id'),
+        #             duration=ExpressionWrapper(F('end_time') - F('start_time'), output_field=DurationField()),
+        #         ).order_by('start_time')
+
+        if settings.DEBUG:
+            log.debug(f"Event SQL:")
+            print_SQL(events)
+
+        return
         # Step 4: We have to bring players into the fold, and they are stored in Performance objects.
         # Now we want to select from the from the session_events queryset joined with Performance.
         # and group by events to collect session counts and player lists and player counts.
@@ -166,6 +198,7 @@ class Event(AdminModel, NotesMixIn):
                            players=Count('player_id', distinct=True),
                            player_ids=ArrayAgg('player_id', distinct=True)
                           ))
+
 
         # PROBLEM: start and end are in UTC here. They do not use the recorded TZ of the ession datetime.
         # Needs fixing!

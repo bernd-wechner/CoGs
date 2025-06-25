@@ -1,4 +1,5 @@
 #!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
 ##############################################################################################################################
 # Back a database up on one server, then restore it
 # on another server.
@@ -10,19 +11,32 @@
 # test or sandbox server and maybe back again.
 ##############################################################################################################################
 
+# A simple sudo echo to prompt for the sudo password so the rest of the script can run
+# without it prompting for one mid stream on some command.
+#${prefix}echo "This database copy wants sudo privileges."
+#${prefix}sudo echo "Copying $source_hostname database to $target_hostname machine"
+
+supported_args="SB0DVh"
+
 show_help_and_exit () {
-	echo "Usage: copy_database [-B0Dh] source destination"
+	echo "Usage: copy_database [-$supported_args] source destination"
 	echo ""
 	echo "where:"
-	echo "	-B	Just backup the target database (nothing else)"
-	echo "	-0	requests no action just a report of command line parsing"
-	echo "	-D	requests a dry run that echoes all commands that would be run (but aren't)"
-	echo "	-h	Show help"
-	echo
+	echo "	-S use SQL for the backup and restore rather than the PostgreSQL binary (custom) format"
+	echo "	-B Just backup the source and target databases (nothing else)"
+	echo "	-0 requests no action just a report of command line parsing"
+	echo "	-D requests a dry run that echoes all commands that would be run (but aren't)"
+	echo "	-V verbose (add some extra diagnostic output)"
+	echo "	-h Show help"
+	echo ""
 	echo "	source is the name of a postgresql server to copy from"
 	echo "	destination is the name of a postgresql server to copy to"
 	echo ""
-	echo "local is an acceptable abbreviation for localhost"
+	echo "Known servers are (in their current roles):"
+	echo "	arachne is the sandbox server"
+	echo "	shelob is the live server"
+	echo "	localhost is the development server (assuming this script is run in that context as is expected)"
+	echo "	local is an acceptable abbreviation for localhost"
 	echo ""
 	exit
 }
@@ -30,15 +44,19 @@ show_help_and_exit () {
 ##############################################################################################################################
 # CAPTURE ARGS
 
+use_sql=false
 backup_only=false
 test_args=false
 dry_run=false
+verbose=false
 
-while getopts "B0Dh" flag; do
+while getopts "$supported_args" flag; do
 	case "$flag" in
-	    B) backup_only=true ;;
-	    0) test_args=true ;;
+		S) use_sql=true ;;
+		B) backup_only=true ;;
+		0) test_args=true ;;
 		D) dry_run=true ;;
+		V) verbose=true ;;
 		h) show_help_and_exit;;
 	esac
 done
@@ -64,12 +82,17 @@ if [ "$source_hostname" != "" ] && [ "$target_hostname" = "" ]; then
 	fi
 fi
 
-if [ "$test_args" = true ]; then
+if [ $test_args = true ] || [ $verbose = true ]; then
+	echo "use_sql: $use_sql"
+	echo "backup_only: $backup_only"
 	echo "test_args: $test_args"
 	echo "dry_run: $dry_run"
+	echo "verbose: $verbose"
 	echo "source_hostname: $source_hostname"
 	echo "target_hostname: $target_hostname"
-	exit
+	if [ $test_args = true ]; then
+		exit
+	fi
 fi;
 
 if [ "$target_hostname" = "" ]; then
@@ -82,7 +105,7 @@ fi
 source_dir=$(cd `dirname $0`/.. && pwd)
 
 ##############################################################################################################################
-# CONFIGS
+# CONFIGS - required args already captured
 
 # The name of the database to copy (should be same on source and target systems)
 database=CoGs
@@ -92,6 +115,7 @@ username=postgres
 
 # The database username that owns the database
 ownername=CoGs
+ownerpass=ManyTeeth
 
 # The port that Postgresql is configured to use (default 5432, should be same on source and target systems)
 port=5432
@@ -135,15 +159,21 @@ fi
 source_pass_warn="(if this prompts for a password it is for $username on $source_host database and should be stored in ~/.pgpass under '$source_host')"
 target_pass_warn="(if this prompts for a password it is for $username on $target_host database and should be stored in ~/.pgpass under '$target_host')"
 
+# Ensure the dir exists
+[ ! -d "${backup_dir}" ] && mkdir ${backup_dir}
+
 # Define the backup filenames we will use
 # Follow this naming convention: 2019-07-05 HOGS Database.backup
-backup_file_sourcedb="$backup_dir/$backup_prefix $database Database - $source_hostname.backup"
-backup_file_targetdb="$backup_dir/$backup_prefix $database Database - $target_hostname.backup"
+if [ $use_sql = true ]; then backup_extension="sql"; else backup_extension="backup"; fi  
+backup_file_sourcedb="$backup_dir/$backup_prefix $database Database - $source_hostname.$backup_extension"
+backup_file_targetdb="$backup_dir/$backup_prefix $database Database - $target_hostname.$backup_extension"
 
-# psql arguments for the source database (use the postgres user for this)
+# psql arguments for the source and target database (use the postgres user for this)
+source_db="--host=$source_host --port=$port --username=postgres"
 target_db="--host=$target_host --port=$port --username=postgres"
+sql_opts="--tuples-only --quiet"
 
-if [ $dry_run = true ]; then
+if [ $dry_run = true ] || [ $verbose = true ]; then
 	echo source_hostname: $source_hostname
 	echo target_hostname: $target_hostname
 	echo source_host: $source_host
@@ -153,9 +183,12 @@ if [ $dry_run = true ]; then
 	echo target_pass_warn: $target_pass_warn
 	echo backup_prefix: $backup_prefix
 	echo backup_suffix: $backup_suffix
+	echo backup_extension: $backup_extension
 	echo backup_file_sourcedb: $backup_file_sourcedb
 	echo backup_file_targetdb: $backup_file_targetdb
+	echo source_db: $source_db
 	echo target_db: $target_db
+	echo database: "\"${database}\""
 	echo backup db: "\"${database}_$backup_suffix\""
 fi
 
@@ -163,36 +196,42 @@ fi
 # DO THE WORK
 
 # A prefix to use before commands that do stuff
-if [ $dry_run = true ];then
-	prefix="echo "
+if [ $dry_run = true ]; then
+	prefix="echo -e \twould run: "
 	echo "Dry run (commands that would be executed are):"
+	echo db_on_target=$(psql $target_db $sql_opts --command="SELECT datname FROM pg_catalog.pg_database WHERE datname='$database'")
 else
 	prefix=""
 fi
 
-if [ $backup_only = true ];then
+if [ $use_sql = true ]; then backup_format=""; else backup_format="--format=custom"; fi  
+
+# Back up the source database (custom format is designed for use with pg_restorem sql format for use with psql)
+echo "Saving the $source_hostname $database database to $backup_file_source... $source_pass_warn"
+${prefix}pg_dump $source_db $backup_format --dbname="$database" --file="$backup_file_sourcedb"
+echo -e "\tSaved the $database database to $backup_file_sourcedb."
+
+# Check if the target database exists
+db_on_target=$(psql $target_db $sql_opts --command="SELECT datname FROM pg_catalog.pg_database WHERE datname='$database'")
+
+# For reasons not understood, out of the blue, sometimes the previous command returns the db name with
+# a white space prepended. So we remove all spaces for surety. The only thing I found to work!
+db_on_target=${db_on_target// /}
+
+if [ "$db_on_target" = "$database" ]; then
 	# Back up the target database
-	echo "Saving the $target_hostname $database database to $backup_file_targetdb... $target_pass_warn"
-	${prefix}pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_targetdb"
-	echo "Saved the $database database to $backup_file_targetdb."
+	echo "Saving the $target_hostname $database database to $backup_file_target... $target_pass_warn"
+	${prefix}pg_dump $target_db $backup_format --dbname="$database" --file="$backup_file_targetdb"
+	echo -e "\tSaved the $database database to $backup_file_targetdb."
 else
-	# A simple sudo echo to prompt for the sudo password so the rest of the script can run and
-	# without it prompting for one mid stream on some command.
-	${prefix}sudo echo "Copying $source_hostname database to $target_hostname machine"
+	echo "The $target_hostname $database database does not exist yet."
+	echo because \"$db_on_target\" != \"$database\"
+fi
 
-	# Back up the target database
-	echo "Saving the $target_hostname $database database to $backup_file_targetdb... $target_pass_warn"
-	${prefix}pg_dump --host=$target_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_targetdb"
-	echo "Saved the $database database to $backup_file_targetdb."
-
-	# Back up the source database (custom format is designed for use with pg_restore)
-	echo "Saving the $source_hostname $database database to $backup_file_sourcedb... $source_pass_warn"
-	${prefix}pg_dump --host=$source_host --port=$port --username=$username --dbname="$database" --format=custom --file="$backup_file_sourcedb"
-	echo "Saved the $source_hostname $database database to $backup_file_sourcedb."
-
-	# Assume we're running on a development machine and all other targets are
-	# ssh reachable and webservers where UWSGI has database connections open
+if [ $backup_only = false ];then
 	if [ "$target_hostname" != "localhost" ];then
+		# Assume we're running on a development machine and all other targets are
+		# ssh reachable and webservers where UWSGI has database connections open
 		# Stop UWSGI on the target site (so as to unlock the target database)
 		# Need password-free root ssh access to the server setup for this
 		echo "Stopping the UWSGI service on $target_hostname"
@@ -201,19 +240,47 @@ else
 
 	# Disconnect the processes using the database
 	echo "Disconnecting users... $target_pass_warn"
-	${prefix}psql $target_db -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" #> /dev/null
+	${prefix}psql $target_db $sql_opts --command="SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';"
 
-	# Rename database to database_timestamp on the target server
-	echo "Renaming database $database to ${database}_$backup_suffix on $target_hostname ..."
-	${prefix}psql $target_db -qc "ALTER DATABASE \"$database\" RENAME TO \"${database}_$backup_suffix\";" #>&/dev/null
+	# If it exists, rename the target database
+	if [ "$db_on_target" = "$database" ]; then
+		# Rename database to database_timestamp on the target server
+		echo "Renaming database $database to ${database}_$backup_suffix on $target_hostname ..."
+		${prefix}psql $target_db $sql_opts --command="ALTER DATABASE \"$database\" RENAME TO \"${database}_$backup_suffix\";"
+	fi
+	
+	# If the owner for the target database does not exist create it
+	role_exists=$(psql $target_db $sql_opts --command="SELECT 1 FROM pg_roles WHERE rolname='$ownername'")
+	
+	# For reasons not understood, out of the blue, sometimes the previous command returns the resultwith
+	# a white space prepended. So we remove all spaces for surety. The only thing I found to work!
+	role_exists=${role_exists// /}
+	
+	if [ "$role_exists" == "1" ]; then
+		${prefix}psql $target_db $sql_opts --command="ALTER USER \"$ownername\" WITH PASSWORD '$ownerpass';"
+		echo -e "\tEnsured the user \"$ownername\" had the required password."
+	else
+		${prefix}psql $target_db $sql_opts --command="CREATE ROLE \"$ownername\" LOGIN PASSWORD '$ownerpass';"
+		echo -e "\tCreated role \"$ownername\"."
+	fi
 
 	# Recreate the database in the target database
 	echo "Recreating (empty) $database database on $target_hostname ..."
-	${prefix}psql $target_db -qc "CREATE DATABASE \"$database\" OWNER '$ownername';" #>&/dev/null
+	${prefix}psql $target_db $sql_opts --command="CREATE DATABASE \"$database\" OWNER '$ownername';"
 
 	# Now restore the source system backup to the target system
 	echo "Loading the $source_hostname $database database on $target_hostname ..."
-	${prefix}pg_restore $target_db --dbname=$database "$backup_file_sourcedb" #>&/dev/null
+	
+	if [ $use_sql = true ]; then
+		# Exports SQL, when imported prints the tuple counts even with --quite specified. So ignore output
+		if [ "$prefix" = "" ]; then
+			psql $target_db $sql_opts --dbname="$database" --file="$backup_file_sourcedb" |& /dev/null
+		else
+			${prefix}psql $target_db $sql_opts --dbname="$database" --file="$backup_file_sourcedb"
+		fi
+	else
+		${prefix}pg_restore $target_db --dbname="$database" "$backup_file_sourcedb"
+	fi  
 
 	# Assume we're running on a development machine and all other targets are
 	# ssh reachable and webservers where UWSGI has database connections open
@@ -222,6 +289,7 @@ else
 		echo "Restarting the UWSGI service on $target_hostname"
 		${prefix}ssh root@$target_host "service uwsgi start"
 	fi
-
-	echo "Done."
 fi
+
+echo "Done (copy_database)."
+

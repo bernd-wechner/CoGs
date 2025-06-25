@@ -1,13 +1,16 @@
+wheel
 asgiref>=3.3.1
 bokeh
 cached-property>=1.5.2
 certifi>=2020.12.5
 chardet>=4.0.0
+dateparser
 Django>=4.0
-django-cte @ https://github.com/bernd-wechner/django-cte/archive/refs/heads/master.zip
+django-cte @ https://github.com/bernd-wechner/django-cte/archive/refs/heads/default-cte.zip
 django-bitfield @ https://github.com/bernd-wechner/django-bitfield/archive/refs/heads/master.zip
 django-rich-views @ https://github.com/bernd-wechner/django-rich-views/archive/refs/heads/master.zip
 django-url-filter @ https://github.com/bernd-wechner/django-url-filter/archive/refs/heads/master.zip
+django_from @ https://github.com/bernd-wechner/django-from/archive/refs/heads/master.zip
 django-cache-memoized
 django-crequest
 django-markdownfield @ https://github.com/bernd-wechner/django-markdownfield/archive/refs/heads/develop.zip
@@ -21,10 +24,13 @@ django-extensions>=3.1.1
 django-mapbox-location-field>=2
 django-relativefilepathfield>=1.0.3
 django-reset-migrations>=0.4.0
+django-run-context
 django-summernote>=0.8.20.0
 django-timezone-field>=4.1.1
 enum-compat>=0.0.3
 geopy
+gevent
+greenlet
 idna>=2.10
 JSON-Datetime>=0.0.6
 numpy>=1.21.0
@@ -32,6 +38,7 @@ psutil>=5.8.0
 psycopg2>=2.8.6
 pymemcache>=3.5.1
 python-dateutil>=2.8.1
+python-dotenv
 pytz>=2021.1
 PyYAML>=5.4.1
 regex>=2020.11.13
@@ -47,3 +54,4 @@ trueskill>=0.4.5
 tzlocal>=2.1
 urllib3>=1.26.5
 xmltodict>=0.12.0
+humanize

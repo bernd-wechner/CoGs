@@ -11,6 +11,7 @@ from .leaderboards import view_Leaderboards, ajax_Leaderboards
 from .events import view_Events, ajax_Events
 from .players import view_Players, ajax_Players
 from .session_impact import view_Impact
+from .logs import view_Change, view_Rebuild
 
 from .ajax import ajax_List, ajax_Detail, ajax_Game_Properties, ajax_BGG_Game_Properties
 

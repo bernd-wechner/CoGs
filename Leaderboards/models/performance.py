@@ -43,7 +43,7 @@ class Performance(AdminModel):
     # What this player scored if the game has scores.
     # These scores are rarely if ever used and not used for ranking bar very indirectly
     # Typically ranks carry a score. But for the particular case of team based play, where
-    # there's one rank per team, but the game has inbdividual scores, then we can record them
+    # there's one rank per team, but the game has individual scores, then we can record them
     # here. If scores are ever needed, rank scores are checked and if absent and performance
     # scores exists a rank score is calculated as the sum of the performance scores at that rank.
     # And so these are fall back, primarily informatic scores in some edge cases only.
@@ -82,6 +82,9 @@ class Performance(AdminModel):
     Game = apps.get_model(APP, "Game", require_ready=False)
     Rank = apps.get_model(APP, "Rank", require_ready=False)
     Rating = apps.get_model(APP, "Rating", require_ready=False)
+
+    intrinsic_relations = None
+    sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname']  # Need player to sort ties and team members.
 
     @property
     def game(self) -> Game:
@@ -292,19 +295,17 @@ class Performance(AdminModel):
             if self.trueskill_p != previous.trueskill_p:
                 raise ValidationError("Game Trueskill p has changed (from {} to {}). Either reset the value of rebuild all ratings for game {} ({}) ".format(self.trueskill_p, previous.trueskill_p, self.session.game.pk, self.session.game))
 
-        # Update the play counters too. We know this form submisison means one more play but we don't necessariuly know if it's
-        # a victury yet (as that is stored with an associated Rank which may or may not have been saved yet).
+        # Update the play counters too. We know this form submission means one more play but we don't necessarily know if it's
+        # a victory yet (as that is stored with an associated Rank which may or may not have been saved yet). So we should secure Rank
+        # saving before Performance saving! That is done in the Session model in its intrinsic_relations property!
         self.play_number = previous.play_number + 1
 
         if self.session.rank(self.player):
             self.victory_count = previous.victory_count + 1 if self.session.rank(self.player).rank == 1 else previous.victory_count
 
         # Trueskill Impact is calculated at the session level not the individual performance level.
-        # The trueskill after settings for the performance will be calculated there.
+        # The Trueskill after settings for the performance will be calculated there.
         pass
-
-    intrinsic_relations = None
-    sort_by = ['session.date_time', 'rank.rank', 'player.name_nickname']  # Need player to sort ties and team members.
 
     # It is crucial that Performances for a session are ordered the same as Ranks when a rich form is constructed
     # Each row on a form in a standard session submission has a rank and a performance associated with it and the

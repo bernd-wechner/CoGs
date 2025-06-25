@@ -3,6 +3,7 @@
 #===============================================================================
 from django.conf import settings
 from django.urls import reverse_lazy
+from django.db.models import Q
 from django.core.exceptions import ObjectDoesNotExist
 from django.http.response import HttpResponseRedirect
 
@@ -10,7 +11,7 @@ from django_rich_views.util import class_from_string
 from django_rich_views.datetime import time_str
 from django_rich_views.render import rich_render
 
-from ..models import ChangeLog, RebuildLog, RATING_REBUILD_TRIGGER
+from ..models import ChangeLog, RebuildLog, RATING_REBUILD_TRIGGER, Player
 from ..leaderboards.style import restyle_leaderboard
 from ..leaderboards.enums import LB_PLAYER_LIST_STYLE, LB_STRUCTURE
 from ..leaderboards.util import pk_keys
@@ -110,8 +111,11 @@ def view_Impact(request, model, pk):
             # If a changelog is available they record  two of these
             impact_after_change = clog.Leaderboard_impact_after_change()
             impact_before_change = clog.Leaderboard_impact_before_change()
+            
+            if impact_before_change == impact_after_change:
+                impact_before_change = None
 
-            # Restyle the saved (.data style) boards to the renderbale (.rich) style
+            # Restyle the saved (.data style) boards to the renderable (.rich) style
             structure = LB_STRUCTURE.game_wrapped_session_wrapped_player_list
             style = LB_PLAYER_LIST_STYLE.rich
             impact_after_change = restyle_leaderboard(impact_after_change, structure=structure, style=style)
@@ -123,11 +127,20 @@ def view_Impact(request, model, pk):
             if impact_before_change:
                 impact_before_change = augment_with_deltas(impact_before_change)
 
-            # TODO: Consider a way to use session.player_ranking_impact in the report
-            # This is a list of players and how their ratings moved +/-
-            # There's a before, after, and latest version of this just like leaderboard impacts.
-            # Can be derived from the leaderboards and so needs to be a ChangeLog method not a
-            # Session method!
+            # Ranking impacts are dicts keyed on player pk.
+            ranking_impact_before_change = clog.player_ranking_impact_before_change
+            ranking_impact_after_change = clog.player_ranking_impact_after_change
+            ranking_impact_of_change = clog.player_ranking_impact_of_change
+            
+            # For convenience we want to provide a map of player pk to name options.
+            # This is provided in leaderboards inthe player lists. It's nice to build one 
+            # specially for the ranking impacts though to simplify the client side JS trying
+            # to render these.
+            player_pks = set(ranking_impact_before_change.keys()) | set(ranking_impact_after_change.keys()) | set(ranking_impact_of_change.keys())
+            ranking_impact_players = {}
+            for pk in sorted(player_pks):
+                player = Player.objects.get(id=pk)
+                ranking_impact_players[pk] = player.name_variants
         else:
             # An rlog cannot help us here. it contains no record of snapshot before and after
             # (only records of the global leaderboard before and after a rebuild - a different thing altogether).
@@ -136,7 +149,7 @@ def view_Impact(request, model, pk):
             impact_before_change = None
 
         # These are properties of the current session and hence relevant only in the post submission feedback scenario where
-        # TOOD: Not even that simple.
+        # TODO: Not even that simple.
         #      On a multiuser system it could happen that two edits to a session are submitted one hot on the tail of the other by different people
         #      Submission feedback therefore needs a snapshot of the session that was saved not what is actually now in the database.
         #      We have to pass that in here somehow. That is hard for a complete session object, very hard, and so maybe we do that only for
@@ -148,15 +161,18 @@ def view_Impact(request, model, pk):
         # impacts contain two leaderboards. But if a diagnostic board is appended they contain 3.
         includes_diagnostic = len(impact_after_change[LB_STRUCTURE.game_data_element.value]) == 3
 
-        # Get the list of games impacted by the change
-        games = rlog.Games if rlog else clog.Games if clog else session.game
+        # Get the list (a tuple) of games impacted by the change
+        # This will often be just one game, the game of the submitted session.
+        # If it's a Change Log (clog) only if the game is changed will this return two games.
+        # if it's Rebuild Log (rlog) any number of games may have been impacted (by say a change in or tuning of the rating system) 
+        games = rlog.Games if rlog else clog.Games if clog else (session.game,)
 
         if settings.DEBUG:
             log.debug(f"\t{islatest=}, {isfirst=}, {includes_diagnostic=}, {games=}, {rlog=}, {clog=}")
 
         # If there was a leaderboard rebuild get the before and after boards
         if rlog:
-            impact_rebuild = rlog.leaderboards_impact
+            impact_rebuild = rlog.leaderboards_impact # Dict keyed on game pk
             player_rating_impacts_of_rebuild = pk_keys(rlog.player_rating_impact)
             player_ranking_impacts_of_rebuild = pk_keys(rlog.player_ranking_impact)
 
@@ -198,8 +214,9 @@ def view_Impact(request, model, pk):
         c = {"model": m,
              "model_name": model,
              "model_name_plural": m._meta.verbose_name_plural,
-             "object_id": pk,
+             "object_id": o.pk,
              "date_time": session.date_time_local,  # Time of the edited session
+             "players": [str(perf.player.pk) for perf in session.performances.all()],
              "submission": submission,
              "is_latest": islatest,  # The edited/submitted session is the latest in that game
              "is_first": isfirst,  # The edited/submitted session is the first in that game
@@ -209,12 +226,32 @@ def view_Impact(request, model, pk):
              }
 
         if clog:
+            # A session may be edited multiple times. The Change logs for multiple edits constitute 
+            # a series. It is useful to see that and to browse them, so we provide the template for 
+            # change logs enough information to present that.
+            sess_clogs = ChangeLog.objects.filter(session=session).order_by('created_on')
+            same_sess_clog_sequence = {c.pk: i+1 for i, c in enumerate(sess_clogs)}
+            same_sess_clog_times = {c.pk: time_str(c.created_on_local) for c in sess_clogs}
+
             c.update({"change_log": clog,
                       "change_date_time": time_str(clog.created_on),
                       "change_log_is_dated": change_log_is_dated,  # The current leaderboard after a change is NOT the current leaderboard (it has changed since)
                       "changes": clog.Changes.get("changes", {}),
+                      "session_status_fields": ['created', 'changed', 'unchanged'],
+                      "impact_fields": ['leaderboard'],
+                      
+                      # Impacts
                       "lb_impact_after_change": impact_after_change,
                       "lb_impact_before_change": impact_before_change,
+                      "ranking_impact_before_change": ranking_impact_before_change,
+                      "ranking_impact_after_change": ranking_impact_after_change,
+                      "ranking_impact_of_change": ranking_impact_of_change,
+                      "ranking_impact_players": ranking_impact_players, 
+                      
+                      # Logs
+                      "same_session_change_log_sequence": same_sess_clog_sequence, 
+                      "same_session_change_log_times": same_sess_clog_times, 
+
                       "includes_diagnostic": includes_diagnostic  # A diagnostic board is included in lb_impact_after_change as a third board.
                       })
 

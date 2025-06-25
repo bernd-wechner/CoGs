@@ -3,6 +3,7 @@
 #
 # These are the COGS specific handlers thatthe generic views call.
 #===============================================================================
+from sys import maxsize
 from datetime import datetime
 from html import escape
 from copy import deepcopy
@@ -15,9 +16,9 @@ from django.core.exceptions import ObjectDoesNotExist
 
 from django_rich_views.views import RichCreateView, RichUpdateView
 from django_rich_views.datetime import time_str
-from django_rich_views.util import isPositiveInt
+from django_rich_views.util import isPositiveInt, isInt
 
-from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER, MISSING_VALUE
+from ..models import Game, Session, Player, Rating, Team, ChangeLog, RATING_REBUILD_TRIGGER, NO_SCORE
 
 from Site.logutils import log
 
@@ -64,12 +65,12 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
          a. There should be an option to override this bounce if valid rankings are provided,
             for two reasons:
               i. While the game is scored, someone may have recorded results without
-                 noting them, anbut has rankings and this is all that's needed for
-                 updating ratings and leaderboards so it should be accceptable and
+                 noting them, but has rankings and this is all that's needed for
+                 updating ratings and leaderboards so it should be acceptable and
                  accepted.
              ii. All legacy sessions (prior to to the introduction of scoring in the
                  site) lack recorded scores. It should be possible if needed to edit
-                 such a seshandlersion and submit. An edge case, but a consistency issue as
+                 such a session and resubmit. An edge case, but a consistency issue as
                  well.
     2. If rank scores are provided:
          a. using the game.scoring method (high wins or low wins) establish
@@ -77,18 +78,21 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
          b. if ranks were provided, reconcile them with this result, and bail
             with a warning if they don't agree. Ranks should be provided for
             tie breakers. That is, many games which conclude with a score,
-            have nuanced tie breaking rules and the onlyw ay to sensibly capture
+            have nuanced tie breaking rules and the only way to sensibly capture
             those generically across any and all games is by submitting a ranking
             (along with the scores).
     3. If any rank scores were not provided but performance scores were:
          a. Calculate a ranks core as the sum of the related performance scores
             Ranks can map 1 to 1 to performances in most games, but in games played
-            in teams they map 1 to n, n being th enumber of team members.
+            in teams they map 1 to n, n being the number of team members.
 
-    Use self.form.add_error(None, f"message") to bounce if needed.
+    Use self.form.add_error(field, f"message") to bounce if needed.
+    field of None is displayed at top of form, and if a field is supplied the error is displayed near it.
 
-    -1 is MISSING_VALUE
-
+    These are two models package constants:
+        -1 is MISSING_VALUE
+        -4096 is NO_SCORE     
+    
     A sample individual play, new session submission:
         'model': 'Session',
         'id': -1,
@@ -102,7 +106,7 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         'rscores': [0, 0],
         'rankers': [1, 66],
         'performances': [-1, -1],
-        'pscores': [-1, -1],
+        'pscores': [-4096, --4096],
         'performers': [1, 66],
         'weights': [1.0, 1.0]
 
@@ -123,7 +127,7 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
             [13, 70]
         ],
         'performances': [-1, -1, -1, -1],
-        'pscores': [-1, -1, -1, -1],
+        'pscores': [-4096, -4096, -4096, -4096],
         'performers': [1, 13, 66, 70],
         'weights': [1, 1, 1, 1]
 
@@ -136,7 +140,16 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
     scoring = Game.ScoringOptions(game.scoring).name
     score_high = "HIGH" in scoring
     team_play = session_dict['team_play']
-
+    
+    # Define score properties
+    def isValidScore(s):
+        return isInt(s)
+    
+    def isValidRank(s):
+        return isPositiveInt(s)
+    
+    min_score = -maxsize
+    
     if scoring == "NO_SCORES":
         # No reconciliation to do )ranks are validated by standard form validation)
         return
@@ -147,8 +160,8 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
         rscores = deepcopy(session_dict['rscores'])
         pscores = deepcopy(session_dict['pscores'])
 
-        valid_rankings = all(isPositiveInt(r) for r in rankings)
-        valid_rscores = all(isPositiveInt(s) for s in rscores)
+        valid_rankings = all(isValidRank(r) for r in rankings)
+        valid_rscores = all(isValidScore(s) for s in rscores) # Permit negative scores. Some games use those.
 
         # Validate the team_play setting
         # The only difference really is that teams can have multiple pscores per rscore.
@@ -184,10 +197,10 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
 
             # Now infer any missing rscores from sum of any available pscores
             for i, (ranker, rscore) in enumerate(zip(trankers, rscores)):
-                if rscore in (None, MISSING_VALUE):
+                if rscore in (None, NO_SCORE):
                     score = 0
                     for player in tuple(ranker):
-                        if not performer_score[player] in (None, MISSING_VALUE):
+                        if not performer_score[player] in (None, NO_SCORE):
                             score += performer_score[player]
                     if score > 0:
                         rscores[i] = score
@@ -195,7 +208,7 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
 
         if altered:
             session_dict['rscores'] = deepcopy(rscores)
-            valid_rscores = all(isPositiveInt(s) for s in rscores)
+            valid_rscores = all(isValidScore(s) for s in rscores)
 
         # First things first, we need rscores for a scoring game
         # (unless we have valid rankings and explicitly permit missing scores)
@@ -213,7 +226,7 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
 
             # This handles ties as well and produces tie-gapped ranking
             # as per Leaderboards.models.session.Session.clean_ranks
-            prev_s = -1
+            prev_s = min_score
             for i, (s, r) in enumerate(score_sorted_rankers):
                 score_rankings[i] = score_rankings[i - 1] if s == prev_s else i + 1
                 ranker_indexes[tuple(r) if isinstance(r, list) else r] = i
@@ -223,11 +236,11 @@ def reconcile_ranks(form, session_dict, permit_missing_scores=False):
             all_new_rankings = [score_rankings[ranker_indexes[tuple(r) if isinstance(r, list) else r]] for r in rankers]
 
             # Patch them into the supplied rankings (only were we were missing rankings)
-            new_rankings = [old if isPositiveInt(old) else new for i, (old, new) in enumerate(zip(rankings, all_new_rankings))]
+            new_rankings = [old if isValidRank(old) else new for i, (old, new) in enumerate(zip(rankings, all_new_rankings))]
             rankings = deepcopy(new_rankings)
 
             # And update the session_dict
-            valid_rankings = all(isPositiveInt(r) for r in rankings)
+            valid_rankings = all(isValidScore(r) for r in rankings)
             session_dict['rankings'] = deepcopy(rankings)
             if hasattr(form, 'data'):
                 form.data = Session.dict_to_form(session_dict, form.data)
@@ -373,15 +386,15 @@ def pre_transaction_handler(self, new_session=None):
 
     :param new_session: The pre_validation handler should return a new
                         session, i.e. the one in train of being saved,
-                        tn the dict format defined by:
+                        in the dict format defined by:
                         Leaderboards.models.session.Session.dict_from_form
                         This handler will receive it.
     '''
     model = self.model._meta.model_name
 
-    # A special mode which will not actually submit data but retruna diagnostic page to
+    # A special mode which will not actually submit data but return a diagnostic page to
     # Examine the results of this pre save handler, specifically the request for a rating
-    # rebuild it concludes is neeeded (hairy and costly and nice to debug without actually
+    # rebuild it concludes is needed (hairy and costly and nice to debug without actually
     # doing a rating rebuild).
     debug_only = bool(self.form.data.get("debug_rebuild_request", False))
 
@@ -406,7 +419,7 @@ def pre_transaction_handler(self, new_session=None):
     rebuild = None
     reason = None
 
-    # When a session submitted (while it is still in unchanged int he database) we need
+    # When a session submitted (while it is still in unchanged in the database) we need
     # to check if the submission changes any rating affecting fields and make note of that
     # so that the post processor can update the ratings with a rebuild request if needed
     if model == 'session':
@@ -451,7 +464,7 @@ def pre_transaction_handler(self, new_session=None):
             self.form.add_error(None, f"Players must be unique.")
             return None
 
-        # Players are identifed by PK in "performers"
+        # Players are identified by PK in "performers"
         # TODO: does this field name work?
         # TODO: Should we get this from rankers (which is a list of player IDs? or list of playerID lists in team play?
         new_players = [safe_get("performances__player", Player, pk) for pk in new_session["performers"]]
@@ -459,7 +472,7 @@ def pre_transaction_handler(self, new_session=None):
         # A rebuild of ratings is triggered under any of the following circumstances:
         #
         # A rebuild request goes to the post_processor for the submission (runs after
-        # the submisison was saved. It takes the form of a list of sessions to rebuild
+        # the submission was saved. It takes the form of a list of sessions to rebuild
         # or a queryset of them,
         # from django.core.exceptions import ObjectDoesNotExist
 
@@ -509,7 +522,9 @@ def pre_transaction_handler(self, new_session=None):
             J = '\n\t'  # A log message list item joiner
 
             # Get a delta dict (between form data and the old object
-            delta = old_session.dict_delta(self.form.data)
+            # Form data doesn't include the session id, so we supply it separately.
+            # Because dict_delta will flag a creation if it is absent.
+            delta = old_session.dict_delta(self.form.data, new_session['id'])
             changed = delta.get("changes", [])
 
             output("\n")
@@ -565,7 +580,7 @@ def pre_transaction_handler(self, new_session=None):
                     output(f"Requesting a rebuild of ratings for {len(rebuild)} sessions:{J}{J.join([s.__rich_str__() for s in rebuild])}")
                     output(f"Because: {reason}")
 
-                # Otherwise check for other rating impacts
+                # Otherwise check for other (less sweeping) rating impacts
                 else:
                     # Check for a change in ranks.
                     # "rankers" lists the PK of rankers in order of their ranking, where the PK is a player PK or a team PK.
@@ -584,10 +599,10 @@ def pre_transaction_handler(self, new_session=None):
                             output(f"Because: {reason}")
                         else:
                             # Check for a Session sequence change for any player
-                            # That is for any player in htis session has it been moved before or after another session they played this game in
+                            # That is for any player in this session has it been moved before or after another session they played this game in
 
                             # Start with an empty set of sessions before we walk the players
-                            # Sets simplytake care of duplicate removal for us, so that if more
+                            # Sets simply take care of duplicate removal for us, so that if more
                             # than one player triggers a rebuild of the same session it is included
                             # only once, we sort the sessions again when done.
                             rebuild = set()
@@ -626,7 +641,7 @@ def pre_transaction_handler(self, new_session=None):
                             # will no longer see this session nor need to (as it's been brought forward).
                             if new_time < old_time:
                                 rebuild.discard(old_session)
-
+                                
                             # If we have a rebuild set created an ordered list from it once more
                             rebuild = sorted(rebuild, key=lambda s: s.date_time)
 
@@ -676,9 +691,8 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
     if model == 'session':
         if isinstance(self, RichCreateView):
             # Create a change log, but we don't have a session yet
-            # and also no change summary. We provide themw ith the
-            # update in the pre_commit handler once the session is
-            # saved.
+            # and also no change summary. We update this change log 
+            # in the pre_commit handler once the session is saved.
             change_log = ChangeLog.create()
         elif isinstance(self, RichUpdateView):
             old_session = self.object
@@ -694,7 +708,7 @@ def pre_save_handler(self, change_summary=None, rebuild=None, reason=None):
 
 # TODO: When
 #    <input type="checkbox" value="on" id="id_Team-0-DELETE" name="Team-0-DELETE" style="display: none;">
-# is received. Test that Teams are deleted only if they have no other session references, elklse not deleted
+# is received. Test that Teams are deleted only if they have no other session references, else not deleted
 # I suspect standard Django form handling will not be smart enough here and we need to do something
 # pre-save or pre-commit or...
 #
@@ -733,7 +747,7 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         session = self.object
 
         if settings.DEBUG:
-            log.debug(f"POST-PROCESSING Session {session.pk} submission.")
+            log.debug(f"PRE-COMMIT Handling Session {session.pk} submission.")
 
         # Determine the submission mode
         if isinstance(self, RichCreateView):
@@ -828,8 +842,8 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
         # Individual play
         else:
             # Check that all the players are unique, and double up is going to cause issues and isn't
-            # really sesnible (same player coming in two different postions may well be allowe din some
-            # very odd game scenarios but we're not gonig to support that, can of worms and TrueSkill sure
+            # really sensible (same player coming in two different positions may well be allowed in some
+            # very odd game scenarios but we're not going to support that, can of worms and TrueSkill sure
             # as heck doesn't provide a meaningful result for such odd scenarios.
             player_pool = set()
             for player in session.players:
@@ -870,8 +884,9 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             if submission == "create":
                 # The change summary will be just a JSON representation of the session we just created (saved)
                 # changes will be none.
-                # TODO: We could consider calling it a change from nothing, listng all fields in changes, and making all tuples
-                # with a None as first entry. Not sure of the benefits of this is beyond consistency ....
+                # TODO: We could consider calling it a change from nothing, listing all fields in changes, 
+                # and making all tuples with a None as first entry. Not sure if the benefits of this is 
+                # beyond consistency ....
                 change_summary = session.__json__()
 
                 # Update the ChangeLog with this change_summary it could not be
@@ -912,6 +927,38 @@ def pre_commit_handler(self, change_log=None, rebuild=None, reason=None):
             get_params = f"?submission={submission}&changed={change_log.pk}"
 
         self.success_url = reverse_lazy('impact', kwargs={'model': 'Session', 'pk': session.pk}) + get_params
+        
+        # TODO: Remove this some time        
+        # #####################################################################################################################################
+        # # Witching hour bug catcher!
+        # # There is a strange phenomenon in which I see sessions where a play count is skipped!
+        # # That can happen with bad save which fails to update playcount right
+        # # Or a delete which doesn't update it correctly! 
+        # # Both these need a detection trap so that if I can reproduce it, it breaks  here
+        # # And we can examine the stack trace and locals and plan a debug strategy n the preceding 
+        # # code that led to this integrity failure.
+        # for player in session.players:
+        #     # find the performance for that player:
+        #     p0 = session.performances.filter(player=player)[0]
+        #     play_count_proposed = p0.play_number
+        #
+        #     session_previous = session.previous_session(player)
+        #     if session_previous:
+        #         p1 = session_previous.performances.filter(player=player)[0]
+        #         play_count_previous = p1.play_number
+        #
+        #         if not play_count_proposed == play_count_previous + 1:
+        #             log.debug(f"GOTCHA: Trying to save a session with broken playcount! {play_count_proposed=} {play_count_previous=}")
+        #             breakpoint() 
+        #
+        #     session_following = session.following_session(player)
+        #     if session_following:
+        #         p2 = session_following.performances.filter(player=player)[0]
+        #         play_count_following = p2.play_number
+        #
+        #         if not play_count_following == play_count_proposed + 1:
+        #             log.debug(f"GOTCHA: Trying to save a session with broken playcount! {play_count_proposed=} {play_count_following=}")
+        #             breakpoint() 
 
         # No args to pass to the next handler
         return None

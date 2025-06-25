@@ -3,12 +3,12 @@ Game Record Import models
 
 Provides:
 
-    1. A model for each of Games, Player and Location storing a map from theit (some other apps) ID to ours (GameMap, PlayerMap, LocationMap)
+    1. A model for each of Games, Player and Location storing a map from their (some other apps) ID to ours (GameMap, PlayerMap, LocationMap)
     2. A model to store import contexts (ImportContext) which bind a set of maps
     3. A model that records Imports (and is used for managing them)
-        - Session has a FroegnKey back to here that can optionalle record an import that a Session came from.
-        - Session being hte object that binds a game, players, location and results to record a play session.
-    4. Proximite measure support (LevenshteinDistance) for matching their game names to ours, players to our etc and providing
+        - Session has a FroegnKey back to here that can optionally record an import that a Session came from.
+        - Session being the object that binds a game, players, location and results to record a play session.
+    4. Proximity measure support (LevenshteinDistance) for matching their game names to ours, players to our etc and providing
         ordered proposals on the basis of proximity for map creation.
 '''
 
@@ -36,7 +36,7 @@ def local_path(instance, filename):
 
     # We prefix files with a 9 digit int incrementing. Allows a given user to
     # perform a billion imports before we run out.
-    files = filter(lambda f: re.match("^\d{9} ", f), os.listdir(path))
+    files = filter(lambda f: re.match(fr"^\d{9} ", f), os.listdir(path))
     file_no = len(files)
 
     # Return file path relative to MEDIA_ROOT
@@ -335,7 +335,7 @@ class LocationMap(AdminModel, TimeZoneMixIn):
 #
 #    .annotate(trigram_similarity=TrigramSimilarity(F('name'), 'Foobar'))
 #
-# But Levenshtein is natively available in PostGResQL and alledgedly better than Trigram.
+# But Levenshtein is natively available in PostgreSQL and alledgedly better than Trigram.
 
 class LevenshteinDistance(models.Func):
     template = "%(function)s(%(expressions)s, '%(search_term)s')"

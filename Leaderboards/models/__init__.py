@@ -36,7 +36,13 @@ MY_PSEUDO_LEAGUE = "Mine"
 
 MIN_TIME_DELTA = timedelta.resolution  # A nominally smallest time delta we'll consider.
 
-MISSING_VALUE = -1  # Used primarily for PKs (which are  never negative)
+MISSING_VALUE = -1  # Used primarily for PKs (which are never negative)
+
+# An arbitrarily small int that can appear as a score in a int context in both JS and Python 
+# representing no score (effectively the null or None of scores). INo score can of course be 
+# represented by null or None in an context that can handle that, this is just for provisional
+# use in int constrained contexts. 
+NO_SCORE = -4096    
 
 #===============================================================================
 # Privacy control (interfaces with django_model_privacy_mixin)

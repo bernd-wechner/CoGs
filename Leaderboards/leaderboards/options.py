@@ -3,22 +3,26 @@ import json, enum, numbers, re
 from datetime import datetime, timedelta
 from collections import OrderedDict
 
-from ..models import Session, Game, League, Player
-from .enums import NameSelection, LinkSelection, LB_STRUCTURE
+from ..models import Session, Performance, Game, League, Player
+from .enums import NameSelection, LinkSelection, OrderSelection, LB_STRUCTURE
 from .util import is_number
 
 from django.conf import settings
 from django.http.request import QueryDict
 from django.utils.formats import localize
 from django.utils.timezone import localtime
-from django.db.models import Q, ExpressionWrapper, DateTimeField, IntegerField, Count, Subquery, OuterRef, F
+from django.db import connection
+from django.db.models import F, Q, ExpressionWrapper, DateTimeField, IntegerField, PositiveIntegerField, Count, Sum, Max, Subquery, OuterRef, Value
+from django.db.models.functions import Coalesce
+from django.contrib.postgres.aggregates import ArrayAgg
+from django_rich_views.util import isPositiveInt
 
 if settings.DEBUG:
     from django.db import connection
 
-from django_rich_views.datetime import fix_time_zone, UTC
-from django_rich_views.queryset import top, get_SQL
-from django_rich_views.datetime import decodeDateTime
+from django_rich_views.datetime import fix_time_zone, UTC, make_aware
+from django_rich_views.queryset import top, get_SQL, print_SQL
+from django_rich_views.datetime import decodeDateTime, encodeDateTime
 
 from Site.logutils import log
 
@@ -70,7 +74,8 @@ class leaderboard_options:
                     'game_leagues_all',  # Games played in all of self.game_leagues
                     'game_players_any',  # Games played by any of self.game_players
                     'game_players_all',  # Games played by all of self.game_players
-                    'changed_since',  # Games played since self.changed_since
+                    'changed_after',     # Games played since self.changed_after
+                    'changed_before',    # Games played on or before self.changed_before
                     'num_days'}  # Games played in the last event of self.num_days
 
     # Options that we accept that will filter the list of players presented on leaderboards
@@ -81,7 +86,8 @@ class leaderboard_options:
                       'num_players_above',  # self.num_players_above players above any players selected by self.players_in
                       'num_players_below',  # self.num_players_below players below any players selected by self.players_in
                       'min_plays',  # Players who have played the game at least self.min_plays times
-                      'played_since',  # Players who have played the game since self.played_since
+                      'played_after',  # Players who have played the game since self.played_after
+                      'played_before',  # Players who have played the game on or before self.played_before
                       'player_leagues_any',  # Players in any of self.player_leagues
                       'player_leagues_all'}  # Players in all of self.player_leagues
 
@@ -92,7 +98,7 @@ class leaderboard_options:
     # If these contain data, BUT no explicit option using the data is on, we still want to
     # transport the data so that it comes back to a refreshed view and can inform any options that
     # are client side implemented (in Javascript). In short we don't want to lose that data in a
-    # submission but we retatain it in a neutral (no filtering) fashion.These can aslo provide fallback
+    # submission but we retatain it in a neutral (no filtering) fashion. These can aslo provide fallback
     # reference for any of the afforementioend options which can be URL specified without a list, if the
     # list is provided via one of these transporters.
     #
@@ -119,10 +125,10 @@ class leaderboard_options:
     formatting_options = {'highlight_players', 'highlight_changes', 'highlight_selected', 'names', 'links'}
 
     # Options influencing what ancillary or extra information we present with a leaderboard
-    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_performances', 'show_d_rank', 'show_d_rating'}
+    info_options = {'details', 'analysis_pre', 'analysis_post', 'show_performances', 'show_d_rank', 'show_d_rating', 'count_cross_league_plays'}
 
     # Options impacting the layout of leaderboards on the screen/page
-    layout_options = {'cols'}
+    layout_options = {'cols', 'order'}
 
     # Divide the options into two groups, content and presentation.
     content_options = game_filters \
@@ -159,7 +165,7 @@ class leaderboard_options:
     #
     # The formatting, extra info, and layout options are not enabled
     # or disabled,they simply are (always in force).
-    enabled = {"game_leagues_any", "top_games", "player_leagues_any", "num_players_top"}
+    enabled = {"top_games", "game_leagues_any", "player_leagues_any", "num_players_top"}
 
     # Because not all options require enabling, only some/many
     # we ckeep a set of enabbleable options internally, which
@@ -183,7 +189,8 @@ class leaderboard_options:
     num_games = 6  # List only this many games (most popular ones or latest based on enabled option)
     game_leagues = []  # Restrict to games played by specified Leagues (any or all based on enabled option)
     game_players = []  # Restrict to games played by specified players (any or all based on enabled option)
-    changed_since = None  # Show only leaderboards that changed since this date
+    changed_after = None  # Show only leaderboards that changed since this date (i.e games played on or after this date)
+    changed_before = None  # Show only leaderboards that changed on or before this date (i.e. games played on or before this date)
     num_days = 1  # List only games played in the last num_days long event (also used for snapshot definition)
 
     # Options that determing which players are listed or selected/highlighted in the leaderboards
@@ -196,11 +203,13 @@ class leaderboard_options:
     num_players_above = 2  # The number of players above selected players to show on leaderboards
     num_players_below = 2  # The number of players below selected players to show on leaderboards
     min_plays = 2  # The minimum number of times a player has to have played this game to be listed
-    played_since = None  # The date since which a player needs to have played this game to be listed
+    played_after = None  # The date since which a player needs to have played this game to be listed
+    played_before = None  # The date before  which a player needs to have played this game to be listed
     player_leagues = []  # Restrict to players in specified Leagues
 
     # A generic list of leagues for transport (as a selector)
     leagues = []
+    leagues_implicit = False # True if leagues is poulated implicitly from logged in user preferences and not derived from the request
 
     # Options for intelligent selections
     select_players = False  # Select the players (that highlight_players acts on) to be all the players in session snapshots displayed
@@ -218,7 +227,7 @@ class leaderboard_options:
     compare_with = 1  # Compare with this many historic leaderboards
     compare_back_to = None  # Compare all leaderboards back to this date (and the leaderboard that was the latest one then)
 
-    # NOTE: The remaining options are not enabled or disabled they always have a value
+    # NOTE: The remaining options are NOT enabled or disabled they always have a value
     #       i.e. are self enabling.
 
     # Options for formatting the contents of a given leaderbaords
@@ -226,8 +235,9 @@ class leaderboard_options:
     highlight_changes = True  # Highlight changes between historic snapshots
     highlight_selected = True  # Highlight players selected in game_players above
 
-    names = NameSelection.nick.name  # Render player names like this
-    links = LinkSelection.CoGs.name  # Link games and players to this target
+    names = NameSelection.nick.name  # Render player names like this @UndefinedVariable
+    links = LinkSelection.CoGs.name  # Link games and players to this target @UndefinedVariable
+    order = OrderSelection.default.name  # @UndefinedVariable
 
     # Options to include extra info in a leaderboard header
     details = False  # Show session details atop each boards (about the session that produced that board)
@@ -238,6 +248,7 @@ class leaderboard_options:
     show_d_rating = False  # Show the rating delta (movement) this session caused
     show_baseline = False  # Show the baseline (if any)
     show_cross_league_snaps = False  # Show snapshots that are in any leagues that players in the selected leagues are in (even if they are not selected)
+    count_cross_league_plays = True  # Plays counts (for popularity measures and sorting) include players total plays (disregarding leagues)
 
     # An option to display the legend
     show_legend = False
@@ -261,7 +272,13 @@ class leaderboard_options:
         A convenient method to check if an option should be applied, returning True
         for those that always apply and the enabled status for those that need enabling.
         '''
-        return option in self.enabled if option in self.need_enabling else True
+        # Options that take any/all variants are offered a stub for testing if either
+        # is enabled to save consumers need to check both if only interested in the
+        # overaching question of whether one or the other is enabled
+        if option in ['game_leagues', 'game_players', 'player_leagues']:
+            return self.is_enabled(option+'_any') or self.is_enabled(option+'_all')
+        else:
+            return option in self.enabled if option in self.need_enabling else True
 
     def __enable__(self, option, true_false):
         '''
@@ -364,16 +381,21 @@ class leaderboard_options:
 
         # TODO check if we can specify NO league filtering. That is where does preferred league come from?
         preferred_league = ufilter.get('league', None)
+        leagues_implicit = False
         if 'leagues' in urq:
             sleagues = urq['leagues']  # CSV string
             if sleagues:
                 leagues = list(map(int, sleagues.split(",")))  # list of ints
+        elif preferred_league:
+            leagues = [preferred_league]
+            leagues_implicit = True
+        else:
+            leagues = None
 
-            if preferred_league and not leagues:
-                leagues = [preferred_league]
-
-            # Save as a transport option
-            self.leagues = leagues
+        # Save as a transport option
+        self.leagues = leagues
+        # Let any downstream users know if the leagues are implicit (from a logged in user preference and not a Request)
+        self.leagues_implicit = leagues_implicit
 
         ##################################################################
         # GAME FILTERS
@@ -442,22 +464,34 @@ class leaderboard_options:
         self.need_enabling.add('game_leagues_any')
         self.need_enabling.add('game_leagues_all')
         any_all = None
-        game_leagues = leagues  # Use the transport option as a fallback.
+        game_leagues = []
         for suffix in ("any", "all"):
             if f'game_leagues_{suffix}' in urq:
                 sgame_leagues = urq[f'game_leagues_{suffix}']  # CSV string
                 if sgame_leagues:
                     game_leagues = list(map(int, sgame_leagues.split(",")))  # list of ints
-
-                # Use the transport option "leagues" if no list provided for game_leagues
-                # This enables URLs like
-                #    ?game_leagues_any=1,2,3
-                #    ?leagues=1,2,3&game_leagues_any
-                if not game_leagues:
-                    game_leagues = leagues
+                else:
+                    # Use the transport option "leagues" if no list provided for game_leagues
+                    # This enables URLs like
+                    #    ?game_leagues_any=1,2,3
+                    #    ?leagues=1,2,3&game_leagues_any
+                    # But an explict empty game_leagues specifier
+                    # will override an implciit preferred league
+                    # selection (i.e. annul that, and request no
+                    # league filter). player_leagues responds the
+                    # same way.
+                    if not leagues_implicit:
+                        game_leagues = self.leagues
 
                 any_all = suffix
+                # We use the first one found.
+                # If a url overspecied (both options) the second one is ignored here.
                 break
+
+        # If we've not specified game_leagues (any or all) and we do
+        # have an implicit league we filter games on that.
+        if not any_all and leagues_implicit:
+            game_leagues = self.leagues
 
         if game_leagues:
             # Validate the leagues  discarding any invalid ones
@@ -466,10 +500,14 @@ class leaderboard_options:
                 if League.objects.all().filter(pk=league).exists():
                     self.game_leagues.append(league)
 
-        # If we found an any or all option
-        if any_all:
-            self.__enable__(f'game_leagues_{any_all}', self.game_leagues)
-
+        if self.game_leagues:
+            # If we found an any or all option
+            if any_all:
+                self.__enable__(f'game_leagues_{any_all}', self.game_leagues)
+            # Else if no option is explicit but we have game_leagues from the
+            # preferred_league user filter, apply that filter.
+            else:
+                self.__enable__(f'game_leagues_any', self.game_leagues)
         # In case one or the other was enabled in the defaults above, if we lack any leagues we ensure they are both disabled
         else:
             self.__enable__('game_leagues_any', False)
@@ -504,7 +542,7 @@ class leaderboard_options:
             # Validate the players discarding any invalid ones
             self.game_players = []
             for player in game_players:
-                if Player.objects.all().filter(pk=player).exists():
+                if Player.objects.all().filter(pk=player).exists():  # @UndefinedVariable
                     self.game_players.append(player)
 
         # If we found an any or all option
@@ -523,31 +561,47 @@ class leaderboard_options:
         # games that have a recorded play session after that date (exclude games
         # not played since them).
         #
-        # Support a simple alias for a common request
+        # Support simple aliases for a common requests
+        if 'changed_since' in urq:
+            # This is for backward compatibility.
+            # Years of reports used changed_since links and it's been renamed to changed_after
+            urq['changed_after'] = urq['changed_since']
+            del urq['changed_since']
+
         if 'changed_in' in urq:
-            # changed_in can sepecify a month or year and we translate that to
-            # changed_since and asat spanning htat month or year.
+            # changed_in can seecify a month or year and we translate that to
+            # changed_after and changed_before spanning that month or year.
+            #
+            # Not changed_after and changed_before select games and hence affect the game filter (self.games_queryset)
+            # as_at selects the perspective and hence affect the session filter (self.snapshot_queryset)
             changed_in = urq['changed_in']
-            if match:=re.fullmatch('(?P<year>\d\d\d\d)-(?P<month>\d\d?)', changed_in):
+            if match:=re.fullmatch(r'(?P<year>\d\d\d\d)-(?P<month>\d\d?)', changed_in):
                 year = match["year"]
                 month = match["month"]
-                urq['changed_since'] = f"{year}-{int(month):02d}-01"
-                urq['as_at'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
+                urq['changed_after'] = f"{year}-{int(month):02d}-01 00:00:00"
+                urq['changed_before'] = urq['as_at'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
                 del urq['changed_in']
-            elif match:=re.fullmatch('(?P<year>\d\d\d\d)', changed_in):
+            elif match:=re.fullmatch(r'(?P<year>\d\d\d\d)', changed_in):
                 year = match["year"]
-                urq['changed_since'] = f"{year}-01-01"
-                urq['as_at'] = f"{int(year)+1:04d}-01-01 00:00:00"
+                urq['changed_after'] = f"{year}-01-01 00:00:00"
+                urq['changed_before'] = urq['as_at'] = f"{int(year)+1:04d}-01-01 00:00:00"
                 del urq['changed_in']
 
-        self.need_enabling.add('changed_since')
-        if 'changed_since' in urq:
+        self.need_enabling.add('changed_after')
+        if 'changed_after' in urq:
             try:
-                self.changed_since = fix_time_zone(decodeDateTime(urq['changed_since']), utz)
+                self.changed_after = fix_time_zone(decodeDateTime(urq['changed_after']), utz)
+                self.__enable__('changed_after', self.changed_after)
             except:
-                self.changed_since = None  # Must be a a Falsey value
+                self.changed_after = None  # Must be a a Falsey value
 
-            self.__enable__('changed_since', self.changed_since)
+        self.need_enabling.add('changed_before')
+        if 'changed_before' in urq:
+            try:
+                self.changed_before = fix_time_zone(decodeDateTime(urq['changed_before']), utz)
+                self.__enable__('changed_before', self.changed_before)
+            except:
+                self.changed_before = None  # Must be a a Falsey value
 
         # Now we capture the perspective request if it provides a valid datetime
         self.need_enabling.add('as_at')
@@ -637,7 +691,7 @@ class leaderboard_options:
             self.num_players_below = int(urq["num_players_below"])
             self.__enable__('num_players_below', self.num_players_below)
 
-        # TODO: Can we support and/or combinations of min_plays, played_since and leagues_any/all?
+        # TODO: Can we support and/or combinations of min_plays, played_after and leagues_any/all?
 
         # Now we request to include players who have played at least a
         # few times.
@@ -646,16 +700,45 @@ class leaderboard_options:
             self.min_plays = int(urq["min_plays"])
             self.__enable__('min_plays', self.min_plays)
 
+        # Some simple aliases for player activity windows (in time)
+        if 'played_since' in urq:
+            # This is for backward compatibility, as played_since was renamed to played_after.
+            urq['played_after'] = urq['played_since']
+            del urq['played_since']
+
+        if 'played_in' in urq:
+            # changed_in can sepecify a month or year and we translate that to
+            # changed_after and changed_before spanning that month or year.
+            played_in = urq['played_in']
+            if match:=re.fullmatch(r'(?P<year>\d\d\d\d)-(?P<month>\d\d?)', played_in):
+                year = match["year"]
+                month = match["month"]
+                urq['played_after'] = f"{year}-{int(month):02d}-01 00:00:00"
+                urq['played_before'] = f"{year}-{int(month)+1:02d}-01 00:00:00"
+                del urq['changed_in']
+            elif match:=re.fullmatch(r'(?P<year>\d\d\d\d)', played_in):
+                year = match["year"]
+                urq['played_after'] = f"{year}-01-01 00:00:00"
+                urq['played_before'] = f"{int(year)+1:04d}-01-01 00:00:00"
+                del urq['changed_in']
+
         # Now we request to include only players who have played the game
         # recently enough ...
-        self.need_enabling.add('played_since')
-        if 'played_since' in urq:
+        self.need_enabling.add('played_after')
+        if 'played_after' in urq:
             try:
-                self.played_since = decodeDateTime(urq['played_since'])
+                self.played_after = decodeDateTime(urq['played_after'])
+                self.__enable__('played_after', self.played_after)
             except:
-                self.played_since = None  # Must be a a Falsey value
+                self.played_after = None  # Must be a a Falsey value
 
-            self.__enable__('played_since', self.played_since)
+        self.need_enabling.add('played_before')
+        if 'played_before' in urq:
+            try:
+                self.played_before = decodeDateTime(urq['played_before'])
+                self.__enable__('played_before', self.played_before)
+            except:
+                self.played_before = None  # Must be a a Falsey value
 
         # We can acccept leagues in an any or all form
         self.need_enabling.add('player_leagues_any')
@@ -672,8 +755,13 @@ class leaderboard_options:
                 # This enables URLs like
                 #    ?player_leagues_any=1,2,3
                 #    ?leagues=1,2,3&player_leagues_any
-                if not player_leagues:
-                    player_leagues = leagues
+                # But an explict empty player_leagues specifier
+                # will override an implciit preferred league
+                # selection (i.e. annul that, and request no
+                # league filter). game_leagues responds the
+                # same way.
+                if leagues_implicit:
+                    player_leagues = []
 
                 any_all = suffix
                 break
@@ -681,7 +769,9 @@ class leaderboard_options:
         if player_leagues:
             # Validate the leagues  discarding any invalid ones
             self.player_leagues = []
-            for league in player_leagues:
+            for league in player_leagues:        # A special option which isn't an option per se. If passed in we make
+        # the provided options as static as we can with self.make_static()
+
                 if League.objects.all().filter(pk=league).exists():
                     self.player_leagues.append(league)
 
@@ -721,6 +811,16 @@ class leaderboard_options:
             self.__enable__('compare_back_to', False)
 
         elif 'compare_back_to' in urq:
+            if not urq['compare_back_to']:
+                # If compare_back_to is specified without any value, it is taken
+                # to imply compare back to the changed_after time or the num_days
+                # event specification if either is specified (only one is sensible
+                # at a time).
+                if self.changed_after:
+                    urq['compare_back_to'] = encodeDateTime(self.changed_after)
+                elif self.num_days:
+                    urq['compare_back_to'] = self.num_days
+
             if urq['compare_back_to']:
                 # Now if it's a number we keept it as float and if it's a strig that parses
                 # as a date_time we keept it as a date_time.
@@ -731,30 +831,21 @@ class leaderboard_options:
                         self.compare_back_to = decodeDateTime(urq['compare_back_to'])
                     except:
                         self.compare_back_to = None  # Must be a a Falsey value
-            # If compare_back_to is specificed without any value, it is taken
-            # to imply compare back to the changed_since time or the num_days
-            # event specification if either is specified (only one is sensible
-            # at a time).
-            else:
-                if self.changed_since:
-                    self.compare_back_to = self.changed_since
-                elif self.num_days:
-                    self.compare_back_to = self.num_days
 
             self.__enable__('compare_back_to', self.compare_back_to)
             self.__enable__('compare_with', False)
 
-        # A request for an event impact presentaton comes in the form
+        # A request for an event impact presentation comes in the form
         # of num_days, where num days flags the length of the event to
         # look for (looking back from now or as_at). We record it in
         # self.num_days to flag that this is what we want to the processor.
         # Other filters of  course may impact on this and reduce the number
         # of games, which can in fact be handy if say the games of a long and
-        # busy games  event are logged and could produce a large number of
+        # busy games event are logged and could produce a large number of
         # boards. But for an average games night, probably makes little sense
         # and has little utility.
         self.need_enabling.add('num_days')
-        if 'num_days' in urq and is_number(urq['num_days']) and not self.changed_since:
+        if 'num_days' in urq and is_number(urq['num_days']):
             self.num_days = float(urq["num_days"])
             self.__enable__('num_days', self.num_days)
 
@@ -839,7 +930,18 @@ class leaderboard_options:
                 self.show_baseline = True
 
         if 'show_cross_league_snaps' in urq:
-            self.show_cross_league_snaps = json.loads(urq['show_cross_league_snaps'].lower())  # A boolean value is parsed
+            if urq['show_cross_league_snaps']:
+                self.show_cross_league_snaps = json.loads(urq['show_cross_league_snaps'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.show_cross_league_snaps:
+                self.show_cross_league_snaps = True
+
+        if 'count_cross_league_plays' in urq:
+            if urq['count_cross_league_plays']:
+                self.count_cross_league_plays = json.loads(urq['count_cross_league_plays'].lower())  # A boolean value is parsed
+            # If no value is provided and the default is false, read that as an enabling request
+            elif not self.count_cross_league_plays:
+                self.count_cross_league_plays = True
 
         # Legend option
         if 'show_legend' in urq:
@@ -858,24 +960,33 @@ class leaderboard_options:
         if 'links' in urq:
             self.links = LinkSelection[urq['links']]
 
-        # Options for laying out leaderboards on screen
-        if 'cols' in urq:
-            self.cols = urq['cols']
-
         # TODO: YET TO BE IMPLEMENTED OPTIONS - draw arrows between leaderboards for the listed players.
         if 'trace' in urq:
             strace = urq['trace']  # CSV String
             if strace:
                 self.trace = list(map(int, strace.split(",")))  # list of ints
 
-        # A special option which isn't an option per se. If passed in we make
-        # the provided options as static as we can with self.make_static()
+        ##################################################################
+        # LAYOUT OPTIONS
+
+        # Options for laying out leaderboards on screen
+        if 'cols' in urq:
+            self.cols = urq['cols']
+
+        if 'order' in urq:
+            self.order = OrderSelection[urq['order']]
+
+        # Set the order_games_by attribute too
+        self.set_order(self.order)
+
+        ##################################################################
+        # ADMIN OPTIONS
         if 'make_static' in urq:
             self.make_static(ufilter, utz)
             self.made_static = True
 
-        ##################################################################
-        # ADMIN OPTIONS
+        # A special option which isn't an option per se. If passed in we make
+        # the provided options as static as we can with self.make_static()
         if 'ignore_cache' in urq:
             if urq['ignore_cache']:
                 self.ignore_cache = json.loads(urq['ignore_cache'].lower())  # A boolean value is parsed
@@ -883,8 +994,31 @@ class leaderboard_options:
             elif not self.ignore_cache:
                 self.ignore_cache = True
 
+        ##################################################################
+        # Save User request and filter
+        self.user_request = urq
+        self.user_filter = ufilter
+
         if settings.DEBUG:
             log.debug(f"Enabled leaderboard options: {self.enabled}")
+
+    def set_order(self, order):
+        self.order = order
+
+        # Set the ordering tuple based on the order settings
+        if self.order == OrderSelection.default.name:  # @UndefinedVariable
+            if self.is_enabled('latest_games'):
+                self.order_games_by = ('-last_play',)
+            # If we want the top n games or not by default sort the games by popularity,
+            # Using the latest as a tie breaker only
+            else:
+                self.order_games_by = ('-session_count', '-play_count', '-last_play')
+        elif self.order == OrderSelection.time_played.name:  # @UndefinedVariable
+                self.order_games_by = ('-last_play',)
+        elif self.order == OrderSelection.popularity_table.name:  # @UndefinedVariable
+                self.order_games_by = ('-session_count', '-play_count', '-last_play')
+        elif self.order == OrderSelection.popularity_plays.name:  # @UndefinedVariable
+                self.order_games_by = ('-play_count', '-session_count', '-last_play')
 
     def apply_selection_options(self, leaderboards):
         '''
@@ -951,7 +1085,8 @@ class leaderboard_options:
               or self.is_enabled('num_players_above')
               or self.is_enabled('num_players_below')
               or self.is_enabled('min_plays')
-              or self.is_enabled('played_since')
+              or self.is_enabled('played_after')
+              or self.is_enabled('played_before')
               or self.is_enabled('player_leagues_any')
               or self.is_enabled('player_leagues_all')
               or self.is_enabled('select_players'))
@@ -992,7 +1127,7 @@ class leaderboard_options:
         # should win inclusion. If not though then we are listing the whole leaderboard and
         # we require someone to remaining filters to win inclusion. In summary?
         #
-        # If we have a full leadeboard we're trying to knock out all players who
+        # If we have a full leaderboard we're trying to knock out all players who
         # don't meet all the remaining criterai.
         #
         # If we have a top n leaderboard we're trying to include players again and
@@ -1001,8 +1136,11 @@ class leaderboard_options:
         if self.is_enabled('min_plays'):
             criteria.append(plays >= self.min_plays)
 
-        if self.is_enabled('played_since'):
-            criteria.append(last_play >= self.played_since)
+        if self.is_enabled('played_after'):
+            criteria.append(last_play >= self.played_after)
+
+        if self.is_enabled('played_before'):
+            criteria.append(last_play <= self.played_before)
 
         if self.is_enabled('num_players_top'):
             return any(criteria)  # Empty any list is False, as desired
@@ -1181,7 +1319,7 @@ class leaderboard_options:
 
             if queries_after == queries_before:
                 log.debug("\tSQL is still LAZY")
-                log.debug(f"\t{get_SQL(latest_property)}")
+                log.debug(f"\t{get_SQL(latest_property, pretty=False)}")
             else:
                 log.debug("\tSQL was evaluated!")
                 log.debug(f"\t{connection.queries[-1]['sql']}")
@@ -1246,102 +1384,324 @@ class leaderboard_options:
         # Start the queryset with an ordered list of all games (lazy, only the SQL created)
         # Sort them by default in descending order of play_count then session_count (measures
         # of popularity in the specified leagues).
-
+        #settings.DEBUG = True
         if settings.DEBUG:
             queries_before = len(connection.queries)
+            log.debug("BUILDING GAME QUERYSET:")
+            log.debug(f"\tenabled options: {self.enabled}")
 
+        # A Games filter
         g_filter = Q()
-        s_filter = Q()
+
+        # Session filtering comes in three contexts which detemine the filter prefix
+        # Game and Session as follows:
+        #     Game: sessions__attr                call it a gs_filter
+        #     Session: attr                       call it an s_filter
+        # So we collect them with no prefix as in a dict
+        # and can unpack the dict as Q object args with any prefix based on context.
+        s_filters = {}
+
+        # A Performance Player filter
+        p_filter = Q()
 
         # First restrict the list to exclusively specified games if present
         # If an exclusive list of games is provided we return just those
         if self.is_enabled('games_ex'):
             g_filter &= Q(pk__in=self.games)
-            s_filter &= Q(game_id__in=self.games)
+            s_filters["game_id__in"] = self.games
 
         # Restrict the list based on league memberships
+        # The performance filter is only used for play_counts which are always cross-league (a playuers vote for a game is their total play count)
         g_post_filters = []
-        if self.is_enabled('game_leagues_any'):
-            g_filter = Q(played_by_leagues__pk__in=self.game_leagues)
-            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
-        elif self.is_enabled('game_leagues_all'):
-            # Collect post filters as the AND (all) operation demands repeated joins/filters
-            # See: https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-            # See also USE_ARRAY_AGG  below. This method is overrident by that option
-            for pk in self.game_leagues:
-                g_post_filters.append(Q(sessions__league__pk=pk))
 
-            # We want to report the latest session playerd among ALL the leagues, so this is
+        # Games, Sessions and players are associated with leagues.
+        # We could be interested in any of these. For now we will
+        # Just filter on game.leagues for selecting games.
+        # session.leagues will be used for snapshot filtering.
+        if self.is_enabled('game_leagues_any'):
+            #g_filter = Q(leagues__in=self.game_leagues)
+            g_filter &= Q(matched_league_count__gte=1)
+            s_filters["league__in"] = self.game_leagues
+            p_filter &= Q(player__leagues__in=self.game_leagues)
+        elif self.is_enabled('game_leagues_all'):
+            # We need to annotate the games_source with
+            #    league_count=Count('id', filter=Q(categories__in=self.game_leagues))
+            # later.
+            g_filter &= Q(matched_league_count=len(self.game_leagues))
+            # We want to report the latest session played among ALL the leagues, so this is
             # simple search on all session played by ANY league from which we'll get the latest.
-            s_filter = Q(league__pk__in=self.game_leagues)  # used for game's latest_session only
+            s_filters["league__in"] = self.game_leagues
 
         # Respect the perspective request when finding last_play of a game
         # as in last_play before as_at
         if self.is_enabled('as_at'):
-            s_filter &= Q(date_time__lte=self.as_at)
+            s_filters["date_time__lte"] = self.as_at
 
-        # We sort them by a measure of popularity (within the selected leagues)
-        latest_session_source = Session.objects.filter(s_filter)
+        s_filter = Q(**s_filters)
+
+        ##########################################################################
+        # Get the game play stats and annotate the games first
+        #
+        # Last_play:
+        #
+        # generate a last play Subquery for ordering by last lay if desired.
+        # Else we sort them by a measure of popularity total play couunt (within
+        # the selected leagues)
+        #
+        # The Session filter is just the unpacked s_filter (no prefix)
+        latest_session_source = Session.objects.filter(s_filter)  # @UndefinedVariable
         latest_session = top(latest_session_source.filter(game=OuterRef('pk')).order_by("-date_time"), 1)
         last_play = Subquery(latest_session.values('date_time'))
-        session_count = Count('sessions', filter=g_filter, distinct=True)
-        play_count = Count('sessions__performances', filter=g_filter, distinct=True)
 
-        USE_ARRAY_AGG = True
-        game_source = Game.objects.filter(g_filter)
-        if g_post_filters:
-            # See https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-            # For a discussion of methods here. ArrayAgg is the cleanest most efficient but is Postgresql specific.
-            if USE_ARRAY_AGG:
-                game_source = game_source.annotate(player_leagues=ArrayAgg(F('sessions__league'), distinct=True)).filter(player_leagues__contains=self.game_leagues)
-            else:
-                for g_post_filter in g_post_filters:
-                    game_source = game_source.filter(g_post_filter)
-                game_source = game_source.distinct()
+        # Session_count: is easy, as sessions have a league and so the s_filter applies unambiguously
+        annotated_games = Game.objects.annotate(last_play=last_play)
+
+        # session_count has two interpretations, the in-league and cross-league:
+        #
+        # The in-league respects the league filter, counting only sessions in that.
+        # The cross-league counts all sessions played by players in the league filter.
+        # The cross-league is a superset of the in-league which includes a cross-league count
+        # being sessions played-in by members of any of the specified leagues.
+        #
+        # cross-league exists primarily to capture cross-league interest in leaderboard
+        # evolution. It can happen that when a player in a league plays this game while
+        # visiting another league, that it is recorded in that leagues sessions. When this
+        # league's evolution in the game are shown, this play may have an inexplicable jump
+        # in rank between two adjacent snaps, because of the rating change the accrued while
+        # visiting another league.
+        #
+        # show_cross_league_snaps is the option that controls this, Defaults to False.
+        #
+        # play count also has two interpretations, in-league and cross-league
+        #
+        # The in-league view counts up all the performances in sessions league filter.
+        #     this counts playes by visiting players (from other leagues)
+        # The cross-league view counts all the performances of all players in the league filter.
+        #     this counts the votes on in-league players eeven when they played across leagues.
+        #
+        # The cross-league is the more robust popularity measure, and in-league view exists primarily because
+        # it predates cross-league in implementation as the queries were much easier to write.
+        #
+        # count_cross_league_plays is the option that controls this. Defaults to True.
+
+        # TODO: Forgot about session counts in all this! What shoudl they report?
+        #       The count fo all sessions that those perfromances belong to?
+        #       The count of sessions in_league + cross league if show_cross-League_snaps is on?
+        if self.count_cross_league_plays:
+            # For play_counts we count all performances of a given player irrespective the session or league.
+            # Only for players who were selected by s_filter though, so all players in htis league gtet a vote
+            # on popularity by virtue of how often they've played, but we include the times they've played
+            # it in other leagues.
+            class SubqueryCount(Subquery):
+                # Custom Count function to just perform simple count on any queryset without grouping.
+                # https://stackoverflow.com/a/47371514/1164966
+                template = "(SELECT count(*) FROM (%(subquery)s) _count)"
+                output_field = PositiveIntegerField()
+
+            # Convert the s_filters to a Performance context
+            #
+            # We don't want to filter sessions though, we want to filter performances there's a difference in the
+            # breadth of the result.
+            #
+            # This is a simple session based filter:
+            #    ps_filter = Q(**{f"session__{k}":v for k,v in s_filters.items()})
+            #
+            # but what it does is get only the performances for sessions that are in league, that meet the s_filter
+            # We want to count all performances across leagues, for the players that the in_league filter selects!
+            #
+            # That's a bit (a lot!) more complicated. The reason is
+            #
+            # This involves nested Subqueries which are very hard to write and I added a little Site management command
+            # rapid_queryset_design_tool to facilitate writing it, and in future any other complicated queries. it's much
+            # faster to run a management command and dump SQL for scrutiny than do it in a test bed (with database
+            # construction etc) or on a test site)
+
+
+            # What's the best defintion of crooss-league playcounts
+            #
+            # 1. The one implemented: All in-league players performances at the game irrespective of the session league?
+            # 2. The one originally aimed for: All the in-league session players, cross league votes (bigger set)
+            #      This includes visitors to in-league and all their out of league votes.
+            # It's actually kind of line we have several play count options:
+            #
+            # a. All performances of in-league sessions
+            #     counts out-of-league vistors plaiying in-league
+            # b. All performances of in-league players (regardless of session)
+            #     ignores out-of-league vistors plaiying in-league
+            #     counts in-league players visiting out-of-league plays
+            # c. All performances of in-league session players
+            #     counts out-of-league vistors plaiying in-league
+            #     counts in-league players visiting out-of-league plays
+            #     doesn't count out-of-league players out-of-league plays
+            # d. All performances of in-league session players 2
+            #    counts all perfromances of the players of in-league sessions
+            #
+            # We have these groups of plays:
+            #    In-league plays for in-league players
+            #    Out-of-league plays for in-league players
+            #    In-league plays for out-of-league players
+            #    Out-of-league plays for out-of-league players who have in-league play(s)
+            all_game_sessions = Session.objects.filter(game=OuterRef("id")).filter(s_filter)
+            all_game_plays = Performance.objects.filter(session__game=OuterRef("id")).filter(p_filter).values('id').order_by()
+
+            # Finally we can annotate the games.
+            annotated_games = annotated_games.annotate(session_count=SubqueryCount(all_game_sessions),
+                                                       play_count=SubqueryCount(all_game_plays))
+        else:
+            # Convert the s_filters to a Game context
+            gs_filter = Q(**{f"sessions__{k}":v for k,v in s_filters.items()})
+
+            # The narrow view, counts up all the performances in sessions that s_filter selects.
+            annotated_games = annotated_games.annotate(session_count=Count('sessions', distinct=True, filter=gs_filter),
+                                                       play_count=Count('sessions__performances', distinct=True, filter=gs_filter))
+
+        ##########################################################################
+        # Filter games as requested thus far
+        if g_filter: # implies s_filter and S_filter exist
+            # To achieve an AND (all) filter on leagues proves mildly challenging.
+            #
+            # In the end it means that we need a matched_league_count. The AND
+            # condition is achieved by small sleight of hand, in that if the count
+            # is filtered against the specified game_leagues, Django applies this
+            # to the joining table of the ManyToMany relation and the count only
+            # includes the filtered leagues. To wit if it only includes the leagues
+            # from our list then if the count matches the length of our list we know
+            # we have them all.
+            #
+            # For the OR (any) we simply don't care about the matched_league_count.
+            # Any number will do, one or more.
+
+            # PROBLEM: If we just mix this annotation/filter with the play stats annotations
+            # Django breaks badly. django_cte may help here but instead we will try an pull
+            # containment trick by converting the g_filter into a selection of game IDs
+            # from a subquery result!
+            filtered_game_ids = Game.objects.annotate(
+                                   league_ids=ArrayAgg('leagues', distinct=True),
+                                   matched_league_count=Count('id', filter=Q(leagues__in=self.game_leagues)),
+                                ).filter(g_filter).values_list('pk', flat=True)
+
+            game_source = annotated_games.filter(pk__in=Subquery(filtered_game_ids))
+        else:
+            game_source = annotated_games
+
+        if settings.DEBUG:
+            # debugging counts pumps one leaderboard query I checked (with 5 games)
+            # from 6 seconds to almost 60 seconds. It's not cheap.
+            debug_counts = True
+
+            if debug_counts:
+                # The annotations are used for sorting games and their leaderboards. if for any reason
+                # they need to be debugged/inspected (a they were in developing them, in spite of their
+                # ultimate simplicity), the collowing code snippet is inordinately useful.
+                if game_source:
+                    log.debug("Expected Annotations:")
+                    log.debug("\tCreated by inspecting all the games sessions.")
+                    log.debug(f"\tusing: {s_filters=}")
+                    expected = {}
+                    game_players = {}
+                    for G in game_source.order_by('id'):
+                        last_play_time = make_aware(datetime.min)
+                        annos = [0, 0, localize(localtime(last_play_time))]
+                        anames = ["Play count", "Session count", "Last play time"]
+                        for S in G.sessions.all():
+                            # Take a stab at league filtering.
+                            # This won't match all s_filters but was enough for debugging
+                            if not self.game_leagues or S.league.id in self.game_leagues:
+                                if self.game_leagues:
+                                    log.debug(f"\t\tCounting session {S.id} ({S.league.id} is in {self.game_leagues})")
+                                annos[1] += 1
+                                for P in S.performances.all():
+                                    annos[0] += 1
+                                if S.date_time > last_play_time: last_play_time = S.date_time
+                            else:
+                                log.debug(f"\t\tNot Counting session {S.id} ({S.league.id} is not in {self.game_leagues})")
+
+                        if self.count_cross_league_plays:
+                            annos[0] = 0
+                            for P in Performance.objects.filter(session__game=G):
+                                player_leagues = set(P.player.leagues.all())
+                                filter_leagues = set(self.game_leagues)
+                                if not filter_leagues or (player_leagues | filter_leagues):
+                                    annos[0] += 1
+
+                        annos[2] = localize(localtime(last_play_time))
+                        log.debug(f"\tGame {G.id:3d}: {anames[0]} {annos[0]:3d}, {anames[1]} {annos[1]:3d}, {anames[2]} {annos[2]}, {G.name}")
+                        expected[G] = tuple(annos)
+
+                    log.debug("Created Annotations:")
+                    log.debug("\tFetched using Game properties (play_count, session_count and last_play).")
+                    failed = set()
+                    for G in game_source.order_by("id"):
+                        annos = (G.play_count, G.session_count, localize(localtime(G.last_play)))
+                        if not annos == expected[G]:
+                            failed.add(G)
+                        log.debug(f"\t{G.id:3d}: {anames[0]} {annos[0]:3d}, {anames[1]} {annos[1]:3d}, {anames[2]} {annos[2]}, {G.name}, {'FAIL' if G in failed else 'PASS'}")
+
+                    if failed:
+                        log.debug(f"Game Query FAIL: {self.show_cross_league_snaps=} {self.count_cross_league_plays=}")
+                    else:
+                        log.debug(f"Game Query PASS: {self.show_cross_league_snaps=} {self.count_cross_league_plays=}")
+
+                    log.debug("Internal Game Annotations:")
+                    log.debug("\tFetched using Game.play_stats().")
+                    failed = set()
+                    for G in game_source.order_by("id"):
+                        stats = G.play_stats(leagues=self.game_leagues,
+                                               asat=self.as_at,
+                                               broad_session_count=self.show_cross_league_snaps,
+                                               broad_play_count=self.count_cross_league_plays)
+
+                        if stats['last_play']:
+                            last_play = localize(localtime(stats['last_play']))
+                        else:
+                            last_play = None
+
+                        annos = (stats['total'], stats['sessions'], last_play)
+                        log.debug(f"\t{G.id:3d}: {anames[0]} {annos[0]:3d}, {anames[1]} {annos[1]:3d}, {anames[2]} {annos[2]}, {G.name}, {'FAIL' if G in failed else 'PASS'}")
+
+                        if not annos == expected[G]:
+                            failed.add(G)
+                            for i, anno in enumerate(expected[G]):
+                                if anno != annos[i]:
+                                    if isPositiveInt(anno):
+                                        log.debug(f"\t{G.id:3d}: Annotation {i} {anames[i]} Expected -> Got: {anno:3d} -> {annos[i]:3d}")
+                                    else:
+                                        log.debug(f"\t{G.id:3d}: Annotation {i} {anames[i]} Expected -> Got: {anno} -> {annos[i]}")
+
+                    if failed:
+                        log.debug(f"Game Internal FAIL: {self.show_cross_league_snaps=} {self.count_cross_league_plays=}")
+                    else:
+                        log.debug(f"Game Internal PASS: {self.show_cross_league_snaps=} {self.count_cross_league_plays=}")
+                else:
+                    log.debug("EMPTY game source!")
 
         if settings.DEBUG:
             log.debug("GAME SOURCE:")
-            log.debug(f"\t{get_SQL(game_source, explain=True)}")  # Without explain the SQL is wrong here on an ArrayAgg query
+            # Without explain the SQL is wrong here on an ArrayAgg query
+            log.debug(f"\t{get_SQL(game_source, explain=True, pretty=False)}")
             log.debug("LATEST SESSION SOURCE:")
-            log.debug(f"\t{get_SQL(latest_session_source)}")
+            log.debug(f"\t{get_SQL(latest_session_source, explain=True, pretty=False)}")
 
-        games = (game_source.annotate(last_play=last_play)
-                            .annotate(session_count=session_count)
-                            .annotate(play_count=play_count)
-                            .filter(session_count__gt=0)
-                            .order_by('-play_count'))
+        games  = game_source.filter(session_count__gt=0).order_by('-play_count')
 
         # Now build up gfilter based on the game selectors
-        #
-        # We want to include a game if it matches ANY of"
-        #
-        # changed_since,
-        # game_players_any or game_players_all
+        gfilter  = Q()
 
-        or_filters = Q()
+        if self.is_enabled('changed_after'):
+            gfilter &= Q(sessions__date_time__gte=self.changed_after)
 
-        if self.is_enabled('changed_since'):
-            or_filters |= Q(sessions__date_time__gte=self.changed_since)
+        if self.is_enabled('changed_before'):
+            gfilter &= Q(sessions__date_time__lte=self.changed_before)
 
         # Filter the games on player participation ...
         if self.is_enabled('game_players_any') or self.is_enabled('game_players_all'):
             if self.is_enabled('game_players_any'):
-                sessions = Session.objects.filter(performances__player__pk__in=self.game_players)
+                gfilter &= Q(sessions__performances__player__pk__in=self.game_players)
             elif self.is_enabled('game_players_all'):
-                # Only method I've found is with an intersection. Problem presented here:
+                # Most elegant method I found is with ArrayAgg (postgresql specific)
                 # https://stackoverflow.com/questions/66647977/django-and-filter-on-related-objects?noredirect=1#comment117816963_66647977
-                # sessions = Session.objects.filter(performances__player=self.game_players[0])
-                # for pk in self.game_players[1:]:
-                    # sessions = sessions.intersection(Session.objects.filter(performances__player=pk))
-
-                # Another mothod using joins
-                sessions = Session.objects.filter(performances__player=self.game_players[0])
-                for pk in self.game_players[1:]:
-                    sessions = sessions.filter(performances__player=pk)
-
-            or_filters |= Q(sessions__pk__in=sessions.values_list('pk'))
-
-        gfilter = or_filters
+                games = games.annotate(game_players=ArrayAgg(F('sessions__performances__player'), distinct=True))
+                gfilter &= Q(game_players__contains=self.game_players)
 
         if self.is_enabled('num_days'):
             # Find only games played on or after the event start time
@@ -1357,36 +1717,29 @@ class leaderboard_options:
             if self.is_enabled('as_at'):
                 gfilter &= Q(sessions__date_time__lte=self.as_at)
 
-        # Choose the ordering in preparation for a top n filter
-        if self.is_enabled('latest_games'):
-            order_games_by = ('-last_play',)
-        # If we want the top n games or not by default sort the games by popularity,
-        # We only sort them temporally if explicitlyw anting the n latest games.
-        else:
-            order_games_by = ('-play_count', '-session_count')
-
         # Apply the game selector(s)
-        filtered_games = games.filter(gfilter).order_by(*order_games_by).distinct()
+        filtered_games = games.filter(gfilter).order_by(*self.order_games_by).distinct()
 
         # Taking the top num_games of course happens last (after all other filters applied)
         # It's a way of clipping long lists down to size focussing on the top entries.
         if self.is_enabled('top_games') or self.is_enabled('latest_games'):
             filtered_games = top(filtered_games, self.num_games)
 
-        # Now if we have a games_in rquest we want to include those games explicilty
+        # Now if we have a games_in request we want to include those games explicilty
         if self.is_enabled('games_in'):
+            # Hence a UNION
+            # TODO: The annotations need to agree with those above! And respond to options
             filtered_games = filtered_games.union(
                                 Game.objects.filter(pk__in=self.games)
+                                            .annotate(session_count=Count('sessions', distinct=True),)
+                                            .annotate(play_count=Count('sessions__performances', distinct=True))
                                             .annotate(last_play=last_play)
-                                            .annotate(session_count=session_count)
-                                            .annotate(play_count=play_count)
-                                ).order_by(*order_games_by)
+                                ).order_by(*self.order_games_by)
 
         if settings.DEBUG:
             queries_after = len(connection.queries)
 
             log.debug("GAME SELECTOR:")
-
             if queries_after == queries_before:
                 log.debug("\tSQL is still LAZY")
                 log.debug(f"\t{get_SQL(filtered_games)}")
@@ -1396,18 +1749,18 @@ class leaderboard_options:
 
             log.debug(f"SELECTED {len(filtered_games)} GAMES:")
             for game in filtered_games:
-                log.debug(f"\t{game.name}")
+                log.debug(f"\t{game.id}: ({game.session_count}, {game.play_count}, {game.last_play}/{localize(localtime(game.last_play))}) {game.name}")
 
             log.debug(f"Using this query:")
-            log.debug(f"\t{get_SQL(filtered_games, explain=True)}")  # Without explain the SQL is wrong here on an ArrayAgg query
+            log.debug(f"\t{get_SQL(filtered_games, explain=True, pretty=False)}")  # Without explain the SQL is wrong here on an ArrayAgg query
 
         return filtered_games
 
-    def snapshot_queryset(self, game, include_reference=True, include_baseline=False):
+    def snapshot_queryset(self, game, include_baseline=False):
         '''
         Returns a tuple containing:
 
-        A QuerySet of the Session objects which which provide the foundation
+        A QuerySet of the Session objects which provide the foundation
         for historic snapshots selected by these options (self.evolution_options drive
         this).
 
@@ -1416,9 +1769,9 @@ class leaderboard_options:
 
         A flag that is set to true if we've been asked to include a baseline and a
         baseline outside of the requested window of snapshots was found and added.
-        if this is true the client is effictively asked to hide that baseline (the
-        last/earliest) session in the returned QuerySet. if false either no baseline
-        is included or it is but it falls withing the winodow of snapshots requested.
+        if this is true the client is effectively asked to hide that baseline (the
+        last/earliest) session in the returned QuerySet. If false either no baseline
+        is included or it is but it falls within the window of snapshots requested.
 
 
         A snapshot is the leaderboard as it appears after a given game session
@@ -1435,8 +1788,16 @@ class leaderboard_options:
 
         We build a QuerySet of the sessions after which we want the leaderboard snapshots.
 
+        A baseline is always the last snapshot in the tuple if it's provided.
+            The baseline is used only for calculating deltas (changes in range and rating between snapshots)
+        A reference is always the second last if there's a baseline or the last if there isn't.
+            A reference can thus always have deltas (changes in range and rating from the baseline).
+            A reference is only offered and meaningful if compare_back_to is specified
+            it is provided only for meaningful event summaries in that when a game is played at an event
+                 we want to see the leaderboard just before the event too to compare with.
+                 Event Impact views on the website (driven by compare_back_to and as_at)
+
         :param game:        A Game object for which the leaderboards are requested
-        :param include_reference: If True, will include a reference snapshot (that defines the leaderboard before the first snapshot in the queryset)
         :param include_baseline: If True will include a baseline snapshot (the one just prior to those requested) so that deltas can be calculated by the caller if desired)
         :returns: A 2-tuple (QuerySet, extra_baseline_was_added_flag)
         '''
@@ -1463,7 +1824,7 @@ class leaderboard_options:
 
         if settings.DEBUG:
             queries_before = len(connection.queries)
-            log.debug(f"SNAPSHOTS REQUESTED: for game: {game}, {include_reference=}, {include_baseline=}")
+            log.debug(f"SNAPSHOTS REQUESTED: for game: {game}, {include_baseline=}")
 
         # Start our Session filter with sessions for the game in question
         sfilter = Q(game=game)
@@ -1472,30 +1833,28 @@ class leaderboard_options:
         if self.is_enabled('as_at'):
             sfilter &= Q(date_time__lte=self.as_at)
 
-        # TODO: This is broken. Snapshots are sessions not games and sessions have their own
-        #       league. To with we only need consult lo.leagues (the selected leagues) and list
-        #       snapshots only played in those leagues.
-        #       We could if an option is selected also display those in any leagues that any of
-        #       the listed players are in (so that we get a complete view of their skill evoltion)
-        #       This could be what Is tarte dimplemented in a cross-league counting. It now cross
-        #       league viewing at it starts here inb the session selection.Food for thought.
-
         # Respect the league selections as a filter on the snapshots to show
-        # (the same selctor can explicitly be used to select games or players too but select snapshots
+        # (the same selector can explicitly be used to select games or players too but select snapshots
         # by default)
 
-        if self.leagues:
+        if (self.is_enabled('game_leagues_any') or self.is_enabled('game_leagues_all')) and self.leagues:
             if self.show_cross_league_snaps:
                 # We want all the sessions that contain a player that is in any of the selected leagues.
+                # The aim here is when displaying leaderboard evolution, we can see players who between
+                # two snapshots have apparently missing data (evolution). Their shift in ranking is not
+                # explained by the new snapshot. There is one or more snapshots that player played.
+                # They played these sessions though in sessions of other leagues, and those sessions
+                # are not selected ordinarily. But if we want to see them we can select them thusly.
+                # This then introduces cross league snapshots into the evolution.
                 lfilter = Q()
-                for pk in self.leagues:
+                for pk in self.game_leagues:
                     lfilter |= Q(performances__player__leagues__pk=pk)
                 sfilter &= lfilter
-            else:
+            elif self.leagues:
                 # We want only sessions that were played in the selected leagues
-                sfilter &= Q(league__pk__in=self.leagues)
+                sfilter &= Q(league__pk__in=self.game_leagues)
 
-        session_source = Session.objects.filter(sfilter).distinct()
+        session_source = Session.objects.filter(sfilter).distinct()  # @UndefinedVariable
 
         # At this stage we have session_source that
         #   Specifies a game
@@ -1538,26 +1897,23 @@ class leaderboard_options:
 
                 if earliest_time:
                     efilter = sfilter & Q(date_time__lt=earliest_time)
-                    extra = sum([include_reference, include_baseline])
+                    extra = 2 if include_baseline else 1
                     extra_sessions = top(sessions_plus(session_source.filter(efilter)), extra)
 
                     # We might get 2, or 1, or 0 sessions back.
                     # Depends on their availability.
                     # 2 means we have a reference and a baseline
-                    # 1 means we have only a reference/baseline (the reference has not baseline)
+                    # 1 means we have only a reference/baseline (the reference is the baseline)
                     # 0 means we have no reference or baseline
                     #
-                    # either way we'll chekc if the last one (if any) is earlier than earliest_timme, if
-                    # it's baseline we should hide by default (is not in the query)
+                    # either way we'll check if the last one (if any) is earlier than earliest_time, if
+                    # it's a baseline we should hide by default (is not in the query)
+                    # The reference is considered part of the query.
                     extra = extra_sessions.count()
 
                     # If only one session exists prior to the evolution window we use it as a reference
-                    if include_reference:
-                        has_reference = extra > 0
-                        has_baseline = extra > 1
-                    else:
-                        has_reference = False
-                        has_baseline = extra > 0
+                    has_reference = extra > 0
+                    has_baseline = extra > 1
 
                     sfilter &= Q(date_time__gte=earliest_time)
 
@@ -1592,7 +1948,11 @@ class leaderboard_options:
 
             if queries_after == queries_before:
                 log.debug("\tSQL is still LAZY")
-                log.debug(f"\t{get_SQL(sessions)}")
+                if sessions:
+                    log.debug(f"\t{get_SQL(sessions, explain=True, pretty=False)}")
+                else:
+                    log.debug(f"\tNo Sessions and no SQL!")
+                    
             else:
                 log.debug(f"\tSQL was evaluated! It took {queries_after-queries_before} queries to do.")
                 for i in range(queries_after - queries_before):
@@ -1684,8 +2044,11 @@ class leaderboard_options:
         if self.is_enabled("as_at"):
             subtitle.append(f"as at {localize(localtime(self.as_at))}")
 
-        if self.is_enabled("changed_since"):
-            subtitle.append(f"changed after {localize(localtime(self.changed_since))}")
+        if self.is_enabled("changed_after"):
+            subtitle.append(f"changed after {localize(localtime(self.changed_after))}")
+
+        if self.is_enabled("changed_before"):
+            subtitle.append(f"changed before {localize(localtime(self.changed_before))}")
 
         if self.is_enabled("compare_back_to"):
             if isinstance(self.compare_back_to, numbers.Real):
@@ -1697,7 +2060,7 @@ class leaderboard_options:
                 days = "day's" if cb == 1 else "days'"
                 time = f"before the last event of {cb} {days} duration"
             elif isinstance(self.compare_back_to, datetime):
-                time = "at that same time" if self.compare_back_to == self.changed_since else localize(localtime(self.compare_back_to))
+                time = "at that same time" if self.compare_back_to == self.changed_after else localize(localtime(self.compare_back_to))
             else:
                 time = None
 
@@ -1738,20 +2101,23 @@ class leaderboard_options:
         if self.is_enabled('compare_back_to') and isinstance(self.compare_back_to, numbers.Real):
             self.compare_back_to = fix_time_zone(self.last_event_start_time(self.compare_back_to, as_ExpressionWrapper=False), utz)
 
-        # Map self.num_days to self.changed_since and self.compare_back_to
+        # Map self.num_days to fixed datetimes
         if self.is_enabled('num_days'):
             # Disable num_days option (which is relative to now and not static.
             self.__enable__('num_days', False)
 
             # Enable the equivalent time window and evolution options
-            self.changed_since = fix_time_zone(self.last_event_start_time(self.num_days, as_ExpressionWrapper=False), utz)
-            self.__enable__('changed_since', True)
+            self.changed_after = fix_time_zone(self.last_event_start_time(self.num_days, as_ExpressionWrapper=False), utz)
+            self.__enable__('changed_after', True)
 
-            self.as_at = fix_time_zone(self.last_event_end_time(as_ExpressionWrapper=False), utz)
-            self.__enable__('as_at', True)
+            self.changed_before = fix_time_zone(self.last_event_end_time(as_ExpressionWrapper=False), utz)
+            self.__enable__('changed_before', True)
 
-            self.compare_back_to = self.changed_since
+            self.compare_back_to = self.changed_after
             self.__enable__('compare_back_to', True)
+
+            self.as_at = self.changed_before
+            self.__enable__('as_at', True)
 
         # If a user session filter is used, convert it to explicit static options
         # Only league supported for now. If no leagues are explict and preferred

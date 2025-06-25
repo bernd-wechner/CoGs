@@ -1,4 +1,5 @@
 #!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
 ##############################################################################################################################
 # Copy a website from one server to another
 #
@@ -10,23 +11,28 @@
 #	from destination to source.
 ##############################################################################################################################
 
+supported_args="smdSvu0DVh"
+
 show_help_and_exit () {
-	echo "Usage: copy_script [-smdvtc0Dh] source destination"
-	echo "   or: copy_script [-smdvtc0Dh] destination"
+	echo "Usage: copy_site [-$supported_args] source destination"
+	echo "   or: copy_site [-$supported_args] destination"
 	echo ""
 	echo "where:"
-	echo "	-s	copies the site source code, sans the site media"
-	echo "	-m	copies the site media"
-	echo "	-d	copies the site database"
-	echo "	-v	copies the site venv (only useful where venvs have same path)"
-	echo "	-0	requests no action just a report of command line parsing"
-	echo "	-D	requests a dry run that echoes all commands that would be run (but aren't)"
-	echo "	-h	Show help"
+	echo "	-s copies the site source code, sans the site media"
+	echo "	-m copies the site media"
+	echo "	-d copies the site database"
+	echo "	-S copies the site database using SQL"
+	echo "	-v copies the site venv (only useful where venvs have same path)"
+	echo "	-u configures UWSGI on the target server if possible"
+	echo "	-0 requests no action just a report of command line parsing"
+	echo "	-D requests a dry run that echoes all commands that would be run (but aren't)"
+	echo "  -V verbose (add some extra diagnostic output)"
+	echo "	-h Show help"
 	echo
 	echo "	source is the name of a webserver server to copy from ('localhost' assumed if not provided)"
 	echo "	destination is the name of a webserver server to copy to (required)"
 	echo ""
-	echo "Known servers are:"
+	echo "Known servers are (in their current roles):"
 	echo "	arachne is the sandbox server"
 	echo "	shelob is the live server"
 	echo "	localhost is the development server (assuming this script is run in that context as is expected)"
@@ -41,26 +47,35 @@ show_help_and_exit () {
 copy_site=false
 copy_media=false
 copy_database=false
+copy_database_sql=false
 copy_venv=false
+conf_uwsgi=false
 
 test_args=false
 dry_run=false
+verbose=false
 
-copy_DB="$(dirname $(realpath $0))/copy_database"
+script_dir="$(dirname $(realpath $0))"
+copy_DB="$script_dir/copy_database"
 
-while getopts "smdv0Dh" flag; do
+while getopts "$supported_args" flag; do
 	case "$flag" in
 	    s) copy_site=true ;;
 	    m) copy_media=true ;;
 	    d) copy_database=true ;;
+	    S) copy_database_sql=true ;;
 	    v) copy_venv=true ;;
+	    u) conf_uwsgi=true ;;
 	    0) test_args=true ;;
-		D) dry_run=true ;;
-		h) show_help_and_exit;;
+	    D) dry_run=true ;;
+	    V) verbose=true ;;
+	    h) show_help_and_exit;;
 	esac
 done
 
 # Basic names of source and target host (for naming files and reporting etc)
+# $@ is an array of all the args to the script. "$@" is equivalent to "$1" "$2" ...
+# ${array:i:n} is an array splice, being the n elements starting at index i.
 source_hostname="${@:$OPTIND:1}"
 target_hostname="${@:$OPTIND+1:1}"
 
@@ -81,17 +96,21 @@ if [ "$source_hostname" != "" ] && [ "$target_hostname" = "" ]; then
 	fi
 fi
 
-if [ "$test_args" = true ]; then
+if [ $test_args = true ] | [ $verbose = true ]; then
 	echo "copy_site: $copy_site"
 	echo "copy_media: $copy_media"
 	echo "copy_database: $copy_database"
+	echo "copy_database_sql: $copy_database_sql"
 	echo "copy_venv: $copy_venv"
 	echo "copy_DB: $copy_DB"
 	echo "test_args: $test_args"
 	echo "dry_run: $dry_run"
+	echo "verbose: $verbose"
 	echo "source_hostname: $source_hostname"
 	echo "target_hostname: $target_hostname"
-	exit
+	if [ $test_args = true ]; then
+		exit
+	fi
 fi;
 
 if [ "$target_hostname" = "" ]; then
@@ -105,11 +124,12 @@ fi
 # The local domain name (expected at end of server names, added if missing)
 localdomain="lan"
 
+site_domain="leaderboard.space"
 site_name="CoGs"
 
 site_media_dir="media"
 
-backup_timestamp=`date +"%s"`
+backup_timestamp=$(date +'%Y-%m-%d-%H:%M:%S')
 
 # Webserver configis
 server_site_dir="/data/www/leaderboard.space"
@@ -118,26 +138,33 @@ server_site_bup="$server_site_dir.backup.$backup_timestamp"
 
 # localhost configs (Development machine - script must be run on the dev machine and it must have paswordless ssh access to the webserver)
 dev_site_dir="/home/bernd/workspace/CoGs"
-dev_DRV_dir="/home/bernd/workspace/Django/django-rich-views/django_rich_views" # Under heavy development alongside
 dev_venv_dir="/home/bernd/.virtualenvs/CoGs"
+dev_DRV_dir="/home/bernd/workspace/Django/django-rich-views/src/django_rich_views" # Under heavy development alongside
+dev_DF_dir="/home/bernd/workspace/Django/django-from/src/django_from" # Experimental and under develeopment
 
 # SERVER CONFIGS - name interpretation and user definition
 
 # resolveable domain names for the source and target host (we append the local domain if it's not localhost)
 if [ "$source_hostname" = "localhost" ];then
 	source_host="$source_hostname"
+	source_site_dir="$dev_site_dir"
 elif [[ "$source_hostname" = *.$localdomain ]]; then
 	source_host="$source_hostname"
+	source_site_dir="$server_site_dir"
 else
 	source_host="$source_hostname.$localdomain"
+	source_site_dir="$server_site_dir"
 fi
 
 if [ "$target_hostname" = "localhost" ];then
 	target_host="$target_hostname"
+	target_site_dir="$dev_site_dir"
 elif [[ "$target_hostname" = *.$localdomain ]]; then
 	target_host="$target_hostname"
+	target_site_dir="$server_site_dir"
 else
 	target_host="$target_hostname.$localdomain"
+	target_site_dir="$server_site_dir"
 fi
 
 # Find a username to use for the host when using ssh
@@ -163,11 +190,37 @@ else
 	target_user="<not needed>"
 fi
 
+# UWSGI confs - for setting up a uwsgi configuration
+# The site should have a uwsgi.ini file for any target server
+# anotated by the name of the server. 
+configure_uwsgi=false
+uwsgi_ini="$source_site_dir/uwsgi_${target_hostname}.ini"
+
+if [ $conf_uwsgi = true ]; then
+	if [ -f "$uwsgi_ini" ]; then
+		configure_uwsgi=true
+		uwsgi_app_dir="/etc/uwsgi/apps-enabled/"
+		uwsgi_app_file="$uwsgi_app_dir/$site_domain"
+		uwsgi_log_dir=$(grep -E '^\s*logto2\s*=' "$uwsgi_ini" | cut -d '=' -f 2 | xargs dirname)
+		uwsgi_socket_dir=$(grep -E '^\s*uwsgi-socket\s*=' "$uwsgi_ini" | cut -d '=' -f 2 | xargs dirname)	
+	fi
+fi
+
 if [ $dry_run = true ]; then
-	echo "source_host: $source_host"
-	echo "source_user: $source_user"
-	echo "target_host: $target_host"
-	echo "target_user: $target_user"
+	echo "source_host:       $source_host"
+	echo "source_user:       $source_user"
+	echo "source_site_dir:   $source_site_dir"
+	echo "target_host:       $target_host"
+	echo "target_user:       $target_user"
+	echo "target_site_dir:   $target_site_dir"	
+	echo "configure_uwsgi:   $configure_uwsgi"	
+	echo "uwsgi_ini:         $uwsgi_ini"
+	if [ $configure_uwsgi = true ]; then
+		echo "uwsgi_app_dir:     $uwsgi_app_dir"
+		echo "uwsgi_app_file:    $uwsgi_app_file"
+		echo "uwsgi_log_dir:     $uwsgi_log_dir"
+		echo "uwsgi_socket_dir:  $uwsgi_socket_dir"
+	fi
 fi
 
 ##############################################################################################################################
@@ -178,8 +231,8 @@ opts="-rL"
 
 # A prefix to use before commands that do stuff
 if [ $dry_run = true ];then
-	prefix="echo "
-	echo "Dry run (commands that would be executed are):"
+	prefix="echo -e \twould run: "
+	echo -e "\nDry run (commands that would be executed are):"
 else
 	prefix=""
 fi
@@ -188,11 +241,33 @@ site_files_copied=false
 media_files_copied=false
 code_files_copied=false
 
-# Copy the site if configured to
-if [ "$copy_site" = true ]; then
-	echo "Backing up site to $server_site_bup"
+# Copy site database if asked to
+# We do this first because if we are copying the site over we want to apply migrations.
+# And if the targethas no database yet that will fail. So the databas copy goes first if 
+# requested.
+if [ $copy_database = true ]; then
+	echo "Copying $site_name database from $source_hostname to $target_hostname"
 
-	${prefix}ssh $target_user@$target_host "mv $server_site_dir $server_site_bup"
+	args=""
+	if [ $copy_database_sql = true ]; then args="$args -S"; fi
+	if [ $verbose = true ]; then args="$args -V"; fi
+	if [ $dry_run = true ]; then
+		# Skip the prefix on dryrun as the sub scrip will dry run
+		args="$args -D"
+		$copy_DB $args "$source_host" "$target_host"
+	else
+		${prefix}$copy_DB $args "$source_host" "$target_host"
+	fi
+fi
+
+# Copy the site if configured to
+if [ $copy_site = true ]; then
+	# if the server site dir exists then back it up
+	server_site_dir_exists=$(ssh $target_user@$target_host "test -d $server_site_dir && echo '1' || echo '0'")
+	if [ "$server_site_dir_exists" = "1" ]; then
+		echo "Backing up site to $server_site_bup"
+		${prefix}ssh $target_user@$target_host "mv $server_site_dir $server_site_bup"
+	fi
 
 	echo "Copying $site_name website from $source_hostname to $target_hostname"
 
@@ -213,15 +288,29 @@ if [ "$copy_site" = true ]; then
 
 	prepare_then="cd \"$server_site_dir\"; source \"$server_venv_dir/bin/activate\";"
 
+	# If the venv does not exist on the target yet, create it
+	server_venv_dir_exists=$(ssh $target_user@$target_host "test -d $server_venv_dir && echo '1' || echo '0'")
+	if [ "$server_venv_dir_exists" = "0" ]; then
+		echo "Creating venv on $target_host in $server_venv_dir"
+		${prefix}ssh $target_user@$target_host "python -m venv $server_venv_dir"
+		# We want to upgrade pip and ensure wheel is installed in any new venv
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install --upgrade pip"
+		${prefix}ssh $target_user@$target_host "$prepare_then pip install wheel"
+	fi
+
 	if [ $source_host = "localhost" ]; then
 		# Copy the django-rich-view app into the root folder
 		# While it's under heavy development we're not installing it as a package under site-packages
-		# which will be the in the future when it's considered stable enough at least for a beta
+		# which will be in the future when it's considered stable enough at least for a beta
 		# release.
 		# A trailing slash on a source path means "copy the contents of this directory".
 		# Without a trailing slash it means "copy the directory"
 		echo "Copying django-rich-views (dev)"
 		${prefix}rsync $opts $exclude "$dev_DRV_dir" "$target_user@$target_host:$server_site_dir"
+
+		# Also django-from is under development and experimental
+		echo "Copying django-from (dev)"
+		${prefix}rsync $opts $exclude "$dev_DF_dir" "$target_user@$target_host:$server_site_dir"
 	fi
 
 	if [ $target_host != "localhost" ]; then
@@ -250,7 +339,7 @@ if [ "$copy_site" = true ]; then
 fi
 
 # Copy site media if asked to
-if [ "$copy_media" = true ]; then
+if [ $copy_media = true ]; then
 	echo "Copying $site_name website media from $source_hostname to $target_hostname"
 
 	# Not all sites have a media folder so just ignore missing folders quietly
@@ -270,13 +359,8 @@ if [ "$copy_media" = true ]; then
 	media_files_copied=true
 fi
 
-# Copy site database if asked to
-if [ "$copy_database" = true ]; then
-	${prefix}$copy_DB "$source_host" "$target_host"
-fi
-
 # Copy venv if configured to
-if [ "$copy_venv" = true ]; then
+if [ $copy_venv = true ]; then
 	# Only copy venv is the source and target dirs are same. Venv's unfortunately
 	# have loads of hardcoded full pathnames in them. A known venv portability issue
 	if [ "$dev_venv_dir" = "$server_venv_dir" ]; then
@@ -302,21 +386,37 @@ fi
 
 # The rsync copies are often with odd owners we want to coerce ownership of the site proper
 if [ "$target_hostname" != "localhost" ]; then
-	if [ "$site_files_copied" = true ] || [ "$media_files_copied" = true ]; then
-		echo "Ensuring files readable by www-data "
-		${prefix}ssh root@$target_host "chown -R :www-data $server_site_dir"
-		${prefix}ssh root@$target_host "chmod -R g+w  $server_site_dir/*"
+	if [ $site_files_copied = true ] || [ $media_files_copied = true ]; then
+		echo "Ensuring files are correctly owned and readable and writeable by www-data "
+		${prefix}ssh root@$target_host "chown -R $target_user:www-data \"$server_site_dir\""
+		${prefix}ssh root@$target_host "chmod -R g+rw  \"$server_site_dir\"/*"
+	fi
+fi
+
+# If a uwsgi configuration is offered then apply it
+if [ $copy_site = true ] && [ $configure_uwsgi = true ]; then
+	echo "Ensuring UWSGI log directory exists on $target_host"
+	# Ensure the log dir exists
+	if [ ! -d "dryruntest-$uwsgi_log_dir" ]; then	
+		  ${prefix}ssh root@$target_host "mkdir -p \"$uwsgi_log_dir\""
+		  ${prefix}ssh root@$target_host "chown $target_user:$www-data \"$uwsgi_log_dir\""
+	fi
+	echo "Ensuring UWSGI socket directory exists on $target_host"
+	# Ensure the socket dir exists
+	if [ ! -d "dryruntest-$uwsgi_socket_dir" ]; then	
+		  ${prefix}ssh root@$target_host "mkdir -p \"$uwsgi_socket_dir\""
+		  ${prefix}ssh root@$target_host "chown $target_user:$www-data \"$uwsgi_socket_dir\""
 	fi
 fi
 
 # Assume we're running on a development machine and all other targets are
 # ssh reachable and webservers where UWSGI has database connections open
 if [ "$target_hostname" != "localhost" ];then
-	if [ "$site_files_copied" = true ] || [ "$code_files_copied" = true ]; then
+	if [ $site_files_copied = true ] || [ $code_files_copied = true ]; then
 		# Reload UWSGI configs on the target site
 		echo "Reloading the UWSGI configurations on $target_hostname"
 		${prefix}ssh root@$target_host "service uwsgi reload"
 	fi
 fi
 
-echo "Done."
+echo "Done (copy_site)."

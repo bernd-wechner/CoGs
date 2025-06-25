@@ -9,6 +9,7 @@ from ..leaderboards import augment_with_deltas
 from django.db import models
 from django.conf import settings
 from django.apps import apps
+from django.utils.dateparse import parse_datetime, parse_duration
 from django.core.serializers.json import DjangoJSONEncoder
 
 from django_model_admin_fields import AdminModel
@@ -113,7 +114,7 @@ class ChangeLog(AdminModel):
         Either as a LB_STRUCTURE.game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
         or as a LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
 
-        :param unwrap: If "before" or "after" unwraps the before or after player_list
+        :param unwrap: If "before" or "after" unwraps the before or after (this session) player_list
         '''
         if self.leaderboard_impact_before_change:
             igd = LB_STRUCTURE.game_data_element.value
@@ -142,7 +143,7 @@ class ChangeLog(AdminModel):
         Either as a LB_STRUCTURE.game_wrapped_session_wrapped_player_list with LB_PLAYER_LIST_STYLE.data
         or as a LB_STRUCTURE.player_list with LB_PLAYER_LIST_STYLE.data.
 
-        :param unwrap: If "before" or "after" unwraps the before or after player_list
+        :param unwrap: If "before" or "after" unwraps the before or after (this session) player_list
         '''
         if self.leaderboard_impact_after_change:
             igd = LB_STRUCTURE.game_data_element.value
@@ -158,6 +159,85 @@ class ChangeLog(AdminModel):
         else:
             return None
 
+    @property
+    def player_ranking_impact_before_change(self):
+        '''
+        Returns a dict keyed on player (whose rankings were affected by by this session) 
+        whose value is their rank change on the leaderboard.
+        '''
+        lb_impact = self.Leaderboard_impact_before_change()
+        
+        if lb_impact:
+            igd = LB_STRUCTURE.game_data_element.value
+            isd = LB_STRUCTURE.session_data_element.value
+            before = lb_impact[igd][0][isd]
+            after = lb_impact[igd][1][isd]
+    
+            deltas = {}
+            old = player_rankings(before, structure=LB_STRUCTURE.player_list) if before else None
+            new = player_rankings(after, structure=LB_STRUCTURE.player_list)
+    
+            for p in new:
+                _old = old.get(p, len(new)) if old else len(new)
+                if not new[p] == _old:
+                    delta = new[p] - _old
+                    deltas[p] = delta
+    
+            return dict(sorted(deltas.items(), key=lambda item: item[1], reverse=True)) # return it sorted by keys
+        else:
+            return {}
+    
+    @property
+    def player_ranking_impact_after_change(self):
+        '''
+        Returns a dict keyed on player (whose rankings were affected by by this session) 
+        whose value is their rank change on the leaderboard.
+        '''
+        lb_impact = self.Leaderboard_impact_after_change()
+        
+        igd = LB_STRUCTURE.game_data_element.value
+        isd = LB_STRUCTURE.session_data_element.value
+        before = lb_impact[igd][0][isd]
+        after = lb_impact[igd][1][isd]
+
+        deltas = {}
+        old = player_rankings(before, structure=LB_STRUCTURE.player_list) if before else None
+        new = player_rankings(after, structure=LB_STRUCTURE.player_list)
+
+        for p in new:
+            _old = old.get(p, len(new)) if old else len(new)
+            if not new[p] == _old:
+                delta = new[p] - _old
+                deltas[p] = delta
+
+        return dict(sorted(deltas.items(), key=lambda item: item[1], reverse=True)) # return it sorted by keys
+    
+    
+    @property
+    def player_ranking_impact_of_change(self):
+        '''
+        Combines player_ranking_impact_before_change with player_ranking_impact_after_change to 
+        deduce the player ranking impact OF the change. That the change to player rankings caused
+        by this logged change.
+        
+        Which is quite distinct from the change to player rankings caused by the session that was
+        changed (which comes in before and after forms).
+        '''
+        ri_before = self.player_ranking_impact_before_change
+        ri_after = self.player_ranking_impact_after_change
+        
+        all_players = set(ri_before.keys()) | set(ri_after.keys())
+        
+        deltas = {}
+        for p in all_players:
+            delta = ri_after.get(p,0) - ri_before.get(p,0)
+            if delta != 0:
+                deltas[p] = delta
+                
+        # TODO: We should be able to take a delta between the after session boards in both before and after change anbd get same result
+            
+        return dict(sorted(deltas.items(), key=lambda item: item[1], reverse=True)) # return it sorted by keys
+    
     def leaderboard_after(self, game):
         '''
         Returns the leaderboard after session play (in an impact) for the specified game if it is
@@ -184,15 +264,47 @@ class ChangeLog(AdminModel):
 
     @property
     def Changes(self):
-        if self.changes:
-            return json.loads(self.changes)
-        else:
+        def unpack_as_needed(v):
+            if isinstance(v, str):
+                # 1. Try parsing as a Datetime (ISO format: 2025-05-19T...)
+                # Check for year-like start and 'T' to avoid unnecessary parsing
+                if len(v) >= 10 and v[4] == '-' and 'T' in v:
+                    dt = parse_datetime(v)
+                    if dt:
+                        return dt
+
+                # 2. Try parsing as a Duration (ISO format: P... or -P...)
+                if v.startswith('P') or v.startswith('-P'):
+                    td = parse_duration(v)
+                    if td is not None:
+                        return td
+                    
+                return v
+            else:
+                return v
+            
+        if not self.changes:
             return None
+            
+        data = json.loads(self.changes)
+        
+        for key, val in data.items():
+            if isinstance(val, list):
+                # values is the [from, to, delta] list
+                hydrated_list = []
+                for v in val:
+                    hydrated_list.append(unpack_as_needed(v))
+                data[key] = hydrated_list
+            else:
+                data[key] = unpack_as_needed(val)
+                    
+        return data
 
     @property
-    def Games(self):
+    def Games(self) -> tuple:
         '''
-        Returns a tuple of game instances affected by the chnage
+        Returns a tuple of game instances affected by the change
+        The tuple has length 1 or 2. No more than 2 games can be affected by a change to a session record.   
         '''
         return (self.game_after_change,) if not self.game_before_change or self.game_after_change == self.game_before_change else (self.game_before_change, self.game_after_change)
 
@@ -368,8 +480,10 @@ class RebuildLog(AdminModel):
     date_time_from = models.DateTimeField('Game', null=True, blank=True)
     sessions = models.ManyToManyField('Session', blank=True, related_name='rating_rebuild_requests')
 
-    # We'd like to store JSON leaderboard impact of the rebuild. As the rebuild can cover the whole database this
-    # can be large beyond simple database storage, and so we should use fileystem storage!
+    # We'd like to store JSON leaderboard impact of the rebuild. As the rebuild can cover the whole 
+    # database this can be large beyond simple database storage. It is of low utility, only an archive
+    # for possible future diagnostics, and so we use fileystem storage (as we really don't need it in 
+    # the database).
     rebuild_log_dir = "logs/rating_rebuilds"
     leaderboards_before_rebuild = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)
     leaderboards_after_rebuild = RelativeFilePathField(path=rebuild_log_dir, null=True, blank=True)

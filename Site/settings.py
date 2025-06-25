@@ -6,9 +6,15 @@ Django settings for CoGs project.
 import os
 import sys
 
+from django_run_context import get_run_context
+
 from tzlocal import get_localzone
+from dotenv import load_dotenv
 from crequest.middleware import CrequestMiddleware
-from django.conf import global_settings
+from django.conf import settings, global_settings
+
+# Get the run context
+RUN_CONTEXT = get_run_context()
 
 # A custom CoGs setting that enables or disables use of the leaderboard cache.
 # It's great for performance, but gets in the way of performance tests on uncached
@@ -20,8 +26,10 @@ USE_BOOTSTRAP = False
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
+load_dotenv(os.path.join(BASE_DIR, ".env"))
+
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'b21tutq1vl(af-d*uv85n6c$cfz!@rlhhi30wygqg=qb1+ofaj'
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
 
 # This is where manage.py collectstatic will place all the static files
 STATIC_ROOT = os.path.join(BASE_DIR, "static/")
@@ -46,6 +54,9 @@ SANDBOX = "arachne"
 
 SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
+# We define our own test runner because Djangos default test runner
+# only scans apps for a tests folder.  
+TEST_RUNNER = 'tests.runner.PostgreSQL_Runner'
 TESTING = len(sys.argv) >= 2 and sys.argv[1] == 'test'
 
 if HOSTNAME == PRODUCTION:
@@ -117,6 +128,7 @@ INSTALLED_APPS = (
     # 'crispy_forms',
     'django_extensions',
     'reset_migrations',
+    'django_run_context',
     'django_rich_views',
     'django_stats_middleware',
     'Site',
@@ -170,16 +182,31 @@ TEMPLATES = [
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql_psycopg2',
-        'NAME': database,
-        'USER': 'CoGs',
-        'PASSWORD': 'ManyTeeth',
-        'HOST': '127.0.0.1',
-        'PORT': '5432',
-    },
-}
+if TESTING:
+    # This user needs create and drop database privileges as the test runner needs 
+    # to be able to create a test database cleanly.    
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'NAME': f'test_{database}',
+            'USER': 'test_CoGs',
+            'PASSWORD': 'ManyTeeth',
+            'HOST': '127.0.0.1',
+            'PORT': '5432',
+        }
+    }
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.postgresql_psycopg2',
+            'NAME': database,
+            'USER': 'CoGs',
+            'PASSWORD': 'ManyTeeth',
+            'HOST': '127.0.0.1',
+            'PORT': '5432',
+        },
+    }
+    
 
 # Caching
 CACHES = {
@@ -206,7 +233,7 @@ USE_TZ = True
 
 # For some bizarre reason Django has a default TIME_ZONE of America/Chicago
 # Also Python makes it very hard to get the system timezone it seems
-# The tzlocal package was written by smeone to fix that glaring hole!
+# The tzlocal package was written by someone to fix that glaring hole!
 # This then is the timezone the webserver thinks it's in!
 #
 # TIME_ZONE of course should be the time zone the primary audience is in,
@@ -221,25 +248,29 @@ DATETIME_FORMAT = 'D, j M Y H:i'
 DATETIME_INPUT_FORMATS = ['%Y-%m-%d %H:%M:%S %z'] + global_settings.DATETIME_INPUT_FORMATS
 
 # The MapBox key for mapbox_location_field
-MAPBOX_KEY = "pk.eyJ1IjoidGh1bWJvbmUiLCJhIjoiY2xlcGt4eThoMGEwdTQybnFjMmhkYzZwdSJ9.8kCxKJg_MUmXlh0uEvsrTw"
+MAPBOX_KEY = os.environ.get('MAPBOX_KEY')
 
 # Use the Pickle Serializer. It comes with a warning when using the cookie backend
 # but we're using the default database backend so are safe. Basically if:
 #    SESSION_ENGINE == 'django.contrib.sessions.backends.signed_cookies'
 # Then this is abad idea. But we have
 #    SESSION_ENGINE == 'django.contrib.sessions.backends.db'
-# As that is the Django default. That is the actual session data remains local
-# never travels between server and browser or  vice versa and a cookie is only
+# As that is the Django default. That is, the actual session data remains local
+# never travels between server and browser or vice versa and a cookie is only
 # used to ID a local database stored session.
 #
 # The PickleSerializer is vulnerable appparently to code injection. That is it
-# can execut arbitrary Python code if manipulated to do so. But if we are keeping
-# all session dfdata local and all the data is secure, we're good.
+# can execute arbitrary Python code if manipulated to do so. But if we are keeping
+# all session data local and all the data is secure, we're good.
 #
-# We wabtr to use the Pickle Serializer because we want to cache some data
-# in the session that includes datateims that don't serialize with the JSON
+# We want to use the Pickle Serializer because we want to cache some data
+# in the session that includes datetimes that don't serialize with the JSON
 # serializer.
-SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
+#
+# In Django 5.0 they deprecated the session pickle serializer. We've reimplemented
+# it (stolen it) into django-rich-views.serializers for convenience. 
+SESSION_SERIALIZER = 'django_rich_views.serializers.PickleSessionSerializer'
+#SESSION_SERIALIZER = 'django.contrib.sessions.serializers.PickleSerializer'
 
 # The login URL
 LOGIN_URL = '/login/'
@@ -298,9 +329,11 @@ django_rich_views.logs.logger = log
 import Site.query
 
 # Log some config debugs
-if DEBUG:
+if DEBUG or TESTING:
     import django  # So we have access to the version for reporting
     import psutil  # So we can access process details
+
+    print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
 
     def pinfo():
         pid = os.getpid()
@@ -310,32 +343,60 @@ if DEBUG:
         return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
                 'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
 
-    # Unsure why, byt logging seems not enabled yet at this point, so to be be able to log we need to enable it for DEBUG
-    # explicitly and load the config above explicitly. It works outside of settings.py without this, not sure why in herr
+    # Unsure why, logging seems not enabled yet at this point, so to be be able to log we need to enable it for DEBUG
+    # explicitly and load the config above explicitly. It works outside of settings.py without this, not sure why in here
     # the logger appear unconfigured at this point.
     log.setLevel(loglevel_DEBUG)
     logging.config.dictConfig(LOGGING)
 
-    log.debug(f"Django settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
-    log.debug(f"Django version: {django.__version__}")
-    log.debug(f"Python version: {sys.version}")
-    log.debug(f"Django loaded from: {django.__file__}")
-    log.debug(f"Using Path: {sys.path}")
-    log.debug(f"Process Info: {pinfo()}")
-    log.debug(f"Static root: {STATIC_ROOT}")
-    log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
-    log.debug(f"Installed apps: {INSTALLED_APPS}")
-    log.debug(f"Database: {DATABASES['default']}")
-    log.debug(f"Testing: {TESTING}")
-    log.debug(f"Debug: {DEBUG}")
+    # autoloaded is "true"
+    if RUN_CONTEXT != "runserver_reloader":
+        log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
+        log.debug(f"Django Version: {django.__version__}")
+        log.debug(f"Python Version: {sys.version}")
 
-#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
-#     #if not sys.gettrace():
-#     def trace_func(frame, event, arg):
-#         with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
-#             print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
-#         return trace_func
-#
-#     sys.settrace(trace_func)
-#     print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+        python_executable_path = sys.executable
+        log.debug(f"Python Path: {python_executable_path}")
 
+        # From Python 3.3 onwards:
+        #
+        # sys.base_prefix
+        #
+        #     Set during Python startup, before site.py is run, to the same value as prefix. If not running in a virtual environment, the values will stay the same; if site.py finds that a virtual environment is in use, the values of prefix and exec_prefix will be changed to point to the virtual environment, whereas base_prefix and base_exec_prefix will remain pointing to the base Python installation (the one which the virtual environment was created from).
+        #
+        # sys.prefix
+        #
+        #    A string giving the site-specific directory prefix where the platform independent Python files are installed; on Unix, the default is /usr/local.
+        #    Note
+        #        If a virtual environment is in effect, this value will be changed in site.py to point to the virtual environment. The value for the Python installation will still be available, via base_prefix.
+        #
+        # So any difference between them demonstrates a venv is in use. 
+        if getattr(sys, 'base_prefix', '') != getattr(sys, 'prefix', ''):
+            log.debug(f"Python Venv: {sys.prefix}")
+        else:
+            log.debug("Python Venv: Not set")
+
+        log.debug(f"Django loaded from: {django.__file__}")
+        log.debug(f"Using Path: {sys.path}")
+        log.debug(f"Process Info: {pinfo()}")
+        log.debug(f"Static root: {STATIC_ROOT}")
+        log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+        log.debug(f"Installed apps: {INSTALLED_APPS}")
+        log.debug(f"Database: {DATABASES['default']}")
+        log.debug(f"Testing: {TESTING}")
+        log.debug(f"Debug: {DEBUG}")
+        log.debug(f"Run Context: {settings.RUN_CONTEXT}")
+        log.debug(f"Command Line: {sys.argv}")
+        log.debug(f"Current Directory: {os.path.abspath('.')}")
+        log.debug(f"Time Zone: {TIME_ZONE}")
+
+
+        # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+        # #if not sys.gettrace():
+        # def trace_func(frame, event, arg):
+        #     with open(f"pydev-trace-{os.getpid()}.txt", 'a') as f:
+        #         print('Context: ', frame.f_code.co_name, '\tFile:', frame.f_code.co_filename, '\tLine:', frame.f_lineno, '\tEvent:', event, file=f)
+        #     return trace_func
+        #
+        # sys.settrace(trace_func)
+        # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())

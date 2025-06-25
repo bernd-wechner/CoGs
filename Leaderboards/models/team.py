@@ -74,13 +74,13 @@ class Team(AdminModel, NotesMixIn):
         Essentially there are a few scenarios for calling:
 
         The basic get or create (no "name" or "edit" provided):
-            looks for an existing team witht hose players and returns it if found.
+            looks for an existing team with those players and returns it if found.
             else creates one.
-            If more than one is found, raises and exception. This should never happen.
+            If more than one is found, raises an exception. This should never happen.
 
         The get and rename, or create (a "name" is supplied but no "edit")
             Same as the basic get or create but if a team is found renames it,
-            and if a team is created names witht he provided name.
+            and if a team is created names with the provided name.
 
         The edit (an "edit" is provided and maybe a "name")
             the "edit" identifies a team and optionally a rank and/or session

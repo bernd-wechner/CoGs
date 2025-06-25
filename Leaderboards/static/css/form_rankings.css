@@ -1,0 +1,72 @@
+/* Top of your CSS file */
+:root {
+    --error-entry-speed: 0.5s;
+    --error-exit-speed: 0.5s;
+    --error-sidebar-color: #e74c3c;
+    --error-underscore-color: #fadbd8;
+    --error-background-color: #fff5f5;
+    --error-text-color: #c0392b;
+}
+
+/* The container row for the error */
+#tableRankings tr.validation-error-row {
+    background-color: var(--error-background-color);
+}
+
+/* The single cell containing the message */
+#tableRankings tr.validation-error-row td {
+    padding: 6px 12px;
+    border-left: 5px solid var(--error-sidebar-color); 
+    border-bottom: 1px solid var(--error-underscore-color);
+    color: var(--error-text-color);
+    font-size: 0.85rem;
+    font-weight: 500;
+    line-height: 1.4;
+    /* Smooth entry animation */
+    animation: slideDown var(--error-entry-speed) ease-out;
+}
+
+#tableRankings tr.validation-error-row.removing td {
+    animation: slideUpFade var(--error-exit-speed) cubic-bezier(0.4, 0, 0.2, 1) forwards;
+    overflow: hidden; /* Crucial for the line-height collapse */
+}
+
+/* Style for the warning icon */
+#tableRankings .error-icon {
+    margin-right: 8px;
+    filter: drop-shadow(0 1px 1px rgba(0,0,0,0.1));
+}
+
+/* Style for the joined messages */
+#tableRankings .error-msg {
+    letter-spacing: 0.01em;
+}
+
+/* Subtle animation to make the error appearing less jarring */
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes slideUpFade {
+    0% {
+        opacity: 1;
+        transform: translateY(0);
+        line-height: 1.4;
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-10px);
+        line-height: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        /* This ensures the row physically collapses its space */
+    }
+}
+

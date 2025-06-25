@@ -6,11 +6,15 @@ from Import.models import Import
 
 from tailslide import Median
 
+from crequest.middleware import CrequestMiddleware
+from django.contrib.auth.models import AnonymousUser
+
 from django.db import models
 from django.db.models import Q, F, Count, Min, Max, Value, FilteredRelation, Case, When, Expression, Value, CharField
 from django.db.models.functions import Concat
 from django.apps import apps
 from django.urls import reverse
+from django.core.cache import cache
 from django.contrib import admin
 from django.contrib.auth.models import User
 from django.utils.functional import cached_property, classproperty
@@ -19,7 +23,7 @@ from django.db.models.functions import Extract, Greatest
 from django.db.models.expressions import Subquery, OuterRef, ExpressionWrapper
 from django.contrib.postgres.aggregates import ArrayAgg
 
-from django_cte import CTEManager, With
+from django_cte import CTEManager
 
 from django_model_admin_fields import AdminModel
 
@@ -77,6 +81,18 @@ class Player(AdminModel, PrivacyMixIn, NotesMixIn):
     # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='players', editable=False, null=True, on_delete=models.SET_NULL)
 
+    @classmethod
+    def get(cls, pk):
+        # Payers use PrivacyMixIn and so the cahce needs to be specific to the viewing user
+        request = CrequestMiddleware.get_request()
+        user = getattr(request, 'user', AnonymousUser())
+        username = user.username if user.username else 'anonymous' 
+        cache_key = f'{cls.__name__}_{pk}_for_{username}'
+        obj = cache.get(cache_key)
+        if obj is None:
+            obj = cls.objects.get(pk=pk)
+            cache.set(cache_key, obj)
+        return obj    
 
     @cached_property
     def owner(self) -> User:

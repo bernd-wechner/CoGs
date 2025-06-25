@@ -17,10 +17,72 @@ from Leaderboards.views.pre_handlers import reconcile_ranks
 # os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Site.settings')
 # django.setup()
 
+#from .TestCaseWithDB import clean_session_args, TestCaseWithDB
+from .runner import PostgreSQL_TestCase
 
-class SessionTestCase(TestCase):
+# os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'Site.settings')
+# django.setup()
 
-    # TODO Make session creation methods via DB calls and vbiw REQUEST simulation
+def dict_diff(dict1, dict2, name1="dict1", name2="dict2"):
+    """
+    Compares two dictionaries and prints a summary of their differences.
+    Handles nested lists and type differences.
+    """
+    all_keys = set(dict1.keys()).union(set(dict2.keys()))
+
+    print(f"--- Differences between {name1} and {name2} ---")
+
+    for key in sorted(list(all_keys)):
+        val1_exists = key in dict1
+        val2_exists = key in dict2
+
+        if val1_exists and not val2_exists:
+            print(f"Key '{key}': Only in {name1}. Value: {dict1[key]}")
+        elif not val1_exists and val2_exists:
+            print(f"Key '{key}': Only in {name2}. Value: {dict2[key]}")
+        elif val1_exists and val2_exists:
+            val1 = dict1[key]
+            val2 = dict2[key]
+
+            if val1 != val2:
+                print(f"Key '{key}': Different values.")
+                print(f"  {name1}: {val1} (Type: {type(val1).__name__})")
+                print(f"  {name2}: {val2} (Type: {type(val2).__name__})")
+
+                # Deeper dive for lists
+                if isinstance(val1, list) and isinstance(val2, list):
+                    if len(val1) != len(val2):
+                        print(f"  List length differs: {len(val1)} vs {len(val2)}")
+                    min_len = min(len(val1), len(val2))
+                    for i in range(min_len):
+                        if val1[i] != val2[i]:
+                            print(f"  Element at index {i} differs:")
+                            print(f"    {name1}[{i}]: {val1[i]} (Type: {type(val1[i]).__name__})")
+                            print(f"    {name2}[{i}]: {val2[i]} (Type: {type(val2[i]).__name__})")
+                        elif type(val1[i]) != type(val2[i]):
+                             print(f"  Element at index {i} has different types but equal value:")
+                             print(f"    {name1}[{i}]: {val1[i]} (Type: {type(val1[i]).__name__})")
+                             print(f"    {name2}[{i}]: {val2[i]} (Type: {type(val2[i]).__name__})")
+                    if len(val1) > len(val2):
+                        for i in range(min_len, len(val1)):
+                            print(f"  Element at index {i}: Only in {name1} list: {val1[i]}")
+                    elif len(val2) > len(val1):
+                        for i in range(min_len, len(val2)):
+                            print(f"  Element at index {i}: Only in {name2} list: {val2[i]}")
+
+                # Check for type difference even if values are numerically equal (e.g., 1 vs 1.0)
+                elif type(val1) != type(val2) and val1 == val2:
+                    print(f"  Values are equal but types differ:")
+                    print(f"    {name1} type: {type(val1).__name__}")
+                    print(f"    {name2} type: {type(val2).__name__}")
+            # else:
+            #     print(f"Key '{key}': Values are identical.") # Uncomment to see identical entries
+
+
+#class SessionTestCase(TestCaseWithDB):
+class SessionTestCase(PostgreSQL_TestCase):
+
+    # TODO Make session creation methods via DB calls and view REQUEST simulation
     # TODO: Using created sessions test:
     #        Leaderboards.models.session.Session.dict_from_form
     #        Leaderboards.models.session.Session.dict_from_object
@@ -245,101 +307,102 @@ class SessionTestCase(TestCase):
 
         return session
 
-    @classmethod
-    def setUpTestData(cls):
-        cls.maxDiff = 2400  # To see diffs on some of the json dicts used in tests that are longish
-
-        # Create a user (to login so we can post session add/edit requests)
-        User = get_user_model()
-        cls.user = User.objects.create_user('admin', 'noone@gmail.com', 'password')  # @UnusedVariable
-
-        # Create some basic game configurations
-        cls.game0 = Game.objects.create(name="NO_SCORES", individual_play=True, team_play=False, scoring=Game.ScoringOptions.NO_SCORES.value)
-
-        cls.gameIH = Game.objects.create(name="INDIVIDUAL_HIGH_SCORE_WINS", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value)
-        cls.gameIL = Game.objects.create(name="INDIVIDUAL_LOW_SCORE_WINS", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_LOW_SCORE_WINS.value)
-
-        cls.gameTH = Game.objects.create(name="TEAM_HIGH_SCORE_WINS", individual_play=False, team_play=True, scoring=Game.ScoringOptions.TEAM_HIGH_SCORE_WINS.value)
-        cls.gameTL = Game.objects.create(name="TEAM_LOW_SCORE_WINS", individual_play=False, team_play=True, scoring=Game.ScoringOptions.TEAM_LOW_SCORE_WINS.value)
-
-        cls.gameTIH = Game.objects.create(name="TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS.value)
-        cls.gameTIL = Game.objects.create(name="TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS.value)
-
-        cls.all_games = [cls.game0, cls.gameIH, cls.gameIL, cls.gameTH, cls.gameTL, cls.gameTIH, cls.gameTIL]
-
-        # Create a couple of tourneys
-        cls.tourney1 = Tourney.objects.create(name='tourney1')
-        cls.tourney1.games.set([cls.game0, cls.gameIH, cls.gameIL])
-
-        cls.tourney2 = Tourney.objects.create(name='tourney2')
-        cls.tourney2.games.set([cls.gameTH, cls.gameTL, cls.gameTIH, cls.gameTIL])
-        # TODO: Add TourneyRules for each game in each tourney.
-        # Default Rules are created and could be configured.
-
-        # Create some Players
-        cls.player1 = Player.objects.create(name_nickname="Player1", name_personal="Player", name_family="One", email_address="player1@leaderboard.space")  # @UndefinedVariable
-        cls.player2 = Player.objects.create(name_nickname="Player2", name_personal="Player", name_family="Two", email_address="player2@leaderboard.space")  # @UndefinedVariable
-        cls.player3 = Player.objects.create(name_nickname="Player3", name_personal="Player", name_family="Three", email_address="player3@leaderboard.space")  # @UndefinedVariable
-        cls.player4 = Player.objects.create(name_nickname="Player4", name_personal="Player", name_family="Four", email_address="player4@leaderboard.space")  # @UndefinedVariable
-        cls.player5 = Player.objects.create(name_nickname="Player5", name_personal="Player", name_family="Five", email_address="player5@leaderboard.space")  # @UndefinedVariable
-        cls.player6 = Player.objects.create(name_nickname="Player6", name_personal="Player", name_family="Six", email_address="player6@leaderboard.space")  # @UndefinedVariable
-        cls.player7 = Player.objects.create(name_nickname="Player7", name_personal="Player", name_family="Seven", email_address="player7@leaderboard.space")  # @UndefinedVariable
-        cls.player8 = Player.objects.create(name_nickname="Player8", name_personal="Player", name_family="Eight", email_address="player8@leaderboard.space")  # @UndefinedVariable
-
-        cls.pgroup1_6 = [cls.player1, cls.player2, cls.player3, cls.player4, cls.player5, cls.player6]
-        cls.pgroup2_7 = [cls.player2, cls.player3, cls.player4, cls.player5, cls.player6, cls.player7]
-        cls.pgroup3_8 = [cls.player3, cls.player4, cls.player5, cls.player6, cls.player7, cls.player8]
-        cls.pgroup1_4 = [cls.player1, cls.player2, cls.player3, cls.player4]
-        cls.pgroup1_3 = [cls.player1, cls.player2, cls.player3]
-        cls.pgroup3_5 = [cls.player3, cls.player4, cls.player5]
-
-        # # Create a couple of teams
-        # team1 = Team.objects.create(name='team1')
-        # team1.players.set([player1, player2])
-        #
-        # team2 = Team.objects.create(name='team2')
-        # team2.players.set([player3, player4])
-
-        # Create a couple of locations
-        cls.location1 = Location.objects.create(name="Location1")
-        cls.location2 = Location.objects.create(name="Location2")
-
-        # Create a couple of leagues
-        cls.league1 = League.objects.create(name='League1', manager=cls.player1)
-        cls.league1.locations.set([cls.location1, cls.location2])
-        cls.league1.players.set(cls.pgroup1_6)
-        cls.league1.games.set(cls.all_games)
-
-        cls.league1 = League.objects.create(name='League2', manager=cls.player8)
-        cls.league1.locations.set([cls.location1, cls.location2])
-        cls.league1.players.set(cls.pgroup3_8)
-        cls.league1.games.set(cls.all_games)
-
-        # Create sessions.
-        # We want at least one session per game type to test various rank/score configuration submissions
-        cls.session00 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 00:00:00 +10:00')  # @UnusedVariable
-        cls.sessionIH = cls.create_session(cls.gameIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 01:00:00 +10:00')  # @UnusedVariable
-        cls.sessionIL = cls.create_session(cls.gameIL, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 02:00:00 +10:00')  # @UnusedVariable
-
-        # Team based sessions (2 player teams)
-        cls.sessionTH2 = cls.create_session(cls.gameTH, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 03:00:00 +10:00')  # @UnusedVariable
-        cls.sessionTL2 = cls.create_session(cls.gameTL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 04:00:00 +10:00')  # @UnusedVariable
-
-        # We want a team based session in which the team is unique (3 player sessions)
-        cls.sessionTH3 = cls.create_session(cls.gameTH, [[cls.player1, cls.player2, cls.player3], [cls.player4, cls.player5, cls.player6]], [1, 2], '2022-01-01 05:00:00 +10:00')  # @UnusedVariable
-
-        # Mixed Team/Individual sessions
-        cls.sessionTIHi = cls.create_session(cls.gameTIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 06:00:00 +10:00')  # @UnusedVariable
-        cls.sessionTILt2 = cls.create_session(cls.gameTIL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 07:00:00 +10:00')  # @UnusedVariable
-
-        # We want a series of maybe 5 sessions to test rebuild triggering on time, game, player shifts.
-        cls.session01 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [4, 3, 2, 1], '2022-01-01 08:00:00 +10:00')  # @UnusedVariable
-        cls.session02 = cls.create_session(cls.game0, [cls.player3, cls.player4, cls.player5, cls.player6], [2, 3, 1, 4], '2022-01-01 09:00:00 +10:00')  # @UnusedVariable
-        cls.session03 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 10:00:00 +10:00')  # @UnusedVariable
-        cls.session04 = cls.create_session(cls.game0, [cls.player1, cls.player4, cls.player5, cls.player3], [1, 2, 3, 4], '2022-01-01 11:00:00 +10:00')  # @UnusedVariable
-
-        # Save a this fixture for use in manual testing too
-        management.call_command('dumpdata', natural_foreign=True, indent=4, output="CoGs_test_data.json")
+    # Database setup is before all tests now in .runner
+    # @classmethod
+    # def setUpTestData(cls):
+    #     cls.maxDiff = 2400  # To see diffs on some of the json dicts used in tests that are longish
+    #
+    #     # Create a user (to login so we can post session add/edit requests)
+    #     User = get_user_model()
+    #     cls.user = User.objects.create_user('admin', 'noone@gmail.com', 'password')  # @UnusedVariable
+    #
+    #     # Create some basic game configurations
+    #     cls.game0 = Game.objects.create(name="NO_SCORES", individual_play=True, team_play=False, scoring=Game.ScoringOptions.NO_SCORES.value)
+    #
+    #     cls.gameIH = Game.objects.create(name="INDIVIDUAL_HIGH_SCORE_WINS", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_HIGH_SCORE_WINS.value)
+    #     cls.gameIL = Game.objects.create(name="INDIVIDUAL_LOW_SCORE_WINS", individual_play=True, team_play=False, scoring=Game.ScoringOptions.INDIVIDUAL_LOW_SCORE_WINS.value)
+    #
+    #     cls.gameTH = Game.objects.create(name="TEAM_HIGH_SCORE_WINS", individual_play=False, team_play=True, scoring=Game.ScoringOptions.TEAM_HIGH_SCORE_WINS.value)
+    #     cls.gameTL = Game.objects.create(name="TEAM_LOW_SCORE_WINS", individual_play=False, team_play=True, scoring=Game.ScoringOptions.TEAM_LOW_SCORE_WINS.value)
+    #
+    #     cls.gameTIH = Game.objects.create(name="TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_HIGH_SCORE_WINS.value)
+    #     cls.gameTIL = Game.objects.create(name="TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS", individual_play=True, team_play=True, max_players=10, scoring=Game.ScoringOptions.TEAM_AND_INDIVIDUAL_LOW_SCORE_WINS.value)
+    #
+    #     cls.all_games = [cls.game0, cls.gameIH, cls.gameIL, cls.gameTH, cls.gameTL, cls.gameTIH, cls.gameTIL]
+    #
+    #     # Create a couple of tourneys
+    #     cls.tourney1 = Tourney.objects.create(name='tourney1')
+    #     cls.tourney1.games.set([cls.game0, cls.gameIH, cls.gameIL])
+    #
+    #     cls.tourney2 = Tourney.objects.create(name='tourney2')
+    #     cls.tourney2.games.set([cls.gameTH, cls.gameTL, cls.gameTIH, cls.gameTIL])
+    #     # TODO: Add TourneyRules for each game in each tourney.
+    #     # Default Rules are created and could be configured.
+    #
+    #     # Create some Players
+    #     cls.player1 = Player.objects.create(name_nickname="Player1", name_personal="Player", name_family="One", email_address="player1@leaderboard.space")  # @UndefinedVariable
+    #     cls.player2 = Player.objects.create(name_nickname="Player2", name_personal="Player", name_family="Two", email_address="player2@leaderboard.space")  # @UndefinedVariable
+    #     cls.player3 = Player.objects.create(name_nickname="Player3", name_personal="Player", name_family="Three", email_address="player3@leaderboard.space")  # @UndefinedVariable
+    #     cls.player4 = Player.objects.create(name_nickname="Player4", name_personal="Player", name_family="Four", email_address="player4@leaderboard.space")  # @UndefinedVariable
+    #     cls.player5 = Player.objects.create(name_nickname="Player5", name_personal="Player", name_family="Five", email_address="player5@leaderboard.space")  # @UndefinedVariable
+    #     cls.player6 = Player.objects.create(name_nickname="Player6", name_personal="Player", name_family="Six", email_address="player6@leaderboard.space")  # @UndefinedVariable
+    #     cls.player7 = Player.objects.create(name_nickname="Player7", name_personal="Player", name_family="Seven", email_address="player7@leaderboard.space")  # @UndefinedVariable
+    #     cls.player8 = Player.objects.create(name_nickname="Player8", name_personal="Player", name_family="Eight", email_address="player8@leaderboard.space")  # @UndefinedVariable
+    #
+    #     cls.pgroup1_6 = [cls.player1, cls.player2, cls.player3, cls.player4, cls.player5, cls.player6]
+    #     cls.pgroup2_7 = [cls.player2, cls.player3, cls.player4, cls.player5, cls.player6, cls.player7]
+    #     cls.pgroup3_8 = [cls.player3, cls.player4, cls.player5, cls.player6, cls.player7, cls.player8]
+    #     cls.pgroup1_4 = [cls.player1, cls.player2, cls.player3, cls.player4]
+    #     cls.pgroup1_3 = [cls.player1, cls.player2, cls.player3]
+    #     cls.pgroup3_5 = [cls.player3, cls.player4, cls.player5]
+    #
+    #     # # Create a couple of teams
+    #     # team1 = Team.objects.create(name='team1')
+    #     # team1.players.set([player1, player2])
+    #     #
+    #     # team2 = Team.objects.create(name='team2')
+    #     # team2.players.set([player3, player4])
+    #
+    #     # Create a couple of locations
+    #     cls.location1 = Location.objects.create(name="Location1")
+    #     cls.location2 = Location.objects.create(name="Location2")
+    #
+    #     # Create a couple of leagues
+    #     cls.league1 = League.objects.create(name='League1', manager=cls.player1)
+    #     cls.league1.locations.set([cls.location1, cls.location2])
+    #     cls.league1.players.set(cls.pgroup1_6)
+    #     cls.league1.games.set(cls.all_games)
+    #
+    #     cls.league1 = League.objects.create(name='League2', manager=cls.player8)
+    #     cls.league1.locations.set([cls.location1, cls.location2])
+    #     cls.league1.players.set(cls.pgroup3_8)
+    #     cls.league1.games.set(cls.all_games)
+    #
+    #     # Create sessions.
+    #     # We want at least one session per game type to test various rank/score configuration submissions
+    #     cls.session00 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 00:00:00 +10:00')  # @UnusedVariable
+    #     cls.sessionIH = cls.create_session(cls.gameIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 01:00:00 +10:00')  # @UnusedVariable
+    #     cls.sessionIL = cls.create_session(cls.gameIL, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 02:00:00 +10:00')  # @UnusedVariable
+    #
+    #     # Team based sessions (2 player teams)
+    #     cls.sessionTH2 = cls.create_session(cls.gameTH, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 03:00:00 +10:00')  # @UnusedVariable
+    #     cls.sessionTL2 = cls.create_session(cls.gameTL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 04:00:00 +10:00')  # @UnusedVariable
+    #
+    #     # We want a team based session in which the team is unique (3 player sessions)
+    #     cls.sessionTH3 = cls.create_session(cls.gameTH, [[cls.player1, cls.player2, cls.player3], [cls.player4, cls.player5, cls.player6]], [1, 2], '2022-01-01 05:00:00 +10:00')  # @UnusedVariable
+    #
+    #     # Mixed Team/Individual sessions
+    #     cls.sessionTIHi = cls.create_session(cls.gameTIH, [cls.player1, cls.player2, cls.player3, cls.player4], [1, 2, 3, 4], '2022-01-01 06:00:00 +10:00')  # @UnusedVariable
+    #     cls.sessionTILt2 = cls.create_session(cls.gameTIL, [[cls.player1, cls.player2], [cls.player3, cls.player4]], [1, 2], '2022-01-01 07:00:00 +10:00')  # @UnusedVariable
+    #
+    #     # We want a series of maybe 5 sessions to test rebuild triggering on time, game, player shifts.
+    #     cls.session01 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player3, cls.player4], [4, 3, 2, 1], '2022-01-01 08:00:00 +10:00')  # @UnusedVariable
+    #     cls.session02 = cls.create_session(cls.game0, [cls.player3, cls.player4, cls.player5, cls.player6], [2, 3, 1, 4], '2022-01-01 09:00:00 +10:00')  # @UnusedVariable
+    #     cls.session03 = cls.create_session(cls.game0, [cls.player1, cls.player2, cls.player5, cls.player6], [1, 3, 4, 2], '2022-01-01 10:00:00 +10:00')  # @UnusedVariable
+    #     cls.session04 = cls.create_session(cls.game0, [cls.player1, cls.player4, cls.player5, cls.player3], [1, 2, 3, 4], '2022-01-01 11:00:00 +10:00')  # @UnusedVariable
+    #
+    #     # Save a this fixture for use in manual testing too
+    #     management.call_command('dumpdata', natural_foreign=True, indent=4, output="CoGs_test_data.json")
 
     def test_teams(self):
         '''
@@ -348,18 +411,23 @@ class SessionTestCase(TestCase):
         Teams have a get_create_or_edit class method that is responsible for finding a team given a set of players
         and optionally rename it or chaging it splayer set. This is tested here.
         '''
+        if self.verbosity > 1: print("\n\tTeam Creation and Editing Sub-tests:")
+
+        A = self.__test_case_attributes__
+        self.login_as(A.user_admin)
 
         # Collect existing teams
         existing_team_ids = set([t.pk for t in Team.objects.all()])
 
-        # We need some teams existing already (they should have been bult in setUpTestData.
+        # We need some teams existing already (they should have been built in the test database before we get here).
         self.assertTrue(len(existing_team_ids) > 0)
 
         ##################################################################
         # CREATING NEW TEAM
 
         # Create a new team:
-        players = self.pgroup1_6  # 6 members
+        if self.verbosity > 1: print("\t\tA new team with no name.")
+        players = A.pgroup1_6  # 6 members
         team = Team.get_create_or_edit(players, debug=True)
         self.assertNotIn(team.id, existing_team_ids)
         self.assertGreater(team.id, max(existing_team_ids))
@@ -367,7 +435,8 @@ class SessionTestCase(TestCase):
         self.assertEqual(set(team.players.all()), set(players))
 
         # Create a new one with a name:
-        players = self.pgroup1_4  # 4 members
+        if self.verbosity > 1: print("\t\tA new team with a name.")
+        players = A.pgroup1_4  # 4 members
         name = "Fantastic Four"
         team = Team.get_create_or_edit(players, name=name, debug=True)
         self.assertNotIn(team.id, existing_team_ids)
@@ -382,6 +451,7 @@ class SessionTestCase(TestCase):
         # GET EXISTING TEAM
 
         # Get an existing team:
+        if self.verbosity > 1: print("\t\tGet an existing team.")
         team = Team.objects.first()
         players = team.players.all()
         team_id = team.pk
@@ -392,7 +462,8 @@ class SessionTestCase(TestCase):
         self.assertEqual(set(team.players.all()), set(players))
 
         # Get an existing one and rename it
-        players = self.pgroup1_4  # 4 members @UndefinedVariable
+        if self.verbosity > 1: print("\t\tGet an existing team and rename it.")
+        players = A.pgroup1_4  # 4 members @UndefinedVariable
         name = "Fabulous Four"
         team = Team.get_create_or_edit(players, name=name, debug=True)
         self.assertIn(team.id, existing_team_ids)
@@ -400,18 +471,20 @@ class SessionTestCase(TestCase):
         self.assertEqual(set(team.players.all()), set(players))
 
         ##################################################################
-        # EDIT EXITSING TEAM (i.e pass "edit" parameter)
+        # EDIT EXISTING TEAM (i.e pass "edit" parameter)
 
         ##################################################################
         # WITH NO RANK/SESSION REFERENCES
 
         #################################################
         # Assign players WITH NO existing team!
+        if self.verbosity > 1: print("\t\tCreate an unreferenced team of players that are in no existing teams. Only team ID in edit.")
+
         # Get the team
         team = Team.objects.filter(ranks__session=None).first()
 
         # And assign new players
-        players = self.pgroup3_5
+        players = A.pgroup3_5
 
         # Make sure they are new
         old_players = list(team.players.all())
@@ -438,11 +511,13 @@ class SessionTestCase(TestCase):
 
         #################################################
         # Assign players that ARE IN an existing team.
+        if self.verbosity > 1: print("\t\tCreate an unreferenced team of players that are in existing teams. Only team ID in edit.")
+
         # Get the team
         team = Team.objects.filter(ranks__session=None).first()
 
         # And assign new players
-        players = self.pgroup1_3
+        players = A.pgroup1_3
 
         # Make sure they are new
         old_players = list(team.players.all())
@@ -478,7 +553,9 @@ class SessionTestCase(TestCase):
 
         #################################################
         # Assign players WITH NO existing team! Don't provide the rank/session reference
-        session = self.sessionTH3
+        if self.verbosity > 1: print("\t\tEdit a single referenced team of players that are in no existing teams. Only team ID in edit.")
+
+        session = A.sessionTH3
 
         # Get a team from that session
         session_teams = list(session.teams)
@@ -491,7 +568,7 @@ class SessionTestCase(TestCase):
         self.assertEqual(team.ranks.all().count(), 1)
 
         # And assign new players
-        players = self.pgroup1_6
+        players = A.pgroup1_6
 
         # Make sure they are new
         old_players = list(team.players.all())
@@ -506,7 +583,7 @@ class SessionTestCase(TestCase):
         old_team = team
         team = Team.get_create_or_edit(players, name=name, edit=(old_team.id, None, None), debug=True)
 
-        # As there was only one reference to the team but we did not provide a rank or team ID
+        # As there was only one reference to the team but we did not provide a rank or session ID
         # We assumed that reference to provide the unsupplied rank and session ID so reused the
         # old team.
 
@@ -518,7 +595,7 @@ class SessionTestCase(TestCase):
         self.assertEqual(team.name, name)
         self.assertEqual(set(team.players.all()), set(players))
 
-        # The old player set by defintion cannot have a team now because its team was repurposed.
+        # The old player set by definition cannot have a team now because its team was repurposed.
         self.assertFalse(Team.exists(old_players))
 
         # The rank should still have this team
@@ -526,7 +603,9 @@ class SessionTestCase(TestCase):
 
         #################################################
         # Assign players WITH NO existing team! Do provide the rank/session reference
-        session = self.sessionTH3
+        if self.verbosity > 1: print("\t\tEdit a single referenced team of players that are in no existing teams. Team, Rank and Session IDs in edit.")
+
+        session = A.sessionTH3
 
         # Get a team from that session
         session_teams = list(session.teams)
@@ -539,7 +618,7 @@ class SessionTestCase(TestCase):
         self.assertEqual(team.ranks.all().count(), 1)
 
         # Choose new players
-        players = self.pgroup3_8
+        players = A.pgroup3_8
 
         # Confirm these players differ from the existing team players
         old_players = list(team.players.all())
@@ -554,7 +633,7 @@ class SessionTestCase(TestCase):
         old_team = team
         team = Team.get_create_or_edit(players, name=name, edit=(old_team.id, rank.id, session.id), debug=True)
 
-        # As there was only one reference to the team but we provided rank and sesison IDs then
+        # As there was only one reference to the team but we provided rank and session IDs then
         # the relationships are checked and we proceed as before (whem they were inferred)
 
         # The old team (being edited) should be returned
@@ -573,7 +652,9 @@ class SessionTestCase(TestCase):
 
         #################################################
         # Assign players THAT HAVE an existing team! Do provide the rank/session reference
-        session = self.sessionTH3
+        if self.verbosity > 1: print("\t\tEdit a single referenced team of players that are in existing teams. Team, Rank and Session IDs in edit.")
+
+        session = A.sessionTH3
 
         # Get a team from that session
         session_teams = list(session.teams)
@@ -586,7 +667,7 @@ class SessionTestCase(TestCase):
         self.assertEqual(team.ranks.all().count(), 1)
 
         # Choose new players
-        players = self.pgroup1_4
+        players = A.pgroup1_4
 
         # Confirm these players differ from the existing team players
         old_players = list(team.players.all())
@@ -623,9 +704,10 @@ class SessionTestCase(TestCase):
         #################################################
         # Assign players THAT HAVE an existing team! Do provide the rank/session reference
         #
-        # We expect the old team NOT to be killed but the first team taking its place
-        # in the edit session.
-        session = self.sessionTH2
+        # We expect the old team NOT to be killed but the first team taking its place in the edit session.
+        if self.verbosity > 1: print("\t\tEdit a multiple referenced team of players that are in existing teams. Team, Rank and Session IDs in edit.")
+
+        session = A.sessionTH2
 
         # Get a team from that session
         session_teams = list(session.teams)
@@ -638,7 +720,7 @@ class SessionTestCase(TestCase):
         self.assertGreater(team.ranks.all().count(), 1)
 
         # Choose new players
-        players = self.pgroup1_4
+        players = A.pgroup1_4
 
         # Confirm these players differ from the existing team players
         old_players = list(team.players.all())
@@ -712,7 +794,8 @@ class SessionTestCase(TestCase):
                     'Performance-0-player': str(player1),
                     'Performance-0-partial_play_weighting': '1',
                     'Performance-1-player': str(player2),
-                    'Performance-1-partial_play_weighting': '1'
+                    'Performance-1-partial_play_weighting': '1',
+                    'notes': 'my note'
                     }
 
         form_data.update(form_data_mods)
@@ -739,14 +822,18 @@ class SessionTestCase(TestCase):
                   "performances": [form_data.get(f'Performance-{i}-id', MV) for i in range(int(form_data['Performance-TOTAL_FORMS']))],
                   "pscores": [MV, MV],
                   "performers": [player1, player2],
-                  "weights": [1, 1]
+                  "weights": [1, 1],
+                  "notes": 'my note'
                  }
 
-        try:
-            self.assertEqual(form_dict, expect)
-        except:
-            breakpoint()
-            pass
+        # try:
+        #     self.assertEqual(form_dict, expect)
+        # except:
+        #     dict_diff(form_dict, expect)
+        #     breakpoint()
+        #     pass
+
+        self.assertEqual(form_dict, expect)
 
         ##################################################################
         # POST FORM
@@ -805,8 +892,16 @@ class SessionTestCase(TestCase):
                              else [form_data[f'Performance-{i}-id'] for i in range(int(form_data['Performance-TOTAL_FORMS']))],
                   "pscores": [MV, MV],
                   "performers": [player1, player2],
-                  "weights": [1.0, 1.0]
+                  "weights": [1.0, 1.0],
+                  "notes": 'my note'
                  }
+
+        # try:
+        #     self.assertEqual(object_dict, expect)
+        # except:
+        #     dict_diff(object_dict, expect)
+        #     breakpoint()
+        #     pass
 
         self.assertEqual(object_dict, expect)
 
@@ -842,7 +937,8 @@ class SessionTestCase(TestCase):
                   'pscores': [MV, MV],
                   'performers': [player1, player2],
                   'weights': [1.0, 1.0],
-                  'changes': MV  # Added below
+                  'changes': MV,  # Added below
+                  "notes": 'my note'
                 }
 
         # The add operation should note a change from missing rank and performance IDs
@@ -857,6 +953,13 @@ class SessionTestCase(TestCase):
             expect['ranks'] = [r.pk for r in session.ranks.all()]
             expect['performances'] = [p.pk for p in session.performances.all()]
             expect['changes'] = ('changed', 'id')
+
+        try:
+            self.assertEqual(delta, expect)
+        except:
+            dict_diff(delta, expect)
+            breakpoint()
+            pass
 
         self.assertEqual(delta, expect)
 
@@ -924,6 +1027,8 @@ class SessionTestCase(TestCase):
         shows nothing on a subsequent resubmission.
         '''
 
+        if self.verbosity > 1: print("\n\tSession Dictionary Sub-tests:")
+
         self.client.login(username='admin', password='password')
 
         ###########################################################################################################################3
@@ -950,6 +1055,7 @@ class SessionTestCase(TestCase):
                     **{f'Rank-{i}-id': rid for i, rid in enumerate(rank_ids)},
                     **{f'Performance-{i}-id': pid for i, pid in enumerate(performance_ids)}}
 
+        if self.verbosity > 1: print("\t\tsession edit: Ranks and performances changed.")
         delta = self.session_dict_test_scenario("edit", form_mod)
 
         ###########################################################################################################################3
@@ -974,6 +1080,7 @@ class SessionTestCase(TestCase):
                          'league': str(League.objects.get(name="League2").pk),
                          'location': str(Location.objects.get(name="Location1").pk)})
 
+        if self.verbosity > 1: print("\t\tsession edit: Time, League and Location changed.")
         delta = self.session_dict_test_scenario("edit", form_mod)
 
         ###########################################################################################################################3
@@ -1029,17 +1136,22 @@ class SessionTestCase(TestCase):
             players = [i for i, _ in enumerate(pscores)]
             source_session = build_session_dict(scoring, team_play, players, rankings, rscores, pscores)
             reconc_session = deepcopy(source_session)
+
+            # Now call the rank reconciler in Leaderboards.views.pre_handlers
+            # THis function updates the contents of reconc_session
             reconcile_ranks(form, reconc_session, permit_missing_scores)
+            
             diff_session = {}
             for k in source_session:
                 if reconc_session[k] != source_session[k]:
+
                     diff_session[k] = (source_session[k], reconc_session[k])
             return diff_session
 
         class DummyForm():
             '''
             A basic dummy form that can receive errors for testing functions that take a form as an
-            argument and ad errors to it. Implemented the add_error method only.
+            argument and add errors to it. Implements the add_error method only.
             '''
             errors = []
 
@@ -1051,28 +1163,35 @@ class SessionTestCase(TestCase):
 
         form = DummyForm()
 
+        if self.verbosity > 1: print("\n\tRank Reconciliation Sub-tests:")
+
         #########################################################################################################
-        # NO SCORES
+        # NO SCORES  (MV = Missing Value)
+        if self.verbosity > 1: print("\t\tNon-scoring game: No scores provided.")
         diff = run_test(form, "NO_SCORES", False, [2, 1], [MV, MV], [MV, MV])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tNon-scoring game: Ranks and different rank and performance scores provided.")
         diff = run_test(form, "NO_SCORES", False, [2, 1], [10, 20], [100, 200])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tNon-scoring game: No ranks, but different rank and performance scores provided.")
         diff = run_test(form, "NO_SCORES", False, [MV, MV], [10, 20], [100, 200])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tNon-scoring game: Illegal ranks, but different rank and performance scores provided.")
         diff = run_test(form, "NO_SCORES", False, [-5, 2], [10, 20], [100, 200])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tNon-scoring game: Ranks, but different rank and performance scores provided (negative score).")
         diff = run_test(form, "NO_SCORES", False, [1, 2], [-10, 20], [100, 200])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
@@ -1080,56 +1199,67 @@ class SessionTestCase(TestCase):
 
         #########################################################################################################
         # INDIVIDUAL_HIGH_SCORE_WINS
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Ranks, but no scores provided (and not permitted).")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [2, 1], [MV, MV], [MV, MV])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [(None, 'This is a scoring game. Please enter scores')])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Ranks, but no scores provided (and permitted).")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [2, 1], [MV, MV], [MV, MV], True)
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Ranks, and agreeing Rank scores provided.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [2, 1], [10, 20], [MV, MV])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Ranks, and conflicting Rank scores provided.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [2, 1], [20, 10], [MV, MV])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [(None, 'Submitted rankings and scores do not agree.')])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Only Rank scores provided.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [MV, MV], [20, 10], [MV, MV])
         self.assertEqual(diff, {'rankings': ([MV, MV], [1, 2])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Only Rank scores provided - with tie.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [MV, MV, MV, MV], [20, 10, 5, 10], [MV, MV, MV, MV])
         self.assertEqual(diff, {'rankings': ([MV, MV, MV, MV], [1, 2, 4, 2])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Only Rank scores provided - with tie and team play.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", True, [MV, MV, MV, MV], [20, 10, 5, 10], [MV, MV, MV, MV])
         self.assertEqual(diff, {})
         self.assertEqual(form.errors, [(None, 'This is a game that does not score teams and so team play sessions can not be recorded. Likely a form or game configuration error.')])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Only Rank scores provided - with 3-way tie.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10], [MV, MV, MV, MV, MV, MV])
         self.assertEqual(diff, {'rankings': ([MV, MV, MV, MV, MV, MV], [1, 2, 5, 2, 6, 2])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Only Rank scores provided - with 3-way tie.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [MV, MV, MV, MV, MV, MV], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([MV, MV, MV, MV, MV, MV], [1, 2, 5, 2, 6, 2]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Some Ranks and all Performance scores provided - with tie and rank/score agreement.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [1, 2, MV, MV, 6, 2], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([1, 2, MV, MV, 6, 2], [1, 2, 5, 2, 6, 2]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual high-scoring game: Some Ranks and all Performance scores provided - with tie and score/rank conflict.")
         diff = run_test(form, "INDIVIDUAL_HIGH_SCORE_WINS", False, [1, 2, MV, MV, 3, 2], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([1, 2, MV, MV, 3, 2], [1, 2, 5, 2, 3, 2]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [(None, 'Submitted rankings and scores do not agree.')])
@@ -1137,16 +1267,19 @@ class SessionTestCase(TestCase):
 
         #########################################################################################################
         # INDIVIDUAL_LOW_SCORE_WINS
+        if self.verbosity > 1: print("\t\tIndividual low-scoring game: Only Performance scores provided - with 3-way tie.")
         diff = run_test(form, "INDIVIDUAL_LOW_SCORE_WINS", False, [MV, MV, MV, MV, MV, MV], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([MV, MV, MV, MV, MV, MV], [6, 3, 2, 3, 1, 3]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual low-scoring game: All Performance scores provided - with 3-way tie and score/ranking agreement.")
         diff = run_test(form, "INDIVIDUAL_LOW_SCORE_WINS", False, [MV, MV, 2, 3, MV, MV], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([MV, MV, 2, 3, MV, MV], [6, 3, 2, 3, 1, 3]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [])
         form.reset()
 
+        if self.verbosity > 1: print("\t\tIndividual low-scoring game: All Performance scores provided - with 3-way tie and score/ranking conflict.")
         diff = run_test(form, "INDIVIDUAL_LOW_SCORE_WINS", False, [MV, MV, 3, 3, MV, MV], [MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])
         self.assertEqual(diff, {'rankings': ([MV, MV, 3, 3, MV, MV], [6, 3, 3, 3, 1, 3]), 'rscores': ([MV, MV, MV, MV, MV, MV], [20, 10, 5, 10, 2, 10])})
         self.assertEqual(form.errors, [(None, 'Submitted rankings and scores do not agree.')])
@@ -1307,6 +1440,9 @@ class SessionTestCase(TestCase):
         '''
         Testing the form submissions API.
         '''
+        
+        if self.verbosity > 1: print("\n\tSession Submission Sub-tests:")
+        
         # So we can post session adds and edits
         self.client.login(username='admin', password='password')
 
@@ -1315,6 +1451,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A non scoring game
+        if self.verbosity > 1: print("\t\tA non-scoring game.")
         session = self.session_test_scenario(("add",),
                                              "NO_SCORES",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1326,6 +1463,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A scoring game without scores
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with ranks but no scores.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1334,6 +1472,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with scores and no ranks
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with rank scores and no ranks.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1346,6 +1485,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A scoring game with agreeing scores
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with rank scores and ranks agreeing.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1354,6 +1494,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with conflicting scores and ranks
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with rank scores and ranks conflicting.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1363,6 +1504,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with a tie
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with scores and a tie.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1377,6 +1519,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A scoring game with ranks as tie breaks
+        if self.verbosity > 1: print("\t\tAn individual high scoring game with scores and a tie and tie-breaking ranks.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_HIGH_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1394,6 +1537,7 @@ class SessionTestCase(TestCase):
         # INDIVIDUAL_LOW _SCORE_WINS
         # _________________________________________________________________
         # A scoring game without scores
+        if self.verbosity > 1: print("\t\tAn individual low scoring game with ranks but no scores.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_LOW_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1402,6 +1546,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with scores and no ranks
+        if self.verbosity > 1: print("\t\tAn individual low scoring game with rank scores but no ranks.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_LOW_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1412,6 +1557,7 @@ class SessionTestCase(TestCase):
         self.assertEqual(ranked_players, ["Player3", "Player2", "Player1", "Player4"])
         # _________________________________________________________________
         # A scoring game with agreeing scores
+        if self.verbosity > 1: print("\t\tAn individual low scoring game with rank scores and ranks agreeing.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_LOW_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1420,6 +1566,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with conflicting scores and ranks
+        if self.verbosity > 1: print("\t\tAn individual low scoring game with rank scores and ranks conflicting.")
         session = self.session_test_scenario(("add",),
                                              "INDIVIDUAL_LOW_SCORE_WINS",
                                              ["Player1", "Player2", "Player3", "Player4"],
@@ -1433,6 +1580,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A scoring game without scores
+        if self.verbosity > 1: print("\t\tA team high scoring game with ranks and no scores.")
         session = self.session_test_scenario(("add",),
                                              "TEAM_HIGH_SCORE_WINS",
                                              [["Player1", "Player2"], ["Player3", "Player4"]],
@@ -1441,6 +1589,7 @@ class SessionTestCase(TestCase):
                                             )
         # _________________________________________________________________
         # A scoring game with rscores and no ranks
+        if self.verbosity > 1: print("\t\tA team high scoring game with rank scores and no ranks.")
         session = self.session_test_scenario(("add",),
                                              "TEAM_HIGH_SCORE_WINS",
                                              [["Player1", "Player2"], ["Player3", "Player4"]],
@@ -1465,6 +1614,7 @@ class SessionTestCase(TestCase):
 
         # _________________________________________________________________
         # A scoring game with pscores and no rscores or ranks
+        if self.verbosity > 1: print("\t\tA team high scoring game with performance scores and no ranks.")
         session = self.session_test_scenario(("add",),
                                              "TEAM_HIGH_SCORE_WINS",
                                              [["Player1", "Player2"], ["Player3", "Player4"]],

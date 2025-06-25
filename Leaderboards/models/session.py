@@ -1,4 +1,4 @@
-from . import APP, MIN_TIME_DELTA, FLOAT_TOLERANCE, MISSING_VALUE, TrueskillSettings
+from . import APP, MIN_TIME_DELTA, FLOAT_TOLERANCE, MISSING_VALUE, NO_SCORE, TrueskillSettings
 
 from ..leaderboards.enums import LB_PLAYER_LIST_STYLE, LB_STRUCTURE
 from ..leaderboards.player import player_rankings
@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.utils.formats import localize
 from django.utils.timezone import localtime
 from django.utils.safestring import mark_safe
-from django.utils.functional import cached_property
+#from django.utils.functional import cached_property
 from django.core.exceptions import ValidationError
 from django.core.serializers.json import DjangoJSONEncoder
 
@@ -27,21 +27,22 @@ from django_rich_views.model import TimeZoneMixIn, NotesMixIn, field_render, lin
 from django_rich_views.util import AssertLog
 from django_rich_views.html import NEVER
 from django_rich_views.options import flt, osf
-from django_rich_views.datetime import safe_tz, time_str, make_aware
+from django_rich_views.datetime import safe_tz, time_str, make_aware, equal, normalize_tz_for_db
 from django_rich_views.decorators import property_method
 
 from timezone_field import TimeZoneField
 
 from typing import Union
 from dateutil import parser
-from datetime import datetime, timedelta
+from datetime import datetime
 from collections import OrderedDict
 
 from math import isclose
 
 import trueskill
 import json
-import re
+
+from django_from import FromMixIn
 
 from Site.logutils import log
 
@@ -57,7 +58,7 @@ def game_duration(session):
     return session.game.expected_play_time
 
 
-class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
+class Session(AdminModel, TimeZoneMixIn, NotesMixIn, FromMixIn):
     '''
     The record, with results (Ranks), of a particular Game being played competitively.
     '''
@@ -66,6 +67,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     game = models.ForeignKey('Game', verbose_name='Game', related_name='sessions', null=True, on_delete=models.SET_NULL)  # If the game is deleted keep the session.
 
     # Note: date_time initial has an inherited delta below (inherit_fields and inherit_time_delta)
+    # datetime is always stored in the database as UTC (Django and Postgres ensure that) so we store the timezone seperately.
     date_time = models.DateTimeField('Time', default=timezone.now)
     date_time_tz = TimeZoneField('Timezone', default=settings.TIME_ZONE, editable=False)
 
@@ -100,10 +102,23 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     filter_options = ['date_time__gt', 'date_time__lt', 'game']
     order_options = ['date_time', 'game', 'league']
 
-    # Two equivalent ways of specifying the related forms that django-generic-view-extensions supports:
+    # Two equivalent ways of specifying the related forms that django-rich-views supports:
     # Am testing the new simpler way now leaving it in place for a while to see if any issues arise.
+    #
+    # NOTE: We must save ranks first (so they should precede Performances)
+    #       That is so that the victor is know when the performance cleaner
+    #        updates the play_number and victory_count
     # intrinsic_relations = ["Rank.session", "Performance.session"]  # When adding a session, add the related Rank and Performance objects
     intrinsic_relations = ["ranks", "performances"]  # When adding a session, add the related Rank and Performance objects
+
+    # TODO: here's an idea:
+    # a structure to build the forms in, so that form.as_table (and friends) can take an arg, an int being
+    # which group in the list below if defined. That way, we can request a split of this models form fields so
+    # that related forms can be inserted as desired between these groups.
+    # Currently the template loads form.as_table then the rankings template. But I aim to
+    # have the notes for example after the ranking template.
+    # An example:
+    # rich_forms = [['game', 'date_time', 'league', 'location', 'team_play'],['notes']]
 
     # Specify which fields to inherit from entry to entry when creating a string of objects
     inherit_fields = ["date_time", "league", "location", "game"]
@@ -506,13 +521,13 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         '''
         Returns a 2-tuple of:
 
-        The first entry: either:
-            a tuple of rankers (Players, Teams, or tuple of same for ties)
-            a tuple of ranks (Ranks)
-        in the actual recorded order as the first element.
-
-        The second entry: the probability associated with that observation based on skills of
-        players in the session.
+            The first entry: either:
+                a tuple of rankers (Players, Teams, or tuple of same for ties)
+                a tuple of ranks (Ranks)
+            in the actual recorded order as the first element.
+    
+            The second entry: the probability associated with that observation based on skills of
+            players in the session.
 
         :param as_ranks: return Ranks, else Players/Teams
         '''
@@ -523,11 +538,15 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     @property_method
     def predicted_ranking(self, with_performances=False) -> tuple:
         '''
-        Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the predicted
-        order (based on skills entering the session) as the first element in a tuple.
-
-        The second is the probability associated with that prediction based on skills of
-        players in the session.
+        Returns a 2-tuple of: 
+        
+            rankers (Players, teams, or tuple of same for ties) in the predicted
+            order (based on skills entering the session) as the first element in a tuple.
+    
+            and 
+            
+            the probability associated with that prediction based on skills of
+            players in the session.
 
         :param with_performances: If True, returns a 3-tuple including the a tuple of expected
                                   performances as the last item, with a 1 to 1 mapping with the
@@ -540,11 +559,15 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     @property_method
     def predicted_ranking_after(self, with_performances=False) -> tuple:
         '''
-        Returns a tuple of rankers (Players, teams, or tuple of same for ties) in the predicted
-        order (using skills updated on the basis of the actual results) as the first element in a tuple.
-
-        The second is the probability associated with that prediction based on skills of
-        players in the session.
+        Returns a 2-tuple of: 
+        
+            rankers (Players, teams, or tuple of same for ties) in the predicted
+            order (based on skills entering the session) as the first element in a tuple.
+    
+            and 
+            
+            the probability associated with that prediction based on skills of
+            players in the session.
 
         :param with_performances: If True, returns a 3-tuple including the a tuple of expected
                                   performances as the last item, with a 1 to 1 mapping with the
@@ -723,6 +746,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             html += "<li><table>"
             html += f"<tr><th>pk:</th><td>{rank.pk}</td></tr>"
             html += f"<tr><th>rank:</th><td>{rank.rank}</td></tr>"
+            #if self.game.scores_teams or self.game.scores_players:
+            html += f"<tr><th>score:</th><td>{rank.score}</td></tr>"
             html += f"<tr><th>player:</th><td>{rank.player.pk if rank.player else None}</td><td>{rank.player.full_name if rank.player else None}</td></tr>"
             html += f"<tr><th>team:</th><td>{rank.team.pk if rank.team else None}</td><td>{rank.team.name if rank.team else ''}</td></tr>"
             if (rank.team):
@@ -736,6 +761,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             html += "<li><table>"
             html += f"<tr><th>pk:</th><td>{performance.pk}</td></tr>"
             html += f"<tr><th>player:</th><td>{performance.player.pk}</td><td>{performance.player.full_name}</td></tr>"
+            #if self.game.scores_players:
+            html += f"<tr><th>score:</th><td>{performance.score}</td></tr>"
             html += f"<tr><th>weight:</th><td>{performance.partial_play_weighting}</td></tr>"
             html += f"<tr><th>play_number:</th><td>{performance.play_number}</td>"
             html += f"<th>victory_count:</th><td>{performance.victory_count}</td></tr>"
@@ -826,8 +853,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             # Session metadata
             0 session.pk,
             1 session.date_time (in local time),
-            2 session.game.play_counts()['total'],
-            3 session.game.play_counts()['sessions'],
+            2 session.game.play_stats()['total'],
+            3 session.game.play_stats()['sessions'],
 
             # Player details
             4 session.players() (as a list of pks),
@@ -844,7 +871,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 They must reflect what is produced here.
 
         :param leaderboard:
-        :param leagues:      self.leaderboard argument passed through
+        :param leagues:      self.leaderboard argument passed through + play counts context
         :param asat:         self.leaderboard argument passed through
         :param names:        self.leaderboard argument passed through
         :param style:        self.leaderboard argument passed through
@@ -857,7 +884,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             asat = self.date_time
 
         # Get the play counts as at asat
-        counts = self.game.play_counts(asat=asat)
+        counts = self.game.play_stats(leagues=leagues, asat=asat)
 
         # Two standard use cases exist:
         #     prep for render:    name_style is "flexi". The client can adjust links, name styles and performance displays on the fly without a server round trip
@@ -900,7 +927,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 leaderboard)                            # 8
 
     @property_method
-    def leaderboard_snapshot(self, style=LB_PLAYER_LIST_STYLE.simple) -> tuple:
+    def leaderboard_snapshot(self, style=LB_PLAYER_LIST_STYLE.simple, leagues=[]) -> tuple:
         '''
         Prepares a leaderboard snapshot for passing to a view for rendering.
 
@@ -909,12 +936,15 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         That is: the leaderboard in this game as it stood just after this session was played.
 
         Such snapshots are often delivered to the client inside a game wrapper as well.
+
+        :param style: an LB_PLAYER_LIST_STYLE to use.
+        :param leagues: The snapshot wrapper play counts are global or restrecited to leagues listed
         '''
         if settings.DEBUG:
             log.debug(f"\t\t\tBuilding leaderboard snapshot for {self.pk} with style '{style.name}'")
 
         leaderboard = self.leaderboard_after(style=style)  # returns LB_STRUCTURE.player_list
-        snapshot = self.wrapped_leaderboard(leaderboard)
+        snapshot = self.wrapped_leaderboard(leaderboard, leagues=leagues)
 
         return snapshot
 
@@ -956,7 +986,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
     @property
     def player_ranking_impact(self) -> dict:
         '''
-        Returns a dict keyed on player (whose ratings were affected by by this rebuild) whose value is their rank change on the leaderboard.
+        Returns a dict keyed on player (whose rankings were affected by by this session) 
+        whose value is their rank change on the leaderboard.
         '''
         Player = apps.get_model(APP, "Player")
 
@@ -976,7 +1007,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         return deltas
 
-    def _html_rankers_ol(self, ordered_ranks_or_rankers, expected_performance, name_style, ol_style="margin-left: 8ch;"):
+    def _html_rankers_ol(self, ordered_ranks_or_rankers, expected_performance, name_style, ol_style="margin-left: 8ch;") -> tuple:
         '''
         Internal OL factory for list of rankers on a session.
 
@@ -988,7 +1019,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         :param ordered_ranks_or_rankers: An ordered list of Player/Team objects (or lists of them for ties)
                                          or Ranks objects (or lists of them for ties).
-        :param expected_performance:     Name of Rank property that supplies a Predicted Performance summary as a (mu, sigma) tuple, or a (mu, sigma) tuple
+        :param expected_performance:     Name of Rank property that supplies a Predicted Performance summary as a (mu, sigma) tuple, 
+                                         or a (mu, sigma) tuple
         :param name_style:               The style in which to render names
         :param ol_style:                 A style to apply to the OL if any
         '''
@@ -1032,29 +1064,28 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             if isinstance(R_or_r, (list, tuple)):
                 # R_or_r is a list of ranks, players or teams who tied (co-rankers)
                 # Each one is a rank with score or not
-                rankers_scores_perfs.append([(co_ranker.ranker,
-                                              co_ranker.score,
-                                              expected_performance_val(i, co_ranker, expected_performance),
-                                              ) if isinstance(co_ranker, Rank) else (
-                                                  co_ranker,
-                                                  None,
-                                                  expected_performance_val(i, co_ranker, expected_performance)) for co_ranker in R_or_r])
+                epvs = [expected_performance_val(i, co_ranker, expected_performance) for co_ranker in R_or_r]
+                
+                # i indexes into ordered_ranks_or_rankers and is the ranking so to speak
+                # ri indexes into one element of that which is the list of players tied or team embers at that rank
+                rsp = [(co_ranker.ranker, co_ranker.score, epvs[ri]) 
+                       if isinstance(co_ranker, Rank) 
+                       else (co_ranker, None, epvs[ri]) 
+                       for ri, co_ranker in enumerate(R_or_r)]
             else:
-                # R_or_r is a single rank, player or team who tied (co-rankers)
+                # R_or_r is a single rank, player or team or group who tied (co-rankers)
                 # For consistency with tied ranks, create a one entry list (tied with self ;-).
                 # For rendering a string at this rank, that is all we need
-                rankers_scores_perfs.append([(R_or_r.ranker,
-                                              R_or_r.score,
-                                              expected_performance_val(i, R_or_r, expected_performance),
-                                              ) if isinstance(R_or_r, Rank) else (
-                                                  R_or_r,
-                                                  None,
-                                                  expected_performance_val(i, R_or_r, expected_performance))])
+                epv = expected_performance_val(i, R_or_r, expected_performance)
+                rsp = [(R_or_r.ranker, R_or_r.score, epv) if isinstance(R_or_r, Rank) else (R_or_r, None, epv)]
+                
+            rankers_scores_perfs.append(rsp)
 
         rankers = OrderedDict()
+        performer = 0 # We count performer so they can get unique annotation templates
         for row, co_rankers in enumerate(rankers_scores_perfs):
             co_rankers_html = []
-            for (ranker, score, eperf) in co_rankers:
+            for (ranker, score, expected_performance) in co_rankers:
                 # We support two levels of ranker annotation in these lists
                 #
                 # Basic - or "anno"
@@ -1065,18 +1096,18 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 # If the ranker is a team the game bmust support team scoring
                 # If the ranker is a player it must supprot individual scoring
                 # This should never happen really.
-                if not ((isinstance(ranker, Team) and "TEAM" in scoring) or (isinstance(ranker, Player) and "INDIVIDUAL" in scoring)):
+                if not ((isinstance(ranker, Team) and self.game.scores_teams) or (isinstance(ranker, Player) and self.game.scores_players)):
                     score = None
 
                 tt = ("<div class='tooltip'><span class='tooltiptext' style='width: 600%;'>", "</span>", "</div>")
-                if score and eperf:
+                if self.game.uses_scores and expected_performance:
                     anno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
-                    peranno = f" ({tt[0]}Score{delim}Expected performance (teeth){tt[1]}{score}{delim}{eperf:.1f}{tt[2]})"
-                elif score:
+                    peranno = f" ({tt[0]}Score{delim}Expected performance (teeth){tt[1]}{score}{delim}{expected_performance:.1f}{tt[2]})"
+                elif self.game.uses_scores:
                     anno = peranno = f" ({tt[0]}Score{tt[1]}{score}{tt[2]})"
-                elif eperf:
+                elif expected_performance:
                     anno = ""
-                    peranno = f" ({tt[0]}Expected performance (teeth){tt[1]}{eperf:.1f}{tt[2]})"
+                    peranno = f" ({tt[0]}Expected performance (teeth){tt[1]}{expected_performance:.1f}{tt[2]})"
                 else:
                     anno = peranno = None
 
@@ -1086,7 +1117,9 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 if isinstance(ranker, Team):
                     # TODO: confirm that team rendering does not leak and private member data
                     # Teams we can render with the default verbose format (that lists the members as well as the team name if available)
-                    ranker_str = field_render(ranker, flt.template, osf.verbose) + f"{{anno.{row}}}"
+                    # TODO: Consider if a team can be a performer in the annotation sense. To test we'd
+                    # Need a team based gam's results to check.  
+                    performer_str = field_render(ranker, flt.template, osf.verbose) + f"{{anno.{performer}}}"
                     BGG = None # No BGGname for a team
                     data.append((PK, BGG, anno, peranno)) # TODO check the peranno is in fact the expected team performance! it probably isn't.
 
@@ -1094,13 +1127,15 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                     # Render the field first as a template which has:
                     # {Player.PK} in place of the player's name, and a
                     # {link.klass.model.pk}  .. {link_end} wrapper around anything that needs a link
-                    ranker_str = field_render(ranker , flt.template, osf.template) + f"{{anno.{row}}}"
+                    performer_str = field_render(ranker , flt.template, osf.template) + f"{{anno.{performer}}}"
 
                     # Add a (PK, BGGid) tuple to the data list that provides a PK to BGGid map for a the leaderboard template view
                     BGG = None if (ranker.BGGname is None or len(ranker.BGGname) == 0 or ranker.BGGname.isspace()) else ranker.BGGname
                     data.append((PK, BGG, anno, peranno))
+                    
+                performer += 1
 
-                co_rankers_html.append(ranker_str)
+                co_rankers_html.append(performer_str)
 
             conjuntion = "<BR>" if len(co_rankers_html) > 3 else ", "
             rankers[row] = conjuntion.join(co_rankers_html)
@@ -1407,7 +1442,8 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         sequential:  1, 2, 2, 3, 4, 5
         tie gapped:  1, 2, 2, 4, 5, 6
 
-        This cleaner will create tie gapped ranks.
+        This cleaner will create tie gapped ranks. Sequential ranking isn't supported.
+        We want in the example above for the fourth player in sorted rnak order to have rank 4 not 3!
         '''
         if settings.DEBUG:
             # Grab a pre snapshot
@@ -1719,7 +1755,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         else:
             rankers = [r.player.pk for r in self.ranks.all().order_by("rank")]
 
-        # Createa serializeable form of the (rich) object
+        # Create a serializeable form of the (rich) object
         session_dict = {"model": self._meta.model.__name__,  # the model name
                         # Session atttributes
                         "id": self.pk,  # a session ID
@@ -1727,6 +1763,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                         "time": self.date_time_local,  # a datetime
                         "league": self.league.pk,  # a league ID
                         "location": self.location.pk,  # a location ID
+                        "notes": self.notes,  # Session notes
                         "team_play": self.team_play,  # a booolean flag
                         # Rank atttributes
                         "ranks": ranks,  # a list of Rank IDs
@@ -1768,6 +1805,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             'initial-date_time': ['2022-07-02 03:59:00'],
             'league': ['1'],
             'location': ['9'],
+            'notes': ['Some notes']
             'Rank-TOTAL_FORMS': ['2'],
             'Rank-INITIAL_FORMS': ['0'],
             'Rank-MIN_NUM_FORMS': ['0'],
@@ -1795,6 +1833,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             'initial-date_time': ['2022-07-02 03:59:00'],
             'league': ['1'],
             'location': ['9'],
+            'notes': ['Some notes']
             'team_play': ['on'],
             'Rank-TOTAL_FORMS': ['2'],
             'Rank-INITIAL_FORMS': ['0'],
@@ -1842,7 +1881,12 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 # will raise an exception and MISSING_VALUE is returned
                 return int(data[key])
             except:
-                return MISSING_VALUE
+                # Scores have a special missing value as -1 is a legal value
+                # Not true of any other submitted value really.
+                if key.lower().endswith("score"):
+                    return NO_SCORE
+                else:
+                    return MISSING_VALUE
 
         def float_or_MISSING(data, key):
             try:
@@ -1867,9 +1911,13 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         # Extract the session attributes from the form
         session = int(data.get("id"))
         game = int(data.get("game", MISSING_VALUE))
-        time = make_aware(parser.parse(data.get("date_time", NEVER)))
+        
+        ntime = normalize_tz_for_db(data.get("date_time", NEVER))
+        time = make_aware(parser.parse(ntime))
+        
         league = int(data.get("league", MISSING_VALUE))
         location = int(data.get("location", MISSING_VALUE))
+        notes = data.get("notes", MISSING_VALUE)
         team_play = 'team_play' in data
 
         # We expect the ranks and performances to arrive in Django formsets
@@ -1937,6 +1985,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                  "time": time,  # a datetime
                  "league": league,  # a league ID
                  "location": location,  # a location ID
+                 "notes": notes,  # Notes accompanying the session
                  "team_play": team_play,  # a booolean flag
                   # Rank atttributes
                  "ranks": [r[0] for r in rank_data],  # a list of Rank IDs
@@ -1969,7 +2018,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         form
 
         :param session_dict: A session dict as produced by dict_form_form above
-        :param form_data: Form data (which is altered to conform to session_dict
+        :param form_data: Form data (which is altered to conform to session_dict)
         '''
         data = form_data.copy()  # ensure we have mutable data
 
@@ -1980,6 +2029,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
         data['date_time'] = str(session_dict['time'])
         data['league'] = str(session_dict['league'])
         data['location'] = str(session_dict['location'])
+        data['notes'] = str(session_dict['notes'])
         if team_play: data['team_play'] = 'on'
 
         # Rank attributes
@@ -2030,7 +2080,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
 
         # Pass the modified form data back
         return data
-
+    
     @property_method
     def dict_delta(self, form_data=None, pk=None):
         '''
@@ -2050,7 +2100,7 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                 communicated vie the URL match generally not through the
                 posted form data.
             As such a diff, ignores an ID change if the form data is
-            missing an ID it is ignored for delta change sumaries.
+            missing an ID it is ignored for delta change summaries.
 
         Warning:
             pk MUST be provided if a delta between an edit form and the object
@@ -2061,14 +2111,38 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             form.
 
             If a caller wishes to compare an edit proposal and fails to supply
-            a PK, thechange summary may erroneoulsy report "crreated" when
+            a PK, the change summary may erroneously report "created" when
             "changed" is more appropriate to the context. Supplying a PK is
-            the way in which a claler mmakrs the form_data as a Update not an
+            the way in which a caller marks the form_data as an Update not an
             Add.
 
         :param form_data: A Django QueryDict representing a form submission
         :param pk: Optionally a Primary Key to add to the form_data_dict
         '''
+        def get_delta(v1, v2):
+            """Calculates a type-aware difference between two values."""
+            # 1. Numeric (int, float)
+            if isinstance(v1, (int, float, datetime)) and isinstance(v2, (int, float, datetime)):
+                return v2 - v1
+            
+            # 2. Lists (Added/Removed)
+            if isinstance(v1, list) and isinstance(v2, list):
+                if v1 == v2: return None
+                s1, s2 = set(v1), set(v2)
+                if s1 == s2: return "Reordered"
+                result = {}
+                if list(s2 - s1):
+                    result["added"] = list(s2 - s1)
+                if list(s1 - s2):
+                    result["removed"] = list(s1 - s2)
+                return result
+        
+            # 3. Strings (Terse representation)
+            if isinstance(v1, str) and isinstance(v2, str):
+                return f"{len(v2) - len(v1):+d} chars"
+                    
+            return None # Fallback for unknown/mixed types        
+        
         from_object = self.dict_from_object
         result = from_object.copy()
 
@@ -2080,16 +2154,31 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
             from_form = self._meta.model.dict_from_form(form_data, pk)
 
             def check(key):
-                if from_form[key] != from_object[key]:
+                from_val = from_object[key]
+                to_val = from_form[key]
+                log.debug(f"Delta spy: {key} from {from_val} ({type(from_val)}) to {to_val} ({type(to_val)})")
+                # the "time" field is handled specially
+                value_changed = (not equal(from_val, to_val)) if key == 'time' else from_val != to_val
+                if value_changed:
                     # If the form fails to specifiy an Id we assume it refers to
                     # this instance and don't note the absence as a change, as this
                     # is a standard situation with model forms.
-                    if not (key == 'id' and from_form[key] == MISSING_VALUE):
+                    if not (key == 'id' and to_val == MISSING_VALUE):
                         changes.append(key)
-                    result[key] = (from_object[key], from_form[key])
+                        
+                    result[key] = (from_val, to_val, get_delta(from_val, to_val))
 
             for key in result:
                 check(key)
+
+            # Some changes are expected to have no impact on leaderboards (for example different location
+            # and league - as boards are global and leagues only used for filtering views). Other changes
+            # impact the leaderboard. If any of those change we add a psudo_field "leaderboard" in changes.
+            cause_leaderboard_change = ["game", "team_play", "rankers", "rankings", "performers", "weights"]
+            for change in changes:
+                if change in cause_leaderboard_change:
+                    changes.insert(0, "leaderboard")
+                    break
 
             # Record whether changes were seen in any fields
             # If form_data is provided and no session ID then we assume this is a comparison
@@ -2116,9 +2205,11 @@ class Session(AdminModel, TimeZoneMixIn, NotesMixIn):
                     break
 
             # The date_time is a little trickier as it can change as long as the immediately preceding session stays
-            # the same. If that changes, because this date_time change brings it before the existing one puts anotehr
+            # the same. If that changes, because this date_time change brings it before the existing one puts another
             # session there (by pushing this session past another) then it will change the leaderboard_before and
             # hence the leaderboard_after. We can't know this from the delta but we can divine it from this session.
+            # It cannot be known here if it causes as leaderboard change or not and so will not be considered here
+            # And must be considered as a special case elsewhere. 
 
             result["changes"] = tuple(changes)
 

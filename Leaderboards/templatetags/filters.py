@@ -149,7 +149,7 @@ def duration(value, args=None):
 
     if args is None:
         return False
-
+    
     arg_list = [arg.strip() for arg in args.split(',')]
 
     mode = arg_list[0]  # Required argument
@@ -164,7 +164,10 @@ def duration(value, args=None):
     except IndexError:
         resolution = 0
 
-    remainder = value
+    # Handle negative durations gracefully, be noting the sign, continuing as a duration.
+    is_negative = value.total_seconds() < 0
+
+    remainder = abs(value)
     response = ""
     days = 0
     hours = 0
@@ -177,11 +180,11 @@ def duration(value, args=None):
         days = remainder.days
         remainder -= datetime.timedelta(days=remainder.days)
 
-    if round(remainder.total_seconds() / 3600) > 1:
-        hours = round(remainder.total_seconds() / 3600)
+    if int(remainder.total_seconds() / 3600) > 1:
+        hours = int(remainder.total_seconds() / 3600)
         remainder -= datetime.timedelta(hours=hours)
 
-    if round(remainder.total_seconds() / 60) > 1:
+    if int(remainder.total_seconds() / 60) > 1:
         minutes = int(remainder.total_seconds() / 60)
         remainder -= datetime.timedelta(minutes=minutes)
 
@@ -297,6 +300,20 @@ def duration(value, args=None):
             response.append(time_string)
 
         response = ", ".join(response)
+    
+    # Now if a negative duration was supplied, amend the output to indicate as much.    
+    if is_negative and response != "zero":
+        # Use the en dash (–) instead of a hyphen (-)
+        neg_sign = "&ndash;" 
+        
+        if mode == "machine":
+            return f"{neg_sign}{response}" 
+            
+        elif mode == "clock":
+            return f"{neg_sign}{response}"
+            
+        elif mode in ("phrase", "phrase_lines"):
+            return mark_safe(f"{neg_sign}{response}")    
 
     return response
 

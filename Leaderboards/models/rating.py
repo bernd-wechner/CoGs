@@ -359,7 +359,7 @@ class Rating(RatingModel):
         Returns a RebuildLog instance (with an html attribute if not triggered by a session)
 
         If neither Game nor From nor Sessions are specified, rebuilds ALL ratings
-        If both Game and From specified rebuilds ratings only for that game for sessions from that datetime
+        If both Game and From specified rebuilds, ratings only for that game for sessions from that datetime
         If only Game is specified, rebuilds all ratings for that game
         If only From is specified rebuilds ratings for all games from that datetime
         If only Sessions is specified rebuilds only the nominated Sessions
@@ -389,7 +389,14 @@ class Rating(RatingModel):
         # explicity provided or implied by specifying a Game and/or From time.
         if Sessions:
             assert not Game and not From, "Invalid ratings rebuild requested."
-            sessions = sorted(Sessions, key=lambda s: s.date_time)
+            
+            # Always include the trigger session if provided:
+            # Its ratings are likely to need reconsideration as a part of the rebuild
+            if Session:
+                sessions = set(Sessions)
+                sessions.add(Session)
+                
+            sessions = sorted(sessions, key=lambda s: s.date_time)
             first_session = sessions[0]
         elif not Game and not From:
             if settings.DEBUG:

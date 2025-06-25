@@ -108,7 +108,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 	snapshot: 		  an integer, index into the list of Snapshots (being which snapshot to render)
 	links:	  		  a string, either "BGG" or "CoGs" which selects what kind of links to use
 	opts:  	  		  a list of flags (true/false) requesting specific rendering features
-	selected_players: a list of players to highled if the highlight_selected option is on.
+	selected_players: a list of players to highlight if the highlight_selected option is on.
 	name_format:	  a string, either "nick", "full" or "complete"
 */
 	if (diagnose == undefined) diagnose = false;
@@ -346,7 +346,7 @@ function LeaderboardTable(LB, snapshot, links, opts, selected_players, name_form
 		session.analysis_post_html = session.analysis_post_html.replace(/{link\.(.*?)\.(.*?)\.(.*?)}(.*?){link_end}/mg, fix_template_link);
 
 		// A set of regex replacer, this time for the annotations in each of the three blocks
-		// Element 2 is taken to carry the basic annotation and Element 3 the performance-including annotation..
+		// Element 2 is taken to carry the basic annotation and Element 3 the performance-including annotation.
 		function fix_template_annotation1(match, row) {return show_performances ? session.details_data[row][3] : session.details_data[row][2];}
 		function fix_template_annotation2(match, row) {return show_performances ? session.analysis_pre_data[row][3] : session.analysis_pre_data[row][2];}
 		function fix_template_annotation3(match, row) {return show_performances ? session.analysis_post_data[row][3] : session.analysis_post_data[row][2];}

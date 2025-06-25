@@ -6,7 +6,7 @@ from django.conf import settings
 import django.core.validators
 from django.db import migrations, models
 import django.db.models.deletion
-from django.utils.timezone import utc
+from datetime import timezone 
 import django.utils.timezone
 import django_model_privacy_mixin
 import mapbox_location_field.models
@@ -281,9 +281,9 @@ class Migration(migrations.Migration):
                 ('last_edited_on_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Edit, Timezone')),
                 ('plays', models.PositiveIntegerField(default=0, verbose_name='Play Count')),
                 ('victories', models.PositiveIntegerField(default=0, verbose_name='Victory Count')),
-                ('last_play', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=utc), verbose_name='Time of Last Play')),
+                ('last_play', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc), verbose_name='Time of Last Play')),
                 ('last_play_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Play, Timezone')),
-                ('last_victory', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=utc), verbose_name='Time of Last Victory')),
+                ('last_victory', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc), verbose_name='Time of Last Victory')),
                 ('last_victory_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Victory, Timezone')),
                 ('trueskill_mu', models.FloatField(default=25.0, editable=False, verbose_name='Trueskill Mean (µ)')),
                 ('trueskill_sigma', models.FloatField(default=8.333333333333334, editable=False, verbose_name='Trueskill Standard Deviation (σ)')),
@@ -461,9 +461,9 @@ class Migration(migrations.Migration):
                 ('last_edited_on_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Edit, Timezone')),
                 ('plays', models.PositiveIntegerField(default=0, verbose_name='Play Count')),
                 ('victories', models.PositiveIntegerField(default=0, verbose_name='Victory Count')),
-                ('last_play', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=utc), verbose_name='Time of Last Play')),
+                ('last_play', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc), verbose_name='Time of Last Play')),
                 ('last_play_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Play, Timezone')),
-                ('last_victory', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=utc), verbose_name='Time of Last Victory')),
+                ('last_victory', models.DateTimeField(default=datetime.datetime(1, 1, 1, 0, 0, tzinfo=timezone.utc), verbose_name='Time of Last Victory')),
                 ('last_victory_tz', timezone_field.fields.TimeZoneField(default='Australia/Hobart', editable=False, verbose_name='Time of Last Victory, Timezone')),
                 ('trueskill_mu', models.FloatField(default=25.0, editable=False, verbose_name='Trueskill Mean (µ)')),
                 ('trueskill_sigma', models.FloatField(default=8.333333333333334, editable=False, verbose_name='Trueskill Standard Deviation (σ)')),

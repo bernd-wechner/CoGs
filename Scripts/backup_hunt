@@ -1,0 +1,82 @@
+#!/bin/bash
+##############################################################################################################################
+# A tool to run a given query on all backup files one after the other reporting results 
+# 
+# Written because in 2023 I found some players entered in the system who have no recorded games. Nor can I find any 
+# record of games they played, which begs the question why they are in the system
+#
+# The possibility of lost data being real, a walk through backups by hand proved laborious in hte extreme so I figured 
+# better to script it.
+#
+# And indeeed it takes little time scripted to walk over all the backups we have. Brute froce over them all 
+# indiscriminately is a 3minute run compared to using pgadmin to cycle through them (aaargh) 
+##############################################################################################################################
+
+##############################################################################################################################
+# CONFIGS
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+# The host
+host=localhost
+
+# The name of the database to copy (should be same on source and target systems)
+database=CoGs_backup_hunt
+
+# The database username to use when backing up and restoring (should be same on source and target systems)
+username=postgres
+
+# The database username that owns the database
+ownername=CoGs
+
+# The port that Postgresql is configured to use (default 5432, should be same on source and target systems)
+port=5432
+
+# The Backup Dir
+backup_dir="$source_dir/Backups"
+
+# The Backup files
+backup_files='*CoGs*.backup'
+#backup_files='*shelob*.backup'
+#backup_files='*arachne*.backup'
+#backup_files='*localhost*.backup'
+
+# The queryies to run
+# These 5 players are in the system and have no performances recorded.
+# Which begs the question why? All but 1 have an email address and so it is conceivable they were entered at some stage 
+# to record that. Seems hard to believe though.
+
+# This is useful to check that the loops working and we see the players emerging 
+#query='SELECT id, name_nickname FROM public."Leaderboards_player" WHERE id in (8, 11, 17, 134, 135, 143);'
+
+# This one is also useful just to see that the loop is working and databases are loading
+# At time of run we say the session count rise from 125 (2017, first backup, CoGs ran from 2014) to 736 (2023) 
+#query='SELECT COUNT(*) from public."Leaderboards_session";'
+
+# This actually looks for their performances
+# Alas, none were found. 
+query='SELECT id, player_id FROM public."Leaderboards_performance" WHERE player_id in (8, 11, 17, 134, 135, 143);'
+
+# The psql args
+args="--host=$host --port=$port --username=$username"
+
+##############################################################################################################################
+# Walk the databases
+
+while IFS= read -r file; do
+    echo "Checking: $file"
+
+	# Disconnect the processes using the database
+	psql $args -qc "SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" >& /dev/null
+    
+	# Drop the database
+	psql $args -qc "DROP DATABASE \"$database\";" >&/dev/null
+
+	# Create it anew
+    psql $args -qc "CREATE DATABASE \"$database\" OWNER '$ownername';" >&/dev/null
+    
+	# Load the backup file
+	pg_restore $args --dbname=$database "$file" >&/dev/null
+    
+	# run the query    
+	psql $args -d $database -qc "$query" #>&/dev/null
+done < <(find "$backup_dir" -type f -name "$backup_files")

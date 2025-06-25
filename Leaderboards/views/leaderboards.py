@@ -23,7 +23,7 @@ from .widgets import html_selector
 from ..models import Player, Game, League, ALL_LEAGUES, ALL_PLAYERS, ALL_GAMES
 from ..models.leaderboards import Leaderboard_Cache # import directly for PyDev
 from ..leaderboards.options import leaderboard_options
-from ..leaderboards.enums import LB_STRUCTURE, LB_PLAYER_LIST_STYLE, NameSelections, LinkSelections
+from ..leaderboards.enums import LB_STRUCTURE, LB_PLAYER_LIST_STYLE, NameSelections, LinkSelections, OrderSelections
 from ..leaderboards.style import restyle_leaderboard
 from ..leaderboards.util import immutable
 from ..leaderboards import augment_with_deltas
@@ -80,6 +80,7 @@ def view_Leaderboards(request):
          # Dicts for dropdowns
          'name_selections': NameSelections,
          'link_selections': LinkSelections,
+         'order_selections': OrderSelections,
 
          # Widgets to use in the form
          'dal_media': autocomplete.Select2().media,
@@ -105,7 +106,7 @@ def view_Leaderboards(request):
     return rich_render(request, 'views/leaderboards.html', context=c)
 
 
-def ajax_Leaderboards(request, as_list=False, include_baseline=True):
+def ajax_Leaderboards(request, as_list=False):
     '''
     A view that returns a JSON string representing requested leaderboards.
 
@@ -157,6 +158,9 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
         Cache debugging: 23s
         Cache no debugging: 17s
     Tested using runserver on the development machine. Might perform slightly better in production.
+
+    :param request: The request object Django provides
+    :param as_list: Returns HttpResponse unless this is true, in which returns a list of game_wrapped leaderboards
     '''
 
     # Fetch the options submitted (and the defaults)
@@ -207,24 +211,24 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
         if settings.DEBUG:
             log.debug(f"Preparing leaderboard for: {game}")
 
-        # FIXME: Here is a sweet spot. Some or all sessions are available in the
-        #        cache already. We need the session only for:
-        #
-        #  1) it's datetime - cheap
-        #  2) to build the three headers
-        #     a) session player list     - cheap
-        #     b) analysis pre            - expensive
-        #     c) analysis post           - expensive
-        #
-        # We want to know if the session is already in a cached snapshot.
-
         # Note: the snapshot query intentionally does not constrain sessions to the same
         # location as does the game query. Once we have the games that were played at
         # the event, we're happy to include all sessions during the event regardless of
         # where. The reason being that we want to see evolution of the leaderboards during
         # the event even if some people outside of the event are playing it and impacting
         # the board.
-        (boards, has_reference, has_baseline) = lo.snapshot_queryset(game, include_baseline=include_baseline)
+        #
+        # Returns 1 or more boards. Depending on the leaderboard options (lo). By default only
+        # the latest board for the game, but if evolution options are specified could be more
+        # and of course if baseline is found (we request it) an extra one again.
+        #
+        # The flags has_reference and has_baseline are only returned to pass to game.wrapped_leaderboad
+        # later to place in the wrapper so the client knows. The client might typically ender the reference
+        # (in a different shade) and make the baseline optionally visible or not display it.
+        #
+        # A baseline is only provided i available and the flag tells us if it was. It is only made
+        # available so thataugment_with_deltas below can add delats to (all other) boards.
+        (boards, has_reference, has_baseline) = lo.snapshot_queryset(game, include_baseline=True)
 
         # boards are Session instances (the board after a session, or alternately the session played to produce this board)
         if boards:
@@ -233,7 +237,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
             #######################################################################################################
             #
             # From the list of boards (sessions) for this game build Tier2 and Tier 3 in the returned structure
-            # now. That is assemble the actualy leaderbards after each of the collected sessions.
+            # now. That is assemble the actually leaderboards after each of the collected sessions.
 
             if settings.DEBUG:
                 log.debug(f"\tPreparing {len(boards)} boards/snapshots.")
@@ -258,12 +262,23 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                 #       reads Performance) and asat=None (which reads Rating).
                 #
                 # TODO: Consider if performance here improves with a prefetch or such noting that
-                #       game.play_counts and game.session_list might run faster with one query rather
+                #       game.play_stats and game.session_list might run faster with one query rather
                 #       than two.
 
                 if settings.DEBUG:
                     log.debug(f"\tBoard/Snapshot for session {board.id} at {localize(localtime(board.date_time))}.")
 
+                ######################################################################################################
+                # DEFER league application
+                #
+                # Snapshots can are not really league sensitive. The session was played in aleague yes, and that
+                # helped detemrine if it ever lands here for presentation. But once it's hear the actual session_wrapped
+                # and game_wrapped boards are no very league sensitive.
+                #
+                # On boards(/sessions, it is only the play counts in the session wrapper that are league senitive
+                # but we don't want to cache them in any form more specific than global. No league filterig on the
+                # cache. So we don't ever supply leagues to session.leaderboard_snapshot() and we tweak the play
+                # counts after (we have loaded them from cache or generated them and saved them to cache).
                 if use_cache:
                     ##################################################################################################
                     # Caching support
@@ -277,35 +292,41 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                         else:
                             if settings.DEBUG:
                                 log.debug(f"\t\tBuilding it!")
-                            full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data)
+                            # Must be global, so no leagues specified (we make it explicitly global)
+                            full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data, leagues=[])
                             if full_snapshot:
                                 lb_cache[board.pk] = full_snapshot
                     else:
                         # Global cache:
                         try:
                             full_snapshot = immutable(Leaderboard_Cache.objects.get(session=board).board)
-                            # TODO: This should now be de-temlated and richified
+                            # TODO: This should now be de-templated and richified
                             if settings.DEBUG:
                                 log.debug(f"\t\tFound it in cache!")
                         except Leaderboard_Cache.DoesNotExist:
                             if settings.DEBUG:
                                 log.debug(f"\t\tBuilding it!")
-                            full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data)
+                            # Must be global, so no leagues specified (we make it explicitly global)
+                            full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data, leagues=[])
                             if full_snapshot:
                                 lb_cache = Leaderboard_Cache(session=board, board=full_snapshot)
                                 lb_cache.save()
                 else:
                     if settings.DEBUG:
                         log.debug(f"\t\tBuilding it! (caching is disabled)")
-                    full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data)
+                    # If we are not using a cache, we can of course generate the ful snapshot with leagues specified
+                    # and won't need to tweak them later.
+                    full_snapshot = board.leaderboard_snapshot(style=LB_PLAYER_LIST_STYLE.data, leagues=lo.game_leagues)
 
                 # Restyle the full snapshot to LB_PLAYER_LIST_STYLE.rich for rendering
-                # Client side know the appropriate name expansion for a template.
+                # Client side knows the appropriate name expansion for a template.
                 #    it knows of (and is sent) the
                 #        Leaderboards.leaderboards.options.leaderboard_options.names
                 #    which can take on one of the values from:
                 #        Leaderboards.leaderboards.enums.NameSelections
-                # TODO: confirm this arrives in templated not flexi name_styling. Should write a test and assert>
+                # TODO: confirm this arrives in templated not flexi name_styling. Should write a test and assert.
+                if settings.DEBUG:
+                    log.debug(f"\tRestyling leaderboard.")
                 full_snapshot = restyle_leaderboard(full_snapshot, structure=LB_STRUCTURE.session_wrapped_player_list, style=LB_PLAYER_LIST_STYLE.rich)
 
                 if settings.DEBUG:
@@ -323,7 +344,7 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                     if settings.DEBUG:
                         log.debug(f"\tGot the filtered/annotated board/snapshot. It has {len(snapshot[8])} players on it.")
 
-                    # Counts supplied in the full_snapshot are global and we want to constrain them to
+                    # Counts supplied in the full_snapshot are global but we may want to constrain them to
                     # the leagues in question.
                     #
                     # We have three options:
@@ -331,29 +352,26 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
                     # in-league:    show only snapshots played in the specified leagues
                     # cross-league  show snapshots played by any players in the selected leagues
                     # global        show all snapshots
-                    if lo.leagues:
-                        if lo.show_cross_league_snaps:
-                            counts = game.play_counts(leagues=lo.leagues, asat=board.date_time, broad=True)
+                    if use_cache:
+                        if lo.is_enabled('game_leagues'):
+                            counts = game.play_stats(leagues=lo.game_leagues, 
+                                                      asat=board.date_time, 
+                                                      broad_session_count=lo.show_cross_league_snaps, 
+                                                      broad_play_count=lo.count_cross_league_plays)
                         else:
-                            counts = game.play_counts(leagues=lo.leagues, asat=board.date_time)
+                            # global
+                            counts = game.play_stats(asat=board.date_time)
 
                         plays = counts['total']
                         sessions = counts['sessions']
-                    else:
-                        counts = game.play_counts(asat=board.date_time)
-                        plays = counts['total']
-                        sessions = counts['sessions']
 
-                    # snapshot 0 and 1 are the session PK and localized time
-                    # snapshot 2 and 3 are the counts we updated with lo.league sensitivity
-                    # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
-                    # snapshot 8 is the leaderboard (a tuple of player tuples)
-                    # The HTML header and analyses use flexi player naming and expect client side to render
-                    # appropriately. See Player.name() for flexi naming standards.
-                    snapshot = (snapshot[0:2]
-                             +(plays, sessions)
-                             +snapshot[4:8]
-                             +(lbf,))
+                        # snapshot 0 and 1 are the session PK and localized time
+                        # snapshot 2 and 3 are the counts we updated with lo.game_leagues sensitivity
+                        # snapshot 4, 5, 6 and 7 are session players, HTML header and HTML analyis pre and post respectively
+                        # snapshot 8 is the leaderboard (a tuple of player tuples)
+                        # The HTML header and analyses use flexi player naming and expect client side to render
+                        # appropriately. See Player.name() for flexi naming standards.
+                        snapshot = (snapshot[0:2]+(plays, sessions)+snapshot[4:9])
 
                     # Store the baseline for next iteration (for delta augmentation)
                     baseline = full_snapshot
@@ -370,7 +388,14 @@ def ajax_Leaderboards(request, as_list=False, include_baseline=True):
             snapshots.reverse()
 
             # Then build the game tuple with all its snapshots
-            leaderboards.append(game.wrapped_leaderboard(snapshots, snap=True, has_reference=has_reference, has_baseline=has_baseline))
+            leaderboards.append(game.wrapped_leaderboard(snapshots, 
+                                                         snap=True, 
+                                                         has_reference=has_reference, 
+                                                         has_baseline=has_baseline, 
+                                                         leagues=lo.game_leagues, 
+                                                         asat=lo.as_at,
+                                                         broad_session_count=lo.show_cross_league_snaps, 
+                                                         broad_play_count=lo.count_cross_league_plays))
 
     if use_session_cache:
         request.session["leaderboard_cache"] = lb_cache

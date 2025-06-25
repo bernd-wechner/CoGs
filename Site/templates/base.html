@@ -278,14 +278,7 @@
 	// Assumes DateTimeField widgets have the class "DateTimeField"
 	const DateTime = luxon.DateTime;
 
-	Number.prototype.mins2offset = function () {
-	    let hours   = Math.floor(this / 60);
-	    let minutes = Math.floor((this - ((hours * 3600)) / 60));
-	    let pfx = this >= 0 ? "+" : "-";
-
-	    if (hours   < 10) hours   = "0"+hours;
-	    if (minutes < 10) minutes = "0"+minutes;
-
+	Number.prototype.mins2offset = function (includeColon = true) {
 	    // If this is for a datetime field, Django accepts expected
 	    // formats for form cleaning in the setting DATETIME_INPUT_FORMATS
 	    //    See: https://docs.djangoproject.com/en/4.0/ref/settings/#std:setting-DATETIME_INPUT_FORMATS
@@ -306,37 +299,51 @@
 	    // submitted. Else they need to be removed before submission client side
 	    // or server side one receipt of a request.
 	    //
-	    // To make the mattter even harder to decide on, luxon, which we use for
+	    // To make the matter even harder to decide on, luxon, which we use for
 	    // convenience as a datetime parser here allows us to set timezone with an
 	    // offset and seemingly only with a colon!
 	    //     See: https://github.com/moment/luxon/blob/master/src/zones/fixedOffsetZone.js
 	    // Doh! Both luxon and python broken in their own way and incompatible in
-	    // this space.
-	    return pfx+hours+':'+minutes
-	}
+	    // this space.	
+	    const totalMinutes = Math.abs(this);
+	    const hours = Math.floor(totalMinutes / 60);
+	    const minutes = totalMinutes % 60;
+	    const pfx = this >= 0 ? "+" : "-";
+	
+	    const hh = hours.toString().padStart(2, '0');
+	    const mm = minutes.toString().padStart(2, '0');
+	
+	    return `${pfx}${hh}${includeColon ? ':' : ''}${mm}`;
+	};	
 
 	String.prototype.mins2offset = function () {
 	    const mins_num = parseFloat(this.replace(':',''), 10);
 	    return mins_num.mins2offset();
 	}
+	
+	const EXPECTED_DATE = 'yyyy-MM-dd HH:mm:ss ZZ'
+	const DATE_VARIANTS = [
+	    'yyyy-MM-dd HH:mm:ssZZ',
+	    'yyyy-MM-dd HH:mm:ss',
+	    'yyyy-MM-dd HH:mm ZZ',
+	    'yyyy-MM-dd HH:mmZZ',
+	    'yyyy-MM-dd HH:mm',
+	    'yyyy-MM-dd ZZ',
+	    'yyyy-MM-ddZZ',
+	    'yyyy-MM-dd'
+	];	
 
 	flatpickr(".DateTimeField:not(.dateonly)",
 			 {  enableTime: true,
 			    time_24hr: true,
 			    // Using the Luxon codes, not flatpickr codes.
 			    // https://moment.github.io/luxon/index.html#/formatting?id=macro-tokens
-			    dateFormat: 'yyyy-MM-dd HH:mm:ss ZZ',
-			    dateVariants: ['yyyy-MM-dd HH:mm:ss',
-			    			   'yyyy-MM-dd HH:mm ZZ',
-			    			   'yyyy-MM-dd HH:mm',
-			    			   'yyyy-MM-dd ZZ',
-			    			   'yyyy-MM-dd'],
+			    dateFormat: EXPECTED_DATE,
+			    dateVariants: DATE_VARIANTS,
 			    ariaDateFormat: 'cccc d, y',
 			    showMonths: 1,
 			    allowInput: true,
-			    parseDate(dateString, format) {
-			    	// format is this.dateFormat above. Configured here with ZZ (a timezone UTC offset)
-
+				parseDate(dateString, format) {
 			    	// JS Dates suck. They are always in local time zone (client) or UTC.
 			    	// 		See: https://stackoverflow.com/a/15171030/4002633
 			    	// They provide no way to express a TZ preference. So we have to keep
@@ -344,28 +351,65 @@
 			    	// We are only interested in TZ offsets here not in timezones.
 			    	// 		See: https://spin.atomicobject.com/2016/07/06/time-zones-offsets
 			    	// timezones are way-complicate things and a TZ offset is all that is
-			    	// need to create an unambiguous time for database storage.
-			    	const ustzo =  DateTime.fromFormatExplain(dateString, format)["zone"];
-			    	this.user_specified_offset = ustzo ? ustzo.fixed : undefined;
-
-			    	// If a datetime is provided with no timezone info, we use the offset
-			    	// provided by the user session and add that TZ to the string.
-			    	if (this.user_specified_offset === undefined) {
-			    		this.user_specified_offset = SESSION_utcoffset;
-			    		dateString = dateString.trim() + " " + SESSION_utcoffset.mins2offset();
-			    	}
-
-					// Try parsing the default dateFormat first
-			    	console.log("Parsing: ",dateString, format)
-			    	let date = DateTime.fromFormat(dateString, format);
-					// If that fails walk through the dateVariants to try and find a parse that works
-					let variant = 0;
-			    	while (!date.isValid && variant < this.dateVariants.length) {
-			    		date = DateTime.fromFormat(dateString, this.dateVariants[variant]);
-			    		variant++;
-			    	};
-			    	return date.isValid ? date.toJSDate() : this.last_formatted_date;
-			    },
+			    	// need to create an unambiguous time for database storage.					
+				    if (!dateString || dateString.trim() === "") return null;
+				
+				    const allFormats = [format, ...DATE_VARIANTS];
+				    let luxonDate = null;
+				    let tzFound = false;
+				
+				    // 1. Try to find a valid match among variants
+				    for (const fmt of allFormats) {
+				        // We use fromFormatExplain to peek at whether the 'zone' (offset) was actually matched
+				        const explanation = DateTime.fromFormatExplain(dateString, fmt);
+				        
+						const isValid = explanation.rawMatches !== null && Object.keys(explanation.result).length > 0;
+																        
+				        console.log(`Hunting timezone in '${dateString}' using '${fmt}' finding ${isValid}`);
+				        
+				        if (isValid) {
+				            luxonDate = DateTime.fromFormat(dateString, fmt);
+				            // If the explanation matched a zone token (Z or ZZ), tzFound is true
+				            tzFound = !!explanation.zone;
+				            break;
+				        }
+				    }
+				
+				    // 2. Fallback: If no match OR match found but it lacked a TZ offset
+				    // This covers "2025-05-19 15:50" (valid match, but tzFound = false)
+				    if (!luxonDate || !tzFound) {
+				        // Regex check to avoid the "double offset" bug in the string
+				        const hasOffset = /[+-]\d{2}:?\d{2}$/.test(dateString.trim());
+				        
+				        if (!hasOffset) {
+				            const offsetStr = SESSION_utcoffset.mins2offset();
+				            const extendedString = `${dateString.trim()} ${offsetStr}`;
+				            
+				            // Re-parse using the primary format (which we know includes 'ZZ')
+				            const fallbackDate = DateTime.fromFormat(extendedString, format);
+				            
+				            if (fallbackDate.isValid) {
+				                luxonDate = fallbackDate;
+				                // Since we forced it, we know the offset is the session default
+				                this.user_specified_offset = SESSION_utcoffset; 
+				            }
+				        }
+				    }
+				
+				    // 3. Finalize and Store
+				    if (luxonDate && luxonDate.isValid) {
+				        // If we found a TZ in the string earlier, grab that specific numeric offset
+				        if (tzFound) {
+				            this.user_specified_offset = luxonDate.offset;
+				        }
+				        
+				        // Return the native JS Date for flatpickr's internal state
+				        return luxonDate.toJSDate();
+				    }
+				
+				    // Return the last known good date or null to avoid the "Invalid Date" crash
+				    return this.last_formatted_date || null;
+				},			    
 			    formatDate(date, format) {
 			        // When the date was parsed any user entered TZ offset was stored. We now use that to
 			        // format the date that was entered. If none was offered we use the Session preferrred
@@ -379,7 +423,7 @@
 
 	flatpickr(".DateTimeField.dateonly", {enableTime: false});
 
-	// Turn off autocomplete on DateTimeFields. Broswers produce a dropdown that gets in the way of flatpickr's drop down when it's on.
+	// Turn off autocomplete on DateTimeFields. Browsers produce a dropdown that gets in the way of flatpickr's drop down when it's on.
 	$('.DateTimeField').attr('autocomplete','off');
 
 	// Monitor the headers div for size changes and respond by moving the content div

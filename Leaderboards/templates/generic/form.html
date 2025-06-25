@@ -84,7 +84,7 @@
 		const reload_icon = "{% static 'img/reload.png' %}";
 
 		// Catch related form errors that come in (in order to report them)
-		const related_form_errors = {{ form.related_forms.errors | fallback:'{}' | safe }};
+		const related_form_errors = {{ form.related_forms.errors.as_json | fallback:'{}' | safe }};
 	</script>
 	{% if has_location %}
 		{% load mapbox_location_field_tags %}
@@ -104,5 +104,20 @@
 			else
 				prepare_submission.addEventListener('click', OnSubmit)
 		}
+		
+		// Replace 'id_Performance-0-player' with your specific ID
+		const targetSelect = document.getElementById('id_Performance-0-player');
+		
+		const observer = new MutationObserver((mutations) => {
+		    const values = Array.from(targetSelect.options).map(o => o.value);
+		    const hasDuplicates = values.some((val, index) => val !== "" && values.indexOf(val) !== index);
+		
+		    if (hasDuplicates) {
+		        console.warn("Duplicate detected!", values);
+		        debugger; // <--- Execution stops here!
+		    }
+		});
+		
+		observer.observe(targetSelect, { childList: true, subtree: true });			
 	</script>
 {% endblock %}

@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# --- Configuration ---
+BASE_URL="http://127.0.0.1:8000/inspect/Session"
+VERBOSE=false
+SESSION_ID=""
+
+# --- Argument Parsing ---
+for arg in "$@"; do
+    case $arg in
+        -v|--verbose)
+            VERBOSE=true
+            shift
+            ;;
+        *)
+            SESSION_ID=$arg
+            shift
+            ;;
+    esac
+done
+
+# --- Dependency Check ---
+DEPENDENCIES=("hxnormalize" "hxremove" "lynx" "curl")
+for cmd in "${DEPENDENCIES[@]}"; do
+    if ! command -v "$cmd" &> /dev/null; then
+        echo "Missing $cmd. Please run: sudo apt install html-xml-utils lynx curl"
+        exit 1
+    fi
+done
+
+# --- The Pipeline ---
+# 1. Fetch HTML
+# 2. Normalize
+# 3. Remove .tooltip and <hidden> tags (Fixes the '>' artifact)
+# 4. Dump via Lynx
+DATA_FLOW=$(curl -s "$BASE_URL/$SESSION_ID" | \
+            hxnormalize -x 2>/dev/null | \
+            hxremove ".tooltip" | \
+            hxremove "hidden" | \
+            lynx -stdin -dump -force_html -nolist)
+
+if [ "$VERBOSE" = true ]; then
+    echo "$DATA_FLOW"
+else
+    # AWK Logic:
+    # We find 'Session Inspector', set p=1, but "next" prevents printing that line.
+    # We stop at 'STATS:'.
+    echo "$DATA_FLOW" | awk '
+        /Session Inspector/ {p=1; next}
+        /STATS:/ {p=0}
+        p {print}
+    '
+fi

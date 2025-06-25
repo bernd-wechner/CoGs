@@ -4,6 +4,7 @@ from ..leaderboards.enums import LB_PLAYER_LIST_STYLE
 from ..leaderboards.style import styled_player_list
 
 from Import.models import Import
+from collections.abc import Iterable
 
 from django.db import models
 from django.db.models import Q, F, Func, Count, Sum, Max, Avg, Subquery, OuterRef
@@ -13,6 +14,7 @@ from django.urls import reverse
 from django.core.exceptions import ObjectDoesNotExist, MultipleObjectsReturned
 
 from django_model_admin_fields import AdminModel
+from django_from import FromMixIn
 
 from django_rich_views.decorators import property_method
 from django_rich_views.model import field_render, link_target_url, NotesMixIn
@@ -31,7 +33,7 @@ import trueskill
 from Site.logutils import log
 
 
-class Game(AdminModel, NotesMixIn):
+class Game(AdminModel, NotesMixIn, FromMixIn):
     TourneyRules = apps.get_model(APP, "TourneyRules", False)
     League = apps.get_model(APP, "League", False)
 
@@ -105,6 +107,20 @@ class Game(AdminModel, NotesMixIn):
     # this suggests not imported but entered directly through the UI.
     source = models.ForeignKey(Import, verbose_name='Source', related_name='games', editable=False, null=True, blank=True, on_delete=models.SET_NULL)
 
+    @property
+    def uses_scores(self) -> bool:
+        scoring = self.ScoringOptions(self.scoring).name
+        return scoring != "NO_SCORES"
+        
+    @property
+    def scores_teams(self) -> bool:
+        scoring = self.ScoringOptions(self.scoring).name
+        return "TEAM" in scoring
+        
+    @property
+    def scores_players(self) -> bool:
+        scoring = self.ScoringOptions(self.scoring).name
+        return "INDIVIDUAL" in scoring
 
     @property
     def global_sessions(self) -> list:
@@ -128,7 +144,7 @@ class Game(AdminModel, NotesMixIn):
 
     @property
     def global_plays(self) -> dict:
-        return self.play_counts()
+        return self.play_stats()
 
     @property
     def league_plays(self) -> dict:
@@ -144,9 +160,9 @@ class Game(AdminModel, NotesMixIn):
         League = apps.get_model(APP, "League")
         leagues = League.objects.all()
         pc = {}
-        pc[ALL_LEAGUES] = self.play_counts()
+        pc[ALL_LEAGUES] = self.play_stats()
         for league in leagues:
-            pc[league] = self.play_counts(league)
+            pc[league] = self.play_stats(league)
         return pc
 
     @property
@@ -205,7 +221,7 @@ class Game(AdminModel, NotesMixIn):
     def last_performances(self, leagues=[], players=[], asat=None) -> object:
         '''
         Returns the last performances at this game (optionally as at a given date time) for
-        a player or all players in specified leagues or all players in all leagues (if no
+        a player, players or all players in specified leagues or all players in all leagues (if no
         leagues specified).
 
         Returns a Performance queryset.
@@ -215,6 +231,23 @@ class Game(AdminModel, NotesMixIn):
         :param asat: Optionally, the last performance as at this date/time
         '''
         Performance = apps.get_model(APP, "Performance")
+        League = apps.get_model(APP, "league")
+
+        # If a single league was provided make a list with one entry.
+        if not isinstance(leagues, list):
+            if leagues:
+                leagues = [leagues]
+            else:
+                leagues = []
+
+        # We can accept leagues as League instances or PKs but want a PK list for the queries.
+        for i,l in enumerate(leagues):
+            if isinstance(l, League):
+                leagues[i] = l.pk
+            elif isinstance(l, str) and l.isdigit():
+                leagues[i] = int(l)
+            elif not isinstance(l, int):
+                raise ValueError(f"Unexpected league: {leagues[i]}.")
 
         pfilter = Q(session__game=self)
         if leagues:
@@ -239,9 +272,9 @@ class Game(AdminModel, NotesMixIn):
 
         Ps = Performance.objects.filter(pfilter).order_by('-trueskill_eta_after')
 
-        if settings.DEBUG:
-            log.debug(f"Fetching latest performances for game '{self.name}' as at {asat} for leagues ({leagues}) and players ({players})")
-            log.debug(f"SQL: {get_SQL(Ps)}")
+        # if settings.DEBUG:
+        #     log.debug(f"Fetching latest performances for game '{self.name}' as at {asat} for leagues ({leagues}) and players ({players})")
+        #     log.debug(f"SQL: {get_SQL(Ps, pretty=False)}")
 
         return Ps
 
@@ -257,7 +290,9 @@ class Game(AdminModel, NotesMixIn):
 
         :param leagues: Returns sessions played considering the specified league or leagues or all leagues if none is specified.
         :param asat: Optionally returns the sessions played as at a given date
-        :param broad: A basic session list is of sessions in any of the specified leagues. A broad one is a list of all sessions that contai players in any of the specified lists.
+        :param broad: basic session lists include all sessions in any of the provided leagues, 
+                      broad session lists include all sessions played-in by members of any of the specified leagues 
+                          (irrespective of the league the session was played in),
         '''
         League = apps.get_model(APP, "League")
         Session = apps.get_model(APP, "Session")
@@ -294,71 +329,106 @@ class Game(AdminModel, NotesMixIn):
                 return Session.objects.filter(game=self, date_time__lte=asat)
 
     @property_method
-    def play_counts(self, leagues=[], asat=None, broad=False) -> dict:
+    def play_stats(self, leagues=[], asat=None, broad_session_count=False, broad_play_count=True, efficient=True) -> dict:
         '''
         Returns the number of plays this game has experienced, as a dictionary containing:
-            total:    is the sum of all the individual player counts (so a count of total play experiences)
-            max:      is the largest play count of any player
-            average:  is the average play count of all players who've played at least once
-            players:  is a count of players who played this game at least once
-            sessions: is a count of the number of sessions this game has been played
+            total:      is the sum of all the individual play counts (so a count of total play experiences)
+            max:        is the largest play count of any player
+            average:    is the average play count of all players who've played at least once
+            players:    is a count of players who played this game at least once
+            sessions:   is a count of the number of sessions this game has been played
+            first_play: the first time the game was played
+            first_play: the last time the game was played
 
         leagues can be a single league (a pk) or a list of leagues (pks).
         We always return the playcount across all the listed leagues.
 
-        If no leagues are specified returns the play_counts for all leagues.
+        If no leagues are specified returns the play_stats for all leagues.
 
         Optionally can provide the count of plays as at a given date time as well.
 
-        :param leagues: Returns playcounts considering the specified league or leagues or all leagues if none is specified.
-        :param asat: Optionally returns the play counts as at a given date
-        :param broad: basic play counts are for all sessions in any of the provided leagues, broad play counts include all sessions played in by members of an of the specified leagues,
+        :param leagues:             Returns playcounts considering the specified league or leagues or all leagues if none is specified.
+        :param asat:                Optionally returns the play counts as at a given date
+        :param broad_session_count: basic session counts are for all sessions in any of the specified leagues, 
+                                    broad session counts include all sessions played-in by members of any of the specified leagues 
+                                        (irrestpective of the league the session was played in),
+                                    default to false as that is the more accurate tablng count for the specified leagues.
+                                    the broad count is only required of lederboard_options.show_cross_league_snaps is used
+                                    because then cross-league snaps are shown (to provide a complete picture of a cross-league 
+                                    players leaderboard movements) and so the counts should reflect that too.      
+        :param broad_play_count:    basic play counts are for all sessions in any of the specified leagues
+                                        NOT in the sessions counted by a broad session count! We are only 
+                                        interested in the votes that out in-league players cast and the basic
+                                        version is only by playing this game in-league. The broad count captures 
+                                        out-of league plays. 
+                                    broad play counts include all sessions played in by members of any of the specified leagues,
+                                        (irrespective of the league the session was played in), this, captures out-of-league plays
+                                        my in-league players, so is a true reflection of the play count for those in-league players.
+                                    default to true as this is the more accurate popularity measure.
+        :param efficient:           Take a stab at a more efficent broad_play_count query (TODO: test performance)                                    
         '''
-        League = apps.get_model(APP, "League")
-        Session = apps.get_model(APP, "Session")
-        Performance = apps.get_model(APP, "Performance")
-        Rating = apps.get_model(APP, "Rating")
-
-        # If a single league was provided make a list with one entry.
-        if not isinstance(leagues, list):
-            if leagues:
-                leagues = [leagues]
-            else:
-                leagues = []
-
-        # We can accept leagues as League instances or PKs but want a PK list for the queries.
-        for l in range(0, len(leagues)):
-            if isinstance(leagues[l], League):
-                leagues[l] = leagues[l].pk
-            elif not ((isinstance(leagues[l], str) and leagues[l].isdigit()) or isinstance(leagues[l], int)):
-                raise ValueError(f"Unexpected league: {leagues[l]}.")
-
-        if leagues:
-            sfilter = Q(game=self)
-            if not asat is None:
-                sfilter &= Q(date_time__lte=asat)
-
-            if broad:
-                lfilter = Q()
-                for league in leagues:
-                    lfilter |= Q(performances__player__leagues=league)
-            else:
-                lfilter = Q(league__in=leagues)
-
-            sessions = Session.objects.filter(sfilter & lfilter)
-            performances = Performance.objects.filter(session__in=sessions, player__leagues__in=leagues)
+        if leagues and not isinstance(leagues, Iterable):
+            leagues = [leagues]
+            
+        # we have two distinct "breadth" ideas, 
+        #    cross_league_sessions and cross_league_plays
+        # that need differentiation in options.
+        #
+        # cross_league_snaps (sessions) can be selected for showing leaderboard evolution
+        #    They should also inform the session count in leaderboard headers
+        # cross_league_plays only informs the play_count reported in leaderboard headers
+        # Both are used for sorting games in leaderboard views and so need consistency and that shoudl be tested for.
+        if efficient and broad_play_count:
+            # If we get all the in-league players and their asat play_numbers, that should euqal the count of all their performances    
+            last_performances = self.last_performances(leagues=leagues, asat=asat)
+            
+            # The play_number of the last performance is the play count at that time.
+            # play_number of a performance is the number of its play (for its player at its game)
+            # performances are the last performance in this game for each player.
+            pc = last_performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
+            
+            for key in pc:
+                if pc[key] is None:
+                    pc[key] = 0
         else:
-            performances = self.last_performances(asat=asat)
+            pc = {}
+            Performance = apps.get_model(APP, "Performance")
+            
+            pfilter = Q(session__game=self)
+            if leagues:
+                pfilter &= Q(player__leagues__in=leagues) if broad_play_count else Q(session__league__in=leagues) 
+            if asat:
+                pfilter &= Q(session__date_time__lte=asat) 
+            
+            performances = Performance.objects.filter(pfilter)
+            # Extracting the stats is a bit harder than for the broad count
+            if performances:
+                pc["total"] = performances.count() 
+                pc["players"] = performances.values('player').distinct().order_by().count()
+                pc["max"] = performances.values('player').annotate(count=Count('player')).order_by('-count')[0]['count']
+                pc["average"] = pc["total"]/pc["players"]
+            else:
+                # It can happen that there are no in-league plays for this game (it's played by other leagues)
+                pc["total"] = 0 
+                pc["players"] = 0
+                pc["max"] = 0
+                pc["average"] = 0
 
-        # The play_number of the last performance is the play count at that time.
-        # play_number of a performance is the number of its play (for its player at its game)
-        # performances are the last performance in this game for each player.
-        pc = performances.aggregate(total=Sum('play_number'), max=Max('play_number'), average=Avg('play_number'), players=Count('play_number'))
-        for key in pc:
-            if pc[key] is None:
-                pc[key] = 0
-
-        pc['sessions'] = self.session_list(leagues, asat=asat, broad=broad).count()
+        pc['sessions'] = self.session_list(leagues, asat=asat, broad=broad_session_count).count()
+        
+        sessions = self.session_list(leagues=leagues,
+                                     asat=asat, 
+                                     broad=broad_session_count)
+        
+        if sessions:
+            # sessions_list is sorted with most recent at top
+            # We use UTC date_time not session local date time as the sessions can be in multiple time zones
+            # and these are stats for the game (which sits above the timezone of a given session). 
+            pc['first_play'] = sessions.last().date_time
+            pc['last_play'] = sessions.first().date_time 
+        else:
+            pc['first_play'] = None 
+            pc['last_play'] = None 
 
         return pc
 
@@ -491,7 +561,19 @@ class Game(AdminModel, NotesMixIn):
         return None if len(lb) == 0 else styled_player_list(lb, style=style, names=names)
 
     @property_method
-    def wrapped_leaderboard(self, leaderboard=None, snap=False, has_reference=False, has_baseline=False, leagues=[], asat=None, names="nick", style=LB_PLAYER_LIST_STYLE.simple, data=None) -> tuple:
+    def wrapped_leaderboard(self, 
+                            leaderboard=None, 
+                            snap=False, 
+                            has_reference=False, 
+                            has_baseline=False, 
+                            leagues=[], 
+                            asat=None, 
+                            broad_session_count=False, 
+                            broad_play_count=True,                            
+                            names="nick", 
+                            style=LB_PLAYER_LIST_STYLE.simple, 
+                            data=None,
+                            ) -> tuple:
         '''
         Returns a leaderboard (either a single board or a list of session snapshots) wrapped
         in a game propery header.
@@ -531,18 +613,20 @@ class Game(AdminModel, NotesMixIn):
             Leaderboards.leaderboards.enums.LB_STRUCTURE provides pointers into this structure.
                 They must reflect what is produced here.
 
-        :param leaderboard:   a leaderboard or a single board (snap == False) or a list (snap=True) of boards
-                                where a board can be session_wrapped (game_wrapped_session_wrapped_player_list)
-                                or not (game_wrapped_player_list).
-        :param snap:          if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
-        :param has_reference: a game wrapper flag to add, informs user that there's a reference snapshot included
-        :param has_baseline:  a game wrapper flag to add, informs user that there's a baseline snapshot included
-        :param hide_baseline: if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
-        :param leagues:       self.leaderboard argument passed through
-        :param asat:          self.leaderboard argument passed through
-        :param names:         self.leaderboard argument passed through
-        :param style:         self.leaderboard argument passed through
-        :param data:          self.leaderboard argument passed through
+        :param leaderboard:         a leaderboard or a single board (snap == False) or a list (snap=True) of boards
+                                       where a board can be session_wrapped (game_wrapped_session_wrapped_player_list)
+                                       or not (game_wrapped_player_list).
+        :param snap:                if leaderboard is a list of snapshots, true, if leaderboard is a single leaderboard, false
+        :param has_reference:       a game wrapper flag to add, informs user that there's a reference snapshot included
+        :param has_baseline:        a game wrapper flag to add, informs user that there's a baseline snapshot included
+        :param hide_baseline:       if snap is True, then if the last snapshot is a baseline that should be hidden this is true, else False
+        :param broad_session_count: self.play_stats argument pass through 
+        :param broad_play_count:    self.play_stats argument pass through
+        :param leagues:             self.leaderboard argument passed through
+        :param asat:                self.leaderboard argument passed through
+        :param names:               self.leaderboard argument passed through
+        :param style:               self.leaderboard argument passed through
+        :param data:                self.leaderboard argument passed through
         '''
         if leaderboard is None:
             leaderboard = self.leaderboard(leagues, asat, names, style, data)
@@ -550,7 +634,10 @@ class Game(AdminModel, NotesMixIn):
 
         # Permit submission of an empty tuple () to return an empty tuple.
         if leaderboard:
-            counts = self.play_counts()
+            counts = self.play_stats(leagues=leagues, 
+                                      asat=asat, 
+                                      broad_session_count=broad_session_count, 
+                                      broad_play_count=broad_play_count)
 
             # TODO: Respect styles. Importantly .data should be minimalist and reconstructable.
             # none might mean no wrapper
@@ -594,7 +681,7 @@ class Game(AdminModel, NotesMixIn):
         in the future that one of this session's players particpated in. Each of
         those sessions though can rope in new players who add branches to the tree.
 
-        :param asat:       a datetime from which persepective the "future" is.
+        :param asat:       a datetime from which perspective the "future" is.
         :param players:    a QuerySet of Players or a list of Players.
         '''
         Session = apps.get_model(APP, "Session")

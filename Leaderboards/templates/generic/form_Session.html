@@ -16,6 +16,15 @@
 
 	We need form elements to enter all this and to properly initialise and respond to the various object IDs in this complex interrelationship.
 {% endcomment %}
+{% if debug %}
+	<div class='tooltip'>
+		<input type="button" value="Table Integrity Check" id="table_integrity_check"/>
+		<span class='tooltiptext' style='width: 300%;'>Writes a summary of table integrity to the browser console.</span>
+	</div>
+{% endif %}
+
+<link rel="stylesheet" href="{% static 'css/form_rankings.css' %}">
+
 <table id='tableRankings'>
     {% include "generic/form_Session_rankings.html" %}
 </table>
@@ -183,3 +192,16 @@
 
 {# Now include the javascript and HTML that manages the rankings (in either individual or team play mode) #}
 <script src="{% static 'js/form_rankings.js'%}"></script>
+
+<script>
+	// Add a listener to the table_integrity_check button if it exists (for debugging, this simply prepares the form
+	// to what it would look like on submission so the DOM can be inspected in a browser debugger to help work out
+	// what's going on if something isn't working.
+	const table_integrity_check = document.getElementById("table_integrity_check");
+	if (table_integrity_check) {
+		if (typeof table_integrity_debug === "undefined")
+		 	table_integrity_check.hidden = true;
+		else
+			table_integrity_check.addEventListener('click', debug_visible_table)
+	}	
+</script>

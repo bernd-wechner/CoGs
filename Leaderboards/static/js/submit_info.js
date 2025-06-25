@@ -62,23 +62,31 @@ function GetInfoFromGeoNames(position) {
 	GET_INFO.open("GET", URL, true);
 
 	console.log(`ClientInfo:  lat=${position.coords.latitude}, lon=${position.coords.longitude}`);
+	console.log(`Geo URL: ${URL}`);
 
 	GET_INFO.onreadystatechange = function () {
-		if (this.readyState === 4 && this.status === 200) {
-			// the request is complete, parse data
-			const response = JSON.parse(this.responseText);
-			const city = response.geonames[0].name;
-			const country = response.geonames[0].countryName;
-			const location = city + ", " + country;
-			const info = CSRF_uri + "&location=" + encodeURI(location);
+	    if (this.readyState === 4) {
+	        if (this.status === 200) {
+	            // the request is complete, parse data
+	            const response = JSON.parse(this.responseText);
+	            const city = response.geonames[0].name;
+	            const country = response.geonames[0].countryName;
+	            const location = city + ", " + country;
+	            const info = CSRF_uri + "&location=" + encodeURI(location);
 
-			// Send the location to the server (only if it's changed)
-			if (location != SESSION_location) {
-				POST_INFO.open("POST", POST_RECEIVER, true);
-				POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
-				POST_INFO.send(info);
-			}
-		}
+				// Send the location to the server (only if it's changed)
+	            if (location != SESSION_location) {
+	                POST_INFO.open("POST", POST_RECEIVER, true);
+	                POST_INFO.setRequestHeader("Content-Type", POST_TYPE);
+	                POST_INFO.send(info);
+	            }
+	        } else {
+	            // Handle errors
+	            console.error('Request failed with status:', this.status, this.statusText);
+	            console.error('Response text:', this.responseText);
+	            console.error('Full response:', this);
+	        }
+	    }
 	};
 
 	GET_INFO.send(null);

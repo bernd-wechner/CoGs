@@ -20,10 +20,8 @@ def styled_player_tuple(player_list_tuple, rank=None, style=LB_PLAYER_LIST_STYLE
     '''
     (player_pk, trueskill_eta, trueskill_mu, trueskill_sigma, plays, victories, last_play) = player_list_tuple
 
-    player = models.Player.objects.get(pk=player_pk)
-
     try:
-        player = models.Player.objects.get(pk=player_pk)
+        player = models.Player.get(player_pk)
         player_name = player.name(names)
         player_leagues = player.leagues.all()
     except models.Player.DoesNotExist:
@@ -56,13 +54,13 @@ def styled_player_tuple(player_list_tuple, rank=None, style=LB_PLAYER_LIST_STYLE
                       victories,
                       last_play)
 
-        lb_entry = (rank,
-                    player_pk,
-                    player.BGGname if player else '',
-                    *name_variants, # Unpacked name variants
-                    *trueskill_rating, # Unpacked trueskill rating
-                    *play_stats, # Unpacked play stats
-                    [l.pk for l in player_leagues])
+        lb_entry = (rank, # 0
+                    player_pk, # 1
+                    player.BGGname if player else '', # 2
+                    *name_variants, # 3-5 Unpacked name variants
+                    *trueskill_rating, # 6-8 Unpacked trueskill rating
+                    *play_stats, # 9-11 Unpacked play stats
+                    [l.pk for l in player_leagues]) # 12
     else:
         raise ValueError(f"Programming error in Game.leaderboard(): Illegal style submitted: {style}")
 

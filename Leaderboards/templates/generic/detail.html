@@ -190,16 +190,19 @@
 			<td class='tight options'>
 				<b>Quick Views:</b>
 			</td>
-			<td class='tight options'>
+			<td class='tight options' width=0>
 				<img id='reloading_icon' src='{% static "img/Reload.apng" %}' style='vertical-align: middle; visibility:hidden;'>
+			</td>
+			<td class='tight options'>
 				<input type="button" id="opt_normal" value="Normal" onclick="set_flags('_normal'); refetch(event);">
 				<input type="button" id="opt_all_model" value="Complete Model" onclick="set_flags('_all_model'); refetch(event);">
 				<input type="button" id="opt_all" value="Model and Related" onclick="set_flags('_all'); refetch(event);">
 				<span style="margin-left: 8ch;"><b>Advanced options <a onclick="toggle_filters();">&#9660;</a></b></span>
 			</td>
 		</tr>
+		{% include_variant model_name %}
 		<tr id="opt_field_types" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 			    <br/>
 				<input type="button" id="opt_specified" value="Show:" onclick="refetch(event);">
 				<a onclick='show_url()' style='margin-left: 8ch;'>URL</a>
@@ -212,7 +215,7 @@
 			</td>
 		</tr>
 		<tr id="opt_field_categories" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>of:</b>
 			</td>
 			<td class='tight options'>
@@ -225,7 +228,7 @@
 			</td>
 		</tr>
 		<tr id="opt_separators" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>with:</b>
 			</td>
 			<td class='tight options'>
@@ -235,7 +238,7 @@
 			</td>
 		</tr>
 		<tr id="opt_object_formats" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>as:</b>
 			</td>
 			<td class='tight options'>
@@ -246,7 +249,7 @@
 			</td>
 		</tr>
 		<tr id="opt_list_formats" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>and long list items as:</b>
 			</td>
 			<td class='tight options'>
@@ -257,7 +260,7 @@
 			</td>
 		</tr>
 		<tr id="opt_summary_formats" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>formatting objects:</b>
 			</td>
 			<td class='tight options'>
@@ -267,7 +270,7 @@
 			</td>
 		</tr>
 		<tr id="opt_link_formats" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options'>
+			<td class='tight options' colspan=2>
 				<b>links:</b>
 			</td>
 			<td class='tight options'>
@@ -277,7 +280,7 @@
 			</td>
 		</tr>
 		<tr id="opt_misc_formats" class='tight options toggle' style="visibility:collapse;">
-			<td class='tight options' valign="top">
+			<td class='tight options' valign="top" colspan=2>
 				<b>and:</b>
 			</td>
 			<td class='tight options'>

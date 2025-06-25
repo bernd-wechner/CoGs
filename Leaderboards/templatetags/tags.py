@@ -7,22 +7,17 @@ from django.utils.safestring import mark_safe
 # from django.template.loader_tags import do_include
 
 from django_rich_views.model import object_in_list_format, field_render
-from django_rich_views.util import numeric_if_possible
+from django_rich_views.util import numeric_if_possible, isPositiveInt
 
 from django_cache_memoized import memoized
 
-from ..models import APP
+from ..models import APP, MISSING_VALUE
 
 register = template.Library()
 
 
 @register.simple_tag(takes_context=True)
 def list_format(context, obj):
-    '''
-
-    :param context:
-    :param obj:
-    '''
     return object_in_list_format(obj, context)
 
 
@@ -44,11 +39,35 @@ def get_list(form_data, model, attribute):
     # If we have a management form, use that as a count
     if f"{model}-TOTAL_FORMS" in form_data:
         count = int(form_data[f"{model}-TOTAL_FORMS"])
+        
+        vals = [] 
         for i in range(count):
             key = f"{model}-{i}-{attribute}"
             val = form_data.get(key, None)
+            
+            # Primary keys on round trip errors might come back as id_n
+            # strings if they haven't been assigned a database ID yet. 
+            # This is rather bizarre edge case, but if it happens we won't
+            # see numeric_if_possible succeeding. So we do an explicit 
+            # switch to the
+            if isinstance(val, str):
+                if attribute == "id" and val.startswith("id_"):
+                    val = MISSING_VALUE
+
+            # A failsafe for ids which have to have postive ints
+            if attribute == "id" and not isPositiveInt(val):
+                val = MISSING_VALUE
+
             val = numeric_if_possible(val)
-            attr_list.append(val)
+            
+            # We never expect duplicate IDs, but as a fail-safe we 
+            # ensure check and don't deliver any duplicate IDs 
+            # to the template  
+            if attribute == "id" and val in vals :
+                attr_list.append(MISSING_VALUE)
+            else:
+                attr_list.append(val)
+                vals.append(val)
 
     # if not, get the list that we can
     else:

@@ -23,10 +23,16 @@ LinkSelections = OrderedDict((("none", "nowhere"),
                               ("CoGs", "CoGs Leaderboard Space"),
                               ("BGG", "boardgamegeek.com")))
 
+# Ordering of leaderboards
+OrderSelections = OrderedDict((("default", "Based on the query"),
+                               ("time_played", "Show most recently played games first"),
+                               ("popularity_table", "Show most tabled games first"),
+                               ("popularity_plays", "Show most played games first")))
+
 # We make enums out of the lists of the lists of 2-tuples above for use in code.
 NameSelection = enum.Enum("NameSelection", NameSelections)
 LinkSelection = enum.Enum("LinkSelection", LinkSelections)
-
+OrderSelection = enum.Enum("OrderSelection", OrderSelections)
 
 #===============================================================================
 # A structured approach to presenting leaderboards

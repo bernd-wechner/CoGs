@@ -51,13 +51,17 @@ urlpatterns = [
     # A success URL for submission of sessions
     path('impact/<model>/<pk>', views.view_Impact, name='impact'),
 
+    # URLs for browsing the logs
+    path('log/change/<pk>', views.view_Change, name='change'),
+    path('log/rebuild/<pk>', views.view_Rebuild, name='rebuild'),
+
     # A special view for database object inspectors where implemented
     path('inspect/<model>/<pk>', views.view_Inspect, name='inspect'),
 
     # CoGs custom views
-    path('leaderboards', views.view_Leaderboards, name='leaderboards'),
-    path('events', views.view_Events, name='events'),
-    path('players', views.view_Players, name='players'),
+    path('leaderboards/', views.view_Leaderboards, name='leaderboards'),
+    path('events/', views.view_Events, name='events'),
+    path('players/', views.view_Players, name='players'),
 
     # AJAX support (simple URLs for returning information to a webpage via a Javascript fetch)
     # Specific URLS first
@@ -105,7 +109,7 @@ urlpatterns = [
 
 # Provisional URL (remove in production, a duke nukem way of deleting records)
 if settings.DEBUG:  # and not settings.SITE_IS_LIVE:
-    import debug_toolbar
+    #import debug_toolbar
 
     urlpatterns += [
         # Some temporary internal URLS for now ...
@@ -117,11 +121,11 @@ if settings.DEBUG:  # and not settings.SITE_IS_LIVE:
         path('daltest/', views.view_DALtest),
 
         path(r'kill/<model>/<pk>', views.view_Kill, name='kill'),
-        path('__debug__/', include(debug_toolbar.urls)),
+        #path('__debug__/', include(debug_toolbar.urls)),
     ]
 
 # Fallback onto flatpages
 # as per: https://docs.djangoproject.com/en/dev/ref/contrib/flatpages/#how-it-works
-urlpatterns += [
-    re_path(r"^(?P<url>.*/)$", flat_views.flatpage),
-]
+# urlpatterns += [
+#     re_path(r"^(?P<url>.*/)$", flat_views.flatpage),
+# ]
