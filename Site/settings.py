@@ -351,6 +351,8 @@ if DEBUG or TESTING:
 
     # autoloaded is "true"
     if RUN_CONTEXT != "runserver_reloader":
+        log.debug("=======================================================================================")
+        log.debug("SETTINGS LOADED:")
         log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
         log.debug(f"Django Version: {django.__version__}")
         log.debug(f"Python Version: {sys.version}")
@@ -362,13 +364,20 @@ if DEBUG or TESTING:
         #
         # sys.base_prefix
         #
-        #     Set during Python startup, before site.py is run, to the same value as prefix. If not running in a virtual environment, the values will stay the same; if site.py finds that a virtual environment is in use, the values of prefix and exec_prefix will be changed to point to the virtual environment, whereas base_prefix and base_exec_prefix will remain pointing to the base Python installation (the one which the virtual environment was created from).
+        #     Set during Python startup, before site.py is run, to the same value as prefix. 
+        #     If not running in a virtual environment, the values will stay the same; 
+        #     if site.py finds that a virtual environment is in use, the values of prefix and exec_prefix 
+        #     will be changed to point to the virtual environment, whereas base_prefix and base_exec_prefix 
+        #     will remain pointing to the base Python installation (the one which the virtual environment 
+        #     was created from).
         #
         # sys.prefix
         #
-        #    A string giving the site-specific directory prefix where the platform independent Python files are installed; on Unix, the default is /usr/local.
-        #    Note
-        #        If a virtual environment is in effect, this value will be changed in site.py to point to the virtual environment. The value for the Python installation will still be available, via base_prefix.
+        #    A string giving the site-specific directory prefix where the platform independent Python files are installed.
+        #    On POSIX systems, the default is /usr/local.
+        #    Note:
+        #        If a virtual environment is in effect, this value will be changed in site.py to point to the virtual environment. 
+        #        The value for the Python installation will still be available, via base_prefix.
         #
         # So any difference between them demonstrates a venv is in use. 
         if getattr(sys, 'base_prefix', '') != getattr(sys, 'prefix', ''):
@@ -400,3 +409,6 @@ if DEBUG or TESTING:
         #
         # sys.settrace(trace_func)
         # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
+        
+        log.debug("=======================================================================================")
+        
