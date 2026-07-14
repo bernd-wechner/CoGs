@@ -328,24 +328,25 @@ if DEBUG or TESTING:
     import django  # So we have access to the version for reporting
     import psutil  # So we can access process details
 
-    print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
-
-    def pinfo():
-        pid = os.getpid()
-        ppid = os.getppid()
-        P = psutil.Process(pid)
-        PP = psutil.Process(ppid)
-        return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
-                'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
-
     # Unsure why, logging seems not enabled yet at this point, so to be be able to log we need to enable it for DEBUG
     # explicitly and load the config above explicitly. It works outside of settings.py without this, not sure why in here
     # the logger appear unconfigured at this point.
     log.setLevel(loglevel_DEBUG)
     logging.config.dictConfig(LOGGING)
 
-    # autoloaded is "true"
-    if RUN_CONTEXT != "runserver_reloader":
+    # Print context only if under runserver
+    if RUN_CONTEXT != "not runserver": print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
+
+    # Print runserver context only once, (the reloader reloads this file, so don't dump it there or we see it twice) 
+    if not RUN_CONTEXT in ("runserver_reloader", "not runserver"):
+        def pinfo():
+            pid = os.getpid()
+            ppid = os.getppid()
+            P = psutil.Process(pid)
+            PP = psutil.Process(ppid)
+            return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
+                    'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
+        
         log.debug("=======================================================================================")
         log.debug("SETTINGS LOADED:")
         log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
