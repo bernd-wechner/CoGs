@@ -189,8 +189,8 @@ if TESTING:
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
             'NAME': f'test_{database}',
-            'USER': 'test_CoGs',
-            'PASSWORD': 'ManyTeeth',
+            'USER': os.environ.get("TEST_DB_USER"),
+            'PASSWORD': os.environ.get("TEST_DB_PASSWORD"),
             'HOST': '127.0.0.1',
             'PORT': '5432',
         }
@@ -200,8 +200,8 @@ else:
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
             'NAME': database,
-            'USER': 'CoGs',
-            'PASSWORD': 'ManyTeeth',
+            'USER': os.environ.get("DB_USER"),
+            'PASSWORD': os.environ.get("DB_PASSWORD"),
             'HOST': '127.0.0.1',
             'PORT': '5432',
         },
