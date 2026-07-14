@@ -61,19 +61,14 @@ TESTING = len(sys.argv) >= 2 and sys.argv[1] == 'test'
 
 if HOSTNAME == PRODUCTION:
     SITE_TITLE = "CoGs Leaderboard Space"
-    database = "CoGs"
     DEBUG = False
     WARNINGS = False
 elif HOSTNAME == SANDBOX:
     SITE_TITLE = "CoGs Leaderboard Sandbox"
-    database = "CoGs"
-    # database = "CoGs_test"
     DEBUG = True
     WARNINGS = True
 else:
     SITE_TITLE = "CoGs Leaderboard Development"
-    database = "CoGs"
-    # database = "CoGs_test"
     DEBUG = True
     WARNINGS = not TESTING
 
@@ -188,22 +183,22 @@ if TESTING:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'NAME': f'test_{database}',
+            'HOST': os.environ.get("TEST_DB_HOST"),
+            'PORT': os.environ.get("TEST_DB_PORT"),
+            'NAME': os.environ.get("TEST_DB_NAME"),
             'USER': os.environ.get("TEST_DB_USER"),
             'PASSWORD': os.environ.get("TEST_DB_PASSWORD"),
-            'HOST': '127.0.0.1',
-            'PORT': '5432',
         }
     }
 else:
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'NAME': database,
+            'HOST': os.environ.get("DB_HOST"),
+            'PORT': os.environ.get("DB_PORT"),
+            'NAME': os.environ.get("DB_NAME"),
             'USER': os.environ.get("DB_USER"),
             'PASSWORD': os.environ.get("DB_PASSWORD"),
-            'HOST': '127.0.0.1',
-            'PORT': '5432',
         },
     }
     
