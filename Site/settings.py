@@ -177,30 +177,33 @@ TEMPLATES = [
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
 
-if TESTING:
-    # This user needs create and drop database privileges as the test runner needs 
-    # to be able to create a test database cleanly.    
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'HOST': os.environ.get("TEST_DB_HOST"),
-            'PORT': os.environ.get("TEST_DB_PORT"),
-            'NAME': os.environ.get("TEST_DB_NAME"),
-            'USER': os.environ.get("TEST_DB_USER"),
-            'PASSWORD': os.environ.get("TEST_DB_PASSWORD"),
-        }
+DB_CONFIGS = {
+    'live': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'HOST': os.environ.get("DB_HOST"),
+        'PORT': os.environ.get("DB_PORT"),
+        'NAME': os.environ.get("DB_NAME"),
+        'USER': os.environ.get("DB_USER"),
+        'PASSWORD': os.environ.get("DB_PASSWORD"),
+    },
+    'testing': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'HOST': os.environ.get("TEST_DB_HOST"),
+        'PORT': os.environ.get("TEST_DB_PORT"),
+        'NAME': os.environ.get("TEST_DB_NAME"),
+        'USER': os.environ.get("TEST_DB_USER"),
+        'PASSWORD': os.environ.get("TEST_DB_PASSWORD"),
     }
-else:
-    DATABASES = {
-        'default': {
-            'ENGINE': 'django.db.backends.postgresql_psycopg2',
-            'HOST': os.environ.get("DB_HOST"),
-            'PORT': os.environ.get("DB_PORT"),
-            'NAME': os.environ.get("DB_NAME"),
-            'USER': os.environ.get("DB_USER"),
-            'PASSWORD': os.environ.get("DB_PASSWORD"),
-        },
-    }
+}
+
+# Select the target based on the TESTING flag
+DEFAULT_DB = 'testing' if globals().get('TESTING', False) else 'live'
+
+DATABASES = {
+    'default': DB_CONFIGS[DEFAULT_DB],
+    'live': DB_CONFIGS['live'],
+    'testing': DB_CONFIGS['testing']
+}
     
 
 # Caching
