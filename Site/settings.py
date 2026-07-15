@@ -284,7 +284,9 @@ LOGGING = {
         '%(prefix)s%(relativeReference)9.4f, %(relativeLast)9.4f, %(filename)20s:%(lineno)4d, %(funcName)20s - %(message)s%(postfix)s'},
 
          'live': { 'format':
-         '%(asctime)s.%(msecs).03d  - %(relativeReference)9.4f - %(relativeLast)9.4f - %(process)d - %(thread)d - %(levelname)8s - %(filename)20s:%(lineno)4d - %(funcName)20s - %(message)s'}
+         '%(asctime)s.%(msecs).03d  - %(relativeReference)9.4f - %(relativeLast)9.4f - %(process)d - %(thread)d - %(levelname)8s - %(filename)20s:%(lineno)4d - %(funcName)20s - %(message)s'},
+
+         'terse': { 'format': '%(message)s'}        
         }
 }
 
@@ -312,6 +314,16 @@ else:
 
     LOGGING['loggers'] = { 'CoGs': { 'handlers': ['console'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } }
 
+
+# Add a terse logger for console logging that doesn't need all the details.
+LOGGING['handlers']['console_terse'] = {'level': 'DEBUG',
+                                        'class': 'logging.StreamHandler',
+                                        'stream': sys.stdout,  # Optional but forces text black, without this DEBUG text is red.
+                                        'formatter': 'terse'
+                                        } 
+
+LOGGING['loggers']['terse_console'] = { 'handlers': ['console_terse'], 'level': os.getenv('DJANGO_LOG_LEVEL', 'DEBUG') } 
+
 # Pass our logger to Django Rich Views
 from Site.logutils import log
 from logging import DEBUG as loglevel_DEBUG
@@ -335,6 +347,9 @@ if DEBUG or TESTING or show_settings:
     # the logger appear unconfigured at this point.
     log.setLevel(loglevel_DEBUG)
     logging.config.dictConfig(LOGGING)
+    
+    if show_settings:
+        log = logging.getLogger("terse_console")
 
     # Print context only if under runserver
     if RUN_CONTEXT != "not runserver": print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
