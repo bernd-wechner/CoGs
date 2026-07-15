@@ -323,8 +323,10 @@ django_rich_views.logs.logger = log
 # Include local query extensions (register them with Django)
 import Site.query
 
+show_settings = "show_settings" in sys.argv
+
 # Log some config debugs
-if DEBUG or TESTING:
+if DEBUG or TESTING or show_settings:
     import django  # So we have access to the version for reporting
     import psutil  # So we can access process details
 
@@ -338,7 +340,7 @@ if DEBUG or TESTING:
     if RUN_CONTEXT != "not runserver": print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
 
     # Print runserver context only once, (the reloader reloads this file, so don't dump it there or we see it twice) 
-    if not RUN_CONTEXT in ("runserver_reloader", "not runserver"):
+    if not RUN_CONTEXT in ("runserver_reloader", "not runserver") or show_settings:
         def pinfo():
             pid = os.getpid()
             ppid = os.getppid()

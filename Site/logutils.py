@@ -2,6 +2,8 @@
 Logging utilities
 
 To use, just import "log" from here and call log.debug(msg).
+
+The format of the log output is defined in settings.py with LOGGING setting (formatters entry) 
 '''
 import re, logging
 
