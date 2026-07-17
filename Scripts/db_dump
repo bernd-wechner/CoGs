@@ -7,7 +7,13 @@ PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
 ##############################################################################################################################
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-source_dir=$(dirname $script_dir)
+
+# Configurable dirs
+source_dir="${script_dir%/*}"      	# dir above the script's dir
+project_dir="${source_dir%/*/*}"	# dir two steps above the source dir
+backup_dir="$project_dir/Backups"
+
+backup_prefix=$(date +%Y-%m-%d)
 
 # Default Database configs
 host=localhost
@@ -173,8 +179,6 @@ if [ $use_sql == true ]; then format=""; else format="--format=custom"; fi
 
 args="--host=$host --port=$port --username=$admin $format"
 
-backup_dir="$source_dir/Backups"
-backup_prefix=$(date +%Y-%m-%d)
 if [ $use_sql == true ]; then backup_extension="sql"; else backup_extension="backup"; fi
 backup_file="$backup_dir/$backup_prefix $database Database - $host.$backup_extension"
 
@@ -182,14 +186,15 @@ if [ $dry_run == true ] || [ $verbose == true ]; then
 	echo CONFIG:
 	echo -e "\tscript_dir: $script_dir"
 	echo -e "\tsource_dir: $source_dir"
-	echo -e "\thost: $host"
-	echo -e "\tport: $port"
-	echo -e "\tformat: $format"
-	echo -e "\targs: $args"
+	echo -e "\tproject_dir: $project_dir"
 	echo -e "\tbackup_dir: $backup_dir"
 	echo -e "\tbackup_prefix: $backup_prefix"
 	echo -e "\tbackup_extension: $backup_extension"
 	echo -e "\tbackup_file: $backup_file"
+	echo -e "\thost: $host"
+	echo -e "\tport: $port"
+	echo -e "\tformat: $format"
+	echo -e "\targs: $args"
 	echo
 fi
 
