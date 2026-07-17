@@ -32,29 +32,39 @@ backup_suffix=$(date +%s)
 #    DB_USER
 #    DB_PASSWORD
 # Which will override the defaults above if found
+manage="$script_dir/manage"
 db_var_provider="$script_dir/db_vars"
 
-supported_args="DVh"
+supported_args="RMDVh"
 
 show_help_and_exit () {
 	echo "Usage: db_load [-$supported_args] backup_file"
 	echo ""
 	echo "where:"
+	echo "	-R requests a database reset, moves leaving an empty database for a fresh start!"
+	echo "	-M Run Django migrations to add the required tables to an empty datanase (only with -R)"
 	echo "	-D requests a dry run that echoes all commands that would be run (but aren't)"
 	echo "	-V verbose (add some extra diagnostic output)"
 	echo "	-h Show help"
 	echo ""
 	echo "	backup_file is the path to the backup file to restore"
-	echo "	database is the name of database to load into"
+	echo "	database is the name of database to load into"	
 	echo ""
+	echo "NOTE: This is a secure loader it will never delete a database or remove one."
+	echo "      If a database already exists it is simple renamed my adding _$backup_suffix to the name."
+	echo "      If anything goes wrong your prior database is safe and sound there."
 	exit
 }
 
+reset=false
+migrate=false
 dry_run=false
 verbose=false
 
 while getopts "$supported_args" flag; do
 	case "$flag" in
+		R) reset=true ;;
+		M) migrate=true ;;
 		D) dry_run=true ;;
 		V) verbose=true ;;
 		h) show_help_and_exit;;
@@ -64,7 +74,7 @@ done
 shift $((OPTIND-1))
 backup_file=$1
 
-if [ "$backup_file" == "" ]; then
+if [[ -z "$backup_file" && "$reset" != true ]]; then
 	echo -e "Error: Missing backup_file.\n"
 	show_help_and_exit;
 fi
@@ -210,12 +220,10 @@ fi
 pass_warn_admin="(if this prompts for a password it is for $admin and could be stored in ~/.pgpass to avoid this prompt)"
 pass_warn_user="(if this prompts for a password it is for $user and could be stored in ~/.pgpass to avoid this prompt)"
 
-
 # Disconnect the processes using the database
 echo "Disconnecting users... $pass_warn_admin"
 run_quiet psql $admin_connection $sql_args --command="SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" 
 
-#: << 'EOF'
 if [[ -n ${DB_PASSWORD:-} || $password != "password" ]]; then
 	password=${DB_PASSWORD:-$password}
 	
@@ -246,15 +254,23 @@ fi
 echo "Recreating (empty) $database database ..."
 run psql $admin_connection $sql_args --command="CREATE DATABASE \"$database\" OWNER '$user';"
 
-echo "Loading database ... $pass_warn_user"
-export PGPASSWORD=$password
-if [ $use_sql == true ]; then
-    run psql $user_connection --dbname="$database" -f "$backup_file"
+if [ $reset == true ]; then
+	if [[ $migrate == true || -e "$manage" ]]; then
+		echo "Applying migrations (ie creating all the tables the site needs)"
+		$manage migrate		
+	else
+		echo "Database left empty. Unless you appliy migrations it wonn't have any tables."
+	fi
 else
-    # --no-owner and --no-acl are used for portability between developer environments    
-    run pg_restore $user_connection --dbname="$database" --no-owner --no-acl "$backup_file"
+	echo "Loading database ... $pass_warn_user"
+	export PGPASSWORD=$password
+	if [ $use_sql == true ]; then
+	    run psql $user_connection --dbname="$database" -f "$backup_file"
+	else
+	    # --no-owner and --no-acl are used for portability between developer environments    
+	    run pg_restore $user_connection --dbname="$database" --no-owner --no-acl "$backup_file"
+	fi
 fi
-#EOF
 
 if [ $dry_run == true ]; then echo; fi
 

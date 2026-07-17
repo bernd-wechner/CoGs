@@ -1,0 +1,30 @@
+#!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
+##############################################################################################################################
+# A script support tool that simply runs manage.py inhte approiate env
+##############################################################################################################################
+
+source_dir=$(cd `dirname $0`/.. && pwd)
+
+find_venv() {
+    while :; do
+        if [[ -d .venv ]]; then
+            pwd
+            return 0
+        fi
+
+        # Have we reached the filesystem root?
+        [[ $PWD == / ]] && return 1
+
+        cd .. || return 1
+    done
+}
+
+if venv_root=$(find_venv); then
+    source "$venv_root/.venv/bin/activate"
+else
+    echo "# ERROR: No venv found" >&2
+fi
+
+cd $source_dir
+python manage.py "$@"
