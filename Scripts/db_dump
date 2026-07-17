@@ -62,37 +62,6 @@ done
 shift $((OPTIND-1))
 database=$1
 
-check_pg_access() {
-    local db="${1:-postgres}"   # database to test against, defaults to 'postgres'
-
-    # -w      : never prompt for a password (fails fast instead of hanging)
-    # -tAq    : quiet, unaligned, tuples-only output (don't care about it here)
-    # < /dev/null : belt-and-braces, also stops psql reading stray stdin
-    if psql -h "$host" -p "$port" -U "$admin" -d "$db" -w -tAq -c 'SELECT 1;' >/dev/null 2>&1 </dev/null; then
-		if [ $verbose == true ]; then
-        	echo "✔ '$admin' can access '$db' on $host:$port"
-        fi
-        return 0
-    fi
-
-    echo "✘ '$admin' could NOT access '$db' on $host:$port (no password prompt allowed)." >&2
-    echo "" >&2
-    echo "  Fix this one of two ways:" >&2
-    echo "" >&2
-    echo "  1) Set PGPASSWORD for this shell/script:" >&2
-    echo "       export PGPASSWORD='the_password'" >&2
-    echo "" >&2
-    echo "  2) Or add a line to ~/.pgpass (chmod 600 it if it isn't already) like this:" >&2
-    echo "       $host:$port:*:$admin:the_password" >&2
-    echo "" >&2
-    echo "     e.g.:" >&2
-    echo "       echo '$host:$port:*:$admin:the_password' >> ~/.pgpass" >&2
-    echo "       chmod 600 ~/.pgpass" >&2
-    return 1
-}
-
-check_pg_access || exit 1
-
 if [ "$database" == "" ]; then
 	echo -e "No database specified. Will look for the Django configured database."
 	
@@ -196,6 +165,37 @@ if [ $dry_run == true ] || [ $verbose == true ]; then
 	echo -e "\targs: $args"
 	echo
 fi
+
+check_pg_access() {
+    local db="${1:-postgres}"   # database to test against, defaults to 'postgres'
+
+    # -w      : never prompt for a password (fails fast instead of hanging)
+    # -tAq    : quiet, unaligned, tuples-only output (don't care about it here)
+    # < /dev/null : belt-and-braces, also stops psql reading stray stdin
+    if psql -h "$host" -p "$port" -U "$admin" -d "$db" -w -tAq -c 'SELECT 1;' >/dev/null 2>&1 </dev/null; then
+		if [ $verbose == true ]; then
+        	echo "✔ '$admin' can access '$db' on $host:$port"
+        fi
+        return 0
+    fi
+
+    echo "✘ '$admin' could NOT access '$db' on $host:$port (no password prompt allowed)." >&2
+    echo "" >&2
+    echo "  Fix this one of two ways:" >&2
+    echo "" >&2
+    echo "  1) Set PGPASSWORD for this shell/script:" >&2
+    echo "       export PGPASSWORD='the_password'" >&2
+    echo "" >&2
+    echo "  2) Or add a line to ~/.pgpass (chmod 600 it if it isn't already) like this:" >&2
+    echo "       $host:$port:*:$admin:the_password" >&2
+    echo "" >&2
+    echo "     e.g.:" >&2
+    echo "       echo '$host:$port:*:$admin:the_password' >> ~/.pgpass" >&2
+    echo "       chmod 600 ~/.pgpass" >&2
+    return 1
+}
+
+check_pg_access || exit 1
 
 if [ $dry_run == true ]; then
 	echo "Dry run (commands that would be executed are):"

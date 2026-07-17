@@ -1,0 +1,81 @@
+#!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
+##############################################################################################################################
+# A quick look at content_types in a Django database
+#
+# These are known to cause issues with fixtures dumped with dumpdata and loaded with load_data.
+#
+# This little help can be useful in looking at the contenttypes model.
+#
+# Turns out it's simple and in fact managed my migrations and not part of a site's data at all. To wit it should never 
+# have been dumped by dumpdata. As it just breaks loaddata later into a database that has all migrations applied. 
+##############################################################################################################################
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+
+host=localhost
+port=5432
+admin=postgres
+
+# An external script that provides db configs from Django settings
+# It should provide:
+#    DB_HOST
+#    DB_PORT
+#    DB_NAME
+#    DB_USER
+#    DB_PASSWORD
+# Which will override the defaults above if found
+db_var_provider="$script_dir/db_vars"
+
+database=$1
+
+if [ "$database" == "" ]; then
+	echo -e "No database specified. Will look for the Django configured database."
+	
+	# Try and get db_vars from the Django config through the configured provider
+	if [[ -e "$db_var_provider" ]]; then
+		if file -b "$db_var_provider" | grep -q '^Bourne-Again shell script'; then
+			is_static_assignment() {
+	    		[[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*=([A-Za-z0-9_./:-]+|\"[^\"]*\"|\'[^\']*\')$ ]]
+			}
+			
+			only_valid_assignments() {
+			    local output="$1"
+			    local line
+			
+			    while IFS= read -r line; do
+			        [[ -z $line ]] && continue
+			
+			        if ! is_static_assignment "$line"; then
+			            return 1
+			        fi
+			    done <<< "$output"
+			
+			    return 0
+			}
+			
+			declarations="$("$db_var_provider")"
+		
+			if only_valid_assignments "$declarations"; then
+		    	eval "$declarations"
+		    fi
+		    
+		    # Override defaults with Django settings if provided
+		    host=${DB_HOST:-$host}	
+		    port=${DB_PORT:-$port}
+		    database=${DB_NAME:-$database}
+		    user=${DB_USER:-$user}
+	    fi
+	fi
+	
+	if [[ -z ${database:-} ]]; then
+		exit 1		
+	fi 
+fi
+
+admin_connection="--host=$host --port=$port --username=$admin --dbname=$database"
+sql_args="--tuples-only --quiet"
+
+echo -e "Database: $database:"
+psql $admin_connection $sql_args --command="SELECT * FROM public.django_content_type"
+

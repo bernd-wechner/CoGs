@@ -1,0 +1,84 @@
+#!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
+##############################################################################################################################
+# A mange.py loaddata helper
+#
+# Alas Django dumps a model of it sown with dumpdata (ContentType). This causes loading issues because a Djangointernal and 
+# migrations manage it! This is a fixture loader that tries to filter that out. 
+##############################################################################################################################
+
+FIXTURE="$1"
+
+if [[ -z "$FIXTURE" ]]; then
+    echo "Usage: $0 <path-to-fixture.json|xml|yaml>"
+    exit 1
+fi
+
+if [[ ! -f "$FIXTURE" ]]; then
+    echo "Error: File not found: $FIXTURE"
+    exit 1
+fi
+
+# Determine format and clean filename
+ext="${FIXTURE##*.}"
+ext=$(echo "$ext" | tr '[:upper:]' '[:lower:]')
+base="${FIXTURE%.*}"
+clean_fixture="${base}-clean.${ext}"
+
+echo "Processing fixture: $FIXTURE"
+
+# Function to check tool and give install hint
+check_tool() {
+    local tool=$1
+    local install_cmd=$2
+    if ! command -v "$tool" >/dev/null 2>&1; then
+        echo "  Error: '$tool' is required for $ext files but not installed."
+        echo "  Install with: $install_cmd"
+        return 1
+    fi
+    return 0
+}
+
+# Use cached clean version if it exists and is newer
+if [[ -f "$clean_fixture" && "$clean_fixture" -nt "$FIXTURE" ]]; then
+    echo "→ Using cached clean fixture: $clean_fixture"
+    python manage.py loaddata --ignorenonexistent "$clean_fixture"
+    exit $?
+fi
+
+case "$ext" in
+    json)
+        if check_tool "jq" "sudo apt install jq  (or brew install jq)"; then
+            echo "→ JSON: Removing ContentType entries (caching result)..."
+            jq 'map(select(.model != "contenttypes.contenttype"))' "$FIXTURE" > "$clean_fixture"
+            python manage.py loaddata --ignorenonexistent "$clean_fixture"
+        else
+            exit 1
+        fi
+        ;;
+
+    xml)
+        if check_tool "xmlstarlet" "sudo apt install xmlstarlet"; then
+            echo "→ XML: Removing ContentType entries (caching result)..."
+            xmlstarlet ed -d "//object[@model='contenttypes.contenttype']" "$FIXTURE" > "$clean_fixture"
+            python manage.py loaddata --ignorenonexistent "$clean_fixture"
+        else
+            exit 1
+        fi
+        ;;
+
+    yml|yaml)
+        if check_tool "yq" "sudo apt install yq  (or download from https://github.com/mikefarah/yq)"; then
+            echo "→ YAML: Removing ContentType entries (caching result)..."
+            yq -y '[.[] | select(.model != "contenttypes.contenttype")]' "$FIXTURE" > "$clean_fixture"
+            python manage.py loaddata --ignorenonexistent "$clean_fixture"
+        else
+            exit 1
+        fi
+        ;;
+
+    *)
+        echo "Error: Unsupported format: .$ext"
+        exit 1
+        ;;
+esac
