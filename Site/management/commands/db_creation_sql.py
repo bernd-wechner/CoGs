@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 
 class Command(BaseCommand):
-    help = 'Generates SQL to create roles and databases for Postgres'
+    help = 'Generates SQL to create roles and databases for Postgres, that the site expects.'
 
     def handle(self, *args, **options):
         configs = getattr(settings, 'DATABASES', {})
