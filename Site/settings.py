@@ -355,7 +355,7 @@ if DEBUG or TESTING or show_settings:
         log = logging.getLogger("terse_console")
 
     # Print context only if under runserver
-    if RUN_CONTEXT != "not runserver": print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
+    if RUN_CONTEXT != "not runserver" and not show_settings: print(f"RUN_CONTEXT: {settings.RUN_CONTEXT}")
 
     # Print runserver context only once, (the reloader reloads this file, so don't dump it there or we see it twice) 
     if not RUN_CONTEXT in ("runserver_reloader", "not runserver") or show_settings:
@@ -368,7 +368,7 @@ if DEBUG or TESTING or show_settings:
                     'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
         
         log.debug("=======================================================================================")
-        log.debug("SETTINGS LOADED:")
+        log.debug(f"SETTINGS LOADED (in context '{RUN_CONTEXT}'):")
         log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
         log.debug(f"Django Version: {django.__version__}")
         log.debug(f"Python Version: {sys.version}")

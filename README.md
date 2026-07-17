@@ -37,7 +37,7 @@ would improve below, and improve it - or ask me to!
 
    `sudo apt install git`
 
-2. Install postgresql
+2. Install and configure postgresql
 
     `sudo apt install postgresql libpq-dev`
 
@@ -76,6 +76,7 @@ would improve below, and improve it - or ask me to!
    
    # Install uv
    # See: https://github.com/astral-sh/uv 
+   curl -LsSf https://astral.sh/uv/install.sh | sh
    
    # Create the workspace
    mkdir -p ~/workspace/CoGs
@@ -94,6 +95,12 @@ would improve below, and improve it - or ask me to!
    git clone https://github.com/bernd-wechner/CoGs.git Source/develop
    # OR fork it on github and clone your fork. 
    
+   # Your git repo is now Source/develop and you can just check status there
+   cd Source/develop
+   git status			# for quck status
+   git remote -v		# To list hte remote
+   git pull            # Will fetch any updates from the remote repo 
+   
    # Install the requirements
    uv pip install -r Source/develop/requirements.txt
    
@@ -103,15 +110,57 @@ would improve below, and improve it - or ask me to!
    
    # If that runs and shows you management hekp you're on a good wicket!
    # This would be even better if it runs:
+   # If this doesn't work, fret not, park it for now and move on to
+   # Seed your database below
    python manage.py runserver
    
    # It may not do that until you check the database connection.
+   # Also of course if this doesn't work skip it for now and move
+   # on to Seed your database below
    python manage.py dbshell
    
-   # If it fails check the DATABASE settings in Site/settings.py
+   # If it fails check the DATABASE settings in .env (which is loaded by Sy Site/settings.py)
    ```
 
-4. Install Eclipse and Pydev
+4. Seed your database
+
+    You'll need a user and database for the site to run.
+
+    * The database connection parameters live in a `.env` file which is not hosted on github. I  fact they forced this in 2026 refusing any push that they think looks like it includes passwords or keys. There an `example.env` that illustrates the format. Copy that to .env and add passwords that you wand and make sure the host and port and such are right. 
+      * Once you've created `.env` try `python manage.py dbshell` and if you get a prompt you can try `/l` which lists databases. 
+      * Note that the `.env` file is loaded by `Site/settings.py` and the variables used in defining the `DATABASES` settings
+      * There's also a utility  in the `Scripts` folder: `db_load` which reads that very `.env` as well and you can use it to ensure you have a database with:
+        `Scripts/db_load -RM`
+        - `-R` for reset (created an empty database)
+        - `-M` for migrate (create all the tables needed in that database)
+      * If this doesn't work back to database *Install and configure postgresql* above ;-)
+    * Using pgAdmin4 you can check the database, the role, and permissions and all.
+
+    Export data was done with:
+
+    ```
+       python3 manage.py dumpdata --format xml --indent 4 > data.xml
+       python3 manage.py dumpdata --format json --indent 4 > data.json
+       python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
+    ```
+
+    Just to get all possible formats for the heck of it. Only need one.
+
+    Import data is then done with:
+
+    ```
+       python3 manage.py loaddata <file>
+    
+       where <file> is one of the three files I dumped with dumpdata.
+    ```
+
+    That should see you with a seeded database.
+
+5. Alternately get some real data
+
+    If you're intending to collaborate and would like real data to work with we have some years of cub data collected in our instance. That is of course live data and will only be shared with trusted partners. There are two utilities in the Scripts dir, `db_dump` and `db_load` that were written for just this kind of share.
+
+6. Install Eclipse and Pydev
 
     Recommend avoiding the ubuntu package and just going straight to
     https://www.eclipse.org
@@ -158,48 +207,6 @@ would improve below, and improve it - or ask me to!
           Quit the server with CONTROL-C.
           ```
 
-5. Seed your database
-
-    First e need a user and database.
-
-    * check `Site/settings.py` the `DATABASES` will reveal the configure username and password and the database name. Change those, or at least the password if you like, then create that user in postgresql.
-
-    * Use pgAdmin4 to create role (that's the username) and make sure it has Login  rights and you set the password and create an empty database owned by that user.
-
-    * Alternately on the command line:
-
-      * Open SQL prompt with `psql -U postgres`
-        * then at the prompt: `CREATE ROLE "CoGs" LOGIN PASSWORD 'password'; CREATE DATABASE "CoGs";`
-        * Postgres is fussy here, it demands single quotes around the password and if case is to be preserved, double quotes around the role (user name) and the database name.
-
-    * to test logging in try `psql -U CoGs` that should now prompt for the password and let you.
-
-    * Now we need to apply the migrations, that is define the tables in the database. Django does that for us but we have to ask it to: `python manage.py migrate` should work and let you know all is good. If not, time to work out why I guess.
-
-    Export data was done with:
-
-    ```
-       python3 manage.py dumpdata --format xml --indent 4 > data.xml
-       python3 manage.py dumpdata --format json --indent 4 > data.json
-       python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
-    ```
-
-    Just to get all possible formats for the heck of it. Only need one.
-
-    Import data is then done with:
-
-    ```
-       python3 manage.py loaddata <file>
-    
-       where <file> is one of the three files I dumped with dumpdata.
-    ```
-
-    That should see you with a seeded database.
-
-6. Alternately get some real data
-
-    If you're intending to collaborate and would like real data to work with we have some years of cub data collected in our instance. That is of course live data and will only be shared with trusted partners. There are two utilities in the Scripts dir, `db_dump` and `db_load` that were written for just this kind of share.
-
 7. Try it out
 
 8. Open the CoGs project in Eclipse
@@ -218,6 +225,7 @@ would improve below, and improve it - or ask me to!
    Quit the server with CONTROL-C.
    
    ```
+
 11. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
 Now dive in ...
