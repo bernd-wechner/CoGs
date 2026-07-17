@@ -98,14 +98,17 @@ would improve below, and improve it - or ask me to!
    # Your git repo is now Source/develop and you can just check status there
    cd Source/develop
    git status			# for quck status
-   git remote -v		# To list hte remote
+   git remote -v		# To list the remote
    git pull            # Will fetch any updates from the remote repo 
    
+   # The default branch is master currently which reflext what is live
+   # Development happens on the develp branch so:
+   git checkout develop
+   
    # Install the requirements
-   uv pip install -r Source/develop/requirements.txt
+   uv pip install -r requirements.txt
    
    # Try it out
-   cd Source/develop
    python manage.py
    
    # If that runs and shows you management hekp you're on a good wicket!
