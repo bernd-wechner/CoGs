@@ -239,15 +239,19 @@ Two tools I've used:
 
 ### postgresql_autodoc
 
- `sudo apt install postgresql-autodoc`
- `postgresql_autodoc -d CoGs -u CoGs --password=ManyTeeth`
+```
+ sudo apt install postgresql-autodoc
+ postgresql_autodoc -d CoGs -u CoGs --password=thepass
+```
 
 Had login problems and had to fix `var/lib/pgsql/data/pg_hba.conf` making local connections use md5 connection method.
 
 This produces `CoGs.dia` and Cogs.dot which you need dia to view:
 
- `sudo apt install dia`
- `sudo apt install xdot`
+```
+sudo apt install dia
+sudo apt install xdot
+```
 
 Alas the dia file seems to have all tables coincident though neatly moverable yet I can't find a cool layout option.
 
@@ -257,19 +261,25 @@ The dot file is well laid out. Butit proves to be large and so schemaSpy produce
 downloaded schemaSpy from: https://sourceforge.net/projects/schemaspy/
 Installed the file:
 
- mv schemaSpy_5.0.0.jar ~/bin/schemaSpy
- chmod +x ~/bin/schemaSpy
+```bash
+mv schemaSpy_5.0.0.jar ~/bin/schemaSpy
+chmod +x ~/bin/schemaSpy
+```
 
 downloaded the Java postgresql driver from: https://jdbc.postgresql.org/download.html
 
 Installed the file:
 
- sudo mv postgresql-9.4.1211.jar /usr/share/java
+```bash
+sudo mv postgresql-9.4.1211.jar /usr/share/java
+```
 
 ran schemaSpy in my Doc folder:
 
-`schemaSpy -t pgsql -cp /usr/share/java/postgresql-9.4.1211.jar -host localhost -db CoGs -s public -u CoGs -p ManyTeeth -o .`
+```bash
+schemaSpy -t pgsql -cp /usr/share/java/postgresql-9.4.1211.jar -host localhost -db CoGs -s public -u CoGs -p thepass -o .
+```
 
-Produces a rich documentation site under index.html including a better schema diagram, but you cna't move things around, it's well layed out but fixed in place.
+Produces a rich documentation site under `index.html` including a better schema diagram, but you can't move things around, it's well laid out but fixed in place.
 
 You can click on any table and get a cool relative view though. And if you install xdot can view the .dot files.

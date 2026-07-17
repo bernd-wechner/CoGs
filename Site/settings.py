@@ -3,15 +3,16 @@ Django settings for CoGs project.
 """
 
 # Build paths inside the project like this: os.path.join(BASE_DIR, ...)
-import os
-import sys
+import os, sys, warnings
 
 from django_run_context import get_run_context
 
 from tzlocal import get_localzone
 from dotenv import load_dotenv
 from crequest.middleware import CrequestMiddleware
+
 from django.conf import settings, global_settings
+from django.core.exceptions import ImproperlyConfigured
 
 # Get the run context
 RUN_CONTEXT = get_run_context()
@@ -176,35 +177,46 @@ TEMPLATES = [
 
 # Database
 # https://docs.djangoproject.com/en/1.8/ref/settings/#databases
-
-DB_CONFIGS = {
-    'live': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': os.environ.get("DB_HOST"),
-        'PORT': os.environ.get("DB_PORT"),
-        'NAME': os.environ.get("DB_NAME"),
-        'USER': os.environ.get("DB_USER"),
-        'PASSWORD': os.environ.get("DB_PASSWORD"),
-    },
-    'testing': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'HOST': os.environ.get("TEST_DB_HOST"),
-        'PORT': os.environ.get("TEST_DB_PORT"),
-        'NAME': os.environ.get("TEST_DB_NAME"),
-        'USER': os.environ.get("TEST_DB_USER"),
-        'PASSWORD': os.environ.get("TEST_DB_PASSWORD"),
-    }
-}
-
 # Select the target based on the TESTING flag
 DEFAULT_DB = 'testing' if globals().get('TESTING', False) else 'live'
+def _db_config_error(is_default: bool, msg: str):
+    if is_default:
+        raise ImproperlyConfigured(msg)
+    else:
+        warnings.warn(msg, RuntimeWarning)
+
+def _get_db_config(name_prefix: str, is_default: bool = False):
+    config = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'HOST': os.environ.get(f"{name_prefix}_HOST"),
+        'PORT': os.environ.get(f"{name_prefix}_PORT"),
+        'NAME': os.environ.get(f"{name_prefix}_NAME"),
+        'USER': os.environ.get(f"{name_prefix}_USER"),
+        'PASSWORD': os.environ.get(f"{name_prefix}_PASSWORD"),
+    }
+
+    required_keys = ['HOST', 'PORT', 'NAME', 'USER', 'PASSWORD']
+    missing = [k for k in required_keys if not config[k]]
+
+    if missing:
+        _db_config_error(is_default, f"Missing or empty database settings for '{name_prefix}': {', '.join(missing)}")
+    
+    if config['PORT'] and not config['PORT'].isdigit():
+        _db_config_error(is_default, f"Invalid PORT for {name_prefix}: {config['PORT']}")
+    
+    return config
+
+DB_CONFIGS = {
+    'live': _get_db_config("DB", is_default=(DEFAULT_DB == 'live')),
+    'testing': _get_db_config("TEST_DB", is_default=(DEFAULT_DB == 'testing')),
+}
 
 DATABASES = {
     'default': DB_CONFIGS[DEFAULT_DB],
     'live': DB_CONFIGS['live'],
-    'testing': DB_CONFIGS['testing']
+    'testing': DB_CONFIGS['testing'],
 }
-    
+
 
 # Caching
 CACHES = {

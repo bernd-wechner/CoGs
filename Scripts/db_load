@@ -111,6 +111,7 @@ check_pg_access() {
 check_pg_access || exit 1
 
 # Try and get db_vars from the Django config through the configured provider
+got_django_settings=false
 if [[ -e "$db_var_provider" ]]; then
 	if file -b "$db_var_provider" | grep -q '^Bourne-Again shell script'; then
 		is_static_assignment() {
@@ -125,7 +126,6 @@ if [[ -e "$db_var_provider" ]]; then
 		        [[ -z $line ]] && continue
 		
 		        if ! is_static_assignment "$line"; then
-		            printf 'Rejected: %q\n' "$line" >&2
 		            return 1
 		        fi
 		    done <<< "$output"
@@ -138,13 +138,33 @@ if [[ -e "$db_var_provider" ]]; then
 		if only_valid_assignments "$declarations"; then
 	    	eval "$declarations"
 	    fi
-	    
+
+		if [[ -n $DB_HOST && -n $DB_PORT && -n $DB_NAME && -n $DB_USER ]]; then
+			got_django_settings=true			
+		fi
+			    
 	    # Override defaults with Django settings if provided
 	    host=${DB_HOST:-$host}	
 	    port=${DB_PORT:-$port}
 	    database=${DB_NAME:-$database}	
-	    user=${DB_USER:-$user}		    	
+	    user=${DB_USER:-$user}
     fi
+fi
+
+if [ $got_django_settings != true ] ; then
+	echo -e "WARNING: Could not get all Django database settings, wil try these from the defaults:"
+	echo -e "\thost: $host"
+	echo -e "\tport: $port"
+	echo -e "\tdatabase: $database"
+	echo -e "\tuser: $user"
+	echo -e "Check the settings in:"
+	echo -e "\t'$source_dir/.env'"
+	echo -e "which should be based on "
+	echo -e "\t'$source_dir/example.env'"
+	echo -e "to supply datbase settings."
+	echo		
+	echo -e "These are read in '$source_dir/Site/settings.py' to populate the DATABASES setting."
+	echo
 fi
 
 admin_connection="--host=$host --port=$port --username=$admin"
@@ -164,20 +184,22 @@ if [ $dry_run == true ] || [ $verbose == true ]; then
 	echo -e "\tsource_dir: $source_dir"
 	echo -e "\thost: $host"
 	echo -e "\tport: $port"
+	echo -e "\tdatabase: $database"
 	echo -e "\tuser: $user"
 	echo -e "\tuse_sql: $use_sql"
 	echo -e "\tadmin_connection: $admin_connection"
 	echo -e "\tuser_connection: $user_connection"
 	echo -e "\tsql_args: $sql_args"
 	echo -e "\tbackup_file: $backup_file"
-	echo -e "\tdatabase: $database"
 	
 	echo -e "\tdb_var_provider: $db_var_provider"	
+	echo -e "\\tgot_django_settings: $got_django_settings"
 	echo -e "\tDB_HOST: $DB_HOST"
 	echo -e "\tDB_PORT: $DB_PORT"
     echo -e "\tDB_NAME: $DB_NAME"
     echo -e "\tDB_USER: $DB_USER"
-    echo -e "\tDB_PASSWORD: $DB_PASSWORD"	
+    echo -e "\tDB_PASSWORD: $DB_PASSWORD"
+    echo
 fi
 
 # Dryrun support is provided via run functions
@@ -214,7 +236,7 @@ run_quiet() {
 }
 
 if [ $dry_run == true ]; then
-	echo "Dry run (commands that would be executed are - you cannot copy/paste these as quoting conventions are not respected in the outputs, they are guides only):"
+	echo "Dry run (commands that would be executed are):"
 fi
 
 pass_warn_admin="(if this prompts for a password it is for $admin and could be stored in ~/.pgpass to avoid this prompt)"
@@ -256,10 +278,14 @@ run psql $admin_connection $sql_args --command="CREATE DATABASE \"$database\" OW
 
 if [ $reset == true ]; then
 	if [[ $migrate == true || -e "$manage" ]]; then
-		echo "Applying migrations (ie creating all the tables the site needs)"
-		$manage migrate		
+		if [ $got_django_settings == true ] ; then
+			echo "Applying migrations (ie creating all the tables the site needs)"
+			run $manage migrate
+		else
+			echo "Cannot reliably apply migrations because we failed to get all the Django dtabase settings."
+		fi		
 	else
-		echo "Database left empty. Unless you appliy migrations it wonn't have any tables."
+		echo "Database left empty. Unless you apply migrations it wonn't have any tables."
 	fi
 else
 	echo "Loading database ... $pass_warn_user"
