@@ -34,40 +34,42 @@ would improve below, and improve it - or ask me to!
 ### How to build the CoGs site
 
 1. Install git. You'll need git to clone this repo/
-   
+
    `sudo apt install git`
 
 2. Install postgresql
-   
+
     `sudo apt install postgresql libpq-dev`
-   
+
     pgadmin is a little harder. A useful tool for administering postgresql, I wouldn't be without it. But to install it visit:
     https://www.pgadmin.org/download/
-   
+
     You'll want to test that you can connect to the postgresql server in any case, and try:
-   
+
     `psql -U postgres`
-   
+
     which probably won't work. `postgres` is the default database user name, but I've typically found peer authorisation in effect meaning only the `postgres` system user can log in as the `postgres` database user. On Debian derived systems (Ubuntu, Mint etc) you can see this by trying:
-   
+
     `sudo -u postgres psql`
-   
+
     which might work. But you can make the first version work too by changing `peer` to `trust` in `/etc/postgresql/vv/main/pg_hba.conf`(where `vv` is the postgresql version, 18 last time these notes were looked at and hba is short for **Host Based Authentication**) where this line defines the security locally:
-   
+
     `local   all             postgres                                peer`
-   
+
     just change `peer` to `trust` and you won't need `sudo` to connect with psql. You will need to restart postgres before any change takes effect though which on a systemd bases system something like `sudo service postgresql restart`.
-   
+
     `pgadmin4` should also be able to connect then, and it's worth testing that if you want to use that. If anything fails there is a lot of documentation in the `pg_hba.conf`file and Google and now any online AI (multplying like rabbits) are your friends.
 
+    Once you've connected successfully
+
 3. Get the source and install needed dependencies, in a [venv](https://docs.python.org/3/library/venv.html) ideally. What follows is a Linux based approach (Windows will be different and if someone wants to write up a Windows set of steps please do) and makes two key assumption you need to modify as you desire:
-   
-   1. That you'l like `uv` as much as I do. It's Python package manager that just beats pip hands down. Ironically you'll need pip to install it. Main advantages I find with uv is it hands conflicts so much better and can builds venvs on any version of Python. 
-   
+
+   1. That you'll like `uv` as much as I do. It's Python package manager that just beats pip hands down. Ironically you'll need pip to install it. Main advantages I find with uv is it hands conflicts so much better and can builds venvs on any version of Python. 
+
    2. That you want to store your venv in in the worksapce. I've moved to dong that. Not in the git repo, but the workspace.   
-   
+
    3. That you house your development projects in `~/workspace`. You can keep them wherever you like, bust just substitute `~/workspace` with the directory you choose to call home for your development projects.
-   
+
    ```bash
    # Get the basic together
    sudo apt install python3 python3-pip python3-venv python3-dev
@@ -106,139 +108,141 @@ would improve below, and improve it - or ask me to!
    # It may not do that until you check the database connection.
    python manage.py dbshell
    
-   # If it fails chgeck the database settings in Site/settings.py
-   
+   # If it fails check the DATABASE settings in Site/settings.py
    ```
+
 4. Install Eclipse and Pydev
 
-Recommend avoiding the ubuntu package and just going straight to
-https://www.eclipse.org
-and get the latest Eclipse from there.
+    Recommend avoiding the ubuntu package and just going straight to
+    https://www.eclipse.org
+    and get the latest Eclipse from there.
 
-Then install PyDev from within Eclipse by adding these repositories:
-pydev - http://pydev.org/updates
-Django Template Editor - http://eclipse.kacprzak.org/updates
+    Then install PyDev from within Eclipse by adding these repositories:
+    pydev - http://pydev.org/updates
+    Django Template Editor - http://eclipse.kacprzak.org/updates
 
-I had enormous troubles getting PyDev to work from the ubuntu repositories
-and the PyDev support guys suggested the above which worked a breeze.
+    I had enormous troubles getting PyDev to work from the ubuntu repositories
+    and the PyDev support guys suggested the above which worked a breeze.
 
-Then if you've used a venv (as suggested) configure an interpreter for use. In Eclipse:
+    Then if you've used a venv (as suggested) configure an interpreter for use. In Eclipse:
 
-    1. **Window > Preferences > PyDev > Interpreters > Python Interpreters**
-    1. **New > Browse for python/pypy exe**
-    1. Browse to your venv python instance. For example: `~/.venvs/CoGs/bin/python`
-    1. Give it name under **Interpreter Name**. I typically use "CoGs Venv" for example.
+        1. **Window > Preferences > PyDev > Interpreters > Python Interpreters**
+        1. **New > Browse for python/pypy exe**
+        1. Browse to your venv python instance. For example: `~/.venvs/CoGs/bin/python`
+        1. Give it name under **Interpreter Name**. I typically use "CoGs Venv" for example.
 
-Now load the project in Eclipse:
+    Now load the project in Eclipse:
 
-1. Work out where you want it to live. On a Linux system I'd recommend `~/workspace` (if in 1. above you set one up use that)
+    1. Work out where you want it to live. On a Linux system I'd recommend `~/workspace` (if in 1. above you set one up use that)
 
-2. If you didn't already (in step 1. above) fetch it from github with:
-   `git clone https://github.com/bernd-wechner/CoGs.git`
-   (or fork on github and clone your repo which is generally better) and
+    2. If you didn't already (in step 1. above) fetch it from github with:
+       `git clone https://github.com/bernd-wechner/CoGs.git`
+       (or fork on github and clone your repo which is generally better) and
 
-3. Open the Eclipse project file in Eclipse:
-   
-   1. **File > Open Projects from File System**
-   2. Click **Directory** and navigate to the cloned repo (nominally `~/workspace/CoGs`)
+    3. Open the Eclipse project file in Eclipse:
 
-4. If you have a CoGs project in Eclipse now, try debugging a server run quickly:
-   
-   1. Right-click on the project **> Properties > PyDev - Interpreter/Grammar**. Select the Interpreter you created ("CoGs Venv" above). 
-   
-   2. Right-click on the project > **Debug As > PyDev: Django**
-   
-   3. If all is well you'll see on the Console the development server start up and end with something like this:
-      
-      ```
-      Django version 4.2.3, using settings 'Site.settings'
-      Starting development server at http://127.0.0.1:8000/
-      Quit the server with CONTROL-C.
-      ```
+       1. **File > Open Projects from File System**
+       2. Click **Directory** and navigate to the cloned repo (nominally `~/workspace/CoGs`)
+
+    4. If you have a CoGs project in Eclipse now, try debugging a server run quickly:
+
+       1. Right-click on the project **> Properties > PyDev - Interpreter/Grammar**. Select the Interpreter you created ("CoGs Venv" above). 
+
+       2. Right-click on the project > **Debug As > PyDev: Django**
+
+       3. If all is well you'll see on the Console the development server start up and end with something like this:
+
+          ```
+          Django version 4.2.3, using settings 'Site.settings'
+          Starting development server at http://127.0.0.1:8000/
+          Quit the server with CONTROL-C.
+          ```
 
 5. Seed your database
 
-Firs we need a user and database.
+    First e need a user and database.
 
-* check `Site/settings.py` the `DATABASES` will reveal the configure username and password and the database name. Change those, or at least the password if you like, then create that user in postgresql.
+    * check `Site/settings.py` the `DATABASES` will reveal the configure username and password and the database name. Change those, or at least the password if you like, then create that user in postgresql.
 
-* Use pgAdmin4 to create role (that's the username) and make sure it has Login  rights and you set the password and create an empty database owned by that user.
+    * Use pgAdmin4 to create role (that's the username) and make sure it has Login  rights and you set the password and create an empty database owned by that user.
 
-* Alternately on the command line:
-  
-  * Open SQL prompt with `psql -U postgres`
-    * then at the prompt: `CREATE ROLE "CoGs" LOGIN PASSWORD 'password'; CREATE DATABASE "CoGs";`
-    * Postgres is fussy here, it demands single quotes around the password and if case is to be preserved, double quotes around the role (user name) and the database name.
+    * Alternately on the command line:
 
-* to test logging in try `psql -U CoGs` that should now prompt for the password and let you.
+      * Open SQL prompt with `psql -U postgres`
+        * then at the prompt: `CREATE ROLE "CoGs" LOGIN PASSWORD 'password'; CREATE DATABASE "CoGs";`
+        * Postgres is fussy here, it demands single quotes around the password and if case is to be preserved, double quotes around the role (user name) and the database name.
 
-* Now we need to apply the migrations, that is define the tables in the database. Django does that for us but we have to ask it to: `python manage.py migrate` should work and let you know all is good. If not, time to work out why I guess.
+    * to test logging in try `psql -U CoGs` that should now prompt for the password and let you.
 
-Export data was done with:
+    * Now we need to apply the migrations, that is define the tables in the database. Django does that for us but we have to ask it to: `python manage.py migrate` should work and let you know all is good. If not, time to work out why I guess.
 
-```
-   python3 manage.py dumpdata --format xml --indent 4 > data.xml
-   python3 manage.py dumpdata --format json --indent 4 > data.json
-   python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
-```
+    Export data was done with:
 
-Just to get all possible formats for the heck of it. Only need one.
+    ```
+       python3 manage.py dumpdata --format xml --indent 4 > data.xml
+       python3 manage.py dumpdata --format json --indent 4 > data.json
+       python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
+    ```
 
-Import data is then done with:
+    Just to get all possible formats for the heck of it. Only need one.
 
-```
-   python3 manage.py loaddata <file>
+    Import data is then done with:
 
-   where <file> is one of the three files I dumped with dumpdata.
-```
+    ```
+       python3 manage.py loaddata <file>
+    
+       where <file> is one of the three files I dumped with dumpdata.
+    ```
 
-That should see you with a seeded database.
+    That should see you with a seeded database.
 
-6. Try it out
+6. Alternately get some real data
 
-7. Open the CoGs project in Eclipse
+    If you're intending to collaborate and would like real data to work with we have some years of cub data collected in our instance. That is of course live data and will only be shared with trusted partners. There are two utilities in the Scripts dir, `db_dump` and `db_load` that were written for just this kind of share.
 
-8. Right click the project then click `Debug As...` then `PyDev: Django`
+7. Try it out
 
-9. In your Console panel you should see something like:
-   
+8. Open the CoGs project in Eclipse
+
+9. Right click the project then click `Debug As...` then `PyDev: Django`
+
+10. In your Console panel you should see something like:
+
    ```
    Performing system checks...
+   
+   System check identified no issues (0 silenced).
+   December 05, 2016 - 11:52:55
+    Django version 1.10.1, using settings 'CoGs.settings'
+   Starting development server at http://127.0.0.1:8000/
+   Quit the server with CONTROL-C.
+   
    ```
+11. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
-System check identified no issues (0 silenced).
-December 05, 2016 - 11:52:55
- Django version 1.10.1, using settings 'CoGs.settings'
-Starting development server at http://127.0.0.1:8000/
-Quit the server with CONTROL-C.
-
-```
-4. In your favourite web browser open http://127.0.0.1:8000/ and play around.
-```
-
-```
 Now dive in ...
 
 ## Some Database documentation tips
 
 Two tools I've used:
 
-**postgresql_autodoc**
+### postgresql_autodoc
 
- sudo apt install postgresql-autodoc
- postgresql_autodoc -d CoGs -u CoGs --password=ManyTeeth
+ `sudo apt install postgresql-autodoc`
+ `postgresql_autodoc -d CoGs -u CoGs --password=ManyTeeth`
 
-Had login problems and had to fix var/lib/pgsql/data/pg_hba.conf making local connections use md5 connection method.
+Had login problems and had to fix `var/lib/pgsql/data/pg_hba.conf` making local connections use md5 connection method.
 
-This produces CoGs.dia and Cogs.dot which you need dia to view:
+This produces `CoGs.dia` and Cogs.dot which you need dia to view:
 
- sudo apt install dia
- sudo apt install xdot
+ `sudo apt install dia`
+ `sudo apt install xdot`
 
 Alas the dia file seems to have all tables coincident though neatly moverable yet I can't find a cool layout option.
+
 The dot file is well laid out. Butit proves to be large and so schemaSpy produces a more navigable result.
 
-**schemaSpy**
+### schemaSpy
 downloaded schemaSpy from: https://sourceforge.net/projects/schemaspy/
 Installed the file:
 
@@ -253,9 +257,8 @@ Installed the file:
 
 ran schemaSpy in my Doc folder:
 
- schemaSpy -t pgsql -cp /usr/share/java/postgresql-9.4.1211.jar -host localhost -db CoGs -s public -u CoGs -p ManyTeeth -o .
+`schemaSpy -t pgsql -cp /usr/share/java/postgresql-9.4.1211.jar -host localhost -db CoGs -s public -u CoGs -p ManyTeeth -o .`
 
 Produces a rich documentation site under index.html including a better schema diagram, but you cna't move things around, it's well layed out but fixed in place.
 
 You can click on any table and get a cool relative view though. And if you install xdot can view the .dot files.
-```
