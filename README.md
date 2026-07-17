@@ -139,31 +139,55 @@ would improve below, and improve it - or ask me to!
       * If this doesn't work back to database *Install and configure postgresql* above ;-)
     * Using pgAdmin4 you can check the database, the role, and permissions and all.
 
-    Export data was done with:
+    Once that's all working you can inject data. Given live data is not in the repo you'll need to drop us a line and we'll share some with trusted partners only (as it invariably contains player data mostly names and emails for example and isn't public). 
 
-    ```
-       python3 manage.py dumpdata --format xml --indent 4 > data.xml
-       python3 manage.py dumpdata --format json --indent 4 > data.json
-       python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
-    ```
+    There are two options:
 
-    Just to get all possible formats for the heck of it. Only need one.
+    1. Old fixtures
 
-    Import data is then done with:
+       Django provide a dumpdata and loaddata command pair for sharing data. We last used this many years ago and captured data in three formats:
 
-    ```
-       python3 manage.py loaddata <file>
-    
-       where <file> is one of the three files I dumped with dumpdata.
-    ```
+       ```
+          python3 manage.py dumpdata --format xml --indent 4 > data.xml
+          python3 manage.py dumpdata --format json --indent 4 > data.json
+          python3 manage.py dumpdata --format yaml --indent 4 > data.yaml
+       ```
 
-    That should see you with a seeded database.
+       Just to get all possible formats for the heck of it. You'd only need one.
 
-5. Alternately get some real data
+       Import data is then normally done with:
 
-    If you're intending to collaborate and would like real data to work with we have some years of cub data collected in our instance. That is of course live data and will only be shared with trusted partners. There are two utilities in the Scripts dir, `db_dump` and `db_load` that were written for just this kind of share.
+       ```
+          python3 manage.py loaddata <file>
+       ```
 
-6. Install Eclipse and Pydev
+       **BUT:** it turns out Django's dumpdata is a bit weird and includes a Django maintained model ContentType that created load issues. We wrote a wrapper that filters that out of the dump and loads the data successfully:
+
+       ```
+          Scripts/load_fixture <file>
+       ```
+
+       That should see you with a seeded database.
+
+    2. Full database 
+
+       This is in fact better as it will include and PostgreSQL extensions that models may rely on.
+
+       We wrote some helpers to make this easier:
+
+       ```
+       Scripts/db_dump <database>
+       ```
+
+       Will create a dump that can be shared and:
+
+       ```
+       Scripts/db_load <file>
+       ```
+
+       Will load that file. Should work slickly. But if there are any issues I'll guess we'll fix 'em!'
+
+5. Install Eclipse and Pydev
 
     Recommend avoiding the ubuntu package and just going straight to
     https://www.eclipse.org
@@ -178,10 +202,10 @@ would improve below, and improve it - or ask me to!
 
     Then if you've used a venv (as suggested) configure an interpreter for use. In Eclipse:
 
-        1. **Window > Preferences > PyDev > Interpreters > Python Interpreters**
-        1. **New > Browse for python/pypy exe**
-        1. Browse to your venv python instance. For example: `~/.venvs/CoGs/bin/python`
-        1. Give it name under **Interpreter Name**. I typically use "CoGs Venv" for example.
+    1. **Window > Preferences > PyDev > Interpreters > Python Interpreters**
+    1. **New > Browse for python/pypy exe**
+    1. Browse to your venv python instance. For example: `~/.venvs/CoGs/bin/python`
+    1. Give it name under **Interpreter Name**. I typically use "CoGs Venv" for example.
 
     Now load the project in Eclipse:
 
@@ -210,13 +234,13 @@ would improve below, and improve it - or ask me to!
           Quit the server with CONTROL-C.
           ```
 
-7. Try it out
+6. Try it out
 
-8. Open the CoGs project in Eclipse
+7. Open the CoGs project in Eclipse
 
-9. Right click the project then click `Debug As...` then `PyDev: Django`
+8. Right click the project then click `Debug As...` then `PyDev: Django`
 
-10. In your Console panel you should see something like:
+9. In your Console panel you should see something like:
 
    ```
    Performing system checks...
@@ -229,7 +253,7 @@ would improve below, and improve it - or ask me to!
    
    ```
 
-11. In your favourite web browser open http://127.0.0.1:8000/ and play around.
+10. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
 Now dive in ...
 

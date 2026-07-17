@@ -1,9 +1,9 @@
 #!/bin/bash
 PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
 ##############################################################################################################################
-# A mange.py loaddata helper
+# A manage.py loaddata helper
 #
-# Alas Django dumps a model of it sown with dumpdata (ContentType). This causes loading issues because a Djangointernal and 
+# Alas Django dumps a model of its own with dumpdata (ContentType). This causes loading issues because a Django internal and 
 # migrations manage it! This is a fixture loader that tries to filter that out. 
 ##############################################################################################################################
 

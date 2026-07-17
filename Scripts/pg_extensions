@@ -1,0 +1,16 @@
+#!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
+##############################################################################################################################
+# List all installed Postgsgre extensions 
+##############################################################################################################################
+
+host=arachne.lan
+port=5432
+admin=postgres
+
+admin_connection="--host=$host --port=$port --username=$admin"
+
+psql $admin_connection -At -c "SELECT datname FROM pg_database WHERE datistemplate = false;" | while read dbname; do
+    echo "--- Database: $dbname ---"
+    psql $admin_connection -d "$dbname" -t -c "\dx"
+done
