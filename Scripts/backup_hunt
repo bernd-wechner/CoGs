@@ -5,11 +5,11 @@
 # Written because in 2023 I found some players entered in the system who have no recorded games. Nor can I find any 
 # record of games they played, which begs the question why they are in the system
 #
-# The possibility of lost data being real, a walk through backups by hand proved laborious in hte extreme so I figured 
+# The possibility of lost data being real, a walk through backups by hand proved laborious in the extreme so I figured 
 # better to script it.
 #
 # And indeeed it takes little time scripted to walk over all the backups we have. Brute froce over them all 
-# indiscriminately is a 3minute run compared to using pgadmin to cycle through them (aaargh) 
+# indiscriminately is a 3 minute run compared to using pgadmin to cycle through them (aaargh) 
 ##############################################################################################################################
 
 ##############################################################################################################################

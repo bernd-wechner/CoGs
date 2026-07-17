@@ -252,7 +252,7 @@ if [ $backup_only = false ];then
 	# If the owner for the target database does not exist create it
 	role_exists=$(psql $target_db $sql_opts --command="SELECT 1 FROM pg_roles WHERE rolname='$ownername'")
 	
-	# For reasons not understood, out of the blue, sometimes the previous command returns the resultwith
+	# For reasons not understood, out of the blue, sometimes the previous command returns the result with
 	# a white space prepended. So we remove all spaces for surety. The only thing I found to work!
 	role_exists=${role_exists// /}
 	

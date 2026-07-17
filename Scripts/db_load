@@ -1,0 +1,228 @@
+#!/bin/bash
+PS4='+ ${BASH_SOURCE}:${LINENO}:${FUNCNAME[0]}: '
+##############################################################################################################################
+# A simple script to load a backup file. This is the converse of db_dump.
+#
+# For use on localhost. 
+##############################################################################################################################
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+source_dir=$(dirname $script_dir)
+
+# Default Database configs
+host=localhost
+port=5432
+database=CoGs
+user=CoGs
+password=password
+
+admin=postgres
+
+# Tacked on the end of an existing database name if it needs to be moved aside for the load
+backup_suffix=$(date +%s)
+
+# An external script that provides db configs from Django settings
+# It should provide:
+#    DB_HOST
+#    DB_PORT
+#    DB_NAME
+#    DB_USER
+#    DB_PASSWORD
+# Which will override the defaults above if found
+db_var_provider="$script_dir/db_vars"
+
+supported_args="DVh"
+
+show_help_and_exit () {
+	echo "Usage: db_load [-$supported_args] backup_file"
+	echo ""
+	echo "where:"
+	echo "	-D requests a dry run that echoes all commands that would be run (but aren't)"
+	echo "	-V verbose (add some extra diagnostic output)"
+	echo "	-h Show help"
+	echo ""
+	echo "	backup_file is the path to the backup file to restore"
+	echo "	database is the name of database to load into"
+	echo ""
+	exit
+}
+
+dry_run=false
+verbose=false
+
+while getopts "$supported_args" flag; do
+	case "$flag" in
+		D) dry_run=true ;;
+		V) verbose=true ;;
+		h) show_help_and_exit;;
+	esac
+done
+
+shift $((OPTIND-1))
+backup_file=$1
+
+if [ "$backup_file" == "" ]; then
+	echo -e "Error: Missing backup_file.\n"
+	show_help_and_exit;
+fi
+
+# Try and get db_vars from the Django config through the configured provider
+if [[ -e "$db_var_provider" ]]; then
+	if file -b "$db_var_provider" | grep -q '^Bourne-Again shell script'; then
+		is_static_assignment() {
+    		[[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*=([A-Za-z0-9_./:-]+|\"[^\"]*\"|\'[^\']*\')$ ]]
+		}
+		
+		only_valid_assignments() {
+		    local output="$1"
+		    local line
+		
+		    while IFS= read -r line; do
+		        [[ -z $line ]] && continue
+		
+		        if ! is_static_assignment "$line"; then
+		            printf 'Rejected: %q\n' "$line" >&2
+		            return 1
+		        fi
+		    done <<< "$output"
+		
+		    return 0
+		}
+		
+		declarations="$("$db_var_provider")"
+	
+		if only_valid_assignments "$declarations"; then
+	    	eval "$declarations"
+	    fi
+	    
+	    # Override defaults with Django settings if provided
+	    host=${DB_HOST:-$host}	
+	    port=${DB_PORT:-$port}
+	    database=${DB_NAME:-$database}	
+	    user=${DB_USER:-$user}		    	
+    fi
+fi
+
+admin_connection="--host=$host --port=$port --username=$admin"
+user_connection="--host=$host --port=$port --username=$user"
+sql_args="--tuples-only --quiet"
+
+# Infer format from extension
+if [[ "$backup_file" == *.sql ]]; then
+    use_sql=true
+else
+    use_sql=false
+fi
+
+if [ $dry_run == true ] || [ $verbose == true ]; then
+	echo CONFIG:
+	echo -e "\tscript_dir: $script_dir"
+	echo -e "\tsource_dir: $source_dir"
+	echo -e "\thost: $host"
+	echo -e "\tport: $port"
+	echo -e "\tuser: $user"
+	echo -e "\tuse_sql: $use_sql"
+	echo -e "\tadmin_connection: $admin_connection"
+	echo -e "\tuser_connection: $user_connection"
+	echo -e "\tsql_args: $sql_args"
+	echo -e "\tbackup_file: $backup_file"
+	echo -e "\tdatabase: $database"
+	
+	echo -e "\tdb_var_provider: $db_var_provider"	
+	echo -e "\tDB_HOST: $DB_HOST"
+	echo -e "\tDB_PORT: $DB_PORT"
+    echo -e "\tDB_NAME: $DB_NAME"
+    echo -e "\tDB_USER: $DB_USER"
+    echo -e "\tDB_PASSWORD: $DB_PASSWORD"	
+fi
+
+# Dryrun support is provided via run functions
+command_line() {
+    local arg
+
+    for arg in "$@"; do
+        if [[ $arg =~ [[:space:]] ]]; then
+            printf '"%s" ' "$arg"
+        else
+            printf '%s ' "$arg"
+        fi
+    done
+}
+
+run() {
+    if [[ $dry_run == true ]]; then
+        printf '\t'
+        command_line "$@"
+        printf '\n'
+    else
+        "$@"
+    fi
+}
+
+run_quiet() {
+    if [[ $dry_run == true ]]; then
+        printf '\t'
+        command_line "$@"
+        printf '>/dev/null\n'
+    else
+        "$@" >/dev/null
+    fi
+}
+
+if [ $dry_run == true ]; then
+	echo "Dry run (commands that would be executed are - you cannot copy/paste these as quoting conventions are not respected in the outputs, they are guides only):"
+fi
+
+pass_warn_admin="(if this prompts for a password it is for $admin and could be stored in ~/.pgpass to avoid this prompt)"
+pass_warn_user="(if this prompts for a password it is for $user and could be stored in ~/.pgpass to avoid this prompt)"
+
+
+# Disconnect the processes using the database
+echo "Disconnecting users... $pass_warn_admin"
+run_quiet psql $admin_connection $sql_args --command="SELECT pg_terminate_backend(pg_stat_activity.pid) FROM pg_stat_activity WHERE datname = '$database';" 
+
+#: << 'EOF'
+if [[ -n ${DB_PASSWORD:-} || $password != "password" ]]; then
+	password=${DB_PASSWORD:-$password}
+	
+	role_exists=$(psql $admin_connection $sql_args --command="SELECT 1 FROM pg_roles WHERE rolname='$user'" | xargs)
+	
+	# Note in psql identifies are double quoted and strig literals single quoted. 
+	# Usernames are identifiers and passwords are literal strings
+	if [ "$role_exists" == "1" ]; then
+		echo -e "Ensuring the user \"$user\" has the required password."
+		run psql $admin_connection $sql_args --command="ALTER USER \"$user\" WITH PASSWORD '$password';"
+	else
+		echo -e "Creating role \"$user\"."
+		run psql $admin_connection $sql_args --command="CREATE ROLE \"$user\" LOGIN PASSWORD '$password';"
+	fi
+fi
+
+# Check if the target database exists
+existing_db=$(psql $admin_connection $sql_args --command="SELECT datname FROM pg_catalog.pg_database WHERE datname='$database'" | xargs)
+
+# If it exists, rename the target database
+if [ "$existing_db" = "$database" ]; then
+	new_name=${database}_$backup_suffix
+	echo "Renaming database $database to $new_name ..."
+	run psql $admin_connection $sql_args --command="ALTER DATABASE \"$database\" RENAME TO \"$new_name\";"
+fi
+
+# Recreate the database to load into
+echo "Recreating (empty) $database database ..."
+run psql $admin_connection $sql_args --command="CREATE DATABASE \"$database\" OWNER '$user';"
+
+echo "Loading database ... $pass_warn_user"
+export PGPASSWORD=$password
+if [ $use_sql == true ]; then
+    run psql $user_connection --dbname="$database" -f "$backup_file"
+else
+    # --no-owner and --no-acl are used for portability between developer environments    
+    run pg_restore $user_connection --dbname="$database" --no-owner --no-acl "$backup_file"
+fi
+#EOF
+
+if [ $dry_run == true ]; then echo; fi
+
+echo "Database restored to:" 
+echo -e "    $database"

@@ -1,0 +1,38 @@
+#!/bin/bash
+# check_owners.sh - Show owners of tables, sequences, functions, etc. in the database
+
+host=localhost
+port=5432
+admin=postgres
+
+connection="--host=$host --port=$port --username=$admin"
+
+DB=${1:-CoGs}
+
+echo "=== Owners in database: $DB ==="
+echo "Current user running this: $(whoami)"
+echo
+
+psql $connection --dbname="$DB" --tuples-only --no-align --command="
+SELECT 
+    n.nspname as schema,
+    c.relname as object_name,
+    c.relkind as object_type,
+    r.rolname as owner
+FROM pg_class c
+JOIN pg_namespace n ON n.oid = c.relnamespace
+JOIN pg_roles r ON r.oid = c.relowner
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+ORDER BY n.nspname, c.relname;
+" | column -t -s $'\t'
+
+echo -e "\n=== Schema owners ==="
+psql $connection --dbname="$DB" --command="
+SELECT 
+    n.nspname as schema_name,
+    r.rolname as owner
+FROM pg_namespace n
+JOIN pg_roles r ON r.oid = n.nspowner
+WHERE n.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')
+ORDER BY n.nspname;
+"
