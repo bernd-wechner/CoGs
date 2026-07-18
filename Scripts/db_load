@@ -95,7 +95,11 @@ if [[ -e "$db_var_provider" ]]; then
 		        [[ -z $line ]] && continue
 		
 		        if ! is_static_assignment "$line"; then
+		        	if [ $verbose == true ]; then echo "THUMBSUP: '$line' looks like a static assignment"; fi
 		            return 1
+		        else
+		        	if [ $verbose == true ]; then echo "WARNING: '$line' does not look like a static assignment"; fi
+		        	 
 		        fi
 		    done <<< "$output"
 		
@@ -109,7 +113,10 @@ if [[ -e "$db_var_provider" ]]; then
 	    fi
 
 		if [[ -n $DB_HOST && -n $DB_PORT && -n $DB_NAME && -n $DB_USER ]]; then
-			got_django_settings=true			
+        	if [ $verbose == true ]; then echo "THUMBSUP: all Django settings look good"; fi
+			got_django_settings=true
+		else
+        	if [ $verbose == true ]; then echo "WARNING: one of these didn't look right DB_HOST: '$DB_HOST'  DB_PORT:'$DB_PORT' DB_NAME: '$DB_NAME' DB_USER: '$DB_USER'"; fi
 		fi
 			    
 	    # Override defaults with Django settings if provided
@@ -282,7 +289,7 @@ if [ $reset == true ]; then
 			echo "Applying migrations (ie creating all the tables the site needs)"
 			run $manage migrate
 		else
-			echo "Cannot reliably apply migrations because we failed to get all the Django dtabase settings."
+			echo "Cannot reliably apply migrations because we failed to get all the Django database settings."
 		fi		
 	else
 		echo "Database left empty. Unless you apply migrations it wonn't have any tables."

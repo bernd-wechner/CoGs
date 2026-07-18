@@ -189,22 +189,24 @@ would improve below, and improve it - or ask me to!
 
 5. Install Eclipse and Pydev
 
-    Recommend avoiding the ubuntu package and just going straight to
-    https://www.eclipse.org
+    Recommend avoiding the ubuntu package and just going straight to https://www.eclipse.org
     and get the latest Eclipse from there.
 
     Then install PyDev from within Eclipse by adding these repositories:
-    pydev - http://pydev.org/updates
-    Django Template Editor - http://eclipse.kacprzak.org/updates
 
-    I had enormous troubles getting PyDev to work from the ubuntu repositories
-    and the PyDev support guys suggested the above which worked a breeze.
+    1. **Help > Eclipse Marketplace...**
+    2. Find: PyDev
+    3. Click **Install**
+
+    There a Django Templates editor which is handy for editing templates:
+
+    - https://github.com/bernd-wechner/django-template-editor
 
     Then if you've used a venv (as suggested) configure an interpreter for use. In Eclipse:
 
     1. **Window > Preferences > PyDev > Interpreters > Python Interpreters**
     1. **New > Browse for python/pypy exe**
-    1. Browse to your venv python instance. For example: `~/.venvs/CoGs/bin/python`
+    1. Browse to your venv python instance. For example: `~/workspace/CoGs/.venv/bin/python`
     1. Give it name under **Interpreter Name**. I typically use "CoGs Venv" for example.
 
     Now load the project in Eclipse:
@@ -213,7 +215,7 @@ would improve below, and improve it - or ask me to!
 
     2. If you didn't already (in step 1. above) fetch it from github with:
        `git clone https://github.com/bernd-wechner/CoGs.git`
-       (or fork on github and clone your repo which is generally better) and
+       (or fork on github and clone your repo which is generally better)
 
     3. Open the Eclipse project file in Eclipse:
 
