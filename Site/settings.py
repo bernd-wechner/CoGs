@@ -380,7 +380,7 @@ if DEBUG or TESTING or show_settings:
                     'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
         
         log.debug("=======================================================================================")
-        log.debug(f"SETTINGS LOADED (in context '{RUN_CONTEXT}'):")
+        log.debug(f"SETTINGS LOADED (in context '{RUN_CONTEXT}' on host: '{HOSTNAME}'):")
         log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
         log.debug(f"Django Version: {django.__version__}")
         log.debug(f"Python Version: {sys.version}")
