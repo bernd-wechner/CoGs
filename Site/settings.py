@@ -73,7 +73,6 @@ else:
     DEBUG = True
     WARNINGS = not TESTING
 
-
 # Make sure the SITE_TITLE is visible in context
 def site_context(request):  # @UnusedVariable
     return {"SITE_TITLE": SITE_TITLE}
@@ -378,15 +377,6 @@ if DEBUG or TESTING or show_settings:
             PP = psutil.Process(ppid)
             return {'Me': f'pid={pid}, name={P.name()}, commandline={P.cmdline()}, started={P.create_time()}',
                     'My Parent': f'pid={ppid}, name={PP.name()}, commandline={PP.cmdline()}, started={PP.create_time()}'}
-        
-        log.debug("=======================================================================================")
-        log.debug(f"SETTINGS LOADED (in context '{RUN_CONTEXT}' on host: '{HOSTNAME}'):")
-        log.debug(f"Django Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
-        log.debug(f"Django Version: {django.__version__}")
-        log.debug(f"Python Version: {sys.version}")
-
-        python_executable_path = sys.executable
-        log.debug(f"Python Path: {python_executable_path}")
 
         # From Python 3.3 onwards:
         #
@@ -408,26 +398,45 @@ if DEBUG or TESTING or show_settings:
         #        The value for the Python installation will still be available, via base_prefix.
         #
         # So any difference between them demonstrates a venv is in use. 
-        if getattr(sys, 'base_prefix', '') != getattr(sys, 'prefix', ''):
-            log.debug(f"Python Venv: {sys.prefix}")
-        else:
-            log.debug("Python Venv: Not set")
+        venv_dir = sys.prefix if getattr(sys, 'base_prefix', '') != getattr(sys, 'prefix', '') else "Not set" 
+        python_executable_path = sys.executable
+        
+        log.debug("=======================================================================================")
+        log.debug(f"SETTINGS LOADED (in context '{RUN_CONTEXT}' on host: '{HOSTNAME}'):")
+        
+        log.debug(f"Python context:")      
+        log.debug(f"\tPython Version: {sys.version}")
+        log.debug(f"\tPython Path: {python_executable_path}")
+        log.debug(f"\tPython Venv: {venv_dir}")
+        log.debug(f"\tUsing Path: {sys.path}")
 
-        log.debug(f"Django loaded from: {django.__file__}")
-        log.debug(f"Using Path: {sys.path}")
-        log.debug(f"Process Info: {pinfo()}")
-        log.debug(f"Static root: {STATIC_ROOT}")
-        log.debug(f"Static file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
-        log.debug(f"Installed apps: {INSTALLED_APPS}")
-        log.debug(f"Database: {DATABASES['default']}")
-        log.debug(f"Testing: {TESTING}")
-        log.debug(f"Debug: {DEBUG}")
-        log.debug(f"Run Context: {settings.RUN_CONTEXT}")
-        log.debug(f"Command Line: {sys.argv}")
-        log.debug(f"Current Directory: {os.path.abspath('.')}")
-        log.debug(f"Time Zone: {TIME_ZONE}")
+        log.debug(f"Django context:")      
+        log.debug(f"\tDjango Settings: {'Live' if SITE_IS_LIVE else 'Development'} Server")
+        log.debug(f"\tDjango Version: {django.__version__}")
+        log.debug(f"\tDjango loaded from: {django.__file__}")
+        log.debug(f"\tInstalled apps: {INSTALLED_APPS}")
+        log.debug(f"\tDatabase: {DATABASES['default']}")
+        
+        log.debug(f"Server context:")      
+        log.debug(f"\tProduction server: {PRODUCTION}")
+        log.debug(f"\tSandbox server: {SANDBOX}")
+        log.debug(f"\tThis server: {HOSTNAME}")
+        log.debug(f"\tAre we live?: {SITE_IS_LIVE}")
+        log.debug(f"\tSite title: {SITE_TITLE}")
 
+        log.debug(f"Process context:")      
+        log.debug(f"\tCommand Line: {sys.argv}")
+        log.debug(f"\tProcess Info: {pinfo()}")
 
+        log.debug(f"Run context ({RUN_CONTEXT}):")
+        log.debug(f"\tTesting: {TESTING}")
+        log.debug(f"\tDebug: {DEBUG}")
+        log.debug(f"\tWarnings: {WARNINGS}")
+        log.debug(f"\tTime Zone: {TIME_ZONE}")
+        log.debug(f"\tCurrent Directory: {os.path.abspath('.')}")
+        log.debug(f"\tStatic root: {STATIC_ROOT}")
+        log.debug(f"\tStatic file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+        
         # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
         # #if not sys.gettrace():
         # def trace_func(frame, event, arg):
