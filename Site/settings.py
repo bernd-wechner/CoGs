@@ -55,7 +55,7 @@ ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", 
 PRODUCTION = "shelob"
 SANDBOX = "arachne"
 
-# DO NOT let SITE_IS_LIVE be True if it isn't (a live webserv run, e.g. you're running under
+# DO NOT let SITE_IS_LIVE be True if it isn't (a live webserver run, e.g. you're running under
 # manage.py runserver, in development mode. This might set up a load of downstream expectations 
 # that we're running on a live web server under uwsgi that might (and might not) break your 
 # off-line development run badly!  
