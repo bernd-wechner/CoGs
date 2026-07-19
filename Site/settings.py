@@ -49,10 +49,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.AutoField'
 import platform
 HOSTNAME = platform.node().lower()
 
+ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", "sandbox.leaderboard.space"]
+
 # The name of the webserver this is running on (used to select deployment settings)
 PRODUCTION = "shelob"
 SANDBOX = "arachne"
 
+# DO NOT let SITE_IS_LIVE be True if it isn't (a live webserv run, e.g. you're running under
+# manage.py runserver, in development mode. This might set up a load of downstream expectations 
+# that we're running on a live web server under uwsgi that might (and might not) break your 
+# off-line development run badly!  
 SITE_IS_LIVE = HOSTNAME in [PRODUCTION, SANDBOX]
 
 # We define our own test runner because Djangos default test runner
@@ -77,16 +83,12 @@ else:
 def site_context(request):  # @UnusedVariable
     return {"SITE_TITLE": SITE_TITLE}
 
-
-ALLOWED_HOSTS = ["127.0.0.1", "arachne.lan", "shelob.lan", "leaderboard.space", "sandbox.leaderboard.space"]
-
 # The CoGs ID for the django.contrib.sites app,
 # which just a prerequisite for the django.contrib.flatpages app
 # which is used for serving the about page (and any other flat pages).
 SITE_ID = 1
 
 if SITE_IS_LIVE:
-    print("Django settings: Web Server")
     SECURE_CONTENT_TYPE_NOSNIFF = True
     SECURE_BROWSER_XSS_FILTER = True
     SECURE_SSL_REDIRECT = True
@@ -436,6 +438,16 @@ if DEBUG or TESTING or show_settings:
         log.debug(f"\tCurrent Directory: {os.path.abspath('.')}")
         log.debug(f"\tStatic root: {STATIC_ROOT}")
         log.debug(f"\tStatic file dirs: {locals().get('STATICFILES_DIRS', globals().get('STATICFILES_DIRS', []))}")
+        
+        # Relevant Django settings we set in this file (above) in specific contexts
+        log.debug(f"Django Site settings:")
+        log.debug(f"\tSECURE_CONTENT_TYPE_NOSNIFF: {getattr(settings,'SECURE_CONTENT_TYPE_NOSNIFF', None)}")
+        log.debug(f"\tSECURE_BROWSER_XSS_FILTER: {getattr(settings,'SECURE_BROWSER_XSS_FILTER', None)}")
+        log.debug(f"\tSECURE_SSL_REDIRECT: {getattr(settings,'SECURE_SSL_REDIRECT', None)}")
+        log.debug(f"\tSESSION_COOKIE_SECURE: {getattr(settings,'SESSION_COOKIE_SECURE', None)}")
+        log.debug(f"\tCSRF_COOKIE_SECURE: {getattr(settings,'CSRF_COOKIE_SECURE', None)}")
+        log.debug(f"\tX_FRAME_OPTIONS: {getattr(settings,'X_FRAME_OPTIONS', None)}")
+        log.debug(f"\tINTERNAL_IPS: {getattr(settings,'INTERNAL_IPS', None)}")
         
         # print(f'DEBUG: current trace function in {os.getpid()}', sys.gettrace())
         # #if not sys.gettrace():

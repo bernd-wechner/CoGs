@@ -65,9 +65,21 @@ database=$1
 if [ "$database" == "" ]; then
 	echo -e "No database specified. Will look for the Django configured database."
 	
-	# Try and get db_vars from the Django config through the configured provider
+	got_django_settings=false
 	if [[ -e "$db_var_provider" ]]; then
-		if file -b "$db_var_provider" | grep -q '^Bourne-Again shell script'; then
+		file_type=$(file -b "$db_var_provider")
+		bash_type_re="^Bourne-Again shell script" 
+		
+		if [[ $file_type =~ $bash_type_re ]]; then
+		    is_bash_script=true
+		else
+		    is_bash_script=false
+		fi	
+		
+		if $is_bash_script; then
+	    	if [ $verbose == true ]; then echo "The db_var_provider ($db_var_provider) is a valid script:"; fi
+	
+	
 			is_static_assignment() {
 	    		[[ $1 =~ ^[A-Za-z_][A-Za-z0-9_]*=([A-Za-z0-9_./:-]+|\"[^\"]*\"|\'[^\']*\')$ ]]
 			}
@@ -79,8 +91,11 @@ if [ "$database" == "" ]; then
 			    while IFS= read -r line; do
 			        [[ -z $line ]] && continue
 			
-			        if ! is_static_assignment "$line"; then
-			            return 1
+			        if is_static_assignment "$line"; then
+			        	if [ $verbose == true ]; then echo -e "\t'$line' looks like a static assignment"; fi
+			        else
+			        	echo "ERROR: Bad format supplied by '$db_var_provider': '$line'"
+			            exit 1		        	 
 			        fi
 			    done <<< "$output"
 			
@@ -92,21 +107,28 @@ if [ "$database" == "" ]; then
 			if only_valid_assignments "$declarations"; then
 		    	eval "$declarations"
 		    fi
-		    
+	
+			if [[ -n $DB_HOST && -n $DB_PORT && -n $DB_NAME && -n $DB_USER ]]; then
+	        	if [ $verbose == true ]; then echo -e "\tAll Django settings look good"; fi
+				got_django_settings=true
+			else
+	        	echo "WARNING: one of these didn't look right DB_HOST: '$DB_HOST'  DB_PORT:'$DB_PORT' DB_NAME: '$DB_NAME' DB_USER: '$DB_USER'"
+			fi
+				    
 		    # Override defaults with Django settings if provided
 		    host=${DB_HOST:-$host}	
 		    port=${DB_PORT:-$port}
-		    database=${DB_NAME:-$database}
+		    database=${DB_NAME:-$database}	
 		    user=${DB_USER:-$user}
 	    fi
 	fi
 	
-	if [[ -n ${database:-} ]]; then
+	if [ $got_django_settings == true ] ; then
 		echo -e "\tFound: $database"
 	else
 		echo -e "\tNone found\n"
 		show_help_and_exit
-	fi 
+	fi	
 fi
 
 
