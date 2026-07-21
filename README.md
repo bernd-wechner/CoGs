@@ -187,7 +187,36 @@ would improve below, and improve it - or ask me to!
 
        Will load that file. Should work slickly. But if there are any issues I'll guess we'll fix 'em!'
 
-5. Install Eclipse and Pydev
+5. Install memcached
+
+    If you look in Site/settings.py at the CACHES settings, we use  memcached to help speed Django up a little. It's not really needed for development, and so it should fall back onto a default, or you can install memcached in the dev environment as I did so I can test it and that it works fine.  On Ubuntu derived systems that's as easy as:
+
+    `sudo apt install memcached`
+
+    But if you're on another system go straight to horses mouth for more info:
+
+    https://memcached.org/
+
+    And then configure it to use a unix socket by adding this to `/etc/memcached.conf` (or your systems config file for memcached):
+    ```conf
+    # Use a unix socket (rather than an IP connection)
+    -s /run/memcached/socket
+    -a 0770
+    ```
+
+    It uses the IP layer by default and sockets are a little more native and performant that the IP layer. 
+
+    then restart memcached, again on Ubuntu related systems:
+
+    `sudo service memcached restart`
+
+    And check that you're in the `mecache` group or you won't have access to the mode 770 socket. But to me sure:
+
+    `sudo usermod -aG memcache yourusername`
+
+    Then sadly you have to log out and in again for it to stick.
+
+6. Install Eclipse and Pydev
 
     Recommend avoiding the ubuntu package and just going straight to https://www.eclipse.org
     and get the latest Eclipse from there.
@@ -236,13 +265,13 @@ would improve below, and improve it - or ask me to!
           Quit the server with CONTROL-C.
           ```
 
-6. Try it out
+7. Try it out
 
-7. Open the CoGs project in Eclipse
+8. Open the CoGs project in Eclipse
 
-8. Right click the project then click `Debug As...` then `PyDev: Django`
+9. Right click the project then click `Debug As...` then `PyDev: Django`
 
-9. In your Console panel you should see something like:
+10. In your Console panel you should see something like:
 
    ```
    Performing system checks...
@@ -255,7 +284,7 @@ would improve below, and improve it - or ask me to!
    
    ```
 
-10. In your favourite web browser open http://127.0.0.1:8000/ and play around.
+11. In your favourite web browser open http://127.0.0.1:8000/ and play around.
 
 Now dive in ...
 

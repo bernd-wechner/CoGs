@@ -102,7 +102,7 @@ else:
 DEBUG = DEBUG and not TESTING
 
 # Application definition
-INSTALLED_APPS = (
+INSTALLED_APPS = [
     'dal',
     'dal_select2',
     'timezone_field',
@@ -118,11 +118,6 @@ INSTALLED_APPS = (
     'django.contrib.sites',
     'django.contrib.flatpages',
     'django.contrib.humanize',
-    # Experiments with two different bootstrap packages
-    # Neither work satisfaction currently. And experimenting
-    # is deferred for a broader site skinning effort.
-    # 'django_bootstrap5',
-    # 'crispy_forms',
     'django_extensions',
     'reset_migrations',
     'django_run_context',
@@ -131,7 +126,10 @@ INSTALLED_APPS = (
     'Site',
     'Leaderboards',
     'Import'
-)
+]
+
+if USE_BOOTSTRAP:
+    INSTALLED_APPS.append("django_bootstrap5")
 
 MIDDLEWARE = (
     'django_stats_middleware.StatsMiddleware',
@@ -228,6 +226,10 @@ CACHES = {
         'TIMEOUT': 60 * 60 * 24 * 14  # in seconds (sec2min*min2hr*hr2day*days)
     }
 }
+try:
+    import pymemcache
+except ImportError:
+    CACHES['default']['BACKEND'] = 'django.core.cache.backends.dummy.DummyCache'
 
 ATOMIC_REQUESTS = True
 

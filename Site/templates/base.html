@@ -6,15 +6,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
 	<meta name="robots" content="NONE,NOARCHIVE" />
 
+	{% load tags %}
 	{% load static %}
 	{% load django-rich-views %}
-	{% load tags %}
+
+	{% if USE_BOOTSTRAP %}
+	    {% include "include/django_bootstrap_header.html" %}
+	{% endif %}
+	
 	<title>{% block title %}{% endblock %}</title>
 
     <!-- App CSS -->
 	<link rel="stylesheet" type="text/css" href="{% static 'django-rich-views/css/default.css' %}" />
 	<link rel="stylesheet" type="text/css" href="{% static 'django-stats-middleware/css/default.css' %}" />
-
+	
     <!-- Site CSS -->
 	<link rel="stylesheet" type="text/css" href="{% static 'css/default.css' %}" />
 
