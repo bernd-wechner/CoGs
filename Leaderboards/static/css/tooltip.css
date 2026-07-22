@@ -2,6 +2,7 @@
 
 :root {
   --tool_tip_delay: 1.5s;
+  --tool_tip_fade_duration: 0.2s;
 }
 
 .tooltip {
@@ -9,41 +10,33 @@
     display: inline-block;
 }
 
+/* ===========================*/
+/* All tooltips - hidden by default, removed from layout */
 .tooltip .tooltiptext,
 .tooltip .tooltiptext_left,
 .tooltip .tooltiptext_right {
+    display: none;
     visibility: hidden;
-}
-
-.tooltip:hover .tooltiptext,
-.tooltip:hover .tooltiptext_left,
-.tooltip:hover .tooltiptext_right {
-    visibility: visible;
-    opacity: 1;
-	transition-delay: var(--tool_tip_delay);
-}
-
-/* ===========================*/
-/* The default ABOVE positioned implementation */
-.tooltip .tooltiptext {
-    visibility: hidden;
+    opacity: 0;
+    
     background-color: #555;
     color: #fff;
-  
     white-space: normal;
     text-align: center;
     border-radius: 6px;
     padding: 10px;
-
     position: absolute;
     z-index: 1000;
-  
+}
+
+/* ===========================*/
+/* Default ABOVE positioned implementation */
+.tooltip .tooltiptext {
     bottom: 125%;
     left: 50%;
     transform: translateX(-50%);
 }
 
-/* This draws the little triangle under the tooltip  */
 .tooltip .tooltiptext::after {
     content: "";
     position: absolute;
@@ -56,25 +49,12 @@
 }
 
 /* ===========================*/
-/* A LEFT positioned variant */
+/* LEFT positioned variant */
 .tooltip .tooltiptext_left {
-    visibility: hidden;
-    background-color: #555;
-    color: #fff;
-  
-    white-space: normal;
-    text-align: center;
-    border-radius: 6px;
-    padding: 10px;
-
-    position: absolute;
-    z-index: 1000;
-  
-    top:-60%;
-    right:140%;
+    top: -60%;
+    right: 140%;
 }
 
-/* This draws the little triangle under the tooltip  */
 .tooltip .tooltiptext_left::after {
     content: "";
     position: absolute;
@@ -87,25 +67,12 @@
 }
 
 /* ===========================*/
-/* A RIGHT positioned variant */
+/* RIGHT positioned variant */
 .tooltip .tooltiptext_right {
-    visibility: hidden;
-    background-color: #555;
-    color: #fff;
-  
-    white-space: normal;
-    text-align: center;
-    border-radius: 6px;
-    padding: 10px;
-
-    position: absolute;
-    z-index: 1000;
-  
-    top:-60%;
-    left:140%;
+    top: -60%;
+    left: 140%;
 }
 
-/* This draws the little triangle under the tooltip  */
 .tooltip .tooltiptext_right::after {
     content: "";
     position: absolute;
@@ -115,4 +82,37 @@
     border-width: 5px;
     border-style: solid;
     border-color: transparent #555 transparent transparent;
+}
+
+/* ===========================*/
+/* HOVER IN: Wait, then fade in */
+.tooltip:hover .tooltiptext,
+.tooltip:hover .tooltiptext_left,
+.tooltip:hover .tooltiptext_right {
+    display: block;
+    animation: tooltipAppear var(--tool_tip_fade_duration) ease forwards;
+    animation-delay: var(--tool_tip_delay);
+}
+
+/* ===========================*/
+/* HOVER OUT: Instant disappearance */
+.tooltip:not(:hover) .tooltiptext,
+.tooltip:not(:hover) .tooltiptext_left,
+.tooltip:not(:hover) .tooltiptext_right {
+    display: none;
+    visibility: hidden;
+    opacity: 0;
+}
+
+/* ===========================*/
+/* Keyframes */
+@keyframes tooltipAppear {
+    0% {
+        visibility: hidden;
+        opacity: 0;
+    }
+    100% {
+        visibility: visible;
+        opacity: 1;
+    }
 }
