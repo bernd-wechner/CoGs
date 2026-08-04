@@ -138,11 +138,13 @@ def hunt_player(clues, limit=candidate_limit, add_name=False, include_best_quali
             pass
 
     # clues.name can == "Anonymous player" and technically session that include anonymous players
-    # we eitehr need to a) ignore or b) create an anoynous unrated player for. The case for the
+    # we either need to a) ignore or b) create an anonymous unrated player for. The case for the
     # latter is modest, I mean it's fair to assume a player unknown is not likely a master, but a
-    # noob butfar from known or certain, or always likely.
+    # noob but that's far from known or certain, or always likely.
     if not cogsPlayer and clues.name:
         # How to pass full_name?
+        # TODO: In Eclipse Player and all() are red underlined with "Undefined variable from import Player. Likely because objects in player is a CTEmanager. 
+        #       To resolve as we resolve the needs for CTE management.          
         candidates = Player.objects.all().annotate(lev_dist=LevenshteinDistance(Player.Full_name, clues.name)).order_by('lev_dist')[:limit]
         if candidates:
             result = list(candidates) if len(candidates) > 1 else [candidates]
@@ -158,7 +160,7 @@ def hunt_player(clues, limit=candidate_limit, add_name=False, include_best_quali
     if not cogsPlayer and clues.notes:
         # TODO:
         # Similarly a lexical distance search on name_personal + name_personal_family
-        # albeit perhaps htis one migth be a trigram similarity?
+        # albeit perhaps this one might be a trigram similarity?
         # https://docs.djangoproject.com/en/4.1/ref/contrib/postgres/lookups/
         pass
 

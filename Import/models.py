@@ -94,7 +94,6 @@ class Import(AdminModel, TimeZoneMixIn):
 
     On creation the maps should all be created with either a known mapping or null as our ID.
     Progress in defining the map can be determined by counting the nulls (unfinished mappings)
-
     '''
     context = models.ForeignKey(ImportContext, verbose_name='Import Context', related_name='imports', on_delete=models.CASCADE)
     filename = models.CharField(max_length=MAX_FILENAME_LEN, editable=False)
